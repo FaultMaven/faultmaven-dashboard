@@ -1,0 +1,32 @@
+// /Users/sterlanyu/Projects/faultmaven-copilot/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler", // Or "node", "node16", "nodenext" - "bundler" is good for Vite
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true, // WXT/Vite handles emitting JavaScript
+
+    // Path Aliases for TypeScript
+    "baseUrl": ".", // Sets the base for path resolution
+    "paths": {
+      "~/*": ["src/*"],         // Maps '~/' to 'src/'
+      "~lib/*": ["src/lib/*"]   // Maps '~lib/' to 'src/lib/'
+    }
+  },
+  "include": [
+    ".wxt/types/**/*.ts", // Important: Includes WXT's auto-generated global types
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "wxt.config.ts",       // Include your WXT config file
+    "tailwind.config.cjs", // Include your Tailwind config
+    "postcss.config.cjs"   // Include your PostCSS config
+  ],
+  "exclude": ["node_modules", ".output"]
+}

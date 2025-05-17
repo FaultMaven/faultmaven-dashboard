@@ -1,0 +1,45 @@
+# Node dependencies
+node_modules/
+
+# WXT build output and cache
+.output/
+.wxt/
+*.wxt.d.ts
+output/
+
+# Vite cache
+node_modules/.vite/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE-specific
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Log files
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+lerna-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# PNPM
+pnpm-lock.yaml # Or add this if you prefer not to commit the lockfile, though committing it is usually recommended for consistency.
+                 # For libraries it's often not committed, for applications it often is. Your call.
+
+# Temporary files
+*.tmp
+*.swp
