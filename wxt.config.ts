@@ -25,24 +25,27 @@ export default defineConfig({
     description: "AI-powered troubleshooting assistant embedded in your browser",
     icons: {
       "16": "icon/px16-square-dark.png",
-      "32": "icon/px32-square-light.png",
-      "48": "icon/px48-square-light.png", 
-      "96": "icon/px96-square-light.png",
-      "128": "icon/px128-square-light.png"
+      "32": "icon/px32-square-dark.png",
+      "48": "icon/px48-square-dark.png", 
+      "96": "icon/px96-square-dark.png",
+      "128": "icon/px128-square-dark.png"
     },
     permissions: [
       "storage", "sidePanel", "activeTab", "tabs", "scripting"
     ],
-    host_permissions: ["https://www.example.com/*"],
+    host_permissions: ["https://api.faultmaven.ai/*"],
     action: {
       default_title: "Open FaultMaven Copilot",
       default_icon: {
         "16": "icon/px16-square-dark.png",
-        "32": "icon/px32-square-light.png"
+        "32": "icon/px32-square-dark.png"
       }
     },
     side_panel: {
       default_path: "sidepanel_manual.html"
+    },
+    content_security_policy: {
+      "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.faultmaven.ai;"
     }
   }
 });

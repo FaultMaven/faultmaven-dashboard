@@ -1,10 +1,12 @@
 // src/shared/ui/SidePanelApp.tsx
 import React, { useState, useRef, useEffect } from "react";
 import { browser } from "wxt/browser";
-import { sendMessageToBackground } from "~lib/utils/messaging"; // Assuming this path alias is configured
-import { config } from "~lib/utils/config"; // Assuming this path alias is configured
+import { sendMessageToBackground } from "../../lib/utils/messaging";
+import config from "../../config";
+import KnowledgeBaseView from "./KnowledgeBaseView";
 
 export default function SidePanelApp() {
+  const [activeTab, setActiveTab] = useState<'copilot' | 'kb'>('copilot');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<Array<{ question?: string; response?: string; error?: boolean }>>([]);
   const [queryInput, setQueryInput] = useState("");
@@ -35,6 +37,14 @@ export default function SidePanelApp() {
   };
 
   const clearSession = async () => {
+    const isConfirmed = window.confirm(
+      'Are you sure you want to clear this session and start a new investigation?'
+    );
+    
+    if (!isConfirmed) {
+      return;
+    }
+    
     console.log("[SidePanelApp] Clearing session...");
     try {
       const res: any = await sendMessageToBackground({ action: "clearSession" });
@@ -46,7 +56,6 @@ export default function SidePanelApp() {
       setPageContent(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setFileSelected(false);
-      setInjectionStatus({ message: "New conversation started.", type: "success" });
       await getSessionId();
     } catch (err) {
       console.error("[SidePanelApp] clearSession error:", err);
@@ -160,9 +169,8 @@ export default function SidePanelApp() {
     (dataSourceRef.current === "file" && fileSelected) ||
     (dataSourceRef.current === "page" && !!pageContent?.trim()));
 
-  return (
-    <div className="flex flex-col h-screen p-3 space-y-3 overflow-y-auto bg-gray-50 text-gray-800 text-sm font-sans">
-      
+  const renderCopilotTab = () => (
+    <div className="flex flex-col h-full space-y-3 overflow-y-auto">
       <div id="conversation-history" ref={conversationHistoryRef} className="flex-grow overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-sm p-3 min-h-0">
         {/* ... conversation mapping logic ... */}
         {conversation.map((item, index) => (
@@ -179,15 +187,21 @@ export default function SidePanelApp() {
               <div className="flex justify-start mb-2">
                 <div className={`max-w-[80%] rounded-lg px-3 py-2 shadow text-sm ${item.error ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-800"}`}>
                   <p className="font-semibold mb-0.5">AI</p>
-                  <div className="prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: item.response }} />
+                  <div className="prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 whitespace-pre-wrap break-words">
+                    {item.response}
+                  </div>
                 </div>
               </div>
             )}
           </React.Fragment>
         ))}
         {!conversation.length && !loading && (
-          <div className="h-full flex items-center justify-center text-xs text-gray-400 italic p-2">
-            Conversation will appear here...
+          <div className="h-full flex flex-col items-center justify-center text-center p-4">
+            <h2 className="text-base font-semibold text-gray-800 mb-2">Welcome to FaultMaven Copilot!</h2>
+            <p className="text-sm text-gray-600 mb-4">Your AI troubleshooting partner.</p>
+            <p className="text-sm text-gray-500 bg-gray-100 p-3 rounded-md max-w-sm">
+              To get started, provide context using the options below or ask a question directly, like <em>"What's the runbook for a database failover?"</em>
+            </p>
           </div>
         )}
       </div>
@@ -307,6 +321,39 @@ export default function SidePanelApp() {
       </div>
       
       {/* Old full-width "New Conversation" button at the bottom is removed */}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-screen bg-gray-50 text-gray-800 text-sm font-sans">
+      {/* Tab Navigation */}
+      <div className="flex border-b border-gray-200 bg-white">
+        <button 
+          onClick={() => setActiveTab('copilot')} 
+          className={`flex-1 py-1 px-4 text-sm transition-colors border-b-2 ${
+            activeTab === 'copilot' 
+              ? 'text-blue-600 border-blue-500 font-semibold' 
+              : 'text-gray-500 border-transparent font-medium hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          Copilot
+        </button>
+        <button 
+          onClick={() => setActiveTab('kb')} 
+          className={`flex-1 py-1 px-4 text-sm transition-colors border-b-2 ${
+            activeTab === 'kb' 
+              ? 'text-blue-600 border-blue-500 font-semibold' 
+              : 'text-gray-500 border-transparent font-medium hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          Knowledge Base
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 p-3 overflow-hidden">
+        {activeTab === 'copilot' ? renderCopilotTab() : <KnowledgeBaseView />}
+      </div>
     </div>
   );
 }

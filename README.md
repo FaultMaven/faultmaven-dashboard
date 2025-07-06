@@ -1,158 +1,132 @@
 # FaultMaven Copilot – WXT Browser Extension
 
-**FaultMaven Copilot** is an AI-powered troubleshooting assistant embedded directly in your browser as a side panel. It provides in-context help, analyzes web content, and enables users to interact with the FaultMaven AI to diagnose and resolve issues efficiently.
+[](https://www.google.com/search?q=./.github/workflows)
+[](https://www.google.com/search?q=./package.json)
+[](https://www.google.com/search?q=./LICENSE.md)
+[](https://react.dev/)
+[](https://wxt.dev/)
+
+**FaultMaven Copilot** is an AI-powered troubleshooting assistant embedded directly in your browser as a side panel. It provides **engineers—especially in SRE and DevOps roles**—with in-context help, analyzes web content, and enables users to interact with the FaultMaven AI to diagnose and resolve issues efficiently.
 
 This extension is built using the modern **WXT framework**, with **React 19+**, **Tailwind CSS**, and **TypeScript**.
 
----
+-----
 
-##  Features
+## ✨ Key Features
 
-- **Side Panel Interface:** Dedicated UI embedded in the browser's side panel.
-- **AI-Powered Assistance:** Connects with the FaultMaven backend to deliver intelligent troubleshooting insights.
-- **Contextual Data Analysis:**
-  - Analyze current page content.
-  - Accept pasted logs, metrics, or diagnostic data.
-  - Upload text-based files (e.g., `.log`, `.json`, `.csv`).
-- **Conversational UI:** Interactive chatbot-style experience with FaultMaven AI.
-- **Session Management:** Maintains a persistent session for multi-step conversations.
-- **Responsive Design:** Adapts to resizable side panel dimensions.
+  * 💬 **Conversational Troubleshooting**: Engage in a stateful, interactive dialogue with the FaultMaven AI. Submit logs, ask questions, and receive guided insights to pinpoint the root cause of issues.
+  * 🌐 **Contextual Data Analysis**: Provide evidence to the AI directly from your workflow.
+      * Analyze the content of your current browser page.
+      * Paste logs, metrics, or error messages directly into the chat.
+      * Upload files for immediate analysis.
+  * 🗂️ **Centralized Knowledge Base**: The Copilot features a dedicated tab to build and manage your team's knowledge base.
+      * **Upload Documents**: Easily upload runbooks, post-mortems, and other documentation (PDF, DOCX, MD, TXT, and more) via drag-and-drop.
+      * **Monitor Ingestion Status**: Track the real-time status of your uploads with clear visual indicators for "Processing," "Indexed," or "Error".
+      * **Manage Knowledge**: View and delete documents to ensure your knowledge base remains current and relevant.
+  * 🔒 **Privacy-First Design**: All interactions are designed with security in mind, ensuring sensitive data is handled appropriately by the backend's PII redaction services.
 
----
+-----
 
-##  Tech Stack
+## 🛠️ Tech Stack
 
-| Component          | Details |
-|-------------------|---------|
-| **Framework**     | [WXT](https://wxt.dev/) v0.20.6 (Vite-based Web Extension Toolkit) |
-| **UI**            | React 19+ |
-| **Styling**       | Tailwind CSS v3 |
-| **Language**      | TypeScript |
-| **Package Manager** | pnpm |
-| **Browser APIs**  | Manifest V3, Side Panel API, `chrome.storage`, `chrome.runtime.messaging`, `chrome.tabs` |
+| Component         | Details                                                                              |
+| :---------------- | :----------------------------------------------------------------------------------- |
+| **Framework** | [WXT](https://wxt.dev/) v0.20.6 (Vite-based Web Extension Toolkit)                     |
+| **UI** | React 19+                                                                            |
+| **Styling** | Tailwind CSS v3                                                                      |
+| **Language** | TypeScript                                                                           |
+| **Package Manager** | pnpm                                                                                 |
+| **Browser APIs** | Manifest V3, Side Panel API, `chrome.storage`, `chrome.runtime.messaging`, `chrome.tabs` |
 
----
+-----
 
-##  Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v20+ recommended)
-- [pnpm](https://pnpm.io/installation) (v8+ recommended)
+  * [Node.js](https://nodejs.org/) (v20+ recommended)
+  * [pnpm](https://pnpm.io/installation) (v8+ recommended)
+  * A running instance of the **FaultMaven Backend API**.
 
 ### Setup
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-org/faultmaven-copilot.git
-   cd faultmaven-copilot
-   ```
+1.  **Run the Backend First**: The Copilot requires a running backend to function. Please follow the setup instructions in the `faultmaven/faultmaven-api` repository to launch the backend services (e.g., via `docker-compose up`).
 
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
+2.  **Clone this Repository**:
 
-   This will also run `wxt prepare` via the `postinstall` script.
+    ```bash
+    git clone https://github.com/your-org/faultmaven-copilot.git
+    cd faultmaven-copilot
+    ```
 
----
+3.  **Install Dependencies**:
+
+    ```bash
+    pnpm install
+    ```
+
+    This command will also run `wxt prepare` to set up the development environment.
+
+4.  **Configure API Endpoint**: Create a `.env.local` file in the root of the project to tell the extension where to find your local backend server.
+
+    ```
+    # .env.local
+    VITE_API_BASE_URL=http://localhost:8000
+    ```
 
 ### Development Workflow
 
-Start the dev server and build the extension in development mode:
+Start the dev server, which enables Hot Module Replacement (HMR) for a fast development experience.
 
 ```bash
 pnpm dev
 ```
 
-This command will:
-- Build the extension in dev mode
-- Enable hot module replacement (HMR)
-- Output to `.output/chrome-mv3-dev/`
-
 ### Load the Extension in Chrome
 
-1. Navigate to `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked**
-4. Select the `.output/chrome-mv3-dev/` folder
+1.  Navigate to `chrome://extensions` in your browser.
+2.  Enable **Developer mode** using the toggle in the top-right corner.
+3.  Click **Load unpacked**.
+4.  Select the `.output/chrome-mv3-dev/` folder from this project's directory.
 
-You should now see the **FaultMaven Copilot** icon in your browser toolbar.
+The **FaultMaven Copilot** icon will now appear in your browser toolbar, and the side panel will be available.
 
----
+-----
 
-### Production Build
+## 📦 Production and Packaging
 
-Create an optimized build:
+  * **Create an optimized production build**: `pnpm wxt build`
+  * **Package for store submission**: `pnpm wxt zip`
 
-```bash
-pnpm wxt build
-```
+-----
 
-This will output files to `.output/chrome-mv3/`.
+## 📂 Project Structure
 
-### Package for Store Submission
-
-To create a `.zip` file for Chrome Web Store upload:
-
-```bash
-pnpm wxt zip
-```
-
-The resulting `.zip` (e.g., `faultmaven-copilot-0.1.0.zip`) will be located in the `.output/` directory.
-
----
-
-##  Project Structure
+The project follows a standard WXT structure, organizing code by its function within the browser extension.
 
 ```
 faultmaven-copilot/
-├── .output/                      # Build output (WXT managed, gitignored)
-├── .wxt/                         # WXT-generated cache (gitignored)
-├── public/                       # Static assets (icons, etc.)
-│   └── icon/
-├── src/                          # Main application source
-│   ├── assets/
-│   │   └── styles/
-│   │       └── globals.css       # Tailwind base styles
-│   ├── entrypoints/
-│   │   ├── background.ts
-│   │   ├── page-content.content.ts
-│   │   └── sidepanel_manual/
-│   │       ├── index.html
-│   │       └── main.tsx
-│   ├── lib/
-│   │   └── utils/
-│   ├── shared/
-│   │   └── ui/
-│   │       └── SidePanelApp.tsx
-├── package.json
-├── pnpm-lock.yaml
-├── tailwind.config.cjs
-├── postcss.config.cjs
-├── tsconfig.json
-├── wxt.config.ts
-└── README.md
+├── public/                  # Static assets (icons)
+├── src/                     # Main application source
+│   ├── entrypoints/         # WXT entrypoints (background, sidepanel)
+│   ├── lib/                 # Core logic (API clients, utils)
+│   └── shared/              # Reusable React components and UI
+│       └── ui/
+│           ├── SidePanelApp.tsx     # Main app with tabbed interface
+│           ├── KnowledgeBaseView.tsx  # Knowledge base management view
+│           └── components/          # Reusable UI components
+├── wxt.config.ts            # WXT configuration file
+└── package.json
 ```
 
----
+-----
 
-##  Contact & Support
+## 🤝 Contributing
 
-For questions, bug reports, or feature requests, contact us at:
+We welcome contributions from the community\! We encourage you to open issues for bugs, feature requests, and suggestions. If you'd like to contribute code, please see our [Contributing Guidelines](https://www.google.com/search?q=CONTRIBUTING.md) for details on our development process and how to submit a pull request.
 
- **support@faultmaven.ai**
+-----
 
----
+## 📜 License
 
-##  License
-
-This project is licensed under the **[Apache-2.0 license](./LICENSE.md)**.  
-See the `LICENSE.md` file for full terms.
-
----
-
-##  Contributing *(Optional)*
-
-Contributions are welcome!  
-
+This project is licensed under the **Apache-2.0 License**. See the `LICENSE.md` file for full terms.
