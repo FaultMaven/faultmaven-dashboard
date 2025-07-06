@@ -2,7 +2,7 @@
 // NO import for defineContentScript
 
 export default defineContentScript({
-  matches: ["https://www.example.com/*"], // Restricted for dev stability
+  matches: ["<all_urls>"], // Allow content script on all HTTPS pages
   runAt: "document_idle",
   main() {
     console.log(

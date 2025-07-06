@@ -1,10 +1,11 @@
 # FaultMaven Copilot – WXT Browser Extension
 
-[](https://www.google.com/search?q=./.github/workflows)
-[](https://www.google.com/search?q=./package.json)
-[](https://www.google.com/search?q=./LICENSE.md)
-[](https://react.dev/)
-[](https://wxt.dev/)
+[![Version](https://img.shields.io/badge/version-0.0.1-blue.svg)](./package.json)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](./LICENSE.md)
+[![Framework](https://img.shields.io/badge/framework-WXT-orange.svg)](https://wxt.dev/)
+[![React](https://img.shields.io/badge/React-19+-61DAFB.svg?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4+-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
 **FaultMaven Copilot** is an AI-powered troubleshooting assistant embedded directly in your browser as a side panel. It provides **engineers—especially in SRE and DevOps roles**—with in-context help, analyzes web content, and enables users to interact with the FaultMaven AI to diagnose and resolve issues efficiently.
 
