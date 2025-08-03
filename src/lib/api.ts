@@ -1,11 +1,161 @@
 import config from "../config";
 
+// ===== TypeScript Interfaces =====
+
+export interface Session {
+  session_id: string;
+  created_at: string;
+  status: string;
+}
+
+export interface CreateSessionResponse {
+  session_id: string;
+  created_at: string;
+}
+
+export interface DataUploadResponse {
+  data_id: string;
+  filename?: string;
+  insights?: string;
+  status: string;
+}
+
+export interface QueryRequest {
+  session_id: string;
+  query: string;
+  priority: "low" | "normal" | "high" | "critical";
+  context: {
+    uploaded_data_ids?: string[];
+    page_url?: string;
+    browser_info?: string;
+    [key: string]: any;
+  };
+}
+
+export interface QueryResponse {
+  response: string;
+  findings?: string[];
+  recommendations?: string[];
+  confidence_score?: number;
+  session_id: string;
+}
+
 export interface KbDocument {
   id: string;
   name: string;
   status: 'Processing' | 'Indexed' | 'Error';
   addedAt: string;
 }
+
+// ===== Session Management =====
+
+/**
+ * Create a new troubleshooting session
+ */
+export async function createSession(): Promise<CreateSessionResponse> {
+  const response = await fetch(`${config.apiUrl}/api/v1/sessions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to create session: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * List all sessions
+ */
+export async function listSessions(): Promise<Session[]> {
+  const response = await fetch(`${config.apiUrl}/api/v1/sessions`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to list sessions: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Send heartbeat to keep session alive
+ */
+export async function heartbeatSession(sessionId: string): Promise<void> {
+  const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}/heartbeat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to heartbeat session: ${response.status}`);
+  }
+}
+
+// ===== Data Upload =====
+
+/**
+ * Upload data/files for analysis
+ */
+export async function uploadData(sessionId: string, data: File | string, dataType: 'file' | 'text' | 'page'): Promise<DataUploadResponse> {
+  const formData = new FormData();
+  formData.append('session_id', sessionId);
+  formData.append('data_type', dataType);
+  
+  if (data instanceof File) {
+    formData.append('file', data);
+  } else {
+    formData.append('content', data);
+  }
+
+  const response = await fetch(`${config.apiUrl}/api/v1/data/`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to upload data: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// ===== Query Processing =====
+
+/**
+ * Send a troubleshooting query
+ */
+export async function sendQuery(request: QueryRequest): Promise<QueryResponse> {
+  const response = await fetch(`${config.apiUrl}/api/v1/query/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Query request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// ===== Knowledge Base (Legacy Support) =====
 
 /**
  * Upload a document to the knowledge base

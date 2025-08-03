@@ -15,11 +15,12 @@ This extension is built using the modern **WXT framework**, with **React 19+**, 
 
 ## ✨ Key Features
 
-  * 💬 **Conversational Troubleshooting**: Engage in a stateful, interactive dialogue with the FaultMaven AI. Submit logs, ask questions, and receive guided insights to pinpoint the root cause of issues.
+  * 💬 **Conversational Troubleshooting**: Engage in a stateful, interactive dialogue with the FaultMaven AI. Submit logs, ask questions, and receive guided insights with findings, recommendations, and confidence scores to pinpoint the root cause of issues.
   * 🌐 **Contextual Data Analysis**: Provide evidence to the AI directly from your workflow.
       * Analyze the content of your current browser page.
       * Paste logs, metrics, or error messages directly into the chat.
-      * Upload files for immediate analysis.
+      * Upload files for immediate analysis with insights.
+  * 🔄 **Session Management**: Maintain conversation context across browser sessions with automatic session persistence and heartbeat management.
   * 🗂️ **Centralized Knowledge Base**: The Copilot features a dedicated tab to build and manage your team's knowledge base.
       * **Upload Documents**: Easily upload runbooks, post-mortems, and other documentation (PDF, DOCX, MD, TXT, and more) via drag-and-drop.
       * **Monitor Ingestion Status**: Track the real-time status of your uploads with clear visual indicators for "Processing," "Indexed," or "Error".
@@ -51,7 +52,7 @@ This extension is built using the modern **WXT framework**, with **React 19+**, 
 
 ### Setup
 
-1.  **Run the Backend First**: The Copilot requires a running backend to function. Please follow the setup instructions in the `faultmaven/faultmaven-api` repository to launch the backend services (e.g., via `docker-compose up`).
+1.  **Run the Backend First**: The Copilot requires a running FaultMaven API server to function. Ensure your backend is running at `http://api.faultmaven.local:8000` or update the configuration accordingly.
 
 2.  **Clone this Repository**:
 
@@ -70,9 +71,12 @@ This extension is built using the modern **WXT framework**, with **React 19+**, 
 
 4.  **Configure API Endpoint**: Create a `.env.local` file in the root of the project to tell the extension where to find your local backend server.
 
-    ```
-    # .env.local
-    VITE_API_BASE_URL=http://localhost:8000
+    ```bash
+    # For local development
+    ./scripts/setup-dev.sh
+    
+    # Or manually create .env.local:
+    # VITE_API_URL=http://api.faultmaven.local:8000
     ```
 
 ### Development Workflow

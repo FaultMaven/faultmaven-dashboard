@@ -4,6 +4,7 @@ import { browser } from "wxt/browser";
 import { sendMessageToBackground } from "../../lib/utils/messaging";
 import config from "../../config";
 import KnowledgeBaseView from "./KnowledgeBaseView";
+import { createSession, sendQuery, uploadData, heartbeatSession } from "../../lib/api";
 
 export default function SidePanelApp() {
   const [activeTab, setActiveTab] = useState<'copilot' | 'kb'>('copilot');
@@ -22,17 +23,47 @@ export default function SidePanelApp() {
   const [, forceUpdate] = useState({}); // Helper to re-render on ref change
 
   useEffect(() => {
-    getSessionId();
+    // Try to load existing session from storage
+    chrome.storage.local.get(["sessionId"], (result) => {
+      if (result.sessionId) {
+        console.log("[SidePanelApp] Found existing session:", result.sessionId);
+        setSessionId(result.sessionId);
+        
+        // Start heartbeat for existing session
+        setInterval(() => {
+          heartbeatSession(result.sessionId).catch(err => 
+            console.warn("[SidePanelApp] Heartbeat failed:", err)
+          );
+        }, 30000);
+      } else {
+        // Create new session if none exists
+        getSessionId();
+      }
+    });
   }, []);
 
   const getSessionId = async () => {
-    console.log("[SidePanelApp] Requesting session ID...");
+    console.log("[SidePanelApp] Creating new session...");
     try {
-      const res: any = await sendMessageToBackground({ action: "getSessionId" });
-      console.log("[SidePanelApp] getSessionId response:", res);
-      setSessionId(res?.sessionId ?? null);
+      const res = await createSession();
+      console.log("[SidePanelApp] createSession response:", res);
+      setSessionId(res.session_id);
+      
+      // Store session ID in browser storage for persistence
+      chrome.storage.local.set({ sessionId: res.session_id });
+      
+      // Start heartbeat to keep session alive
+      setInterval(() => {
+        if (res.session_id) {
+          heartbeatSession(res.session_id).catch(err => 
+            console.warn("[SidePanelApp] Heartbeat failed:", err)
+          );
+        }
+      }, 30000); // Heartbeat every 30 seconds
+      
     } catch (err) {
-      console.error("getSessionId error:", err);
+      console.error("createSession error:", err);
+      setInjectionStatus({ message: "⚠️ Failed to create session. Please try again.", type: "error" });
     }
   };
 
@@ -45,10 +76,9 @@ export default function SidePanelApp() {
       return;
     }
     
-    console.log("[SidePanelApp] Clearing session...");
+    console.log("[SidePanelApp] Clearing session and starting new...");
     try {
-      const res: any = await sendMessageToBackground({ action: "clearSession" });
-      console.log("[SidePanelApp] clearSession response:", res);
+      // Clear local state
       setSessionId(null);
       setConversation([]);
       setQueryInput("");
@@ -56,7 +86,13 @@ export default function SidePanelApp() {
       setPageContent(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setFileSelected(false);
+      
+      // Clear stored session
+      chrome.storage.local.remove("sessionId");
+      
+      // Create new session
       await getSessionId();
+      setInjectionStatus({ message: "✅ New session created", type: "success" });
     } catch (err) {
       console.error("[SidePanelApp] clearSession error:", err);
       setInjectionStatus({ message: "⚠️ Failed to start new conversation.", type: "error" });
@@ -107,8 +143,39 @@ export default function SidePanelApp() {
     addToConversation(query, undefined);
     try {
       console.log("[SidePanelApp] Sending query to FaultMaven backend:", query, "Session:", sessionId);
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API
-      addToConversation(undefined, `Mock response for: "${query}"`);
+      console.log("[SidePanelApp] Using API endpoint:", config.apiUrl);
+      
+      if (!sessionId) {
+        throw new Error("No session ID available");
+      }
+
+      const response = await sendQuery({
+        session_id: sessionId,
+        query: query,
+        priority: "normal",
+        context: {
+          page_url: window.location.href,
+          browser_info: navigator.userAgent,
+          page_content: pageContent || undefined,
+          text_data: dataSourceRef.current === "text" ? textInput.trim() : undefined,
+        }
+      });
+
+      console.log("[SidePanelApp] API response:", response);
+      
+      // Format response with findings and recommendations if available
+      let formattedResponse = response.response;
+      if (response.findings && response.findings.length > 0) {
+        formattedResponse += "\n\n**Findings:**\n" + response.findings.map(f => `• ${f}`).join('\n');
+      }
+      if (response.recommendations && response.recommendations.length > 0) {
+        formattedResponse += "\n\n**Recommendations:**\n" + response.recommendations.map(r => `• ${r}`).join('\n');
+      }
+      if (response.confidence_score !== undefined) {
+        formattedResponse += `\n\n**Confidence:** ${Math.round(response.confidence_score * 100)}%`;
+      }
+      
+      addToConversation(undefined, formattedResponse);
     } catch (e: any) {
       console.error("[SidePanelApp] sendToFaultMaven error:", e);
       addToConversation(undefined, `<p><strong>Error:</strong> Failed to process query: ${e.message}</p>`, true);
@@ -129,14 +196,43 @@ export default function SidePanelApp() {
       setLoading(false);
       return;
     }
-    addToConversation(`Submitting ${dataSourceRef.current} data...`, undefined);
+    addToConversation(`Uploading ${dataSourceRef.current} data...`, undefined);
     try {
-      console.log("[SidePanelApp] Sending data to FaultMaven backend. Type:", dataSourceRef.current, "Session:", sessionId);
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API
-      addToConversation(undefined, `Mock summary for submitted ${dataSourceRef.current} data.`);
+      console.log("[SidePanelApp] Uploading data to FaultMaven backend. Type:", dataSourceRef.current, "Session:", sessionId);
+      console.log("[SidePanelApp] Using API endpoint:", config.apiUrl);
+      
+      if (!sessionId) {
+        throw new Error("No session ID available");
+      }
+
+      const response = await uploadData(sessionId, dataToSend, dataSourceRef.current);
+
+      console.log("[SidePanelApp] Upload response:", response);
+      
+      // Format response with insights if available
+      let formattedResponse = `✅ Data uploaded successfully (ID: ${response.data_id})`;
+      if (response.insights) {
+        formattedResponse += `\n\n**Initial Insights:**\n${response.insights}`;
+      }
+      if (response.filename) {
+        formattedResponse += `\n\n**File:** ${response.filename}`;
+      }
+      
+      addToConversation(undefined, formattedResponse);
+      
+      // Clear the input after successful upload
+      if (dataSourceRef.current === "text") {
+        setTextInput("");
+      } else if (dataSourceRef.current === "file") {
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setFileSelected(false);
+      } else if (dataSourceRef.current === "page") {
+        setPageContent(null);
+      }
+      
     } catch (e: any) {
       console.error("[SidePanelApp] sendDataToFaultMaven error:", e);
-      addToConversation(undefined, `<p><strong>Error:</strong> Failed to submit data: ${e.message}</p>`, true);
+      addToConversation(undefined, `<p><strong>Error:</strong> Failed to upload data: ${e.message}</p>`, true);
     } finally {
       setLoading(false);
     }

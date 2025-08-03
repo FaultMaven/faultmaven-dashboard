@@ -21,7 +21,7 @@ export default defineConfig({
   },
   manifest: {
     name: "FaultMaven Copilot",
-    version: "0.0.1",
+    version: "0.2.0",
     description: "AI-powered troubleshooting assistant embedded in your browser",
     icons: {
       "16": "icon/px16-square-dark.png",
@@ -33,7 +33,10 @@ export default defineConfig({
     permissions: [
       "storage", "sidePanel", "activeTab", "tabs", "scripting"
     ],
-    host_permissions: ["https://api.faultmaven.ai/*"],
+    host_permissions: [
+      "https://api.faultmaven.ai/*",
+      "http://api.faultmaven.local:8000/*"
+    ],
     action: {
       default_title: "Open FaultMaven Copilot",
       default_icon: {
@@ -45,7 +48,7 @@ export default defineConfig({
       default_path: "sidepanel_manual.html"
     },
     content_security_policy: {
-      "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.faultmaven.ai;"
+      "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.faultmaven.ai http://api.faultmaven.local:8000;"
     }
   }
 });
