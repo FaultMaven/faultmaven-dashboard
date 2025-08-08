@@ -10,7 +10,7 @@ export default defineContentScript({
       "color: orange; font-weight:bold;"
     );
 
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    browser.runtime.onMessage.addListener((message: any, sender: any, sendResponse: any) => {
       console.log("[page-content.content.ts] Message received in listener. Message:", message, "Sender ID:", sender.id); // Log sender ID
 
       if (message && message.action === "getPageContent") {

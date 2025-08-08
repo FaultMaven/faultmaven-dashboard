@@ -2,10 +2,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { browser } from "wxt/browser";
 import { sendMessageToBackground } from "../../lib/utils/messaging";
-import { processQuery, uploadData, QueryRequest } from "../../lib/api";
+import { processQuery, uploadData, QueryRequest, heartbeatSession } from "../../lib/api";
 import config from "../../config";
 import KnowledgeBaseView from "./KnowledgeBaseView";
-import { createSession, sendQuery, uploadData, heartbeatSession } from "../../lib/api";
+import { createSession } from "../../lib/api";
 
 export default function SidePanelApp() {
   const [activeTab, setActiveTab] = useState<'copilot' | 'kb'>('copilot');
@@ -25,7 +25,7 @@ export default function SidePanelApp() {
 
   useEffect(() => {
     // Try to load existing session from storage
-    chrome.storage.local.get(["sessionId"], (result) => {
+    browser.storage.local.get(["sessionId"]).then((result: any) => {
       if (result.sessionId) {
         console.log("[SidePanelApp] Found existing session:", result.sessionId);
         setSessionId(result.sessionId);
@@ -51,7 +51,7 @@ export default function SidePanelApp() {
       setSessionId(res.session_id);
       
       // Store session ID in browser storage for persistence
-      chrome.storage.local.set({ sessionId: res.session_id });
+      browser.storage.local.set({ sessionId: res.session_id });
       
       // Start heartbeat to keep session alive
       setInterval(() => {
@@ -89,7 +89,7 @@ export default function SidePanelApp() {
       setFileSelected(false);
       
       // Clear stored session
-      chrome.storage.local.remove("sessionId");
+      browser.storage.local.remove("sessionId");
       
       // Create new session
       await getSessionId();
@@ -149,14 +149,13 @@ export default function SidePanelApp() {
     addToConversation(query, undefined);
     try {
       console.log("[SidePanelApp] Sending query to FaultMaven backend:", query, "Session:", sessionId);
-<<<<<<< Updated upstream
       console.log("[SidePanelApp] Using API endpoint:", config.apiUrl);
       
       if (!sessionId) {
         throw new Error("No session ID available");
       }
 
-      const response = await sendQuery({
+      const request: QueryRequest = {
         session_id: sessionId,
         query: query,
         priority: "normal",
@@ -166,12 +165,13 @@ export default function SidePanelApp() {
           page_content: pageContent || undefined,
           text_data: dataSourceRef.current === "text" ? textInput.trim() : undefined,
         }
-      });
+      };
 
+      const response = await processQuery(request);
       console.log("[SidePanelApp] API response:", response);
       
       // Format response with findings and recommendations if available
-      let formattedResponse = response.response;
+      let formattedResponse = response.response || "";
       if (response.findings && response.findings.length > 0) {
         formattedResponse += "\n\n**Findings:**\n" + response.findings.map(f => `• ${f}`).join('\n');
       }
@@ -183,56 +183,6 @@ export default function SidePanelApp() {
       }
       
       addToConversation(undefined, formattedResponse);
-=======
-      
-      const request: QueryRequest = {
-        session_id: sessionId,
-        query: query,
-        context: pageContent ? { page_content: pageContent } : undefined,
-      };
-
-      const response = await processQuery(request);
-      console.log("[SidePanelApp] Query response:", response);
-      
-      // Format the response for display
-      let responseText = `<div class="space-y-3">`;
-      
-      if (response.root_cause) {
-        responseText += `<div><strong>Root Cause:</strong> ${response.root_cause}</div>`;
-      }
-      
-      if (response.findings && response.findings.length > 0) {
-        responseText += `<div><strong>Findings:</strong><ul class="list-disc list-inside ml-2">`;
-        response.findings.forEach(finding => {
-          responseText += `<li><em>${finding.type}:</em> ${finding.message}</li>`;
-        });
-        responseText += `</ul></div>`;
-      }
-      
-      if (response.recommendations && response.recommendations.length > 0) {
-        responseText += `<div><strong>Recommendations:</strong><ul class="list-disc list-inside ml-2">`;
-        response.recommendations.forEach(rec => {
-          responseText += `<li>${rec}</li>`;
-        });
-        responseText += `</ul></div>`;
-      }
-      
-      if (response.next_steps && response.next_steps.length > 0) {
-        responseText += `<div><strong>Next Steps:</strong><ol class="list-decimal list-inside ml-2">`;
-        response.next_steps.forEach(step => {
-          responseText += `<li>${step}</li>`;
-        });
-        responseText += `</ol></div>`;
-      }
-      
-      if (response.confidence_score) {
-        responseText += `<div class="text-sm text-gray-600"><strong>Confidence:</strong> ${Math.round(response.confidence_score * 100)}%</div>`;
-      }
-      
-      responseText += `</div>`;
-      
-      addToConversation(undefined, responseText);
->>>>>>> Stashed changes
     } catch (e: any) {
       console.error("[SidePanelApp] sendToFaultMaven error:", e);
       addToConversation(undefined, `<p><strong>Error:</strong> Failed to process query: ${e.message}</p>`, true);

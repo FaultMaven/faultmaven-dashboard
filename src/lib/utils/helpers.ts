@@ -1,5 +1,7 @@
 // src/lib/utils/helpers.ts
 
+import { browser } from 'wxt/browser';
+
 /**
  * Logs a message with a timestamp and optional context.
  * @param {string} message - The message to log.
@@ -44,19 +46,14 @@ export async function fetchData<T = any>(url: string, options: RequestInit = {})
  * @param {string} [url] - The URL of the tab (for logging purposes).
  */
 export function injectContentScript(tabId: number, filePath: string, url?: string): void {
-  chrome.scripting.executeScript(
-    {
-      target: { tabId },
-      files: [filePath]
-    },
-    () => {
-      if (chrome.runtime.lastError) {
-        log(`Error injecting content script: ${chrome.runtime.lastError.message}`, "helpers.ts")
-      } else {
-        log(`Content script successfully injected into: ${url || tabId}`, "helpers.ts")
-      }
-    }
-  )
+  browser.scripting.executeScript({
+    target: { tabId },
+    files: [filePath]
+  }).then(() => {
+    log(`Content script successfully injected into: ${url || tabId}`, "helpers.ts")
+  }).catch((error) => {
+    log(`Error injecting content script: ${error.message}`, "helpers.ts")
+  });
 }
 
 /**
@@ -67,7 +64,7 @@ export function injectContentScript(tabId: number, filePath: string, url?: strin
  */
 export async function sendMessageToContentScript(tabId: number, message: any): Promise<any> {
   try {
-    const response = await chrome.tabs.sendMessage(tabId, message)
+    const response = await browser.tabs.sendMessage(tabId, message)
     log(`Message sent to content script in tab ${tabId}: ${JSON.stringify(message)}`, "helpers.ts")
     return response
   } catch (error) {
@@ -100,7 +97,7 @@ export function isValidUrl(url: string): boolean {
 export function debounce(func: (...args: any[]) => void, delay: number): (...args: any[]) => void {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
 
-  return function (...args: any[]): void {
+  return function (this: any, ...args: any[]): void {
     if (timeoutId !== null) {
       clearTimeout(timeoutId)
     }

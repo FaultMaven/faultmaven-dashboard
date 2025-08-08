@@ -28,11 +28,13 @@ export interface QueryRequest {
     uploaded_data_ids?: string[];
     page_url?: string;
     browser_info?: string;
+    page_content?: string;
+    text_data?: string;
     [key: string]: any;
   };
 }
 
-export interface QueryResponse {
+export interface TroubleshootingResponse {
   response: string;
   findings?: string[];
   recommendations?: string[];
@@ -151,12 +153,18 @@ export async function processQuery(request: QueryRequest): Promise<Troubleshooti
 /**
  * Upload data to a session for analysis
  */
-export async function uploadData(sessionId: string, file: File): Promise<any> {
+export async function uploadData(sessionId: string, data: File | string, dataType: 'file' | 'text' | 'page'): Promise<DataUploadResponse> {
   const formData = new FormData();
-  formData.append('file', file);
   formData.append('session_id', sessionId);
+  formData.append('data_type', dataType);
+  
+  if (data instanceof File) {
+    formData.append('file', data);
+  } else {
+    formData.append('content', data);
+  }
 
-  const response = await fetch(`${config.apiUrl}/api/v1/data`, {
+  const response = await fetch(`${config.apiUrl}/api/v1/data/`, {
     method: 'POST',
     body: formData,
   });
@@ -183,5 +191,22 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || errorData.message || `Failed to delete session: ${response.status}`);
+  }
+}
+
+/**
+ * Send heartbeat to keep session alive
+ */
+export async function heartbeatSession(sessionId: string): Promise<void> {
+  const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}/heartbeat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to heartbeat session: ${response.status}`);
   }
 } 

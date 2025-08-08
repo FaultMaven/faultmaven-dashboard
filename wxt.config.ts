@@ -15,10 +15,6 @@ export default defineConfig({
       },
     },
   }),
-  entrypoints: {
-    background: 'entrypoints/background.ts',
-    'page-content.content': 'entrypoints/page-content.content.ts',
-  },
   manifest: {
     name: "FaultMaven Copilot",
     version: "0.2.0",
