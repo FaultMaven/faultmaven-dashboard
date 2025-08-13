@@ -209,6 +209,25 @@ export default function SidePanelApp() {
         if (item == null) return "";
         if (typeof item === 'string') return item;
         if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+        
+        // Handle finding objects with proper formatting
+        if (typeof item === 'object') {
+          // Extract the main message or description from finding objects
+          const message = item.message || item.description || item.details || "";
+          const severity = item.severity ? ` (${item.severity})` : "";
+          const confidence = item.confidence ? ` [${Math.round(item.confidence * 100)}% confidence]` : "";
+          
+          if (message) {
+            return `${message}${severity}${confidence}`;
+          }
+          
+          // Fallback for other object types
+          if (item.title || item.name) {
+            return item.title || item.name;
+          }
+        }
+        
+        // Final fallback for unknown types
         try { return JSON.stringify(item, null, 2); } catch { return String(item); }
       };
       if (response.findings && response.findings.length > 0) {
