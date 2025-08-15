@@ -3,10 +3,20 @@ import React, { useState, useRef, useEffect } from "react";
 import { browser } from "wxt/browser";
 import DOMPurify from 'dompurify';
 // import { sendMessageToBackground } from "../../lib/utils/messaging"; // unused
-import { processQuery, uploadData, QueryRequest, heartbeatSession } from "../../lib/api";
+import { 
+  processQuery, 
+  uploadData, 
+  QueryRequest, 
+  heartbeatSession, 
+  createSession,
+  AgentResponse,
+  ResponseType,
+  UploadedData,
+  getSessionData
+} from "../../lib/api";
+import { formatResponseForDisplay, requiresUserAction } from "../../lib/utils/response-handlers";
 import config from "../../config";
 import KnowledgeBaseView from "./KnowledgeBaseView";
-import { createSession } from "../../lib/api";
 import { formatResponse } from "../../lib/utils/formatter";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -28,6 +38,21 @@ interface ConversationItem {
   response?: string;
   error?: boolean;
   timestamp: string;
+  responseType?: ResponseType;
+  confidenceScore?: number;
+  sources?: Array<{
+    type: string;
+    content: string;
+    confidence?: number;
+  }>;
+  plan?: {
+    step_number: number;
+    action: string;
+    description: string;
+    estimated_time?: string;
+  };
+  nextActionHint?: string;
+  requiresAction?: boolean;
 }
 
 export default function SidePanelApp() {
@@ -42,6 +67,7 @@ export default function SidePanelApp() {
   const [injectionStatus, setInjectionStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: "", type: "" });
   const [showDataSection, setShowDataSection] = useState(true);
   const [dataSource, setDataSource] = useState<"text" | "file" | "page">("text");
+  const [sessionData, setSessionData] = useState<UploadedData[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const conversationHistoryRef = useRef<HTMLDivElement>(null);
@@ -57,6 +83,8 @@ export default function SidePanelApp() {
         if (currentSessionId) {
           console.log("[SidePanelApp] Found existing session:", currentSessionId);
           setSessionId(currentSessionId);
+          // Load session data
+          await loadSessionData(currentSessionId);
         } else {
           // Create new session if none exists
           console.log("[SidePanelApp] Creating new session...");
@@ -92,6 +120,15 @@ export default function SidePanelApp() {
     };
   }, []);
 
+  const loadSessionData = async (sessionId: string) => {
+    try {
+      const data = await getSessionData(sessionId, 50, 0);
+      setSessionData(data);
+    } catch (err) {
+      console.warn("[SidePanelApp] Failed to load session data:", err);
+    }
+  };
+
   const addTimestamp = (): string => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const getSessionId = async () => {
@@ -101,179 +138,112 @@ export default function SidePanelApp() {
   };
 
   const clearSession = async () => {
-    const isConfirmed = window.confirm(
-      'Are you sure you want to clear this session and start a new investigation?'
-    );
-    
-    if (!isConfirmed) {
-      return;
-    }
-    
-    console.log("[SidePanelApp] Clearing session and starting new...");
-    try {
-      // Clear local state
-      setSessionId(null);
-      setConversation([]);
-      setQueryInput("");
-      setTextInput("");
-      setPageContent("");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      setFileSelected(false);
-      
-      // Clear stored session
-      browser.storage.local.remove("sessionId");
-      
-      // Create new session
-      await getSessionId();
-      setInjectionStatus({ message: "✅ New session created", type: "success" });
-    } catch (err) {
-      console.error("[SidePanelApp] clearSession error:", err);
-      setInjectionStatus({ message: "⚠️ Failed to start new conversation.", type: "error" });
-    }
-  };
-
-  const getPageContent = async () => {
-    console.log("[SidePanelApp] getPageContent called");
-    setInjectionStatus({ message: "Analyzing page...", type: "success" });
-    setPageContent("");
-    try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
-      if (!tab?.id || !tab?.url?.startsWith("http")) {
-        console.warn("[SidePanelApp] Cannot analyze page:", tab?.url);
-        setInjectionStatus({ message: "⚠️ Cannot analyze this type of page.", type: "error" });
-        return;
-      }
-      const res = await browser.tabs.sendMessage(tab.id!, { action: "getPageContent" }) as MessageResponse;
-      console.log("[SidePanelApp] getPageContent response from CS:", res);
-      if (res?.status === "success") {
-        setInjectionStatus({ message: `✅ Page selected (${res.url})`, type: "success" });
-        setPageContent(res.data || "");
-      } else {
-        setInjectionStatus({ message: `⚠️ ${res?.message ?? "Error getting content."}`, type: "error" });
-      }
-    } catch (e: unknown) {
-      console.error("[SidePanelApp] getPageContent catch error:", e);
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      if (errorMessage && (errorMessage.includes("Could not establish connection") || errorMessage.includes("No matching message handler"))) {
-        setInjectionStatus({ message: "⚠️ Failed to connect to page. Is it example.com? Try refreshing the page/extension.", type: "error" });
-      } else {
-        setInjectionStatus({ message: `⚠️ ${errorMessage || "Unknown error analyzing page."}`, type: "error" });
+    if (sessionId) {
+      try {
+        // Clear conversation
+        setConversation([]);
+        // Clear session data
+        setSessionData([]);
+        // Create new session
+        const newSession = await createSession();
+        const newSessionId = newSession.session_id;
+        setSessionId(newSessionId);
+        
+        // Update storage
+        await browser.storage.local.set({ sessionId: newSessionId });
+        
+        console.log("[SidePanelApp] New session created:", newSessionId);
+      } catch (err) {
+        console.error("[SidePanelApp] Failed to create new session:", err);
+        setInjectionStatus({ message: "⚠️ Failed to create new session. Please try again.", type: "error" });
       }
     }
   };
 
-  const addToConversation = (question?: string, response?: string, isError = false) => {
-    setConversation(prev => [...prev, { question, response, error: isError, timestamp: addTimestamp() }]);
+  const addToConversation = (question?: string, response?: string, error: boolean = false, responseData?: AgentResponse) => {
+    const newItem: ConversationItem = {
+      question,
+      response,
+      error,
+      timestamp: addTimestamp(),
+      responseType: responseData?.response_type,
+      confidenceScore: responseData?.confidence_score,
+      sources: responseData?.sources,
+      plan: responseData?.plan,
+      nextActionHint: responseData?.next_action_hint,
+      requiresAction: responseData ? requiresUserAction(responseData) : false
+    };
+    
+    setConversation(prev => [...prev, newItem]);
+    
+    // Scroll to bottom after adding new item
     setTimeout(() => {
       if (conversationHistoryRef.current) {
-        conversationHistoryRef.current.scrollTo({ top: conversationHistoryRef.current.scrollHeight, behavior: "smooth" });
+        conversationHistoryRef.current.scrollTop = conversationHistoryRef.current.scrollHeight;
       }
     }, 100);
   };
 
+  const getPageContent = async () => {
+    try {
+      setInjectionStatus({ message: "🔄 Analyzing page content...", type: "" });
+      
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (!tab.id) {
+        throw new Error("No active tab found");
+      }
+
+      const response = await browser.tabs.sendMessage(tab.id, { action: "getPageContent" });
+      
+      if (response && response.content) {
+        setPageContent(response.content);
+        setInjectionStatus({ message: "✅ Page content captured successfully!", type: "success" });
+      } else {
+        throw new Error("Failed to capture page content");
+      }
+    } catch (err) {
+      console.error("[SidePanelApp] getPageContent error:", err);
+      setInjectionStatus({ 
+        message: "⚠️ Failed to capture page content. Please ensure the page is fully loaded.", 
+        type: "error" 
+      });
+    }
+  };
+
   const sendToFaultMaven = async (query: string) => {
     if (!sessionId) {
-      addToConversation(undefined, `<p><strong>Error:</strong> No session ID available. Please try refreshing the extension.</p>`, true);
+      addToConversation(undefined, "<p><strong>Error:</strong> No session available. Please refresh the page.</p>", true);
       return;
     }
 
-    setLoading(true);
     addToConversation(query, undefined);
-    try {
-      console.log("[SidePanelApp] Sending query to FaultMaven backend:", query, "Session:", sessionId);
-      console.log("[SidePanelApp] Using API endpoint:", config.apiUrl);
-      
-      if (!sessionId) {
-        throw new Error("No session ID available");
-      }
+    setLoading(true);
 
+    try {
       const request: QueryRequest = {
         session_id: sessionId,
-        query: query,
+        query,
         priority: "normal",
         context: {
           page_url: window.location.href,
           browser_info: navigator.userAgent,
-          page_content: pageContent || undefined,
-          text_data: dataSource === "text" ? textInput.trim() : undefined,
+          uploaded_data_ids: sessionData.map(d => d.data_id)
         }
       };
 
-      const response = await processQuery(request);
+      const response: AgentResponse = await processQuery(request);
       console.log("[SidePanelApp] API response:", response);
       
-      // Display the main response naturally
-      let formattedResponse = response.response || "";
+      // Use the new response formatting utility
+      const formattedResponse = formatResponseForDisplay(response);
       
-      // Check if main response is minimal and we have richer content in findings
-      const hasMinimalResponse = !formattedResponse || formattedResponse.trim().length < 50;
-      let primaryContentFound = false;
+      addToConversation(undefined, formattedResponse, false, response);
       
-      // Only add additional sections if they provide meaningful extra information
-      // that's not already contained in the main response
-      const formatAdditionalItem = (item: any): string => {
-        if (item == null) return "";
-        if (typeof item === 'string') return item;
-        if (typeof item === 'number' || typeof item === 'boolean') return String(item);
-        
-        // Handle structured items (like finding objects)
-        if (typeof item === 'object') {
-          // Prioritize detailed content over brief messages
-          if (item.details) return item.details;
-          if (item.description) return item.description;
-          if (item.message) return item.message;
-          if (item.title) return item.title;
-          if (item.name) return item.name;
-          
-          // Log unknown structures for debugging
-          console.log("Unknown item structure:", item);
-          return JSON.stringify(item, null, 2);
-        }
-        
-        return String(item);
-      };
-
-      // Only show findings if they exist and contain useful additional information
-      if (response.findings && response.findings.length > 0) {
-        const meaningfulFindings = response.findings
-          .map(formatAdditionalItem)
-          .filter(finding => finding.trim().length > 0);
-        
-        if (meaningfulFindings.length > 0) {
-          // If main response is minimal and we have detailed findings, use the detailed content as primary
-          if (hasMinimalResponse && meaningfulFindings.some(f => f.length > 100)) {
-            // Find the most detailed finding to use as primary content
-            const detailedFinding = meaningfulFindings.find(f => f.length > 100);
-            if (detailedFinding && !primaryContentFound) {
-              formattedResponse = detailedFinding;
-              primaryContentFound = true;
-              
-              // Add remaining findings as additional points if any
-              const remainingFindings = meaningfulFindings.filter(f => f !== detailedFinding);
-              if (remainingFindings.length > 0) {
-                formattedResponse += "\n\n" + remainingFindings.map(f => `• ${f}`).join('\n');
-              }
-            }
-          } else {
-            // Normal case: add findings as additional bullet points
-            formattedResponse += "\n\n" + meaningfulFindings.map(f => `• ${f}`).join('\n');
-          }
-        }
+      // Update session data if new data was uploaded
+      if (response.response_type === ResponseType.NEEDS_MORE_DATA) {
+        await loadSessionData(sessionId);
       }
       
-      // Only show recommendations if they exist and are meaningful
-      if (response.recommendations && response.recommendations.length > 0) {
-        const meaningfulRecommendations = response.recommendations
-          .map(formatAdditionalItem)
-          .filter(rec => rec.trim().length > 0);
-        
-        if (meaningfulRecommendations.length > 0) {
-          formattedResponse += "\n\n**Recommended actions:**\n" + meaningfulRecommendations.map(r => `• ${r}`).join('\n');
-        }
-      }
-      
-      addToConversation(undefined, formattedResponse);
     } catch (e: unknown) {
       console.error("[SidePanelApp] sendToFaultMaven error:", e);
       const errorMessage = e instanceof Error ? e.message : String(e);
@@ -304,20 +274,33 @@ export default function SidePanelApp() {
         throw new Error("No session ID available");
       }
 
-      const response = await uploadData(sessionId, dataToSend, dataSource);
+      const response: UploadedData = await uploadData(sessionId, dataToSend, dataSource);
 
       console.log("[SidePanelApp] Upload response:", response);
       
-      // Format response with insights if available
+      // Format response with enhanced insights
       let formattedResponse = `✅ Data uploaded successfully (ID: ${response.data_id})`;
-      if (response.insights) {
-        formattedResponse += `\n\n**Initial Insights:**\n${response.insights}`;
+      
+      if (response.data_type && response.data_type !== 'unknown') {
+        formattedResponse += `\n\n**Data Type:** ${response.data_type.replace('_', ' ').toUpperCase()}`;
       }
-      if (response.filename) {
-        formattedResponse += `\n\n**File:** ${response.filename}`;
+      
+      if (response.file_name) {
+        formattedResponse += `\n\n**File:** ${response.file_name}`;
+      }
+      
+      if (response.file_size) {
+        formattedResponse += `\n\n**Size:** ${(response.file_size / 1024).toFixed(2)} KB`;
+      }
+      
+      if (response.insights) {
+        formattedResponse += `\n\n**Initial Insights:**\n${JSON.stringify(response.insights, null, 2)}`;
       }
       
       addToConversation(undefined, formattedResponse);
+      
+      // Update session data
+      await loadSessionData(sessionId);
       
       // Clear the input after successful upload
       if (dataSource === "text") {
@@ -385,7 +368,12 @@ export default function SidePanelApp() {
                     className="prose-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1 break-words mb-1"
                     dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatResponse(item.response || '')) }}
                   />
-                  <div className="text-[10px] text-gray-400 mt-1">{item.timestamp}</div>
+                  <div className="text-[10px] text-gray-400 mt-1 flex items-center justify-between">
+                    <span>{item.timestamp}</span>
+                    {item.requiresAction && (
+                      <span className="text-orange-600 text-xs font-medium">⚠️ Action Required</span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -528,6 +516,30 @@ export default function SidePanelApp() {
           </>
         )}
       </div>
+      
+      {/* Session Data Summary */}
+      {sessionData.length > 0 && (
+        <div className="flex-shrink-0 bg-white rounded-lg border border-gray-200 p-2 shadow-sm">
+          <div className="flex justify-between items-center border-b border-gray-200 pb-1 mb-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Session Data</h3>
+            <span className="text-xs text-gray-500">{sessionData.length} items</span>
+          </div>
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {sessionData.slice(0, 3).map((item, index) => (
+              <div key={index} className="text-xs text-gray-600 flex items-center gap-2">
+                <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                <span className="truncate">{item.file_name || item.data_type}</span>
+                <span className="text-gray-400">({item.data_type})</span>
+              </div>
+            ))}
+            {sessionData.length > 3 && (
+              <div className="text-xs text-gray-400 italic">
+                +{sessionData.length - 3} more items
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Old full-width "New Conversation" button at the bottom is removed */}
     </div>

@@ -1,12 +1,10 @@
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
+@import "./response-formatting.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Response formatting styles */
-@import "./response-formatting.css";
 
 /* Sidebar Container */
 #faultmaven-sidebar {

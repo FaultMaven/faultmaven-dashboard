@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createSession, processQuery, uploadData, heartbeatSession } from '../../lib/api';
+import { 
+  createSession, 
+  processQuery, 
+  uploadData, 
+  heartbeatSession,
+  ResponseType,
+  AgentResponse,
+  UploadedData
+} from '../../lib/api';
 
 // Mock the config module
 vi.mock('../../config', () => ({
@@ -17,7 +25,8 @@ describe('API Functions', () => {
     it('creates a session successfully', async () => {
       const mockResponse = {
         session_id: 'test-session-123',
-        created_at: '2024-01-01T00:00:00Z'
+        created_at: '2024-01-01T00:00:00Z',
+        status: 'active'
       };
 
       global.fetch = vi.fn().mockResolvedValue({
@@ -34,31 +43,36 @@ describe('API Functions', () => {
           headers: {
             'Content-Type': 'application/json',
           },
+          body: JSON.stringify({})
         }
       );
       expect(result).toEqual(mockResponse);
     });
 
-    it('creates a session with user_id parameter', async () => {
+    it('creates a session with metadata', async () => {
       const mockResponse = {
         session_id: 'test-session-123',
-        created_at: '2024-01-01T00:00:00Z'
+        created_at: '2024-01-01T00:00:00Z',
+        status: 'active'
       };
+
+      const metadata = { user_id: 'user-123', environment: 'production' };
 
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(mockResponse)
       });
 
-      await createSession('user-123');
+      await createSession(metadata);
 
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.faultmaven.ai/api/v1/sessions/?user_id=user-123',
+        'https://api.faultmaven.ai/api/v1/sessions/',
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
+          body: JSON.stringify({ metadata })
         }
       );
     });
@@ -75,7 +89,7 @@ describe('API Functions', () => {
   });
 
   describe('processQuery', () => {
-    it('processes a query successfully', async () => {
+    it('processes a query successfully with new response type', async () => {
       const mockRequest = {
         session_id: 'test-session-123',
         query: 'Why is my service failing?',
@@ -86,12 +100,18 @@ describe('API Functions', () => {
         }
       };
 
-      const mockResponse = {
-        response: 'Your service is failing because...',
-        findings: ['Finding 1', 'Finding 2'],
-        recommendations: ['Recommendation 1'],
+      const mockResponse: AgentResponse = {
+        response_type: ResponseType.ANSWER,
+        content: 'Your service is failing because...',
+        session_id: 'test-session-123',
         confidence_score: 0.85,
-        session_id: 'test-session-123'
+        sources: [
+          {
+            type: 'log_analysis',
+            content: 'Error logs indicate connection timeout',
+            confidence: 0.9
+          }
+        ]
       };
 
       global.fetch = vi.fn().mockResolvedValue({
@@ -112,6 +132,40 @@ describe('API Functions', () => {
         }
       );
       expect(result).toEqual(mockResponse);
+      expect(result.response_type).toBe(ResponseType.ANSWER);
+    });
+
+    it('processes a query with plan proposal response', async () => {
+      const mockRequest = {
+        session_id: 'test-session-123',
+        query: 'How do I fix this issue?',
+        priority: 'high' as const,
+        context: {}
+      };
+
+      const mockResponse: AgentResponse = {
+        response_type: ResponseType.PLAN_PROPOSAL,
+        content: 'Here is a step-by-step plan to resolve the issue',
+        session_id: 'test-session-123',
+        plan: {
+          step_number: 1,
+          action: 'Check system logs',
+          description: 'Review recent error logs for clues',
+          estimated_time: '5 minutes'
+        },
+        confidence_score: 0.9
+      };
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResponse)
+      });
+
+      const result = await processQuery(mockRequest);
+
+      expect(result.response_type).toBe(ResponseType.PLAN_PROPOSAL);
+      expect(result.plan).toBeDefined();
+      expect(result.plan?.step_number).toBe(1);
     });
 
     it('throws error on query failure', async () => {
@@ -133,13 +187,17 @@ describe('API Functions', () => {
   });
 
   describe('uploadData', () => {
-    it('uploads file data successfully', async () => {
+    it('uploads file data successfully with new endpoint', async () => {
       const mockFile = new File(['test content'], 'test.txt', { type: 'text/plain' });
-      const mockResponse = {
+      const mockResponse: UploadedData = {
         data_id: 'data-123',
-        filename: 'test.txt',
-        insights: 'Initial analysis...',
-        status: 'success'
+        session_id: 'session-123',
+        data_type: 'log_file',
+        content: 'test content',
+        file_name: 'test.txt',
+        file_size: 12,
+        uploaded_at: '2024-01-01T00:00:00Z',
+        processing_status: 'completed'
       };
 
       global.fetch = vi.fn().mockResolvedValue({
@@ -150,7 +208,7 @@ describe('API Functions', () => {
       const result = await uploadData('session-123', mockFile, 'file');
 
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.faultmaven.ai/api/v1/data/',
+        'https://api.faultmaven.ai/api/v1/data/upload',
         {
           method: 'POST',
           body: expect.any(FormData)
@@ -160,16 +218,20 @@ describe('API Functions', () => {
       // Verify FormData contents
       const formData = (fetch as any).mock.calls[0][1].body;
       expect(formData.get('session_id')).toBe('session-123');
-      expect(formData.get('data_type')).toBe('file');
       expect(formData.get('file')).toBe(mockFile);
 
       expect(result).toEqual(mockResponse);
+      expect(result.data_type).toBe('log_file');
     });
 
     it('uploads text data successfully', async () => {
-      const mockResponse = {
+      const mockResponse: UploadedData = {
         data_id: 'data-123',
-        status: 'success'
+        session_id: 'session-123',
+        data_type: 'text',
+        content: 'test log content',
+        uploaded_at: '2024-01-01T00:00:00Z',
+        processing_status: 'completed'
       };
 
       global.fetch = vi.fn().mockResolvedValue({
@@ -181,8 +243,29 @@ describe('API Functions', () => {
 
       const formData = (fetch as any).mock.calls[0][1].body;
       expect(formData.get('session_id')).toBe('session-123');
-      expect(formData.get('data_type')).toBe('text');
-      expect(formData.get('content')).toBe('test log content');
+      expect(formData.get('file')).toBeDefined();
+    });
+
+    it('uploads page content successfully', async () => {
+      const mockResponse: UploadedData = {
+        data_id: 'data-123',
+        session_id: 'session-123',
+        data_type: 'documentation',
+        content: 'page content',
+        uploaded_at: '2024-01-01T00:00:00Z',
+        processing_status: 'completed'
+      };
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResponse)
+      });
+
+      await uploadData('session-123', 'page content', 'page');
+
+      const formData = (fetch as any).mock.calls[0][1].body;
+      expect(formData.get('session_id')).toBe('session-123');
+      expect(formData.get('file')).toBeDefined();
     });
   });
 
@@ -209,10 +292,22 @@ describe('API Functions', () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 404,
-        json: () => Promise.resolve({ message: 'Session not found' })
+        json: () => Promise.resolve({ detail: 'Session not found' })
       });
 
       await expect(heartbeatSession('invalid-session')).rejects.toThrow('Session not found');
+    });
+  });
+
+  describe('Response Types', () => {
+    it('supports all response types', () => {
+      expect(ResponseType.ANSWER).toBe('ANSWER');
+      expect(ResponseType.PLAN_PROPOSAL).toBe('PLAN_PROPOSAL');
+      expect(ResponseType.CLARIFICATION_REQUEST).toBe('CLARIFICATION_REQUEST');
+      expect(ResponseType.CONFIRMATION_REQUEST).toBe('CONFIRMATION_REQUEST');
+      expect(ResponseType.SOLUTION_READY).toBe('SOLUTION_READY');
+      expect(ResponseType.NEEDS_MORE_DATA).toBe('NEEDS_MORE_DATA');
+      expect(ResponseType.ESCALATION_REQUIRED).toBe('ESCALATION_REQUIRED');
     });
   });
 });

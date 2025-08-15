@@ -2,19 +2,22 @@ import React, { useState, useEffect } from "react";
 import UploadArea from "./components/UploadArea";
 import DocumentTable from "./components/DocumentTable";
 import { ErrorState } from "./components/ErrorState";
-import { uploadKnowledgeDocument, getKnowledgeDocuments, deleteKnowledgeDocument } from "../../lib/api";
-
-export interface KbDocument {
-  id: string;
-  name: string;
-  status: 'Processing' | 'Indexed' | 'Error';
-  addedAt: string;
-}
+import { 
+  uploadKnowledgeDocument, 
+  getKnowledgeDocuments, 
+  deleteKnowledgeDocument,
+  searchKnowledgeBase,
+  KbDocument
+} from "../../lib/api";
 
 export default function KnowledgeBaseView() {
   const [documents, setDocuments] = useState<KbDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<KbDocument[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   const fetchDocuments = async () => {
     setIsLoading(true);
@@ -41,10 +44,14 @@ export default function KnowledgeBaseView() {
     // Optimistically add files with "Processing" status
     for (const file of files) {
       const newDoc: KbDocument = {
-        id: `temp-${Date.now()}-${Math.random()}`,
-        name: file.name,
+        document_id: `temp-${Date.now()}-${Math.random()}`,
+        title: file.name,
+        content: '', // Will be populated by the API
+        document_type: 'troubleshooting_guide',
         status: 'Processing',
-        addedAt: new Date().toISOString()
+        tags: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       newDocuments.push(newDoc);
     }
@@ -54,17 +61,21 @@ export default function KnowledgeBaseView() {
     // Upload each file
     for (let i = 0; i < files.length; i++) {
       try {
-        const uploadedDoc = await uploadKnowledgeDocument(files[i]);
+        const uploadedDoc = await uploadKnowledgeDocument(
+          files[i],
+          files[i].name,
+          'troubleshooting_guide'
+        );
         // Replace the temporary document with the real one
         setDocuments(prev => prev.map(doc => 
-          doc.id === newDocuments[i].id ? uploadedDoc : doc
+          doc.document_id === newDocuments[i].document_id ? uploadedDoc : doc
         ));
       } catch (err: any) {
         console.error(`[KnowledgeBaseView] Error uploading ${files[i].name}:`, err);
         // Update the document status to Error
         setDocuments(prev => prev.map(doc => 
-          doc.id === newDocuments[i].id 
-            ? { ...doc, status: 'Error' as const }
+          doc.document_id === newDocuments[i].document_id 
+            ? { ...doc, status: 'Error' }
             : doc
         ));
         setError(`Failed to upload ${files[i].name}: ${err.message}`);
@@ -75,11 +86,59 @@ export default function KnowledgeBaseView() {
   const handleDelete = async (id: string) => {
     try {
       await deleteKnowledgeDocument(id);
-      setDocuments(prev => prev.filter(doc => doc.id !== id));
+      setDocuments(prev => prev.filter(doc => doc.document_id !== id));
+      // Also remove from search results if present
+      setSearchResults(prev => prev.filter(doc => doc.document_id !== id));
     } catch (err: any) {
       console.error("[KnowledgeBaseView] Error deleting document:", err);
       setError(`Failed to delete document: ${err.message}`);
     }
+  };
+
+  const handleSearch = async (query: string) => {
+    if (!query.trim()) {
+      setShowSearchResults(false);
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+
+    try {
+      const results = await searchKnowledgeBase(query, undefined, undefined, undefined, 20);
+      setSearchResults(results);
+      setShowSearchResults(true);
+    } catch (err: any) {
+      console.error("[KnowledgeBaseView] Search error:", err);
+      setError(`Search failed: ${err.message}`);
+      setShowSearchResults(false);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    // Debounced search
+    const timeoutId = setTimeout(() => {
+      if (query.trim()) {
+        handleSearch(query);
+      } else {
+        setShowSearchResults(false);
+        setSearchResults([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setShowSearchResults(false);
+    setSearchResults([]);
   };
 
   return (
@@ -90,6 +149,33 @@ export default function KnowledgeBaseView() {
         <p className="text-sm text-gray-600">
           Upload documents to build your offline knowledge base for AI-powered troubleshooting.
         </p>
+      </div>
+
+      {/* Search Bar */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Search knowledge base..."
+            value={searchQuery}
+            onChange={handleSearchInputChange}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          {searchQuery && (
+            <button
+              onClick={clearSearch}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {isSearching && (
+          <div className="mt-2 text-sm text-gray-600 flex items-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            Searching...
+          </div>
+        )}
       </div>
 
       {/* Upload Area */}
@@ -111,11 +197,48 @@ export default function KnowledgeBaseView() {
             title="Could not load documents"
           />
         ) : (
-          <DocumentTable 
-            documents={documents} 
-            onDelete={handleDelete}
-            loading={false}
-          />
+          <>
+            {showSearchResults && searchResults.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm mb-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700">
+                    Search Results ({searchResults.length})
+                  </h3>
+                  <button
+                    onClick={clearSearch}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Clear Search
+                  </button>
+                </div>
+                <DocumentTable 
+                  documents={searchResults} 
+                  onDelete={handleDelete}
+                  loading={false}
+                />
+              </div>
+            )}
+            
+            {!showSearchResults && (
+              <DocumentTable 
+                documents={documents} 
+                onDelete={handleDelete}
+                loading={false}
+              />
+            )}
+            
+            {showSearchResults && searchResults.length === 0 && !isSearching && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm text-center">
+                <p className="text-sm text-gray-600">No documents found matching "{searchQuery}"</p>
+                <button
+                  onClick={clearSearch}
+                  className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  View all documents
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

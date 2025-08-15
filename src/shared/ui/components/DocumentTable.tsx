@@ -1,5 +1,5 @@
 import React from "react";
-import { KbDocument } from "../KnowledgeBaseView";
+import { KbDocument } from "../../../lib/api";
 import DocumentRow from "./DocumentRow";
 
 interface DocumentTableProps {
@@ -55,10 +55,16 @@ export default function DocumentTable({ documents, onDelete, loading }: Document
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Name
+                Title
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Type
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Tags
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Date Added
@@ -71,7 +77,7 @@ export default function DocumentTable({ documents, onDelete, loading }: Document
           <tbody className="bg-white divide-y divide-gray-200">
             {documents.map((document) => (
               <DocumentRow
-                key={document.id}
+                key={document.document_id}
                 document={document}
                 onDelete={onDelete}
               />
