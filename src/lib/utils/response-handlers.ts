@@ -163,7 +163,7 @@ export function formatPlanStep(step: PlanStep): {
  */
 export function requiresUserAction(response: AgentResponse): boolean {
   if (!response || !response.response_type) {
-    console.warn('[ResponseHandlers] Missing response_type in response:', response);
+    // Treat missing/unknown type as non-actionable; do not accept legacy shapes
     return false;
   }
   

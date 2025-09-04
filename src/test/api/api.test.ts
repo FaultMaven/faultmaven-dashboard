@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { 
   createSession, 
-  processQuery, 
   uploadData, 
   heartbeatSession,
   ResponseType,
@@ -88,103 +87,7 @@ describe('API Functions', () => {
     });
   });
 
-  describe('processQuery', () => {
-    it('processes a query successfully with new response type', async () => {
-      const mockRequest = {
-        session_id: 'test-session-123',
-        query: 'Why is my service failing?',
-        priority: 'normal' as const,
-        context: {
-          page_url: 'https://example.com',
-          browser_info: 'test-browser'
-        }
-      };
-
-      const mockResponse: AgentResponse = {
-        response_type: ResponseType.ANSWER,
-        content: 'Your service is failing because...',
-        session_id: 'test-session-123',
-        confidence_score: 0.85,
-        sources: [
-          {
-            type: 'log_analysis',
-            content: 'Error logs indicate connection timeout',
-            confidence: 0.9
-          }
-        ]
-      };
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResponse)
-      });
-
-      const result = await processQuery(mockRequest);
-
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.faultmaven.ai/api/v1/agent/query',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(mockRequest)
-        }
-      );
-      expect(result).toEqual(mockResponse);
-      expect(result.response_type).toBe(ResponseType.ANSWER);
-    });
-
-    it('processes a query with plan proposal response', async () => {
-      const mockRequest = {
-        session_id: 'test-session-123',
-        query: 'How do I fix this issue?',
-        priority: 'high' as const,
-        context: {}
-      };
-
-      const mockResponse: AgentResponse = {
-        response_type: ResponseType.PLAN_PROPOSAL,
-        content: 'Here is a step-by-step plan to resolve the issue',
-        session_id: 'test-session-123',
-        plan: {
-          step_number: 1,
-          action: 'Check system logs',
-          description: 'Review recent error logs for clues',
-          estimated_time: '5 minutes'
-        },
-        confidence_score: 0.9
-      };
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockResponse)
-      });
-
-      const result = await processQuery(mockRequest);
-
-      expect(result.response_type).toBe(ResponseType.PLAN_PROPOSAL);
-      expect(result.plan).toBeDefined();
-      expect(result.plan?.step_number).toBe(1);
-    });
-
-    it('throws error on query failure', async () => {
-      const mockRequest = {
-        session_id: 'test-session-123',
-        query: 'test query',
-        priority: 'normal' as const,
-        context: {}
-      };
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 400,
-        json: () => Promise.resolve({ detail: 'Invalid query' })
-      });
-
-      await expect(processQuery(mockRequest)).rejects.toThrow('Invalid query');
-    });
-  });
+  // Removed legacy processQuery tests; case-centric query flow is tested via UI integration.
 
   describe('uploadData', () => {
     it('uploads file data successfully with new endpoint', async () => {
@@ -284,6 +187,7 @@ describe('API Functions', () => {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include'
         }
       );
     });

@@ -14,12 +14,6 @@ export interface Session {
   usage_type?: string;
 }
 
-export interface CreateSessionResponse {
-  session_id: string;
-  created_at: string;
-  status: string;
-}
-
 // New enhanced data structures based on OpenAPI spec
 export interface UploadedData {
   data_id: string;
@@ -212,22 +206,7 @@ export async function createSession(metadata?: Record<string, any>): Promise<Ses
 /**
  * Enhanced query processing with new response types
  */
-export async function processQuery(request: QueryRequest): Promise<AgentResponse> {
-  const response = await fetch(`${config.apiUrl}/api/v1/agent/query`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to process query: ${response.status}`);
-  }
-
-  return response.json();
-}
+// DEPRECATED: processQuery via agent route is removed in case-centric API. Do not use.
 
 /**
  * Legacy troubleshooting endpoint for backward compatibility
@@ -630,131 +609,361 @@ export async function deleteSession(sessionId: string): Promise<void> {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to delete session: ${response.status}`);
   }
+} 
+
+// ===== Chat and Cases: Types and Functions required by UI =====
+export interface UserCase {
+  case_id: string;
+  session_id?: string;
+  status: string;
+  title: string;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical' | string;
+  created_at?: string;
+  updated_at?: string;
+  resolved_at?: string;
+  message_count?: number;
 }
 
-/**
- * Send heartbeat to keep session alive
- */
+export interface CreateCaseRequest {
+  title?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  metadata?: Record<string, any>;
+  session_id?: string;
+  initial_message?: string;
+}
+
+export async function createCase(data: CreateCaseRequest): Promise<UserCase> {
+  const response = await fetch(`${config.apiUrl}/api/v1/cases`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data || {}),
+    credentials: 'include'
+  });
+  const corr = response.headers.get('x-correlation-id') || response.headers.get('X-Correlation-ID');
+  console.log('[API] createCase', { status: response.status, correlationId: corr });
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({} as any));
+    throw new Error(errorData.detail || `Failed to create case: ${response.status}`);
+  }
+  const json = await response.json().catch(() => ({} as any));
+  if (json && json.case && json.case.case_id) {
+    return json.case as UserCase;
+  }
+  if (json && json.case_id) {
+    return json as UserCase;
+  }
+  throw new Error('Invalid CaseResponse shape from server');
+}
+
+export async function listSessionCases(sessionId: string, limit = 20, offset = 0): Promise<UserCase[]> {
+  const url = new URL(`${config.apiUrl}/api/v1/sessions/${sessionId}/cases`);
+  url.searchParams.append('limit', String(limit));
+  url.searchParams.append('offset', String(offset));
+  const response = await fetch(url.toString(), { method: 'GET', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to list session cases: ${response.status}`);
+  }
+  const data = await response.json().catch(() => []);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function submitQueryToCase(caseId: string, request: QueryRequest): Promise<AgentResponse> {
+  if (!request?.session_id || !request?.query) {
+    throw new Error('Missing required fields: session_id and query');
+  }
+  const body = {
+    session_id: request.session_id,
+    query: request.query,
+    context: request.context || {},
+    priority: request.priority || 'medium'
+  } as const;
+  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/queries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'include'
+  });
+  const corr = response.headers.get('x-correlation-id') || response.headers.get('X-Correlation-ID');
+  console.log('[API] submitQueryToCase POST', { caseId, status: response.status, location: response.headers.get('Location'), correlationId: corr, body });
+
+  // Handle validation errors explicitly
+  if (response.status === 422) {
+    let detail: any = 'Validation failed (422)';
+    try {
+      const errJson = await response.json();
+      const inner = errJson?.detail?.error?.message || errJson?.detail || errJson;
+      if (typeof inner === 'string') detail = inner;
+      else detail = JSON.stringify(inner);
+    } catch {}
+    throw new Error(`422 Unprocessable Entity: ${detail}`);
+  }
+
+  // Configuration for polling with exponential backoff
+  const POLL_INITIAL_MS = Number((import.meta as any).env?.VITE_POLL_INITIAL_MS ?? 1500);
+  const POLL_BACKOFF = Number((import.meta as any).env?.VITE_POLL_BACKOFF ?? 1.5);
+  const POLL_MAX_MS = Number((import.meta as any).env?.VITE_POLL_MAX_MS ?? 10000);
+  const POLL_MAX_TOTAL_MS = Number((import.meta as any).env?.VITE_POLL_MAX_TOTAL_MS ?? 300000); // 5 minutes
+
+  // Handle async 202 Accepted with polling
+  if (response.status === 202) {
+    const location = response.headers.get('Location');
+    if (!location) throw new Error('Missing Location header for async query');
+    const jobUrl = new URL(location, config.apiUrl).toString();
+    let delay = POLL_INITIAL_MS;
+    let elapsed = 0;
+    for (let i = 0; elapsed <= POLL_MAX_TOTAL_MS; i++) {
+      const res = await fetch(jobUrl, { method: 'GET', credentials: 'include' });
+      const lcorr = res.headers.get('x-correlation-id') || res.headers.get('X-Correlation-ID');
+      if (lcorr) console.log('[API] poll job', { i, correlationId: lcorr, status: res.status });
+      if (res.status >= 500) {
+        throw new Error(`Server error while polling job (${res.status})`);
+      }
+      if (res.status === 303) {
+        const finalLoc = res.headers.get('Location');
+        if (!finalLoc) throw new Error('Missing final resource Location');
+        const finalUrl = new URL(finalLoc, config.apiUrl).toString();
+        const finalRes = await fetch(finalUrl, { method: 'GET', credentials: 'include' });
+        const fcorr = finalRes.headers.get('x-correlation-id') || finalRes.headers.get('X-Correlation-ID');
+        if (fcorr) console.log('[API] poll final', { correlationId: fcorr, status: finalRes.status });
+        if (finalRes.status >= 500) {
+          throw new Error(`Server error fetching final resource (${finalRes.status})`);
+        }
+        if (!finalRes.ok) throw new Error(`Final resource fetch failed: ${finalRes.status}`);
+        const finalJson = await finalRes.json();
+        if (finalJson && finalJson.content && finalJson.response_type) return finalJson as AgentResponse;
+        if (finalJson?.response?.content && finalJson?.response?.response_type) return finalJson.response as AgentResponse;
+        throw new Error('Unexpected final resource payload');
+      }
+      const json = await res.json().catch(() => ({}));
+      if (json && json.content && json.response_type) return json as AgentResponse;
+      if (json?.status === 'completed') {
+        if (json?.response?.content && json?.response?.response_type) return json.response as AgentResponse;
+        throw new Error('Completed without AgentResponse');
+      }
+      if (json?.status === 'failed') throw new Error(json?.error?.message || 'Query failed');
+      await new Promise(r => setTimeout(r, delay));
+      elapsed += delay;
+      delay = Math.min(Math.floor(delay * POLL_BACKOFF), POLL_MAX_MS);
+    }
+    throw new Error(`Async query polling timed out after ${Math.round(POLL_MAX_TOTAL_MS/1000)}s`);
+  }
+
+  // Handle 201 Created
+  if (response.status === 201) {
+    // First, attempt to parse an immediate AgentResponse from the body (sync processing)
+    try {
+      const immediate = await response.clone().json().catch(() => null);
+      if (immediate) {
+        if (immediate && immediate.content && immediate.response_type) return immediate as AgentResponse;
+        if (immediate?.response?.content && immediate?.response?.response_type) return immediate.response as AgentResponse;
+      }
+    } catch {}
+    // If no immediate body result, and there is a Location header, poll created resource
+    const createdLoc = response.headers.get('Location');
+    if (createdLoc) {
+      const createdUrl = new URL(createdLoc, config.apiUrl).toString();
+      // Poll the created resource until it contains an AgentResponse or redirects to final
+      let delay = POLL_INITIAL_MS;
+      let elapsed = 0;
+      for (let i = 0; elapsed <= POLL_MAX_TOTAL_MS; i++) {
+        const createdRes = await fetch(createdUrl, { method: 'GET', credentials: 'include' });
+        const ccorr = createdRes.headers.get('x-correlation-id') || createdRes.headers.get('X-Correlation-ID');
+        if (ccorr) console.log('[API] poll created', { i, correlationId: ccorr, status: createdRes.status });
+        if (createdRes.status >= 500) {
+          throw new Error(`Server error on created resource (${createdRes.status})`);
+        }
+        if (createdRes.status === 303) {
+          const finalLoc = createdRes.headers.get('Location');
+          if (!finalLoc) throw new Error('Missing final resource Location');
+          const finalUrl = new URL(finalLoc, config.apiUrl).toString();
+          const finalRes = await fetch(finalUrl, { method: 'GET', credentials: 'include' });
+          const fcorr = finalRes.headers.get('x-correlation-id') || finalRes.headers.get('X-Correlation-ID');
+          if (fcorr) console.log('[API] poll final', { correlationId: fcorr, status: finalRes.status });
+          if (finalRes.status >= 500) {
+            throw new Error(`Server error fetching final resource (${finalRes.status})`);
+          }
+          if (!finalRes.ok) throw new Error(`Final resource fetch failed: ${finalRes.status}`);
+          const finalJson = await finalRes.json().catch(() => ({}));
+          if (finalJson && finalJson.content && finalJson.response_type) return finalJson as AgentResponse;
+          if (finalJson?.response?.content && finalJson?.response?.response_type) return finalJson.response as AgentResponse;
+          throw new Error('Unexpected final resource payload');
+        }
+        if (createdRes.status === 200) {
+          const createdJson = await createdRes.json().catch(() => ({}));
+          if (createdJson && createdJson.content && createdJson.response_type) return createdJson as AgentResponse;
+          if (createdJson?.response?.content && createdJson?.response?.response_type) return createdJson.response as AgentResponse;
+          // If the created resource returns a job envelope, continue polling
+          if (createdJson?.status && createdJson?.status !== 'failed') {
+            await new Promise(r => setTimeout(r, delay));
+            elapsed += delay;
+            delay = Math.min(Math.floor(delay * POLL_BACKOFF), POLL_MAX_MS);
+            continue;
+          }
+          if (createdJson?.status === 'failed') throw new Error(createdJson?.error?.message || 'Query failed');
+        }
+        await new Promise(r => setTimeout(r, delay));
+        elapsed += delay;
+        delay = Math.min(Math.floor(delay * POLL_BACKOFF), POLL_MAX_MS);
+      }
+      throw new Error(`Created query polling timed out after ${Math.round(POLL_MAX_TOTAL_MS/1000)}s`);
+    }
+    // No body result and no Location — fall through to generic handling
+  }
+
+  // Fallback: expect a body with AgentResponse
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to submit query to case: ${response.status}`);
+  }
+  const json = await response.json();
+  return json as AgentResponse;
+}
+
+export async function uploadDataToCase(
+  caseId: string,
+  sessionId: string,
+  file: File,
+  metadata?: Record<string, any>
+): Promise<UploadedData> {
+  const form = new FormData();
+  form.append('session_id', sessionId);
+  form.append('file', file);
+  if (metadata) form.append('description', JSON.stringify(metadata));
+  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/data`, { method: 'POST', body: form, credentials: 'include' });
+  if (response.status === 202) {
+    const jobLocation = response.headers.get('Location');
+    if (!jobLocation) throw new Error('Missing job Location header');
+    for (let i = 0; i < 20; i++) {
+      const jobRes = await fetch(jobLocation, { method: 'GET' });
+      const jobJson = await jobRes.json();
+      if (jobJson.status === 'completed' && jobJson.result) return jobJson.result;
+      if (jobJson.status === 'failed') throw new Error(jobJson.error?.message || 'Upload job failed');
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    throw new Error('Upload job polling timed out');
+  }
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to upload data to case: ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function heartbeatSession(sessionId: string): Promise<void> {
   const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}/heartbeat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include'
   });
-
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to heartbeat session: ${response.status}`);
   }
 }
 
-/**
- * Get session statistics
- */
-export async function getSessionStats(sessionId: string): Promise<Record<string, any>> {
-  const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}/stats`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to get session stats: ${response.status}`);
-  }
-
-  return response.json();
+export async function generateConversationTitle(sessionId: string, lastUserMessage?: string): Promise<{ title: string }> {
+  // Deprecated: agent routes removed. Use generateCaseTitle instead.
+  return { title: `chat-${new Date().toISOString()}` };
 }
 
-/**
- * Cleanup session data
- */
-export async function cleanupSession(sessionId: string): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}/cleanup`, {
+async function generateConversationTitleLegacy(sessionId: string): Promise<{ title: string }> {
+  return { title: `chat-${new Date().toISOString()}` };
+} 
+
+// Case-scoped title generation aligned with case-centric API
+export async function generateCaseTitle(
+  caseId: string,
+  options?: { max_words?: number; hint?: string }
+): Promise<{ title: string }> {
+  const body: Record<string, any> = {};
+  if (options?.max_words) body.max_words = options.max_words;
+  if (options?.hint) body.hint = options.hint;
+  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/title`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
+    body: Object.keys(body).length ? JSON.stringify(body) : undefined,
+    credentials: 'include'
   });
-
+  if (response.status === 422) {
+    throw new Error('Insufficient context to generate title');
+  }
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to cleanup session: ${response.status}`);
+    throw new Error(errorData.detail || `Failed to generate case title: ${response.status}`);
   }
+  const result: TitleResponse = await response.json();
+  const t = (result?.title || '').trim();
+  return { title: t || `chat-${new Date().toISOString()}` };
 }
 
-/**
- * Get user cases with filtering
- */
-export async function getUserCases(filters?: {
-  status?: string;
-  priority?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<Array<{
-  case_id: string;
+// ===== Auth types for login/verification =====
+export interface AuthUser {
+  user_id: string;
+  email: string;
+  name: string;
+}
+
+export interface AuthViewState {
   session_id: string;
-  status: string;
-  title: string;
-  description?: string;
-  priority?: string;
-  created_at: string;
-  updated_at: string;
-  resolved_at?: string;
-}>> {
-  const url = new URL(`${config.apiUrl}/api/v1/cases`);
-  
-  if (filters) {
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined) {
-        url.searchParams.append(key, String(value));
-      }
-    });
-  }
+  user: AuthUser;
+  active_case?: any;
+  cases?: any[];
+  messages?: any[];
+  uploaded_data?: any[];
+  show_case_selector?: boolean;
+  show_data_upload?: boolean;
+}
 
-  const response = await fetch(url.toString(), {
+export interface AuthResponse {
+  schema_version: string;
+  success: boolean;
+  view_state: AuthViewState;
+}
+
+export async function devLogin(username: string): Promise<AuthResponse> {
+  const response = await fetch(`${config.apiUrl}/api/v1/auth/dev-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username }),
+    credentials: 'include'
+  });
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Login failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function verifyAuthSession(sessionId: string): Promise<AuthResponse> {
+  const response = await fetch(`${config.apiUrl}/api/v1/auth/session/${sessionId}`, {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include'
   });
-
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to get cases: ${response.status}`);
+    throw new Error(errorData.detail || `Session verification failed: ${response.status}`);
   }
-
   return response.json();
 }
 
-/**
- * Mark case as resolved
- */
-export async function markCaseResolved(caseId: string): Promise<{
-  case_id: string;
-  status: string;
-  resolved_at: string;
-}> {
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/resolve`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+export async function logoutAuth(): Promise<void> {
+  const response = await fetch(`${config.apiUrl}/api/v1/auth/logout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include'
   });
-
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to resolve case: ${response.status}`);
+    throw new Error(errorData.detail || `Logout failed: ${response.status}`);
   }
-
-  return response.json();
 }
 
-/**
- * List sessions with optional filtering for multi-conversation support
- */
+// ===== Sessions listing (sidebar initial load compatibility) =====
 export async function listSessions(filters?: {
   user_id?: string;
   session_type?: string;
@@ -763,161 +972,102 @@ export async function listSessions(filters?: {
   offset?: number;
 }): Promise<Session[]> {
   const url = new URL(`${config.apiUrl}/api/v1/sessions/`);
-  
   if (filters) {
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined) {
-        url.searchParams.append(key, String(value));
-      }
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined) url.searchParams.append(k, String(v));
     });
   }
-
-  try {
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorData: APIError = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to list sessions: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    // Handle different possible response formats
-    let sessions: Session[] = [];
-    
-    if (Array.isArray(data)) {
-      sessions = data;
-    } else if (data && Array.isArray(data.sessions)) {
-      sessions = data.sessions;
-    } else if (data && Array.isArray(data.items)) {
-      sessions = data.items;
-    } else {
-      console.warn('[listSessions] Unexpected response format:', data);
-      return [];
-    }
-    
-    // Validate and sanitize session objects
-    return sessions.map(session => ({
-      session_id: session.session_id || '',
-      created_at: session.created_at || new Date().toISOString(),
-      status: session.status || 'active',
-      last_activity: session.last_activity,
-      metadata: session.metadata || {},
-      user_id: session.user_id,
-      session_type: session.session_type,
-      usage_type: session.usage_type
-    })).filter(session => session.session_id); // Filter out invalid sessions
-    
-  } catch (error) {
-    console.error('[listSessions] Error:', error);
-    throw error;
-  }
-}
-
-/**
- * Generate AI-powered conversation title using the new dedicated endpoint
- */
-export async function generateConversationTitle(sessionId: string, lastUserMessage?: string): Promise<{ title: string }> {
-  try {
-    // Try the new dedicated endpoint first
-    const request: TitleGenerateRequest = {
-      session_id: sessionId,
-      max_words: 8, // Backend default; server-side bounded to 3-12 range
-    };
-    
-    // Add context if available - don't send prompt-like text, just provide context
-    if (lastUserMessage) {
-      request.context = {
-        last_user_message: lastUserMessage
-      };
-    }
-
-    const response = await fetch(`${config.apiUrl}/api/v1/agent/title`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-ID': sessionId, // Add session header for consistency
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      // If new endpoint fails, fall back to legacy approach
-      console.warn('[API] New title endpoint failed, falling back to legacy approach');
-      return generateConversationTitleLegacy(sessionId);
-    }
-
-    const result: TitleResponse = await response.json();
-    
-    // Backend guarantees: single-line title text, sanitized, capped to max_words
-    // Returns "Troubleshooting Session" safely when context empty or LLM fails
-    return { title: result.title || `Chat ${new Date().toLocaleDateString()}` };
-    
-  } catch (error) {
-    console.warn('[API] Title generation with new endpoint failed:', error);
-    // Fall back to legacy approach
-    return generateConversationTitleLegacy(sessionId);
-  }
-}
-
-/**
- * Legacy title generation using the old query endpoint (backward compatibility)
- */
-async function generateConversationTitleLegacy(sessionId: string): Promise<{ title: string }> {
-  try {
-    const response = await fetch(`${config.apiUrl}/api/v1/agent/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-ID': sessionId,
-      },
-      body: JSON.stringify({
-        session_id: sessionId,
-        query: "Please generate a concise title",
-        context: {
-          is_title_generation: true
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Legacy title generation failed: ${response.status}`);
-    }
-
-    const result: AgentResponse = await response.json();
-    
-    // For backward compatibility: read title from content, ignore response_type
-    // Backend shim handles title generation properly
-    const title = result.content?.trim() || `Chat ${new Date().toLocaleDateString()}`;
-    
-    return { title };
-    
-  } catch (error) {
-    console.error('[API] Legacy title generation failed:', error);
-    // Final fallback
-    return { title: `Chat ${new Date().toLocaleDateString()}` };
-  }
-}
-
-/**
- * Health check endpoint
- */
-export async function healthCheck(): Promise<Record<string, any>> {
-  const response = await fetch(`${config.apiUrl}/health`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
+  const response = await fetch(url.toString(), { method: 'GET', headers: { 'Content-Type': 'application/json' } });
   if (!response.ok) {
-    throw new Error(`Health check failed: ${response.status}`);
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to list sessions: ${response.status}`);
   }
+  const data = await response.json().catch(() => []);
+  if (Array.isArray(data)) return data as Session[];
+  if (data && Array.isArray(data.sessions)) return data.sessions as Session[];
+  if (data && Array.isArray(data.items)) return data.items as Session[];
+  return [];
+}
 
+// ===== Global cases listing for sidebar =====
+export async function getUserCases(filters?: {
+  status?: string;
+  priority?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<UserCase[]> {
+  const url = new URL(`${config.apiUrl}/api/v1/cases`);
+  if (filters) {
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined) url.searchParams.append(k, String(v));
+    });
+  }
+  const response = await fetch(url.toString(), { method: 'GET', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to get cases: ${response.status}`);
+  }
+  const data = await response.json().catch(() => []);
+  return Array.isArray(data) ? (data as UserCase[]) : [];
+} 
+
+export async function archiveCase(caseId: string): Promise<void> {
+  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/archive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include'
+  });
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to archive case: ${response.status}`);
+  }
+} 
+
+export async function deleteCase(caseId: string): Promise<void> {
+  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include'
+  });
+  if (!response.ok && response.status !== 204) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to delete case: ${response.status}`);
+  }
+} 
+
+export interface CaseUpdateRequest {
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export async function updateCaseTitle(caseId: string, title: string): Promise<void> {
+  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title } as CaseUpdateRequest),
+    credentials: 'include'
+  });
+  const corr = response.headers.get('x-correlation-id') || response.headers.get('X-Correlation-ID');
+  console.log('[API] updateCaseTitle', { caseId, status: response.status, correlationId: corr });
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to update case: ${response.status}`);
+  }
+}
+
+export async function getCaseConversation(caseId: string): Promise<any> {
+  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/conversation`, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include'
+  });
+  const corr = response.headers.get('x-correlation-id') || response.headers.get('X-Correlation-ID');
+  console.log('[API] getCaseConversation', { caseId, status: response.status, correlationId: corr });
+  if (!response.ok) {
+    const errorData: APIError = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to get case conversation: ${response.status}`);
+  }
   return response.json();
 } 

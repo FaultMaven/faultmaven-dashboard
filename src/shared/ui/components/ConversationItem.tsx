@@ -10,6 +10,7 @@ interface ConversationItemProps {
   onSelect: (sessionId: string) => void;
   onDelete?: (sessionId: string) => void;
   onRename?: (sessionId: string, newTitle: string) => void;
+  onGenerateTitle?: (sessionId: string) => void;
 }
 
 export function ConversationItem({ 
@@ -20,7 +21,8 @@ export function ConversationItem({
   isUnsavedNew = false,
   onSelect, 
   onDelete,
-  onRename 
+  onRename,
+  onGenerateTitle
 }: ConversationItemProps) {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [isRenaming, setIsRenaming] = useState(false);
@@ -68,6 +70,7 @@ export function ConversationItem({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
     if (e.key === 'Enter') {
       handleSaveRename();
     } else if (e.key === 'Escape') {
@@ -119,6 +122,7 @@ export function ConversationItem({
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
+        if (isRenaming) { e.stopPropagation(); return; }
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           handleSelect();
@@ -164,12 +168,24 @@ export function ConversationItem({
         </div>
         
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2 flex-shrink-0">
+          {onGenerateTitle && !isUnsavedNew && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onGenerateTitle(session.session_id); }}
+              className="p-1 text-gray-400 hover:text-blue-600 rounded"
+              aria-label={`Generate title: ${displayTitle}`}
+              title="Generate title"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3l2.2 4.46L19 8l-3.6 3.2L16.4 16 12 14l-4.4 2 1-4.8L5 8l4.8-.54L12 3z" />
+              </svg>
+            </button>
+          )}
           {onRename && (
             <button
               onClick={handleRename}
               className="p-1 text-gray-400 hover:text-gray-600 rounded"
-              aria-label={`Rename conversation: ${displayTitle}`}
-              title="Rename conversation"
+              aria-label={`Rename chat: ${displayTitle}`}
+              title="Rename chat"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />

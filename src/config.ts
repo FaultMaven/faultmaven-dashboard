@@ -5,11 +5,8 @@ interface Config {
 }
 
 const config: Config = {
-  // Production API endpoint - HTTPS required for Chrome Web Store
-  apiUrl: import.meta.env.VITE_API_URL || "https://api.faultmaven.ai",
-  
-  // For development, set VITE_API_URL in .env.local:
-  // VITE_API_URL=http://api.faultmaven.local:8000
+  // Development default; override via VITE_API_URL for other environments
+  apiUrl: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000",
 };
 
 export default config;
