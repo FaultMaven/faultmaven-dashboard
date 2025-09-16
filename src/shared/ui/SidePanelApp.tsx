@@ -20,7 +20,10 @@ import DocumentDetailsModal from "./components/DocumentDetailsModal";
 interface StorageResult {
   sessionId?: string;
   sessionCreatedAt?: number;
+  sessionResumed?: boolean;
+  clientId?: string;
 }
+
 
 export default function SidePanelApp() {
   const [activeTab, setActiveTab] = useState<'copilot' | 'kb'>('copilot');
@@ -51,16 +54,21 @@ export default function SidePanelApp() {
       try {
         // Check for existing stored session and verify auth
         try {
-          const stored = await browser.storage.local.get(["sessionId"]);
+          const stored = await browser.storage.local.get(["sessionId", "sessionResumed", "sessionCreatedAt"]);
           if (stored?.sessionId) {
             try {
               const auth: AuthResponse = await verifyAuthSession(stored.sessionId);
               // Verified session
               setIsAuthenticated(true);
               setSessionId(auth.view_state?.session_id || stored.sessionId);
+
+              console.log('[SidePanelApp] Session initialized:', {
+                sessionId: stored.sessionId?.slice(0, 8) + '...',
+                resumed: stored.sessionResumed || false
+              });
             } catch {
               // Invalid/expired session, clear and require login
-              await browser.storage.local.remove(["sessionId", "sessionCreatedAt"]);
+              await browser.storage.local.remove(["sessionId", "sessionCreatedAt", "sessionResumed", "clientId"]);
               setIsAuthenticated(false);
               setSessionId(null);
               setHasUnsavedNewChat(false); // keep input locked until user clicks New Chat
@@ -106,7 +114,7 @@ export default function SidePanelApp() {
         setSidebarCollapsed(true);
       }
     };
-    
+
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -140,7 +148,7 @@ export default function SidePanelApp() {
 
   const handleLogout = async () => {
     try { await logoutAuth(); } catch {}
-    await browser.storage.local.remove(["sessionId", "sessionCreatedAt"]);
+    await browser.storage.local.remove(["sessionId", "sessionCreatedAt", "sessionResumed", "clientId"]);
     setIsAuthenticated(false);
     setSessionId(null);
     setHasUnsavedNewChat(true);
@@ -356,13 +364,6 @@ export default function SidePanelApp() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
-              <button
-                onClick={handleLogout}
-                className="w-full h-10 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Logout"
-              >
-                Logout
-              </button>
             </div>
             <div className="flex-shrink-0 p-3 border-t border-gray-200">
               <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center mx-auto">
@@ -386,6 +387,15 @@ export default function SidePanelApp() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={handleLogout}
+                    className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Logout"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </button>
+                  <button
                     onClick={toggleSidebar}
                     className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     title="Collapse Sidebar"
@@ -394,15 +404,9 @@ export default function SidePanelApp() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                   </button>
-                  <button
-                    onClick={handleLogout}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Logout"
-                  >
-                    Logout
-                  </button>
                 </div>
               </div>
+
             </div>
             <div className="flex-shrink-0 p-4">
               <button

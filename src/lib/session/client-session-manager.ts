@@ -1,0 +1,208 @@
+import config from "../../config";
+
+// Enhanced TypeScript interfaces for client-based session management
+export interface SessionCreateRequest {
+  timeout_minutes?: number; // 1 min to 24 hours (default: 30)
+  session_type?: string; // default: "troubleshooting"
+  metadata?: Record<string, any>;
+  client_id?: string; // NEW - Client/device identifier for session resumption
+}
+
+export interface SessionCreateResponse {
+  session_id: string;
+  user_id?: string;
+  client_id?: string; // NEW - Echoed back from request
+  status: string; // "active"
+  created_at: string; // UTC ISO 8601 format
+  session_type: string;
+  session_resumed?: boolean; // NEW - true if existing session was resumed
+  message: string; // "Session created successfully" or "Session resumed successfully"
+  last_activity?: string;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Manages client-based session persistence and resumption
+ *
+ * Features:
+ * - Seamless session continuity across browser restarts
+ * - Session timeout + resume strategy for crash recovery (3 hours default)
+ * - Automatic session expiration handling
+ * - Invisible to users - no manual session management required
+ *
+ * Behavior:
+ * - Browser restart < 3 hours: Resume previous session seamlessly
+ * - Browser restart > 3 hours: Create fresh session automatically
+ * - Session corruption/expiration: Auto-recover with new session
+ */
+export class ClientSessionManager {
+  private static CLIENT_ID_KEY = 'faultmaven_client_id';
+  private static instance: ClientSessionManager;
+  private clientId: string | null = null;
+
+  // Session timeout configuration (in minutes)
+  private static readonly DEFAULT_SESSION_TIMEOUT = 180; // 3 hours for active troubleshooting
+  private static readonly MIN_SESSION_TIMEOUT = 60;      // 1 hour minimum
+  private static readonly MAX_SESSION_TIMEOUT = 480;     // 8 hours maximum
+
+  /**
+   * Get singleton instance of ClientSessionManager
+   */
+  static getInstance(): ClientSessionManager {
+    if (!this.instance) {
+      this.instance = new ClientSessionManager();
+    }
+    return this.instance;
+  }
+
+  /**
+   * Get or generate a unique client ID for this browser instance
+   * Client ID persists across browser sessions via localStorage
+   */
+  getOrCreateClientId(): string {
+    if (!this.clientId) {
+      this.clientId = localStorage.getItem(ClientSessionManager.CLIENT_ID_KEY);
+
+      if (!this.clientId) {
+        // Generate UUID v4 using crypto.randomUUID() for performance
+        this.clientId = crypto.randomUUID();
+        localStorage.setItem(ClientSessionManager.CLIENT_ID_KEY, this.clientId);
+        console.log('[ClientSessionManager] Generated new client ID:', this.clientId.slice(0, 8) + '...');
+      } else {
+        console.log('[ClientSessionManager] Using existing client ID:', this.clientId.slice(0, 8) + '...');
+      }
+    }
+
+    return this.clientId;
+  }
+
+  /**
+   * Create a new session or resume existing session based on client_id
+   * Implements timeout + resume strategy for crash recovery
+   */
+  async createSession(userContext?: any, timeoutMinutes?: number): Promise<SessionCreateResponse> {
+    const clientId = this.getOrCreateClientId();
+
+    // Use provided timeout or default, enforcing min/max limits
+    const sessionTimeout = this.validateSessionTimeout(timeoutMinutes || ClientSessionManager.DEFAULT_SESSION_TIMEOUT);
+
+    const requestBody: SessionCreateRequest = {
+      client_id: clientId,
+      session_type: 'troubleshooting',
+      timeout_minutes: sessionTimeout
+    };
+
+    // Add user context metadata if provided
+    if (userContext) {
+      requestBody.metadata = userContext;
+    }
+
+    console.log('[ClientSessionManager] Creating session with client_id:', clientId.slice(0, 8) + '...');
+
+    const response = await fetch(`${config.apiUrl}/api/v1/sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Failed to create session: ${response.status}`);
+    }
+
+    const sessionResponse: SessionCreateResponse = await response.json();
+
+    // Log session creation/resumption
+    if (sessionResponse.session_resumed) {
+      console.log('[ClientSessionManager] Session resumed:', sessionResponse.session_id);
+    } else {
+      console.log('[ClientSessionManager] New session created:', sessionResponse.session_id);
+    }
+
+    return sessionResponse;
+  }
+
+  /**
+   * Check if a session response indicates a resumed session
+   */
+  isSessionResumed(response: SessionCreateResponse): boolean {
+    return response.session_resumed === true;
+  }
+
+  /**
+   * Clear client ID to force creation of new session
+   * Note: This is primarily used internally for session expiration recovery.
+   * UI no longer exposes manual session forcing to users.
+   */
+  clearClientId(): void {
+    this.clientId = null;
+    localStorage.removeItem(ClientSessionManager.CLIENT_ID_KEY);
+    console.log('[ClientSessionManager] Client ID cleared - next session will be new');
+  }
+
+  /**
+   * Get current client ID without generating new one
+   * Returns null if no client ID exists
+   */
+  getCurrentClientId(): string | null {
+    return localStorage.getItem(ClientSessionManager.CLIENT_ID_KEY);
+  }
+
+  /**
+   * Validate and clamp session timeout to acceptable range
+   */
+  private validateSessionTimeout(timeoutMinutes: number): number {
+    return Math.max(
+      ClientSessionManager.MIN_SESSION_TIMEOUT,
+      Math.min(ClientSessionManager.MAX_SESSION_TIMEOUT, timeoutMinutes)
+    );
+  }
+
+  /**
+   * Handle session creation with automatic error recovery
+   * Implements timeout + resume strategy for crash recovery
+   */
+  async createSessionWithRecovery(userContext?: any, timeoutMinutes?: number): Promise<SessionCreateResponse> {
+    try {
+      const response = await this.createSession(userContext, timeoutMinutes);
+
+      // Log session creation/resumption with timeout info
+      const timeoutUsed = this.validateSessionTimeout(timeoutMinutes || ClientSessionManager.DEFAULT_SESSION_TIMEOUT);
+      if (response.session_resumed) {
+        console.log('[ClientSessionManager] Session resumed successfully, timeout:', timeoutUsed, 'minutes');
+      } else {
+        console.log('[ClientSessionManager] New session created, timeout:', timeoutUsed, 'minutes');
+      }
+
+      return response;
+    } catch (error: any) {
+      // Handle expired/invalid session scenarios (404, 410, session not found)
+      if (this.isSessionExpiredError(error)) {
+        console.warn('[ClientSessionManager] Session expired/invalid after browser crash - creating fresh session');
+        this.clearClientId();
+        return await this.createSession(userContext, timeoutMinutes);
+      }
+      // Re-throw other errors
+      throw error;
+    }
+  }
+
+  /**
+   * Check if error indicates an expired/invalid session
+   */
+  private isSessionExpiredError(error: any): boolean {
+    const message = error.message?.toLowerCase() || '';
+    return (
+      message.includes('404') ||
+      message.includes('410') ||
+      message.includes('session not found') ||
+      message.includes('session expired') ||
+      message.includes('invalid session')
+    );
+  }
+}
+
+// Export singleton instance for convenience
+export const clientSessionManager = ClientSessionManager.getInstance();

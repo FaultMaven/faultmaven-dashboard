@@ -1,4 +1,5 @@
 import config from "../config";
+import { clientSessionManager } from "./session/client-session-manager";
 
 // ===== Enhanced TypeScript Interfaces for v3.1.0 API =====
 
@@ -12,6 +13,10 @@ export interface Session {
   user_id?: string;
   session_type?: string;
   usage_type?: string;
+  // Client-based session management fields
+  client_id?: string;
+  session_resumed?: boolean;
+  message?: string;
 }
 
 // New enhanced data structures based on OpenAPI spec
@@ -121,18 +126,7 @@ export interface TitleResponse {
   view_state?: ViewState;
 }
 
-// Enhanced troubleshooting response for backward compatibility
-export interface TroubleshootingResponse {
-  response: string;
-  findings?: Array<{
-    details?: string;
-    message?: string;
-    [key: string]: any;
-  }>;
-  recommendations?: string[];
-  confidence_score?: number;
-  session_id: string;
-}
+// Legacy troubleshooting types removed. Use `AgentResponse` for current workflows.
 
 // Enhanced knowledge base document structure with canonical document types
 export type DocumentType = 'playbook' | 'troubleshooting_guide' | 'reference' | 'how_to';
@@ -180,13 +174,37 @@ export interface APIError {
 // ===== Enhanced API Functions =====
 
 /**
- * Create a new session with enhanced metadata support
+ * Create a new session with client-based resumption support
+ * Uses ClientSessionManager for automatic session resumption across browser restarts
  */
 export async function createSession(metadata?: Record<string, any>): Promise<Session> {
+  // Use ClientSessionManager for client-based session management
+  const sessionResponse = await clientSessionManager.createSessionWithRecovery(metadata);
+
+  // Return session in the expected format
+  return {
+    session_id: sessionResponse.session_id,
+    created_at: sessionResponse.created_at,
+    status: sessionResponse.status as 'active' | 'idle' | 'expired',
+    last_activity: sessionResponse.last_activity,
+    metadata: sessionResponse.metadata,
+    user_id: sessionResponse.user_id,
+    session_type: sessionResponse.session_type,
+    client_id: sessionResponse.client_id,
+    session_resumed: sessionResponse.session_resumed,
+    message: sessionResponse.message
+  };
+}
+
+/**
+ * Create a new session directly (bypassing client resumption)
+ * Use this when you explicitly want a fresh session
+ */
+export async function createFreshSession(metadata?: Record<string, any>): Promise<Session> {
   const url = new URL(`${config.apiUrl}/api/v1/sessions/`);
-  
+
   const requestBody = metadata ? { metadata } : {};
-  
+
   const response = await fetch(url.toString(), {
     method: 'POST',
     headers: {
@@ -206,27 +224,8 @@ export async function createSession(metadata?: Record<string, any>): Promise<Ses
 /**
  * Enhanced query processing with new response types
  */
-// DEPRECATED: processQuery via agent route is removed in case-centric API. Do not use.
-
-/**
- * Legacy troubleshooting endpoint for backward compatibility
- */
-export async function troubleshoot(request: QueryRequest): Promise<TroubleshootingResponse> {
-  const response = await fetch(`${config.apiUrl}/api/v1/agent/troubleshoot`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to troubleshoot: ${response.status}`);
-  }
-
-  return response.json();
-}
+// Legacy agent routes removed. Frontend must use case-scoped APIs such as
+// `submitQueryToCase(caseId, request)` which returns an `AgentResponse`.
 
 /**
  * Enhanced data upload with new endpoint and response structure
@@ -865,15 +864,8 @@ export async function heartbeatSession(sessionId: string): Promise<void> {
   }
 }
 
-export async function generateConversationTitle(sessionId: string, lastUserMessage?: string): Promise<{ title: string }> {
-  // Deprecated: agent routes removed. Use generateCaseTitle instead.
-  return { title: `chat-${new Date().toISOString()}` };
-}
-
-async function generateConversationTitleLegacy(sessionId: string): Promise<{ title: string }> {
-  return { title: `chat-${new Date().toISOString()}` };
-} 
-
+// Legacy conversation title helpers removed. Use `generateCaseTitle(caseId, options)`
+// to generate case-scoped titles via the backend.
 // Case-scoped title generation aligned with case-centric API
 export async function generateCaseTitle(
   caseId: string,

@@ -1,5 +1,6 @@
 // src/entrypoints/background.ts
 import { createSession, deleteSession } from '../lib/api';
+import { clientSessionManager } from '../lib/session/client-session-manager';
 import { browser } from 'wxt/browser';
 
 export default defineBackground({
@@ -9,10 +10,10 @@ export default defineBackground({
     // === Backend Session Logic Functions ===
     async function handleGetSessionId(requestAction: string, sendResponse: (response?: any) => void) {
       console.log(`[background.ts] handleGetSessionId called for action: ${requestAction}`);
-      
+
       try {
         // Check if we have a valid session stored locally
-        const result = await browser.storage.local.get(["sessionId", "sessionCreatedAt"]);
+        const result = await browser.storage.local.get(["sessionId", "sessionCreatedAt", "sessionResumed"]);
 
         // If we have a recent session (less than 30 minutes old), use it
         const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
@@ -21,24 +22,37 @@ export default defineBackground({
 
         if (result.sessionId && sessionAge < SESSION_TIMEOUT) {
           console.log("[background.ts] Using existing valid session:", result.sessionId);
-          sendResponse({ sessionId: result.sessionId, status: "success" });
+          sendResponse({
+            sessionId: result.sessionId,
+            status: "success",
+            sessionResumed: result.sessionResumed || false
+          });
           return;
         }
 
-        // Create new backend session
-        console.log("[background.ts] Creating new backend session...");
+        // Create new backend session using ClientSessionManager
+        console.log("[background.ts] Creating new backend session with client-based management...");
         try {
           const session = await createSession();
-          console.log("[background.ts] Backend session created:", session.session_id);
-          
-          // Store the session locally with timestamp
-          await browser.storage.local.set({ 
-            sessionId: session.session_id, 
-            sessionCreatedAt: now 
+          console.log("[background.ts] Backend session created/resumed:", session.session_id);
+          console.log("[background.ts] Session resumed?", session.session_resumed || false);
+          console.log("[background.ts] Client ID:", session.client_id?.slice(0, 8) + '...');
+
+          // Store the session locally with timestamp and resumption info
+          await browser.storage.local.set({
+            sessionId: session.session_id,
+            sessionCreatedAt: now,
+            sessionResumed: session.session_resumed || false,
+            clientId: session.client_id
           });
-          
+
           console.log("[background.ts] Session stored locally:", session.session_id);
-          sendResponse({ sessionId: session.session_id, status: "success" });
+          sendResponse({
+            sessionId: session.session_id,
+            status: "success",
+            sessionResumed: session.session_resumed || false,
+            message: session.message
+          });
         } catch (apiError: any) {
           console.error("[background.ts] Failed to create backend session:", apiError);
           sendResponse({ status: "error", message: `Failed to create session: ${apiError.message}` });
@@ -69,7 +83,7 @@ export default defineBackground({
         }
 
         // Clear local storage
-        await browser.storage.local.remove(["sessionId", "sessionCreatedAt"]);
+        await browser.storage.local.remove(["sessionId", "sessionCreatedAt", "sessionResumed", "clientId"]);
         console.log("[background.ts] Session cleared (local and backend).");
         sendResponse({ status: "success" });
       } catch (error) {

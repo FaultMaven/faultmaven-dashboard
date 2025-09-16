@@ -132,7 +132,7 @@ export default function DocumentRowEnhanced({
         <div className="flex flex-wrap gap-1">
           {(() => {
             const tags = normalizeTags(document.tags);
-            const isStringTags = typeof document.tags === 'string' && document.tags.trim();
+            const isStringTags = typeof document.tags === 'string' && (document.tags as string).trim();
             
             return tags.length > 0 ? (
               <>

@@ -36,14 +36,14 @@ describe('API Functions', () => {
       const result = await createSession();
 
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.faultmaven.ai/api/v1/sessions/',
-        {
+        'https://api.faultmaven.ai/api/v1/sessions',
+        expect.objectContaining({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({})
-        }
+          body: expect.stringContaining('client_id')
+        })
       );
       expect(result).toEqual(mockResponse);
     });
@@ -65,14 +65,14 @@ describe('API Functions', () => {
       await createSession(metadata);
 
       expect(fetch).toHaveBeenCalledWith(
-        'https://api.faultmaven.ai/api/v1/sessions/',
-        {
+        'https://api.faultmaven.ai/api/v1/sessions',
+        expect.objectContaining({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ metadata })
-        }
+          body: expect.stringContaining('metadata')
+        })
       );
     });
 

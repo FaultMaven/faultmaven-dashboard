@@ -284,7 +284,7 @@ FormData: {
 ### **3. Query Processing:**
 ```typescript
 // Request
-POST /api/v1/agent/query
+POST /api/v1/cases/{case_id}/queries
 {
   "session_id": "session-abc123",
   "query": "Why is my service failing?",
@@ -440,7 +440,7 @@ To verify the v3.1.0 API features:
 ### **API Endpoints Used:**
 - `POST /api/v1/sessions/` - Create session with metadata
 - `POST /api/v1/data/upload` - Data upload
-- `POST /api/v1/agent/query` - Query processing
+- `POST /api/v1/cases/{case_id}/queries` - Query processing
 - `GET /api/v1/data/sessions/{session_id}` - Get session data
 - `POST /api/v1/knowledge/search` - Knowledge base search
 
@@ -482,7 +482,7 @@ pnpm test:coverage
 ### **Issue: Response types not working**
 **Solution:** 
 1. Verify API server supports v3.1.0 specification
-2. Check that `/api/v1/agent/query` endpoint returns response format
+2. Check that `/api/v1/cases/{case_id}/queries` endpoint returns response format
 3. Ensure response includes `response_type` field
 
 ### **Issue: Data display not showing**
