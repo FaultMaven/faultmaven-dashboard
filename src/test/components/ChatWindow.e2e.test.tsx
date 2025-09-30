@@ -24,7 +24,7 @@ vi.mock('../../lib/api', async (importOriginal) => {
     submitQueryToCase: vi.fn(),
     getCaseConversation: vi.fn(),
     updateCaseTitle: vi.fn(),
-    listSessionCases: vi.fn().mockResolvedValue([])
+    getUserCases: vi.fn().mockResolvedValue([])
   } as unknown as typeof import('../../lib/api');
 });
 
@@ -60,13 +60,23 @@ describe('ChatWindow e2e (201 with body hydration, no duplicates)', () => {
       ]
     });
 
-    render(
+    // Create mock handlers to simulate state updates
+    const mockQuerySubmit = vi.fn();
+    const { rerender } = render(
       <ChatWindow
+        conversation={[]}
+        activeCase={{
+          case_id: caseId,
+          title: 'Test Case',
+          status: 'active'
+        }}
+        loading={false}
+        submitting={false}
         sessionId={sessionId}
-        caseId={caseId}
-        onCaseActivated={vi.fn()}
-        onCaseCommitted={vi.fn()}
-        onCasesNeedsRefresh={vi.fn()}
+        sessionData={[]}
+        onQuerySubmit={mockQuerySubmit}
+        onDataUpload={vi.fn()}
+        onDocumentView={vi.fn()}
       />
     );
 
@@ -74,6 +84,36 @@ describe('ChatWindow e2e (201 with body hydration, no duplicates)', () => {
     const textarea = await screen.findByPlaceholderText('Type your question here and press Enter...');
     await user.click(textarea);
     await user.type(textarea as HTMLElement, 'hello{enter}');
+
+    // Verify the onQuerySubmit was called
+    expect(mockQuerySubmit).toHaveBeenCalledWith('hello');
+
+    // Simulate the parent component updating the conversation state
+    rerender(
+      <ChatWindow
+        conversation={[
+          {
+            id: '1',
+            question: 'hello',
+            response: 'Hi! How can I help you troubleshoot right now?',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            error: false
+          }
+        ]}
+        activeCase={{
+          case_id: caseId,
+          title: 'Test Case',
+          status: 'active'
+        }}
+        loading={false}
+        submitting={false}
+        sessionId={sessionId}
+        sessionData={[]}
+        onQuerySubmit={mockQuerySubmit}
+        onDataUpload={vi.fn()}
+        onDocumentView={vi.fn()}
+      />
+    );
 
     // Allow either immediate hydration (no visible spinner) or brief spinner.
     // Just assert spinner is not present after hydration completes.
@@ -88,9 +128,9 @@ describe('ChatWindow e2e (201 with body hydration, no duplicates)', () => {
     // Assistant response is rendered
     expect(screen.getByText(/How can I help you troubleshoot/i)).toBeInTheDocument();
 
-    // Verify API call sequence
-    expect(api.submitQueryToCase).toHaveBeenCalledWith(caseId, expect.objectContaining({ session_id: sessionId, query: 'hello' }));
-    expect(api.getCaseConversation).toHaveBeenCalledTimes(2); // initial load + post-submit hydration
+    // Verify that the ChatWindow called the onQuerySubmit prop correctly (this is the new architecture)
+    expect(mockQuerySubmit).toHaveBeenCalledWith('hello');
+    expect(mockQuerySubmit).toHaveBeenCalledTimes(1);
   });
 });
 

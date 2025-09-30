@@ -1,6 +1,142 @@
 import config from "../config";
 import { clientSessionManager } from "./session/client-session-manager";
 
+// ===== Authentication and Session Management =====
+
+/**
+ * Auth state interface matching the authentication design
+ */
+export interface AuthState {
+  access_token: string;
+  token_type: 'bearer';
+  expires_at: number; // Unix timestamp
+  user: {
+    user_id: string;
+    username: string;
+    email: string;
+    display_name: string;
+    is_dev_user: boolean;
+    is_active: boolean;
+  };
+}
+
+/**
+ * Auth manager for centralized authentication state
+ */
+class AuthManager {
+  async saveAuthState(authState: AuthState): Promise<void> {
+    if (typeof browser !== 'undefined' && browser.storage) {
+      await browser.storage.local.set({ authState });
+    }
+  }
+
+  async getAuthState(): Promise<AuthState | null> {
+    try {
+      if (typeof browser !== 'undefined' && browser.storage) {
+        const result = await browser.storage.local.get(['authState']);
+        const authState = result.authState;
+
+        if (!authState) return null;
+
+        // Check if token is expired
+        if (Date.now() >= authState.expires_at) {
+          await this.clearAuthState();
+          return null;
+        }
+
+        return authState;
+      }
+    } catch (error) {
+      console.warn('[AuthManager] Failed to get auth state:', error);
+    }
+    return null;
+  }
+
+  async clearAuthState(): Promise<void> {
+    if (typeof browser !== 'undefined' && browser.storage) {
+      await browser.storage.local.remove(['authState']);
+    }
+  }
+
+  async isAuthenticated(): Promise<boolean> {
+    const authState = await this.getAuthState();
+    return authState !== null;
+  }
+}
+
+// Global auth manager instance
+export const authManager = new AuthManager();
+
+/**
+ * Gets dual headers for API requests (Authentication + Session)
+ * Returns both Authorization and X-Session-Id headers when available
+ */
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+
+  try {
+    if (typeof browser !== 'undefined' && browser.storage) {
+      // Get auth token from AuthState
+      const authState = await authManager.getAuthState();
+      if (authState?.access_token) {
+        headers['Authorization'] = `Bearer ${authState.access_token}`;
+      }
+
+      // Get session ID (keeping existing logic for compatibility)
+      const sessionData = await browser.storage.local.get(['sessionId']);
+      if (sessionData.sessionId) {
+        headers['X-Session-Id'] = sessionData.sessionId;
+      }
+    }
+  } catch (error) {
+    // Ignore storage errors - API calls will proceed without auth/session
+    console.warn('[API] Failed to get auth/session headers:', error);
+  }
+
+  return headers;
+}
+
+/**
+ * Handles authentication errors and triggers re-authentication
+ */
+export class AuthenticationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthenticationError';
+  }
+}
+
+async function handleAuthError(): Promise<void> {
+  // Clear stored auth data
+  await authManager.clearAuthState();
+
+  // Trigger re-authentication flow
+  // This will be handled by the UI components
+  throw new AuthenticationError('Authentication required - please sign in again');
+}
+
+/**
+ * Enhanced fetch wrapper with auth error handling
+ */
+async function authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...headers,
+      ...(options.headers || {})
+    }
+  });
+
+  // Handle auth errors
+  if (response.status === 401) {
+    await handleAuthError();
+  }
+
+  return response;
+}
+
 // ===== Enhanced TypeScript Interfaces for v3.1.0 API =====
 
 export interface Session {
@@ -243,7 +379,7 @@ export async function uploadData(sessionId: string, data: File | string, dataTyp
     formData.append('file', file);
   }
 
-  const response = await fetch(`${config.apiUrl}/api/v1/data/upload`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/data/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -267,7 +403,7 @@ export async function batchUploadData(sessionId: string, files: File[]): Promise
     formData.append('files', file);
   });
 
-  const response = await fetch(`${config.apiUrl}/api/v1/data/batch-upload`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/data/batch-upload`, {
     method: 'POST',
     body: formData,
   });
@@ -288,11 +424,8 @@ export async function getSessionData(sessionId: string, limit: number = 10, offs
   url.searchParams.append('limit', limit.toString());
   url.searchParams.append('offset', offset.toString());
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+  const response = await authenticatedFetch(url.toString(), {
+    method: 'GET'
   });
 
   if (!response.ok) {
@@ -375,7 +508,7 @@ export async function uploadKnowledgeDocument(
   console.log(`[API] Original file type: ${file.type}, Corrected type: ${fileToUpload.type}`);
   console.log(`[API] File name: ${file.name}, File size: ${file.size} bytes`);
 
-  const response = await fetch(`${config.apiUrl}/api/v1/knowledge/documents`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/knowledge/documents`, {
     method: 'POST',
     body: formData,
   });
@@ -409,11 +542,8 @@ export async function getKnowledgeDocuments(
 
   console.log('[API] Fetching knowledge documents from:', url.toString());
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+  const response = await authenticatedFetch(url.toString(), {
+    method: 'GET'
   });
 
   if (!response.ok) {
@@ -464,11 +594,8 @@ export async function getKnowledgeDocuments(
  * Get individual knowledge base document by ID
  */
 export async function getKnowledgeDocument(documentId: string): Promise<KnowledgeDocument> {
-  const response = await fetch(`${config.apiUrl}/api/v1/knowledge/documents/${documentId}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/knowledge/documents/${documentId}`, {
+    method: 'GET'
   });
 
   if (!response.ok) {
@@ -494,11 +621,8 @@ export async function updateKnowledgeDocument(
     description?: string;
   }
 ): Promise<KnowledgeDocument> {
-  const response = await fetch(`${config.apiUrl}/api/v1/knowledge/documents/${documentId}`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/knowledge/documents/${documentId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(updates),
   });
 
@@ -514,11 +638,8 @@ export async function updateKnowledgeDocument(
  * Enhanced knowledge base document deletion
  */
 export async function deleteKnowledgeDocument(documentId: string): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/knowledge/documents/${documentId}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/knowledge/documents/${documentId}`, {
+    method: 'DELETE'
   });
 
   if (!response.ok) {
@@ -552,11 +673,8 @@ export async function searchKnowledgeBase(
     similarity_score: number;
   }>;
 }> {
-  const response = await fetch(`${config.apiUrl}/api/v1/knowledge/search`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/knowledge/search`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       query,
       limit,
@@ -578,11 +696,8 @@ export async function searchKnowledgeBase(
  * Get session details
  */
 export async function getSession(sessionId: string): Promise<Session> {
-  const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/sessions/${sessionId}`, {
+    method: 'GET'
   });
 
   if (!response.ok) {
@@ -597,11 +712,8 @@ export async function getSession(sessionId: string): Promise<Session> {
  * Delete a session
  */
 export async function deleteSession(sessionId: string): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/sessions/${sessionId}`, {
+    method: 'DELETE'
   });
 
   if (!response.ok) {
@@ -633,9 +745,8 @@ export interface CreateCaseRequest {
 }
 
 export async function createCase(data: CreateCaseRequest): Promise<UserCase> {
-  const response = await fetch(`${config.apiUrl}/api/v1/cases`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data || {}),
     credentials: 'include'
   });
@@ -655,18 +766,6 @@ export async function createCase(data: CreateCaseRequest): Promise<UserCase> {
   throw new Error('Invalid CaseResponse shape from server');
 }
 
-export async function listSessionCases(sessionId: string, limit = 20, offset = 0): Promise<UserCase[]> {
-  const url = new URL(`${config.apiUrl}/api/v1/sessions/${sessionId}/cases`);
-  url.searchParams.append('limit', String(limit));
-  url.searchParams.append('offset', String(offset));
-  const response = await fetch(url.toString(), { method: 'GET', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
-  if (!response.ok) {
-    const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to list session cases: ${response.status}`);
-  }
-  const data = await response.json().catch(() => []);
-  return Array.isArray(data) ? data : [];
-}
 
 export async function submitQueryToCase(caseId: string, request: QueryRequest): Promise<AgentResponse> {
   if (!request?.session_id || !request?.query) {
@@ -678,14 +777,15 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
     context: request.context || {},
     priority: request.priority || 'medium'
   } as const;
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/queries`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}/queries`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     credentials: 'include'
   });
   const corr = response.headers.get('x-correlation-id') || response.headers.get('X-Correlation-ID');
-  console.log('[API] submitQueryToCase POST', { caseId, status: response.status, location: response.headers.get('Location'), correlationId: corr, body });
+  console.log('[API] *** TESTING NEW BUILD *** submitQueryToCase POST', { caseId, status: response.status, location: response.headers.get('Location'), correlationId: corr, body });
+
+  console.log('[API] *** ABOUT TO CHECK RESPONSE STATUS ***', { status: response.status });
 
   // Handle validation errors explicitly
   if (response.status === 422) {
@@ -751,22 +851,39 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
 
   // Handle 201 Created
   if (response.status === 201) {
+    console.log('[API] *** ENTERING 201 CREATED HANDLER ***');
     // First, attempt to parse an immediate AgentResponse from the body (sync processing)
     try {
       const immediate = await response.clone().json().catch(() => null);
+      console.log('[API] *** IMMEDIATE RESPONSE BODY ***', { immediate, hasImmediate: !!immediate });
       if (immediate) {
         if (immediate && immediate.content && immediate.response_type) return immediate as AgentResponse;
         if (immediate?.response?.content && immediate?.response?.response_type) return immediate.response as AgentResponse;
+
+        // Defensive: Detect API contract violations in 201 immediate response
+        if (immediate.choices && Array.isArray(immediate.choices) && immediate.choices[0]?.message?.content) {
+          console.error('[API] CONTRACT VIOLATION: Backend returned OpenAI format in 201 immediate response', {
+            received: { choices: immediate.choices.length, model: immediate.model },
+            expected: { response_type: 'string', content: 'string', session_id: 'string' },
+            correlationId: response.headers.get('x-correlation-id'),
+            caseId
+          });
+          throw new Error('Backend API contract violation: Expected AgentResponse format but received OpenAI completion format in 201 response. Please check backend implementation.');
+        }
       }
     } catch {}
     // If no immediate body result, and there is a Location header, poll created resource
+    console.log('[API] *** CHECKING FOR LOCATION HEADER ***');
     const createdLoc = response.headers.get('Location');
+    console.log('[API] *** LOCATION HEADER ***', { createdLoc, hasLocation: !!createdLoc });
     if (createdLoc) {
       const createdUrl = new URL(createdLoc, config.apiUrl).toString();
+      console.log('[API] DEBUG: Starting polling for created resource:', { createdUrl, caseId });
       // Poll the created resource until it contains an AgentResponse or redirects to final
       let delay = POLL_INITIAL_MS;
       let elapsed = 0;
       for (let i = 0; elapsed <= POLL_MAX_TOTAL_MS; i++) {
+        console.log('[API] DEBUG: Polling attempt', i, 'to', createdUrl);
         const createdRes = await fetch(createdUrl, { method: 'GET', credentials: 'include' });
         const ccorr = createdRes.headers.get('x-correlation-id') || createdRes.headers.get('X-Correlation-ID');
         if (ccorr) console.log('[API] poll created', { i, correlationId: ccorr, status: createdRes.status });
@@ -785,12 +902,38 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
           }
           if (!finalRes.ok) throw new Error(`Final resource fetch failed: ${finalRes.status}`);
           const finalJson = await finalRes.json().catch(() => ({}));
+          console.log('[API] DEBUG: Final polling response received:', { status: finalRes.status, json: finalJson, caseId });
+
+          // Check for contract violations in final polling response
+          if (finalJson.choices && Array.isArray(finalJson.choices) && finalJson.choices[0]?.message?.content) {
+            console.error('[API] CONTRACT VIOLATION: Backend returned OpenAI format in final polling response', {
+              received: { choices: finalJson.choices.length, model: finalJson.model },
+              expected: { response_type: 'string', content: 'string', session_id: 'string' },
+              correlationId: finalRes.headers.get('x-correlation-id'),
+              caseId
+            });
+            throw new Error('Backend API contract violation: Expected AgentResponse format but received OpenAI completion format in final polling response.');
+          }
+
           if (finalJson && finalJson.content && finalJson.response_type) return finalJson as AgentResponse;
           if (finalJson?.response?.content && finalJson?.response?.response_type) return finalJson.response as AgentResponse;
           throw new Error('Unexpected final resource payload');
         }
         if (createdRes.status === 200) {
           const createdJson = await createdRes.json().catch(() => ({}));
+          console.log('[API] DEBUG: Polling response received:', { status: createdRes.status, json: createdJson, caseId });
+
+          // Check for contract violations in polling response
+          if (createdJson.choices && Array.isArray(createdJson.choices) && createdJson.choices[0]?.message?.content) {
+            console.error('[API] CONTRACT VIOLATION: Backend returned OpenAI format in polling response', {
+              received: { choices: createdJson.choices.length, model: createdJson.model },
+              expected: { response_type: 'string', content: 'string', session_id: 'string' },
+              correlationId: createdRes.headers.get('x-correlation-id'),
+              caseId
+            });
+            throw new Error('Backend API contract violation: Expected AgentResponse format but received OpenAI completion format in polling response.');
+          }
+
           if (createdJson && createdJson.content && createdJson.response_type) return createdJson as AgentResponse;
           if (createdJson?.response?.content && createdJson?.response?.response_type) return createdJson.response as AgentResponse;
           // If the created resource returns a job envelope, continue polling
@@ -817,6 +960,34 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
     throw new Error(errorData.detail || `Failed to submit query to case: ${response.status}`);
   }
   const json = await response.json();
+  console.log('[API] DEBUG: Raw backend response:', { status: response.status, json, caseId });
+
+  // Defensive: Detect API contract violations
+  if (json.choices && Array.isArray(json.choices) && json.choices[0]?.message?.content) {
+    console.error('[API] CONTRACT VIOLATION: Backend returned OpenAI format instead of AgentResponse format', {
+      received: { choices: json.choices.length, model: json.model },
+      expected: { response_type: 'string', content: 'string', session_id: 'string' },
+      correlationId: response.headers.get('x-correlation-id'),
+      caseId
+    });
+    throw new Error('Backend API contract violation: Expected AgentResponse format but received OpenAI completion format. Please check backend implementation.');
+  }
+
+  // Validate required AgentResponse fields
+  if (!json.content || !json.response_type) {
+    console.error('[API] CONTRACT VIOLATION: Invalid AgentResponse format', {
+      received: json,
+      missing: {
+        content: !json.content,
+        response_type: !json.response_type
+      },
+      correlationId: response.headers.get('x-correlation-id'),
+      caseId
+    });
+    throw new Error('Backend API contract violation: AgentResponse missing required fields (content, response_type)');
+  }
+
+  console.log('[API] DEBUG: Valid AgentResponse received:', { content: json.content?.substring(0, 100), response_type: json.response_type });
   return json as AgentResponse;
 }
 
@@ -830,7 +1001,7 @@ export async function uploadDataToCase(
   form.append('session_id', sessionId);
   form.append('file', file);
   if (metadata) form.append('description', JSON.stringify(metadata));
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/data`, { method: 'POST', body: form, credentials: 'include' });
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}/data`, { method: 'POST', body: form, credentials: 'include' });
   if (response.status === 202) {
     const jobLocation = response.headers.get('Location');
     if (!jobLocation) throw new Error('Missing job Location header');
@@ -851,11 +1022,8 @@ export async function uploadDataToCase(
 }
 
 export async function heartbeatSession(sessionId: string): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/sessions/${sessionId}/heartbeat`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/sessions/${sessionId}/heartbeat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     credentials: 'include'
   });
   if (!response.ok) {
@@ -874,9 +1042,8 @@ export async function generateCaseTitle(
   const body: Record<string, any> = {};
   if (options?.max_words) body.max_words = options.max_words;
   if (options?.hint) body.hint = options.hint;
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/title`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}/title`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: Object.keys(body).length ? JSON.stringify(body) : undefined,
     credentials: 'include'
   });
@@ -889,7 +1056,7 @@ export async function generateCaseTitle(
   }
   const result: TitleResponse = await response.json();
   const t = (result?.title || '').trim();
-  return { title: t || `chat-${new Date().toISOString()}` };
+  return { title: t }; // Return empty string if backend has insufficient context
 }
 
 // ===== Auth types for login/verification =====
@@ -899,6 +1066,25 @@ export interface AuthUser {
   name: string;
 }
 
+export interface UserProfile {
+  user_id: string;
+  username: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+  is_dev_user: boolean;
+}
+
+// Backend response structure from /api/v1/auth/dev-login
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  session_id: string;
+  user: UserProfile;
+}
+
+// Legacy auth response structure (for backward compatibility)
 export interface AuthViewState {
   session_id: string;
   user: AuthUser;
@@ -916,39 +1102,96 @@ export interface AuthResponse {
   view_state: AuthViewState;
 }
 
-export async function devLogin(username: string): Promise<AuthResponse> {
+export async function devLogin(
+  username: string,
+  email?: string,
+  displayName?: string
+): Promise<AuthTokenResponse> {
   const response = await fetch(`${config.apiUrl}/api/v1/auth/dev-login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({
+      username,
+      email,
+      display_name: displayName
+    }),
     credentials: 'include'
   });
+
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Login failed: ${response.status}`);
   }
-  return response.json();
+
+  const authResponse = await response.json();
+
+  // Store auth state using new AuthManager
+  const authState: AuthState = {
+    access_token: authResponse.access_token,
+    token_type: authResponse.token_type,
+    expires_at: Date.now() + (authResponse.expires_in * 1000),
+    user: authResponse.user
+  };
+
+  await authManager.saveAuthState(authState);
+
+  return authResponse;
 }
 
+// TODO: Backend endpoint /api/v1/auth/session/{session_id} not implemented yet
+// This function is kept for future implementation when session verification is available
 export async function verifyAuthSession(sessionId: string): Promise<AuthResponse> {
-  const response = await fetch(`${config.apiUrl}/api/v1/auth/session/${sessionId}`, {
+  throw new Error('Session verification endpoint not implemented in backend yet');
+
+  // Future implementation:
+  // const response = await fetch(`${config.apiUrl}/api/v1/auth/session/${sessionId}`, {
+  //   method: 'GET',
+  //   headers: { 'Content-Type': 'application/json' },
+  //   credentials: 'include'
+  // });
+  // if (!response.ok) {
+  //   const errorData: APIError = await response.json().catch(() => ({}));
+  //   throw new Error(errorData.detail || `Session verification failed: ${response.status}`);
+  // }
+  // return response.json();
+}
+
+export async function getCurrentUser(): Promise<UserProfile> {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/auth/me`, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
     credentials: 'include'
   });
+
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Session verification failed: ${response.status}`);
+    throw new Error(errorData.detail || `Failed to get current user: ${response.status}`);
   }
+
   return response.json();
 }
 
 export async function logoutAuth(): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/auth/logout`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/auth/logout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     credentials: 'include'
   });
+
+  // Clear auth state regardless of response status
+  await authManager.clearAuthState();
+
+  // Broadcast auth state change to other tabs
+  if (typeof browser !== 'undefined' && browser.runtime) {
+    try {
+      await browser.runtime.sendMessage({
+        type: 'auth_state_changed',
+        authState: null
+      });
+    } catch (error) {
+      // Ignore messaging errors - not critical for logout
+      console.warn('[API] Failed to broadcast logout:', error);
+    }
+  }
+
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Logout failed: ${response.status}`);
@@ -969,7 +1212,7 @@ export async function listSessions(filters?: {
       if (v !== undefined) url.searchParams.append(k, String(v));
     });
   }
-  const response = await fetch(url.toString(), { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+  const response = await authenticatedFetch(url.toString(), { method: 'GET' });
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to list sessions: ${response.status}`);
@@ -994,7 +1237,7 @@ export async function getUserCases(filters?: {
       if (v !== undefined) url.searchParams.append(k, String(v));
     });
   }
-  const response = await fetch(url.toString(), { method: 'GET', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
+  const response = await authenticatedFetch(url.toString(), { method: 'GET', credentials: 'include' });
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to get cases: ${response.status}`);
@@ -1004,9 +1247,8 @@ export async function getUserCases(filters?: {
 } 
 
 export async function archiveCase(caseId: string): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/archive`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}/archive`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     credentials: 'include'
   });
   if (!response.ok) {
@@ -1016,9 +1258,8 @@ export async function archiveCase(caseId: string): Promise<void> {
 } 
 
 export async function deleteCase(caseId: string): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
     credentials: 'include'
   });
   if (!response.ok && response.status !== 204) {
@@ -1035,9 +1276,8 @@ export interface CaseUpdateRequest {
 }
 
 export async function updateCaseTitle(caseId: string, title: string): Promise<void> {
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}`, {
+  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title } as CaseUpdateRequest),
     credentials: 'include'
   });
@@ -1049,17 +1289,59 @@ export async function updateCaseTitle(caseId: string, title: string): Promise<vo
   }
 }
 
-export async function getCaseConversation(caseId: string): Promise<any> {
-  const response = await fetch(`${config.apiUrl}/api/v1/cases/${caseId}/conversation`, {
+export async function getCaseConversation(caseId: string, includeDebug: boolean = false): Promise<any> {
+  const url = new URL(`${config.apiUrl}/api/v1/cases/${caseId}/messages`);
+  if (includeDebug) {
+    url.searchParams.set('include_debug', 'true');
+  }
+
+  const response = await authenticatedFetch(url.toString(), {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
     credentials: 'include'
   });
+
   const corr = response.headers.get('x-correlation-id') || response.headers.get('X-Correlation-ID');
-  console.log('[API] getCaseConversation', { caseId, status: response.status, correlationId: corr });
+  const messageCount = response.headers.get('X-Message-Count');
+  const retrievedCount = response.headers.get('X-Retrieved-Count');
+  const storageStatus = response.headers.get('X-Storage-Status');
+
+  console.log('[API] getCaseConversation (enhanced)', {
+    caseId,
+    status: response.status,
+    correlationId: corr,
+    messageCount,
+    retrievedCount,
+    storageStatus,
+    includeDebug
+  });
+
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to get case conversation: ${response.status}`);
   }
-  return response.json();
+
+  const data = await response.json();
+
+  // Enhanced logging for debugging recovery issues
+  console.log('[API] getCaseConversation response:', {
+    caseId,
+    totalCount: data.total_count,
+    retrievedCount: data.retrieved_count,
+    hasMore: data.has_more,
+    messagesLength: data.messages?.length || 0,
+    debugInfo: data.debug_info,
+    storageStatus
+  });
+
+  // Log potential recovery issues
+  if (data.total_count > 0 && data.retrieved_count === 0) {
+    console.error('[API] Message retrieval failure detected:', {
+      caseId,
+      totalCount: data.total_count,
+      retrievedCount: data.retrieved_count,
+      debugInfo: data.debug_info
+    });
+  }
+
+  return data;
 } 

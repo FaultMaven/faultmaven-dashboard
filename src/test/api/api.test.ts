@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { 
-  createSession, 
-  uploadData, 
+import {
+  createSession,
+  uploadData,
   heartbeatSession,
+  submitQueryToCase,
   ResponseType,
   AgentResponse,
   UploadedData
@@ -15,9 +16,24 @@ vi.mock('../../config', () => ({
   }
 }));
 
+// Mock browser for tests that use uploadData (which now requires auth)
+const mockBrowserStorage = {
+  local: {
+    get: vi.fn().mockResolvedValue({}), // No auth by default
+    set: vi.fn(),
+    remove: vi.fn()
+  }
+};
+
+(global as any).browser = {
+  storage: mockBrowserStorage
+};
+
 describe('API Functions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset browser storage mock
+    mockBrowserStorage.local.get.mockResolvedValue({});
   });
 
   describe('createSession', () => {
@@ -112,10 +128,13 @@ describe('API Functions', () => {
 
       expect(fetch).toHaveBeenCalledWith(
         'https://api.faultmaven.ai/api/v1/data/upload',
-        {
+        expect.objectContaining({
           method: 'POST',
-          body: expect.any(FormData)
-        }
+          body: expect.any(FormData),
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json'
+          })
+        })
       );
 
       // Verify FormData contents
@@ -200,6 +219,51 @@ describe('API Functions', () => {
       });
 
       await expect(heartbeatSession('invalid-session')).rejects.toThrow('Session not found');
+    });
+  });
+
+  describe('submitQueryToCase', () => {
+    it('detects backend contract violation - OpenAI format', async () => {
+      const openAIResponse = {
+        choices: [{ message: { content: 'Hello from OpenAI format' } }],
+        model: 'gpt-3.5-turbo'
+      };
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        headers: new Map(),
+        json: () => Promise.resolve(openAIResponse)
+      });
+
+      await expect(submitQueryToCase('case-123', {
+        session_id: 'session-123',
+        query: 'test query',
+        priority: 'normal'
+      })).rejects.toThrow('Backend API contract violation: Expected AgentResponse format but received OpenAI completion format');
+    });
+
+    it('accepts valid AgentResponse format', async () => {
+      const agentResponse = {
+        response_type: 'ANSWER',
+        content: 'Hello from AgentResponse format',
+        session_id: 'session-123'
+      };
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        headers: new Map(),
+        json: () => Promise.resolve(agentResponse)
+      });
+
+      const result = await submitQueryToCase('case-123', {
+        session_id: 'session-123',
+        query: 'test query',
+        priority: 'normal'
+      });
+
+      expect(result).toEqual(agentResponse);
     });
   });
 

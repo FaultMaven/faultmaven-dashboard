@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Session } from '../../../lib/api';
 
 interface ConversationItemProps {
@@ -13,13 +13,13 @@ interface ConversationItemProps {
   onGenerateTitle?: (sessionId: string) => void;
 }
 
-export function ConversationItem({ 
-  session, 
-  title, 
-  isActive, 
+export function ConversationItem({
+  session,
+  title,
+  isActive,
   messageCount = 0,
   isUnsavedNew = false,
-  onSelect, 
+  onSelect,
   onDelete,
   onRename,
   onGenerateTitle
@@ -27,6 +27,7 @@ export function ConversationItem({
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [isRenaming, setIsRenaming] = useState(false);
   const [editTitle, setEditTitle] = useState(title || '');
+  const itemRef = useRef<HTMLDivElement>(null);
 
   // Update current time every minute to refresh relative timestamps
   useEffect(() => {
@@ -41,6 +42,21 @@ export function ConversationItem({
   useEffect(() => {
     setEditTitle(title || `Chat ${session.session_id.slice(-8)}`);
   }, [title, session.session_id]);
+
+  // Scroll active chat into view when it becomes active
+  useEffect(() => {
+    if (isActive && itemRef.current) {
+      // Use a small delay to ensure DOM is ready and list is rendered
+      const timeoutId = setTimeout(() => {
+        itemRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest' // Only scroll if the item is not already visible
+        });
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isActive]);
   const handleSelect = () => {
     onSelect(session.session_id);
   };
@@ -113,10 +129,11 @@ export function ConversationItem({
 
   return (
     <div
+      ref={itemRef}
       onClick={handleSelect}
       className={`group relative mx-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 ${
-        isActive 
-          ? 'bg-gray-200 text-gray-900' 
+        isActive
+          ? 'bg-gray-200 text-gray-900'
           : 'text-gray-700 hover:bg-gray-100'
       }`}
       role="button"

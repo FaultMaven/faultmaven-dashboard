@@ -148,6 +148,23 @@ export interface KbDocument {
   updated_at: string;
   metadata?: Record<string, any>;
 }
+
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  session_id: string;
+  user: UserProfile;
+}
+
+export interface UserProfile {
+  user_id: string;
+  username: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+  is_dev_user: boolean;
+}
 ```
 
 ### 5. Testing Infrastructure
@@ -230,6 +247,13 @@ pnpm test:coverage
 ### **Case Management:**
 - `GET /api/v1/cases` - Get user cases with filtering
 - `PATCH /api/v1/cases/{case_id}/resolve` - Mark case as resolved
+
+### **Authentication:**
+- `POST /api/v1/auth/dev-login` - Development login (returns AuthTokenResponse)
+- `POST /api/v1/auth/dev-register` - Development registration
+- `POST /api/v1/auth/logout` - Token revocation
+- `GET /api/v1/auth/me` - Current user profile
+- `GET /api/v1/auth/health` - Authentication system health
 
 ### **Health & Monitoring:**
 - `GET /health` - Health check
@@ -351,6 +375,33 @@ POST /api/v1/knowledge/search
   ]
 }
 ```
+
+### **5. Authentication (Development):**
+```typescript
+// Request - Dev Login
+POST /api/v1/auth/dev-login
+{
+  "username": "admin@faultmaven.ai"
+}
+
+// Response - AuthTokenResponse
+{
+  "access_token": "550e8400-e29b-41d4-a716-446655440000",
+  "token_type": "bearer",
+  "expires_in": 86400,
+  "session_id": "session-550e8400-e29b-41d4-a716-446655440000",
+  "user": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "username": "admin@faultmaven.ai",
+    "email": "admin@faultmaven.ai",
+    "display_name": "Admin User",
+    "created_at": "2025-01-15T10:00:00Z",
+    "is_dev_user": true
+  }
+}
+```
+
+**Note:** The frontend accesses the `session_id` directly from the top-level response (not from `view_state.session_id`).
 
 ## Features
 
