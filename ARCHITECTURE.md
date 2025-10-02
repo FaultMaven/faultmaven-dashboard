@@ -299,7 +299,7 @@ interface ConversationItem {
 
 ### Error Handling
 
-**Standard Error Response**:
+**API Error Response**:
 ```typescript
 {
   "detail": "string",            // Human-readable error message
@@ -316,19 +316,6 @@ interface ConversationItem {
 - `413 Payload Too Large`: File upload exceeds size limit
 - `429 Too Many Requests`: Rate limit exceeded
 - `500 Internal Server Error`: Backend error
-
-**Client-Side Error Handling**:
-```typescript
-async function handleApiError(response: Response) {
-  if (response.status === 401) {
-    await clearAuthState();
-    throw new AuthenticationError("Please sign in again");
-  }
-
-  const error = await response.json().catch(() => ({}));
-  throw new Error(error.detail || `Request failed: ${response.status}`);
-}
-```
 
 ### Rate Limiting
 
@@ -1473,6 +1460,297 @@ NODE_ENV=development
 ```bash
 VITE_API_URL=https://api.faultmaven.ai
 NODE_ENV=production
+```
+
+---
+
+## Error Handling System
+
+### Overview
+
+The extension implements a comprehensive error handling system that transforms technical errors into user-friendly messages with actionable guidance. The system prevents silent failures and provides appropriate UI feedback for all error scenarios.
+
+**Design Principles**:
+1. **User-Friendly Messages**: Never show raw technical errors
+2. **Actionable Guidance**: Tell users what to do next
+3. **Clear Communication**: Explain what happened in simple terms
+4. **Graceful Degradation**: Keep UI functional during errors
+5. **Appropriate Persistence**: Critical errors stay visible; transient errors auto-dismiss
+
+### Error Classification
+
+**Error Categories**:
+
+**1. Authentication Errors (401/403)**
+- Session expired, invalid token, auth required
+- **Display**: Blocking modal with "Sign in again" action
+- **Recovery**: Clear auth state, redirect to login
+- **User sees**: "Session Expired - Please sign in again to continue"
+
+**2. Network Errors**
+- Server unreachable (ECONNREFUSED), DNS failures, CORS issues
+- **Display**: Toast notification with retry button
+- **Recovery**: Auto-retry with exponential backoff (3 attempts)
+- **User sees**: "Connection Problem - Unable to reach server"
+
+**3. Timeout Errors (408/504)**
+- Request timeout (>30s), slow server response
+- **Display**: Toast with auto-dismiss (10s) + manual retry
+- **Recovery**: Manual retry by user
+- **User sees**: "Request Timed Out - Server took too long to respond"
+
+**4. Server Errors (500/502/503)**
+- Backend crashes, database failures, internal errors
+- **Display**: Toast notification
+- **Recovery**: Suggest waiting and retrying
+- **User sees**: "Server Error - Something went wrong on our end"
+
+**5. Validation Errors (400/422)**
+- Invalid input, missing required fields
+- **Display**: Inline field-level errors + toast
+- **Recovery**: User corrects input
+- **User sees**: Field-specific messages like "Email is required"
+
+**6. Rate Limit Errors (429)**
+- Too many requests
+- **Display**: Toast with countdown timer
+- **Recovery**: Auto-retry after rate limit window
+- **User sees**: "Too Many Requests - Please wait 30 seconds"
+
+**7. Optimistic Update Failures**
+- Failed message send, case creation errors
+- **Display**: Inline error in chat + retry button
+- **Recovery**: Retry button adjacent to failed message
+- **User sees**: Message marked as "Failed" with inline retry
+
+### Architecture
+
+**Core Components**:
+
+```
+ErrorHandlerProvider (Context)
+├── ErrorClassifier (classify technical → user-facing)
+├── Toast (non-blocking notifications)
+├── ErrorModal (blocking dialogs)
+└── InlineError (contextual errors in chat)
+```
+
+**Error Types** (`src/lib/errors/types.ts`):
+```typescript
+abstract class UserFacingError extends Error {
+  category: ErrorCategory;
+  userTitle: string;         // Friendly title
+  userMessage: string;       // Plain English explanation
+  userAction: string;        // What user should do
+  recovery: RecoveryStrategy;
+  context?: ErrorContext;    // Operation, user, metadata
+
+  getDisplayOptions(): ErrorDisplayOptions;
+  shouldRetry(): boolean;
+  getRetryDelay(): number;
+}
+
+// Specific error classes
+class AuthenticationError extends UserFacingError { }
+class NetworkError extends UserFacingError { }
+class TimeoutError extends UserFacingError { }
+class ServerError extends UserFacingError { }
+class ValidationError extends UserFacingError { }
+class RateLimitError extends UserFacingError { }
+class OptimisticUpdateError extends UserFacingError { }
+```
+
+**Error Classifier** (`src/lib/errors/classifier.ts`):
+```typescript
+class ErrorClassifier {
+  // Convert any error to user-facing error
+  static classify(error: unknown, context?: ErrorContext): UserFacingError
+
+  // HTTP status mapping
+  private static classifyHttpError(status: number, ...): UserFacingError
+
+  // Type guards for error detection
+  private static isNetworkError(error: Error): boolean
+  private static isTimeoutError(error: Error): boolean
+  private static isValidationError(error: Error): boolean
+
+  // Error aggregation (prevent duplicate toasts)
+  static shouldAggregate(e1: UserFacingError, e2: UserFacingError): boolean
+  static aggregate(errors: UserFacingError[]): UserFacingError
+}
+```
+
+**Error Handler Hook** (`src/lib/errors/useErrorHandler.tsx`):
+```typescript
+// Provider wraps app root
+<ErrorHandlerProvider>
+  <SidePanelApp />
+</ErrorHandlerProvider>
+
+// Hook usage in components
+const { showError, dismissError, getErrorsByType } = useErrorHandler();
+
+// Show error with context
+showError(error, {
+  operation: 'message_submission',
+  metadata: { messageId: '123' }
+});
+
+// Convenience hook with retry
+const { showErrorWithRetry } = useError();
+showErrorWithRetry(error, retryFn);
+```
+
+### UI Components
+
+**Toast Notifications** (`src/shared/ui/components/Toast.tsx`):
+- Non-blocking transient errors
+- Auto-dismiss (configurable duration)
+- Manual dismiss button
+- Retry button support
+- Stacking limit (max 3 visible)
+- Icon indicators (error/warning/info)
+- Smooth animations with reduced motion support
+- ARIA live regions for accessibility
+
+**Error Modal** (`src/shared/ui/components/ErrorModal.tsx`):
+- Blocking critical errors (auth, session expired)
+- Focus trap and keyboard navigation
+- Backdrop prevents interaction
+- Primary/secondary action buttons
+- Optional non-dismissible mode
+- ESC key to close (if dismissible)
+- ARIA modal attributes
+
+**Inline Errors** (`src/shared/ui/components/InlineError.tsx`):
+- Contextual errors within chat messages
+- Red border/background styling
+- Inline retry button
+- Used for optimistic update failures
+- Doesn't block other UI interactions
+
+### Display Strategy
+
+**Error → Display Type Mapping**:
+
+| Error Type | Display | Duration | Dismissible | Actions |
+|------------|---------|----------|-------------|---------|
+| Authentication | Modal | Persistent | No | Sign In |
+| Network | Toast | 10s | Yes | Retry |
+| Timeout | Toast | 10s | Yes | Retry |
+| Server Error | Toast | 8s | Yes | - |
+| Validation | Inline + Toast | 5s | Yes | - |
+| Rate Limit | Toast | Until reset | Yes | Wait |
+| Optimistic Failure | Inline | Persistent | Yes | Retry |
+
+### Error Flow
+
+**Typical Error Flow**:
+```
+1. API call fails → fetch throws Error
+2. Catch in api.ts → Enrich with HTTP status
+3. Throw enriched error
+4. Catch in component
+5. Pass to ErrorClassifier.classify()
+6. Get UserFacingError instance
+7. Call showError() from useErrorHandler
+8. ErrorHandler determines display type
+9. Render Toast/Modal/Inline component
+10. User sees friendly error + action buttons
+```
+
+**Example**:
+```typescript
+// In SidePanelApp.tsx
+const { showError } = useErrorHandler();
+
+try {
+  await createSession({ client_id, session_type: 'troubleshooting' });
+} catch (error) {
+  // Classify and show user-friendly error
+  showError(error, {
+    operation: 'session_creation',
+    metadata: { clientId: client_id }
+  });
+}
+```
+
+### Auto-Retry Mechanism
+
+**Network Error Retry**:
+```typescript
+async function sendMessageWithRetry(question: string) {
+  const maxRetries = 3;
+  const baseDelay = 1000; // ms
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await processQuery({ query: question });
+    } catch (error) {
+      if (attempt === maxRetries) {
+        showError(error); // Show final error
+        throw error;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      await sleep(baseDelay * Math.pow(2, attempt - 1));
+    }
+  }
+}
+```
+
+### Memory Leak Prevention
+
+**Timeout Cleanup**:
+- All auto-dismiss timeouts tracked in Map
+- Cleanup on dismissError
+- Cleanup on component unmount
+- Prevents memory leaks from abandoned timeouts
+
+**Focus Management**:
+- Modal saves previous focus in ref
+- Restores focus on close
+- Checks element exists in DOM before focusing
+- Clears ref to prevent memory leak
+
+**Race Condition Prevention**:
+- useRef for latest callback references
+- Functional state updates (avoid stale closures)
+- Proper dependency arrays in useEffect
+- Type guards for HTTP errors
+
+### Testing Error Scenarios
+
+**Key Test Scenarios**:
+
+1. **Server Down**:
+   - Stop backend: `pkill -f "python.*faultmaven"`
+   - Try creating new chat
+   - Expect: Toast with "Connection Problem" + auto-retry (3 attempts)
+
+2. **Network Timeout**:
+   - Set Chrome DevTools throttling to "Slow 3G"
+   - Send message, wait 30s
+   - Expect: Toast with "Request Timed Out" + manual retry
+
+3. **Session Expired**:
+   - Delete `authState` from localStorage
+   - Try sending message
+   - Expect: Blocking modal with "Session Expired" + sign in button
+
+4. **Rate Limiting**:
+   - Send 31+ queries in 1 minute
+   - Expect: Toast with "Too Many Requests" + countdown
+
+5. **Optimistic Failure**:
+   - Send message while server down
+   - Expect: Message shows immediately (blue), then inline error (red) after retries fail
+
+**Test Commands**:
+```bash
+pnpm test                    # Run test suite
+pnpm test --watch            # Watch mode
+pnpm compile                 # TypeScript check
 ```
 
 ---

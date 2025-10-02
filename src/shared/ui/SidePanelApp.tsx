@@ -19,6 +19,11 @@ import {
   authManager,
   AuthenticationError
 } from "../../lib/api";
+import { ErrorHandlerProvider, useErrorHandler, useError } from "../../lib/errors";
+import { retryWithBackoff } from "../../lib/utils/retry";
+import { NetworkStatusMonitor } from "../../lib/utils/network-status";
+import { ToastContainer } from "./components/Toast";
+import { ErrorModal } from "./components/ErrorModal";
 import {
   OptimisticIdGenerator,
   IdUtils,
@@ -66,14 +71,26 @@ interface StorageResult {
 // ===== OPTIMISTIC UPDATES SYSTEM =====
 // All optimistic update types, utilities, and managers are now imported from ~lib/optimistic
 
+// Wrapper component that provides error handling context
 export default function SidePanelApp() {
+  return (
+    <ErrorHandlerProvider>
+      <SidePanelAppContent />
+    </ErrorHandlerProvider>
+  );
+}
+
+// Main app content with error handler integration
+function SidePanelAppContent() {
+  const { getErrorsByType, dismissError } = useErrorHandler();
+  const { showError, showErrorWithRetry } = useError();
+
   const [activeTab, setActiveTab] = useState<'copilot' | 'kb'>('copilot');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [conversationTitles, setConversationTitles] = useState<Record<string, string>>({});
   const [titleSources, setTitleSources] = useState<Record<string, 'user' | 'backend' | 'system'>>({});
   const [activeCaseId, setActiveCaseId] = useState<string | undefined>(undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
   const [hasUnsavedNewChat, setHasUnsavedNewChat] = useState(false);
   const [refreshSessions, setRefreshSessions] = useState(0);
   const [pinnedCases, setPinnedCases] = useState<Set<string>>(new Set());
@@ -137,7 +154,7 @@ export default function SidePanelApp() {
       // Operation will be automatically marked as completed or failed by the retry logic
     } catch (error) {
       console.error('[SidePanelApp] ❌ User retry failed:', error);
-      setServerError(`Retry failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showError(error, { operation: 'retry_operation', metadata: { operationId } });
     }
   };
 
@@ -244,7 +261,7 @@ export default function SidePanelApp() {
 
           if (recoveryResult.success) {
             console.log('[SidePanelApp] ✅ Conversation recovery successful:', recoveryResult);
-            setServerError(null); // Clear any previous errors
+            // Error cleared
 
             // Show user feedback about recovery
             if (recoveryResult.recoveredCases > 0) {
@@ -254,7 +271,7 @@ export default function SidePanelApp() {
           } else {
             console.warn('[SidePanelApp] ⚠️ Conversation recovery failed:', recoveryResult);
             if (recoveryResult.errors.length > 0) {
-              setServerError(`Failed to recover conversations: ${recoveryResult.errors[0]}`);
+              showError(`Failed to recover conversations: ${recoveryResult.errors[0]}`);
             }
           }
 
@@ -337,7 +354,7 @@ export default function SidePanelApp() {
 
       } catch (error) {
         console.error('[SidePanelApp] ❌ Persistence loading failed:', error);
-        setServerError(`Failed to load conversations: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        showError(`Failed to load conversations: ${error instanceof Error ? error.message : 'Unknown error'}`);
         setLoading(false);
       }
     };
@@ -503,7 +520,7 @@ export default function SidePanelApp() {
         }
 
         // Do not auto-load sessions list; UI is case-driven
-        setServerError(null);
+        // Error cleared
       } catch (err) {
         console.error('[SidePanelApp] Error initializing session:', err);
         if (err instanceof AuthenticationError) {
@@ -512,7 +529,7 @@ export default function SidePanelApp() {
           setSessionId(null);
           setAuthError('Session expired - please sign in again');
         } else {
-          setServerError("Unable to connect to FaultMaven server. Please check your connection and try again.");
+          showError("Unable to connect to FaultMaven server. Please check your connection and try again.");
           setSessionId(null);
           setHasUnsavedNewChat(false);
         }
@@ -632,7 +649,15 @@ export default function SidePanelApp() {
         setAuthError("Login response missing session_id");
       }
     } catch (e: any) {
-      setAuthError(e?.message || "Login failed");
+      // Use error handler to show toast notification
+      showError(e, {
+        operation: 'login',
+        metadata: { username: loginUsername }
+      });
+
+      // Set inline error message in login form
+      // The error from devLogin is already user-friendly
+      setAuthError(e?.message || "Login failed. Please try again.");
     } finally {
       setLoggingIn(false);
     }
@@ -843,11 +868,22 @@ export default function SidePanelApp() {
     try {
       console.log('[SidePanelApp] 🔄 Starting background case creation...', { optimisticCaseId, title });
 
-      // Ensure we have a session
+      // Ensure we have a session with retry
       let currentSessionId = sessionId;
       if (!currentSessionId) {
-        console.log('[SidePanelApp] No session found, creating new session...');
-        const newSession = await createSession();
+        console.log('[SidePanelApp] No session found, creating new session with retry...');
+
+        const newSession = await retryWithBackoff(
+          () => createSession(),
+          {
+            maxAttempts: 3,
+            initialDelay: 1000,
+            onRetry: (err, attempt, delay) => {
+              console.log(`[SidePanelApp] Session creation attempt ${attempt} failed, retrying in ${delay}ms...`);
+            }
+          }
+        );
+
         currentSessionId = newSession.session_id;
         setSessionId(currentSessionId);
         await browser.storage.local.set({
@@ -916,8 +952,17 @@ export default function SidePanelApp() {
         failed: true
       } : prev);
 
-      // Show error to user but keep optimistic state for retry
-      setServerError(`Failed to create chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Show error to user with retry option using error handler
+      showErrorWithRetry(
+        error,
+        async () => {
+          await createOptimisticCaseInBackground(optimisticCaseId, title);
+        },
+        {
+          operation: 'create_case',
+          metadata: { optimisticCaseId, title }
+        }
+      );
     }
   };
 
@@ -1245,7 +1290,7 @@ export default function SidePanelApp() {
 
     if (!targetCaseId) {
       console.log('[SidePanelApp] No active case and not in new chat mode');
-      setServerError('Please click "New Chat" first');
+      showError('Please click "New Chat" first');
       setSubmitting(false);
       return;
     }
@@ -1550,7 +1595,7 @@ export default function SidePanelApp() {
 
             } else if (!conflict.autoResolvable) {
               console.warn('[SidePanelApp] ⚠️ Manual conflict resolution required');
-              setServerError(`Data conflict detected: ${strategy.userPrompt || 'Please refresh to resolve.'}`);
+              showError(`Data conflict detected: ${strategy.userPrompt || 'Please refresh to resolve.'}`);
               return prev; // Abort reconciliation for manual resolution
             }
           }
@@ -1650,8 +1695,17 @@ export default function SidePanelApp() {
         };
       });
 
-      // Show error to user
-      setServerError(`Failed to submit query: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Show error to user with retry option using error handler
+      showErrorWithRetry(
+        error,
+        async () => {
+          await submitOptimisticQueryInBackground(query, caseId, userMessageId, aiMessageId);
+        },
+        {
+          operation: 'message_submission',
+          metadata: { caseId, query: query.substring(0, 50) }
+        }
+      );
 
     } finally {
       // UNLOCK INPUT: Always unlock input when submission completes (success or failure)
@@ -2062,6 +2116,33 @@ export default function SidePanelApp() {
       <div className="flex h-screen bg-gray-50 text-gray-800 text-sm font-sans">
         {renderMainContent()}
       </div>
+
+      {/* Error Handling UI */}
+      <ToastContainer
+        activeErrors={getErrorsByType('toast')}
+        onDismiss={dismissError}
+        onRetry={async (errorId) => {
+          // Retry logic will be handled by error handler's retry action
+          console.log('[SidePanelApp] Toast retry clicked:', errorId);
+        }}
+        position="top-right"
+      />
+
+      <ErrorModal
+        activeError={getErrorsByType('modal')[0] || null}
+        onAction={async (errorId) => {
+          // Handle modal actions (e.g., redirect to login)
+          console.log('[SidePanelApp] Modal action:', errorId);
+          const modalError = getErrorsByType('modal').find(e => e.id === errorId);
+          if (modalError?.error.category === 'authentication') {
+            // Handle auth errors - could redirect to login
+            await handleLogout();
+          }
+          dismissError(errorId);
+        }}
+      />
+
+      {/* Other Modals */}
       <DocumentDetailsModal
         document={viewingDocument}
         isOpen={isDocumentModalOpen}
@@ -2069,7 +2150,7 @@ export default function SidePanelApp() {
           setIsDocumentModalOpen(false);
           setViewingDocument(null);
         }}
-        onEdit={(doc) => {
+        onEdit={() => {
           setIsDocumentModalOpen(false);
           setViewingDocument(null);
         }}

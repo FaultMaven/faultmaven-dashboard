@@ -116,25 +116,56 @@ async function handleAuthError(): Promise<void> {
 }
 
 /**
- * Enhanced fetch wrapper with auth error handling
+ * Enhanced fetch wrapper with auth error handling and error classification
+ * Enriches errors with HTTP status codes for proper error classification
  */
 async function authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const headers = await getAuthHeaders();
+  try {
+    const headers = await getAuthHeaders();
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...headers,
-      ...(options.headers || {})
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers || {})
+      }
+    });
+
+    // Handle auth errors immediately
+    if (response.status === 401) {
+      await handleAuthError();
+      // handleAuthError throws, but add explicit throw for TypeScript safety
+      throw new Error('Authentication required');
     }
-  });
 
-  // Handle auth errors
-  if (response.status === 401) {
-    await handleAuthError();
+    // Enrich non-OK responses with HTTP status for error classification
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      const error: any = new Error(errorData.detail || `HTTP ${response.status}`);
+      error.name = 'HTTPError';
+      error.status = response.status;
+      error.response = { data: errorData };
+      throw error;
+    }
+
+    return response;
+  } catch (error) {
+    // If already thrown from above (HTTP error), re-throw as-is
+    if (error instanceof Error && 'status' in error) {
+      throw error;
+    }
+
+    // Network errors (ECONNREFUSED, timeout, etc.) - wrap with context
+    const networkError = error instanceof Error ? error : new Error(String(error));
+    networkError.name = 'NetworkError';
+
+    // Add HTTP status if available for better classification
+    if ('status' in (error as any)) {
+      (networkError as any).status = (error as any).status;
+    }
+
+    throw networkError;
   }
-
-  return response;
 }
 
 // ===== Enhanced TypeScript Interfaces for v3.1.0 API =====
@@ -1047,7 +1078,7 @@ export async function heartbeatSession(sessionId: string): Promise<void> {
 export async function generateCaseTitle(
   caseId: string,
   options?: { max_words?: number; hint?: string }
-): Promise<{ title: string }> {
+): Promise<{ title: string; source?: string }> {
   const body: Record<string, any> = {};
   if (options?.max_words) body.max_words = options.max_words;
   if (options?.hint) body.hint = options.hint;
@@ -1065,7 +1096,8 @@ export async function generateCaseTitle(
   }
   const result: TitleResponse = await response.json();
   const t = (result?.title || '').trim();
-  return { title: t }; // Return empty string if backend has insufficient context
+  const source = response.headers.get('x-title-source') || undefined;
+  return { title: t, source }; // source: 'llm', 'fallback', or 'existing'
 }
 
 // ===== Auth types for login/verification =====
@@ -1116,35 +1148,48 @@ export async function devLogin(
   email?: string,
   displayName?: string
 ): Promise<AuthTokenResponse> {
-  const response = await fetch(`${config.apiUrl}/api/v1/auth/dev-login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username,
-      email,
-      display_name: displayName
-    }),
-    credentials: 'include'
-  });
+  try {
+    const response = await fetch(`${config.apiUrl}/api/v1/auth/dev-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username,
+        email,
+        display_name: displayName
+      }),
+      credentials: 'include'
+    });
 
-  if (!response.ok) {
-    const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Login failed: ${response.status}`);
+    if (!response.ok) {
+      const errorData: APIError = await response.json().catch(() => ({}));
+      const error: any = new Error(errorData.detail || `Login failed: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+
+    const authResponse = await response.json();
+
+    // Store auth state using new AuthManager
+    const authState: AuthState = {
+      access_token: authResponse.access_token,
+      token_type: authResponse.token_type,
+      expires_at: Date.now() + (authResponse.expires_in * 1000),
+      user: authResponse.user
+    };
+
+    await authManager.saveAuthState(authState);
+
+    return authResponse;
+  } catch (error) {
+    // Wrap network errors with better messaging
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      const networkError: any = new Error('Unable to connect to server');
+      networkError.name = 'NetworkError';
+      networkError.originalError = error;
+      throw networkError;
+    }
+    throw error;
   }
-
-  const authResponse = await response.json();
-
-  // Store auth state using new AuthManager
-  const authState: AuthState = {
-    access_token: authResponse.access_token,
-    token_type: authResponse.token_type,
-    expires_at: Date.now() + (authResponse.expires_in * 1000),
-    user: authResponse.user
-  };
-
-  await authManager.saveAuthState(authState);
-
-  return authResponse;
 }
 
 // TODO: Backend endpoint /api/v1/auth/session/{session_id} not implemented yet

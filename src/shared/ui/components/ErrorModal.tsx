@@ -1,5 +1,5 @@
 // src/shared/ui/components/ErrorModal.tsx
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { ActiveError } from '../../../lib/errors/useErrorHandler';
 
 interface ErrorModalProps {
@@ -10,6 +10,13 @@ interface ErrorModalProps {
 export const ErrorModal: React.FC<ErrorModalProps> = ({ activeError, onAction }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
+
+  // Stable dismiss handler
+  const handleDismiss = useCallback(() => {
+    if (activeError && activeError.displayOptions.dismissible && onAction) {
+      onAction(activeError.id);
+    }
+  }, [activeError, onAction]);
 
   // Focus management for accessibility
   useEffect(() => {
@@ -27,8 +34,13 @@ export const ErrorModal: React.FC<ErrorModalProps> = ({ activeError, onAction })
         // Restore scroll
         document.body.style.overflow = '';
 
-        // Restore focus
-        previousActiveElement.current?.focus();
+        // Restore focus (only if element still exists in DOM)
+        if (previousActiveElement.current && document.body.contains(previousActiveElement.current)) {
+          previousActiveElement.current.focus();
+        }
+
+        // Clear ref to prevent memory leak
+        previousActiveElement.current = null;
       };
     }
   }, [activeError]);
@@ -59,14 +71,14 @@ export const ErrorModal: React.FC<ErrorModalProps> = ({ activeError, onAction })
       }
 
       // ESC key only works if modal is dismissible
-      if (e.key === 'Escape' && activeError.displayOptions.dismissible) {
+      if (e.key === 'Escape') {
         handleDismiss();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeError]);
+  }, [activeError, handleDismiss]);
 
   if (!activeError) return null;
 
@@ -75,13 +87,6 @@ export const ErrorModal: React.FC<ErrorModalProps> = ({ activeError, onAction })
   const handleAction = async () => {
     if (onAction) {
       await onAction(id);
-    }
-  };
-
-  const handleDismiss = () => {
-    // Only allow dismiss if explicitly allowed
-    if (displayOptions.dismissible && onAction) {
-      onAction(id);
     }
   };
 
@@ -156,7 +161,16 @@ export const ErrorModal: React.FC<ErrorModalProps> = ({ activeError, onAction })
             displayOptions.actions.map((action, idx) => (
               <button
                 key={idx}
-                onClick={action.onClick}
+                onClick={async () => {
+                  // Call the action's onClick if provided, otherwise call the modal's onAction
+                  if (action.onClick && typeof action.onClick === 'function') {
+                    await action.onClick();
+                  }
+                  // Always call the modal's onAction to handle dismissal
+                  if (onAction) {
+                    await onAction(id);
+                  }
+                }}
                 className={`
                   w-full px-4 py-2 text-sm font-medium rounded-lg transition-colors
                   ${action.primary

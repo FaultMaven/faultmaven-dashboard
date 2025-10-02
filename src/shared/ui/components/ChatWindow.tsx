@@ -27,6 +27,9 @@ interface ConversationItem {
   loading?: boolean;
   failed?: boolean;
   pendingOperationId?: string;
+  // Error handling
+  errorMessage?: string;
+  onRetry?: (itemId: string) => void | Promise<void>;
 }
 
 interface UserCase {

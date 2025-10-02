@@ -180,28 +180,12 @@ export function ConversationsList({
     console.log('[ConversationsList] Updating local caseTitles...');
     updateCaseTitle(caseId, title);
 
-    console.log('[ConversationsList] Notifying parent component...');
+    // Notify parent component - parent handles backend sync
+    console.log('[ConversationsList] Notifying parent component (parent will handle backend sync)...');
     onCaseTitleChange?.(caseId, title);
 
-    // Backend sync: attempt to sync with backend (non-blocking)
-    try {
-      // ARCHITECTURAL FIX: Resolve optimistic IDs to real IDs for API calls
-      const resolvedCaseId = isOptimisticId(caseId)
-        ? idMappingManager.getRealId(caseId) || caseId
-        : caseId;
-
-      console.log('[ConversationsList] Attempting backend title sync...', {
-        selectedId: caseId,
-        resolvedId: resolvedCaseId,
-        isOptimistic: isOptimisticId(caseId)
-      });
-
-      await apiUpdateCaseTitle(resolvedCaseId, title);
-      console.log('[ConversationsList] ✅ Backend title sync successful');
-    } catch (error) {
-      console.warn('[ConversationsList] ⚠️ Backend title sync failed (title kept locally):', error);
-      // Don't throw - optimistic update already succeeded, backend sync is supplementary
-    }
+    // NOTE: Backend sync is now handled by parent (SidePanelApp.handleOptimisticTitleUpdate)
+    // This prevents duplicate API calls (previously we called API here AND parent called it)
   };
 
   const handleGenerateTitle = async (caseId: string, sessionIdGuess?: string) => {
@@ -219,8 +203,8 @@ export function ConversationsList({
         isOptimistic: isOptimisticId(caseId)
       });
 
-      const { title } = await generateCaseTitle(resolvedCaseId, { max_words: 8 });
-      console.log('[ConversationsList] API response - title:', title);
+      const { title, source } = await generateCaseTitle(resolvedCaseId, { max_words: 8 });
+      console.log('[ConversationsList] API response - title:', title, 'source:', source);
 
       const newTitle = (title || '').trim();
       if (!newTitle) {
@@ -233,7 +217,13 @@ export function ConversationsList({
       // Update local state only - backend already persisted the title
       updateCaseTitle(caseId, newTitle);
       // Note: No need to call onCaseTitleChange() since backend already persisted the title
-      setTitleGenStatus({ message: "Title generated successfully", type: "success" });
+
+      // Show different messages based on whether title was newly generated or already existed
+      if (source === 'existing') {
+        setTitleGenStatus({ message: "Title set previously", type: "info" });
+      } else {
+        setTitleGenStatus({ message: "Title generated successfully", type: "success" });
+      }
     } catch (e: any) {
       console.error('[ConversationsList] Title generation error:', e);
       const msg = (e?.message || '').toString().toLowerCase();

@@ -1,6 +1,6 @@
 // src/lib/errors/useErrorHandler.tsx
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { ErrorClassifier } from './classifier';
 import {
   UserFacingError,
@@ -54,6 +54,11 @@ const ErrorHandlerContext = createContext<ErrorHandlerContextValue | null>(null)
 export const ErrorHandlerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [errors, setErrors] = useState<ActiveError[]>([]);
   const [retryActions, setRetryActions] = useState<Map<string, () => Promise<void>>>(new Map());
+  const [timeoutIds, setTimeoutIds] = useState<Map<string, NodeJS.Timeout>>(new Map());
+  const [dismissalTimeouts, setDismissalTimeouts] = useState<Map<string, NodeJS.Timeout>>(new Map());
+
+  // Refs to store latest callbacks (prevent stale closures in timeouts)
+  const dismissErrorRef = useRef<((errorId: string) => void) | null>(null);
 
   // Maximum number of simultaneous toast notifications
   const MAX_TOASTS = 3;
@@ -128,20 +133,35 @@ export const ErrorHandlerProvider: React.FC<{ children: React.ReactNode }> = ({ 
       context: userFacingError.context
     });
 
-    // Auto-dismiss if duration specified
-    if (displayOptions.duration && displayOptions.duration > 0) {
-      setTimeout(() => {
-        dismissError(errorId);
-      }, displayOptions.duration);
-    }
-
     return errorId;
-  }, [errors]);
+  }, []);
 
   /**
    * Dismiss an error
    */
   const dismissError = useCallback((errorId: string) => {
+    // Clear any pending auto-dismiss timeout
+    setTimeoutIds(prev => {
+      const timeoutId = prev.get(errorId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      const next = new Map(prev);
+      next.delete(errorId);
+      return next;
+    });
+
+    // Clear existing dismissal timeout if any (prevents race condition)
+    setDismissalTimeouts(prev => {
+      const existingTimeout = prev.get(errorId);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+      }
+      const next = new Map(prev);
+      next.delete(errorId);
+      return next;
+    });
+
     setErrors(prev => prev.map(e =>
       e.id === errorId ? { ...e, dismissed: true } : e
     ));
@@ -154,9 +174,16 @@ export const ErrorHandlerProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
 
     // Remove dismissed errors after animation (300ms)
-    setTimeout(() => {
+    const dismissalTimeoutId = setTimeout(() => {
       setErrors(prev => prev.filter(e => e.id !== errorId));
+      setDismissalTimeouts(prev => {
+        const next = new Map(prev);
+        next.delete(errorId);
+        return next;
+      });
     }, 300);
+
+    setDismissalTimeouts(prev => new Map(prev).set(errorId, dismissalTimeoutId));
   }, []);
 
   /**
@@ -204,6 +231,40 @@ export const ErrorHandlerProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     return () => clearInterval(cleanup);
   }, []);
+
+  // Keep dismissErrorRef up-to-date
+  useEffect(() => {
+    dismissErrorRef.current = dismissError;
+  }, [dismissError]);
+
+  // Auto-dismiss errors with duration specified
+  useEffect(() => {
+    errors.forEach(error => {
+      if (error.dismissed) return;
+
+      const duration = error.displayOptions.duration;
+      if (duration && duration > 0 && !timeoutIds.has(error.id)) {
+        const timeoutId = setTimeout(() => {
+          // Use ref to get latest dismissError (avoids stale closure)
+          if (dismissErrorRef.current) {
+            dismissErrorRef.current(error.id);
+          }
+        }, duration);
+
+        setTimeoutIds(prev => new Map(prev).set(error.id, timeoutId));
+      }
+    });
+  }, [errors, timeoutIds]);
+
+  // Cleanup all timeouts on unmount (prevent memory leaks)
+  useEffect(() => {
+    return () => {
+      // Clear all auto-dismiss timeouts
+      timeoutIds.forEach(timeoutId => clearTimeout(timeoutId));
+      // Clear all dismissal animation timeouts
+      dismissalTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    };
+  }, [timeoutIds, dismissalTimeouts]);
 
   const value: ErrorHandlerContextValue = {
     errors,

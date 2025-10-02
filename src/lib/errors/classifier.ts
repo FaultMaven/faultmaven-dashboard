@@ -19,6 +19,17 @@ import { AuthenticationError as ApiAuthError } from '../api';
  */
 export class ErrorClassifier {
   /**
+   * Type guard for HTTP errors
+   */
+  private static isHttpError(error: unknown): error is Error & { status: number; response?: any } {
+    return (
+      error instanceof Error &&
+      'status' in error &&
+      typeof (error as any).status === 'number'
+    );
+  }
+
+  /**
    * Converts any error into a UserFacingError with appropriate messaging
    */
   static classify(error: unknown, context?: ErrorContext): UserFacingError {
@@ -36,9 +47,8 @@ export class ErrorClassifier {
     }
 
     // HTTP Status-based classification
-    if ('status' in err && typeof (err as any).status === 'number') {
-      const status = (err as any).status;
-      return this.classifyHttpError(status, err, context);
+    if (this.isHttpError(err)) {
+      return this.classifyHttpError(err.status, err, context);
     }
 
     // Network errors (fetch failures)
@@ -125,9 +135,12 @@ export class ErrorClassifier {
       'no internet'
     ];
 
-    return networkIndicators.some(indicator => message.includes(indicator)) ||
-           error.name === 'NetworkError' ||
-           error.name === 'TypeError' && message.includes('fetch');
+    // Explicit checks for clarity
+    const hasNetworkIndicator = networkIndicators.some(indicator => message.includes(indicator));
+    const isNetworkErrorType = error.name === 'NetworkError';
+    const isTypeErrorWithFetch = error.name === 'TypeError' && message.includes('fetch');
+
+    return hasNetworkIndicator || isNetworkErrorType || isTypeErrorWithFetch;
   }
 
   /**

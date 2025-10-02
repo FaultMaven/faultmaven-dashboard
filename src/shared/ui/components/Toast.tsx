@@ -1,5 +1,5 @@
 // src/shared/ui/components/Toast.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, memo, useCallback } from 'react';
 import { ActiveError } from '../../../lib/errors/useErrorHandler';
 
 interface ToastProps {
@@ -8,16 +8,21 @@ interface ToastProps {
   onRetry?: (id: string) => Promise<void>;
 }
 
-const Toast: React.FC<ToastProps> = ({ activeError, onDismiss, onRetry }) => {
+const Toast: React.FC<ToastProps> = memo(({ activeError, onDismiss, onRetry }) => {
   const [isExiting, setIsExiting] = useState(false);
   const { error, displayOptions, id } = activeError;
 
-  const handleDismiss = () => {
+  // Check for reduced motion preference
+  const prefersReducedMotion = typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+
+  const handleDismiss = useCallback(() => {
     setIsExiting(true);
     setTimeout(() => {
       onDismiss(id);
-    }, 300); // Animation duration
-  };
+    }, prefersReducedMotion ? 0 : 300); // Skip animation if user prefers reduced motion
+  }, [id, onDismiss, prefersReducedMotion]);
 
   const handleRetry = async () => {
     if (onRetry) {
@@ -144,7 +149,9 @@ const Toast: React.FC<ToastProps> = ({ activeError, onDismiss, onRetry }) => {
       </div>
     </div>
   );
-};
+});
+
+Toast.displayName = 'Toast';
 
 interface ToastContainerProps {
   activeErrors: ActiveError[];
