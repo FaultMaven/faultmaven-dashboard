@@ -1753,10 +1753,108 @@ function SidePanelAppContent() {
     try {
       setLoading(true);
 
-      if (!activeCaseId || !sessionId) {
+      if (!sessionId) {
         return {
           success: false,
-          message: "Please create a case first"
+          message: "Please log in first"
+        };
+      }
+
+      // Ensure we have an active case (create optimistically if needed)
+      let targetCaseId = activeCaseId;
+
+      // If we're in "new unsaved chat" mode, create optimistic case immediately
+      if (!targetCaseId && hasUnsavedNewChat) {
+        console.log('[SidePanelApp] 🆕 Creating optimistic case for new chat with first data upload');
+
+        // Generate optimistic case ID and timestamp title immediately
+        const optimisticCaseId = OptimisticIdGenerator.generateCaseId();
+        const chatTitle = IdUtils.generateChatTitle();
+        const caseTimestamp = new Date().toISOString();
+
+        // Create optimistic case object
+        const optimisticCase: OptimisticUserCase = {
+          case_id: optimisticCaseId,
+          title: chatTitle,
+          status: 'active',
+          created_at: caseTimestamp,
+          updated_at: caseTimestamp,
+          message_count: 0,
+          optimistic: true,
+          failed: false,
+          pendingOperationId: optimisticCaseId,
+          originalId: optimisticCaseId
+        };
+
+        // IMMEDIATE UI UPDATE: Create optimistic case (0ms response)
+        setActiveCaseId(optimisticCaseId);
+        setActiveCase(optimisticCase);
+        setOptimisticCases(prev => [...prev, optimisticCase]);
+        setConversationTitles(prev => ({
+          ...prev,
+          [optimisticCaseId]: chatTitle
+        }));
+        setTitleSources(prev => ({
+          ...prev,
+          [optimisticCaseId]: 'system'
+        }));
+        setConversations(prev => ({
+          ...prev,
+          [optimisticCaseId]: []
+        }));
+        setHasUnsavedNewChat(false);
+
+        targetCaseId = optimisticCaseId;
+
+        // Register case creation operation for rollback/retry tracking
+        const caseCreationOperation: PendingOperation = {
+          id: optimisticCaseId,
+          type: 'create_case',
+          status: 'pending',
+          optimisticData: { case_id: optimisticCaseId, title: chatTitle, timestamp: caseTimestamp },
+          rollbackFn: () => {
+            console.log('[SidePanelApp] 🔄 Rolling back failed case creation from data upload');
+            setActiveCaseId(undefined);
+            setActiveCase(null);
+            setOptimisticCases(prev => prev.filter(c => c.case_id !== optimisticCaseId));
+            setConversationTitles(prev => {
+              const updated = { ...prev };
+              delete updated[optimisticCaseId];
+              return updated;
+            });
+            setTitleSources(prev => {
+              const updated = { ...prev };
+              delete updated[optimisticCaseId];
+              return updated;
+            });
+            setConversations(prev => {
+              const updated = { ...prev };
+              delete updated[optimisticCaseId];
+              return updated;
+            });
+            idMappingManager.removeMapping(optimisticCaseId);
+            setHasUnsavedNewChat(true);
+          },
+          retryFn: async () => {
+            console.log('[SidePanelApp] 🔄 Retrying case creation from data upload');
+            await createOptimisticCaseInBackground(optimisticCaseId, chatTitle);
+          },
+          createdAt: Date.now()
+        };
+
+        pendingOpsManager.add(caseCreationOperation);
+
+        // Background API call (non-blocking) - will reconcile IDs later
+        createOptimisticCaseInBackground(optimisticCaseId, chatTitle);
+
+        console.log('[SidePanelApp] ✅ Optimistic case created for data upload:', optimisticCaseId);
+      }
+
+      if (!targetCaseId) {
+        console.log('[SidePanelApp] No active case and not in new chat mode');
+        return {
+          success: false,
+          message: 'Please click "New Chat" first'
         };
       }
 
@@ -1792,7 +1890,7 @@ function SidePanelAppContent() {
       }
 
       const uploadResponse = await uploadDataToCase(
-        activeCaseId,
+        targetCaseId,
         sessionId,
         fileToUpload,
         sourceMetadata
@@ -1833,7 +1931,7 @@ function SidePanelAppContent() {
       // Update conversation with both messages
       setConversations(prev => ({
         ...prev,
-        [activeCaseId]: [...(prev[activeCaseId] || []), userMessage, aiMessage]
+        [targetCaseId]: [...(prev[targetCaseId] || []), userMessage, aiMessage]
       }));
 
       console.log('[SidePanelApp] Data upload completed with conversation messages:', {
