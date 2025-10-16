@@ -21,7 +21,7 @@ export default defineContentScript({
           console.log("[page-content.content.ts] Extracted outerHTML (snippet):", pageContent.substring(0, 100) + "...");
           sendResponse({
             status: "success",
-            data: pageContent,
+            content: pageContent,  // Changed from 'data' to 'content'
             url: window.location.href
           });
         } catch (e: any) {

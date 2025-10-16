@@ -30,6 +30,7 @@ export default defineConfig({
       "storage", "sidePanel", "activeTab", "tabs", "scripting"
     ],
     host_permissions: [
+      "<all_urls>",  // Required for content script auto-injection on all pages
       "https://api.faultmaven.ai/*",
       "http://api.faultmaven.local:8000/*"
     ],
