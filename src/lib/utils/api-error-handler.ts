@@ -1,0 +1,169 @@
+/**
+ * Centralized API Error Handler
+ *
+ * Provides consistent error detection and user-friendly messages
+ * for all API operations across the application.
+ */
+
+import { AuthenticationError } from '../api';
+import { createLogger } from './logger';
+
+const log = createLogger('APIErrorHandler');
+
+export enum ErrorType {
+  AUTH = 'auth',
+  NETWORK = 'network',
+  SERVER = 'server'
+}
+
+export interface ErrorInfo {
+  type: ErrorType;
+  userMessage: string;
+  technicalMessage: string;
+  shouldRetry: boolean;
+  shouldLogout: boolean;
+}
+
+/**
+ * Classifies an error and returns user-friendly information
+ */
+export function classifyError(error: unknown, context?: string): ErrorInfo {
+  const contextPrefix = context ? `[${context}] ` : '';
+
+  // 1. Authentication Error
+  if (error instanceof AuthenticationError ||
+      (error instanceof Error && error.name === 'AuthenticationError')) {
+    log.warn(`${contextPrefix}Auth error detected`, error);
+
+    return {
+      type: ErrorType.AUTH,
+      userMessage: '🔒 Your session has expired. Please log in again to continue.',
+      technicalMessage: error instanceof Error ? error.message : 'Authentication required',
+      shouldRetry: false,
+      shouldLogout: true
+    };
+  }
+
+  // 2. Network Error (connection issues, timeout, DNS failure)
+  if (error instanceof Error && error.name === 'NetworkError') {
+    log.warn(`${contextPrefix}Network error detected`, error);
+
+    return {
+      type: ErrorType.NETWORK,
+      userMessage: '🌐 Unable to connect to server. Please check your internet connection and try again.',
+      technicalMessage: error.message,
+      shouldRetry: true,
+      shouldLogout: false
+    };
+  }
+
+  // 3. Check for network errors by error message
+  if (error instanceof Error) {
+    const errorMsg = error.message.toLowerCase();
+
+    // Network connectivity issues
+    if (errorMsg.includes('network') ||
+        errorMsg.includes('fetch') ||
+        errorMsg.includes('connection') ||
+        errorMsg.includes('timeout') ||
+        errorMsg.includes('connect to server')) {
+      log.warn(`${contextPrefix}Network error detected by message`, error);
+
+      return {
+        type: ErrorType.NETWORK,
+        userMessage: '🌐 Unable to connect to server. Please check your internet connection and try again.',
+        technicalMessage: error.message,
+        shouldRetry: true,
+        shouldLogout: false
+      };
+    }
+
+    // Session/auth issues (catch auth errors that came as 500)
+    if (errorMsg.includes('token') ||
+        errorMsg.includes('authentication') ||
+        errorMsg.includes('unauthorized') ||
+        errorMsg.includes('session expired') ||
+        errorMsg.includes('please sign in')) {
+      log.warn(`${contextPrefix}Auth error detected by message`, error);
+
+      return {
+        type: ErrorType.AUTH,
+        userMessage: '🔒 Your session has expired. Please log in again.',
+        technicalMessage: error.message,
+        shouldRetry: false,
+        shouldLogout: true
+      };
+    }
+  }
+
+  // 4. Server Error (500, 502, 503, etc.) - everything else
+  log.error(`${contextPrefix}Server error`, error);
+
+  const technicalMessage = error instanceof Error ? error.message : String(error);
+
+  return {
+    type: ErrorType.SERVER,
+    userMessage: '⚠️ Server encountered an error. Please try again in a moment.',
+    technicalMessage,
+    shouldRetry: true,
+    shouldLogout: false
+  };
+}
+
+/**
+ * Formats error message for display in chat/conversation
+ */
+export function formatErrorForChat(errorInfo: ErrorInfo): string {
+  switch (errorInfo.type) {
+    case ErrorType.AUTH:
+      return '🔒 Your session has expired. Please log in again to continue.';
+
+    case ErrorType.NETWORK:
+      return '🌐 Network error. Please check your connection and try again.';
+
+    case ErrorType.SERVER:
+      return `⚠️ Server error. Please try again.\n\nDetails: ${errorInfo.technicalMessage}`;
+
+    default:
+      return '❌ An unexpected error occurred. Please try again.';
+  }
+}
+
+/**
+ * Formats error message for display in toast/alert
+ */
+export function formatErrorForAlert(errorInfo: ErrorInfo): string {
+  return errorInfo.userMessage;
+}
+
+/**
+ * Handles API errors with appropriate UI feedback
+ */
+export function handleApiError(
+  error: unknown,
+  context: string,
+  callbacks: {
+    showError: (message: string) => void;
+    showErrorWithRetry?: (error: unknown, retryFn: () => Promise<void>, context?: any) => void;
+    onAuthError?: () => void;
+  }
+): ErrorInfo {
+  const errorInfo = classifyError(error, context);
+
+  // Handle authentication errors
+  if (errorInfo.shouldLogout && callbacks.onAuthError) {
+    callbacks.onAuthError();
+    callbacks.showError(errorInfo.userMessage);
+  }
+  // Handle retryable errors
+  else if (errorInfo.shouldRetry && callbacks.showErrorWithRetry) {
+    // Note: Retry function needs to be provided by caller
+    callbacks.showError(errorInfo.userMessage);
+  }
+  // Handle non-retryable errors
+  else {
+    callbacks.showError(errorInfo.userMessage);
+  }
+
+  return errorInfo;
+}

@@ -110,6 +110,7 @@ describe('API Functions', () => {
       const mockFile = new File(['test content'], 'test.txt', { type: 'text/plain' });
       const mockResponse: UploadedData = {
         data_id: 'data-123',
+        case_id: 'case-456',
         session_id: 'session-123',
         data_type: 'log_file',
         content: 'test content',
@@ -147,6 +148,7 @@ describe('API Functions', () => {
     it('uploads text data successfully', async () => {
       const mockResponse: UploadedData = {
         data_id: 'data-123',
+        case_id: 'case-456',
         session_id: 'session-123',
         data_type: 'documentation',
         content: 'test log content',
@@ -170,6 +172,7 @@ describe('API Functions', () => {
     it('uploads page content successfully', async () => {
       const mockResponse: UploadedData = {
         data_id: 'data-123',
+        case_id: 'case-456',
         session_id: 'session-123',
         data_type: 'documentation',
         content: 'page content',

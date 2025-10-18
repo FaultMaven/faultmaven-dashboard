@@ -59,14 +59,18 @@ export class PersistenceManager {
   private static readonly SYNC_TIMESTAMP_KEY = 'faultmaven_last_sync';
   private static readonly RECOVERY_FLAG_KEY = 'faultmaven_recovery_in_progress';
   private static readonly VERSION_KEY = 'faultmaven_extension_version';
+  private static readonly RELOAD_FLAG_KEY = 'faultmaven_reload_detected';
+  private static readonly SESSION_ID_KEY = 'faultmaven_session_id';
 
   // Extension version for detecting updates/reloads
   private static readonly CURRENT_VERSION = browser.runtime.getManifest?.()?.version || '1.0.0';
 
   /**
-   * Production-optimized reload detection based on simple business rules:
-   * 1. If user has saved chats (titles exist) but ANY conversation is empty → Extension reload
-   * 2. Extension version changed → Extension update
+   * Robust reload detection using lifecycle flags and structural analysis:
+   * 1. Explicit reload flag set during extension lifecycle events
+   * 2. Extension version mismatch (update scenario)
+   * 3. Session ID mismatch (runtime context changed)
+   * 4. Structural inconsistency (titles exist but no conversations)
    */
   static async detectExtensionReload(): Promise<boolean> {
     try {
@@ -79,47 +83,56 @@ export class PersistenceManager {
       const stored = await browser.storage.local.get([
         'conversationTitles',
         'conversations',
-        PersistenceManager.VERSION_KEY
+        PersistenceManager.VERSION_KEY,
+        PersistenceManager.RELOAD_FLAG_KEY,
+        PersistenceManager.SESSION_ID_KEY
       ]);
 
-      // Primary indicator: Titles exist but conversations only contain default/welcome content
-      const hasAnyTitles = stored.conversationTitles && Object.keys(stored.conversationTitles).length > 0;
+      // Method 1: Explicit reload flag (most reliable)
+      const hasReloadFlag = !!stored[PersistenceManager.RELOAD_FLAG_KEY];
 
-      // TEMPORARY: Check if conversations only contain default welcome messages (bandaid solution)
-      const hasOnlyDefaultContent = stored.conversations &&
-                                   Object.values(stored.conversations).every(conv => {
-                                     if (!Array.isArray(conv) || conv.length === 0) {
-                                       return true; // Empty = default state
-                                     }
-
-                                     // Check if all messages are default welcome messages (BRITTLE - for testing only)
-                                     return conv.every(msg =>
-                                       !msg.question || // No user question
-                                       msg.question.trim() === '' || // Empty question
-                                       (msg.response && msg.response.includes('Welcome to FaultMaven Copilot')) // Default welcome
-                                     );
-                                   });
-
-      // Secondary indicator: Version mismatch (extension update)
+      // Method 2: Version mismatch (extension update)
       const versionMismatch = stored[PersistenceManager.VERSION_KEY] !== PersistenceManager.CURRENT_VERSION;
 
-      // Recovery needed if:
-      // 1. User has saved chats but conversations only contain default content (main reload indicator)
-      // 2. Extension version changed (update scenario)
-      const shouldRecover = (hasAnyTitles && hasOnlyDefaultContent) || versionMismatch;
+      // Method 3: Session ID mismatch (runtime context changed)
+      const currentSessionId = browser.runtime.id;
+      const sessionMismatch = stored[PersistenceManager.SESSION_ID_KEY] &&
+                             stored[PersistenceManager.SESSION_ID_KEY] !== currentSessionId;
 
-      console.log('[PersistenceManager] Enhanced reload detection (TESTING):', {
+      // Method 4: Structural inconsistency (titles exist but conversations missing/empty)
+      const hasAnyTitles = stored.conversationTitles && Object.keys(stored.conversationTitles).length > 0;
+      const hasNoConversations = !stored.conversations ||
+                                 Object.keys(stored.conversations).length === 0 ||
+                                 Object.values(stored.conversations).every((conv: any) =>
+                                   !Array.isArray(conv) || conv.length === 0
+                                 );
+      const structuralMismatch = hasAnyTitles && hasNoConversations;
+
+      // Recovery needed if ANY indicator is true
+      const shouldRecover = hasReloadFlag || versionMismatch || sessionMismatch || structuralMismatch;
+
+      console.log('[PersistenceManager] Reload detection:', {
         isAuthenticated,
-        hasAnyTitles,
-        hasOnlyDefaultContent,
-        versionMismatch,
         shouldRecover,
-        titleCount: stored.conversationTitles ? Object.keys(stored.conversationTitles).length : 0,
-        conversationKeys: stored.conversations ? Object.keys(stored.conversations) : [],
-        conversationSample: stored.conversations ? Object.values(stored.conversations)[0] : null,
+        indicators: {
+          reloadFlag: hasReloadFlag,
+          versionMismatch,
+          sessionMismatch,
+          structuralMismatch
+        },
+        state: {
+          titleCount: stored.conversationTitles ? Object.keys(stored.conversationTitles).length : 0,
+          conversationCount: stored.conversations ? Object.keys(stored.conversations).length : 0,
+          version: stored[PersistenceManager.VERSION_KEY],
+          currentVersion: PersistenceManager.CURRENT_VERSION,
+          sessionId: stored[PersistenceManager.SESSION_ID_KEY],
+          currentSessionId
+        },
         reason: shouldRecover ? (
+          hasReloadFlag ? 'explicit_reload_flag' :
           versionMismatch ? 'version_mismatch' :
-          'titles_exist_but_only_default_content'
+          sessionMismatch ? 'session_id_mismatch' :
+          'structural_inconsistency'
         ) : 'no_recovery_needed'
       });
 
@@ -128,6 +141,34 @@ export class PersistenceManager {
     } catch (error) {
       console.warn('[PersistenceManager] Detection error - defaulting to safe recovery:', error);
       return true;
+    }
+  }
+
+  /**
+   * Sets reload flag (called during extension lifecycle events)
+   * Should be called from background script or service worker on install/update
+   */
+  static async markReloadDetected(): Promise<void> {
+    try {
+      await browser.storage.local.set({
+        [PersistenceManager.RELOAD_FLAG_KEY]: true,
+        [PersistenceManager.SESSION_ID_KEY]: browser.runtime.id
+      });
+      console.log('[PersistenceManager] Reload flag set');
+    } catch (error) {
+      console.warn('[PersistenceManager] Failed to set reload flag:', error);
+    }
+  }
+
+  /**
+   * Clears reload flag after successful recovery
+   */
+  static async clearReloadFlag(): Promise<void> {
+    try {
+      await browser.storage.local.remove([PersistenceManager.RELOAD_FLAG_KEY]);
+      console.log('[PersistenceManager] Reload flag cleared');
+    } catch (error) {
+      console.warn('[PersistenceManager] Failed to clear reload flag:', error);
     }
   }
 
@@ -179,9 +220,12 @@ export class PersistenceManager {
       const recoveredTitleSources: Record<string, 'user' | 'backend' | 'system'> = {};
       const recoveredConversations: Record<string, OptimisticConversationItem[]> = {};
 
-      // Process each case
+      // PARALLEL RECOVERY: Fetch conversations with concurrency limit to avoid overwhelming the API
+      const CONCURRENCY_LIMIT = 5; // Process 5 cases at a time
       let conversationCount = 0;
-      for (const userCase of cases) {
+
+      // Helper function to process a single case
+      const processCase = async (userCase: UserCase) => {
         try {
           console.log('[PersistenceManager] 🔄 Recovering case:', userCase.case_id);
 
@@ -306,6 +350,7 @@ export class PersistenceManager {
           }
 
           result.recoveredCases++;
+          return { success: true, caseId: userCase.case_id };
 
         } catch (error) {
           console.warn('[PersistenceManager] ⚠️ Failed to recover case:', userCase.case_id, error);
@@ -314,8 +359,29 @@ export class PersistenceManager {
           // Still add the case title even if conversation failed
           recoveredTitles[userCase.case_id] = userCase.title || `Chat-${new Date(userCase.created_at || Date.now()).toLocaleString()}`;
           recoveredTitleSources[userCase.case_id] = 'backend';
+          return { success: false, caseId: userCase.case_id, error };
         }
+      };
+
+      // Parallel processing with concurrency limit
+      console.log('[PersistenceManager] 📦 Processing cases in parallel (concurrency:', CONCURRENCY_LIMIT, ')');
+      const results: Array<{ success: boolean; caseId: string; error?: any }> = [];
+
+      for (let i = 0; i < cases.length; i += CONCURRENCY_LIMIT) {
+        const batch = cases.slice(i, i + CONCURRENCY_LIMIT);
+        console.log(`[PersistenceManager] 🔄 Processing batch ${Math.floor(i / CONCURRENCY_LIMIT) + 1}/${Math.ceil(cases.length / CONCURRENCY_LIMIT)}`);
+
+        const batchResults = await Promise.all(batch.map(processCase));
+        results.push(...batchResults);
       }
+
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.filter(r => !r.success).length;
+      console.log('[PersistenceManager] ✅ Parallel processing complete:', {
+        total: results.length,
+        successful: successCount,
+        failed: failureCount
+      });
 
       // Save recovered data to local storage
       console.log('[PersistenceManager] 💾 Saving recovered data to local storage...');
@@ -324,8 +390,12 @@ export class PersistenceManager {
         titleSources: recoveredTitleSources,
         conversations: recoveredConversations,
         [PersistenceManager.SYNC_TIMESTAMP_KEY]: Date.now(),
-        [PersistenceManager.VERSION_KEY]: PersistenceManager.CURRENT_VERSION
+        [PersistenceManager.VERSION_KEY]: PersistenceManager.CURRENT_VERSION,
+        [PersistenceManager.SESSION_ID_KEY]: browser.runtime.id
       });
+
+      // Clear reload flag after successful recovery
+      await PersistenceManager.clearReloadFlag();
 
       // Success metrics - use the count from the result object which tracks actual recovered conversations
       result.success = true;
@@ -365,7 +435,8 @@ export class PersistenceManager {
     try {
       await browser.storage.local.set({
         [PersistenceManager.SYNC_TIMESTAMP_KEY]: Date.now(),
-        [PersistenceManager.VERSION_KEY]: PersistenceManager.CURRENT_VERSION
+        [PersistenceManager.VERSION_KEY]: PersistenceManager.CURRENT_VERSION,
+        [PersistenceManager.SESSION_ID_KEY]: browser.runtime.id
       });
     } catch (error) {
       console.warn('[PersistenceManager] Failed to mark sync complete:', error);
@@ -478,7 +549,9 @@ export class PersistenceManager {
         'idMappings',
         PersistenceManager.SYNC_TIMESTAMP_KEY,
         PersistenceManager.VERSION_KEY,
-        PersistenceManager.RECOVERY_FLAG_KEY
+        PersistenceManager.RECOVERY_FLAG_KEY,
+        PersistenceManager.RELOAD_FLAG_KEY,
+        PersistenceManager.SESSION_ID_KEY
       ]);
       console.log('[PersistenceManager] All persistence data cleared');
     } catch (error) {

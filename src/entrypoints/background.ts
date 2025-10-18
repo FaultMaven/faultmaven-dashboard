@@ -1,6 +1,7 @@
 // src/entrypoints/background.ts
 import { createSession, deleteSession } from '../lib/api';
 import { clientSessionManager } from '../lib/session/client-session-manager';
+import { PersistenceManager } from '../lib/utils/persistence-manager';
 import { browser } from 'wxt/browser';
 
 export default defineBackground({
@@ -124,8 +125,15 @@ export default defineBackground({
     });
 
     // === Installation Handler ===
-    browser.runtime.onInstalled.addListener((details: any) => {
+    browser.runtime.onInstalled.addListener(async (details: any) => {
       console.log("[background.ts] Extension installed/updated:", details);
+
+      // Set reload flag for conversation recovery
+      // This triggers recovery on next app load if user had existing conversations
+      if (details.reason === 'install' || details.reason === 'update') {
+        await PersistenceManager.markReloadDetected();
+        console.log("[background.ts] Reload flag set - will trigger recovery on next load");
+      }
     });
   }
 });

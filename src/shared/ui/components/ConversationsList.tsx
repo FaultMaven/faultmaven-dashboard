@@ -60,6 +60,9 @@ export function ConversationsList({
   const [caseTitles, setCaseTitles] = useState<Record<string, string>>({});
   const [titleGenStatus, setTitleGenStatus] = useState<{ message: string; type: 'success' | 'info' | 'error' | '' }>({ message: "", type: "" });
 
+  // Track recently deleted cases to prevent them from reappearing due to backend issues
+  const [recentlyDeleted, setRecentlyDeleted] = useState<Set<string>>(new Set());
+
   useEffect(() => { loadCases(); }, []);
   useEffect(() => { if (refreshTrigger > 0) loadCases(); }, [refreshTrigger]);
 
@@ -121,15 +124,26 @@ export function ConversationsList({
       // DEFENSIVE: Strictly sanitize backend data
       const sanitizedRealCases = sanitizeBackendCases(list || [], 'loadCases');
 
+      // Filter out recently deleted cases (defensive against backend bugs)
+      const filteredCases = sanitizedRealCases.filter(c => !recentlyDeleted.has(c.case_id));
+
+      if (filteredCases.length < sanitizedRealCases.length) {
+        console.log('[ConversationsList] 🛡️ Filtered out recently deleted cases:', {
+          total: sanitizedRealCases.length,
+          filtered: filteredCases.length,
+          removed: Array.from(recentlyDeleted)
+        });
+      }
+
       console.log('[ConversationsList] ✅ SANITIZED backend cases:', {
         received: list?.length || 0,
-        sanitized: sanitizedRealCases.length,
-        caseIds: sanitizedRealCases.map(c => c.case_id)
+        sanitized: filteredCases.length,
+        caseIds: filteredCases.map(c => c.case_id)
       });
 
-      const sorted = mergeWithPending(sanitizedRealCases);
-      setCases(sanitizedRealCases); // Store only real cases in state
-      console.log('[ConversationsList] Backend cases stored in state:', sanitizedRealCases.map(c => c.case_id));
+      const sorted = mergeWithPending(filteredCases);
+      setCases(filteredCases); // Store only real cases in state
+      console.log('[ConversationsList] Backend cases stored in state:', filteredCases.map(c => c.case_id));
 
       // ARCHITECTURAL FIX: Notify parent with ONLY real backend cases (no optimistic contamination)
       onCasesLoaded?.(sanitizedRealCases);
@@ -239,6 +253,20 @@ export function ConversationsList({
 
   const handleDeleteCase = async (caseId: string) => {
     try {
+      // Add to recently deleted set BEFORE API call (defensive filtering)
+      setRecentlyDeleted(prev => new Set(prev).add(caseId));
+      console.log('[ConversationsList] 🛡️ Added to recentlyDeleted:', caseId);
+
+      // Auto-clear from recentlyDeleted after 5 seconds
+      setTimeout(() => {
+        setRecentlyDeleted(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(caseId);
+          console.log('[ConversationsList] 🧹 Auto-cleared from recentlyDeleted:', caseId);
+          return newSet;
+        });
+      }, 5000);
+
       await deleteCaseApi(caseId);
       setCases(prev => {
         const remaining = prev.filter(c => c.case_id !== caseId);
@@ -262,6 +290,12 @@ export function ConversationsList({
       try { await loadCases(); } catch {}
     } catch (e) {
       console.error('[ConversationsList] Delete failed:', e);
+      // Remove from recentlyDeleted if deletion failed
+      setRecentlyDeleted(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(caseId);
+        return newSet;
+      });
     }
   };
 

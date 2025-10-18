@@ -1,9 +1,9 @@
 import React from "react";
-import { KbDocument } from "../../../lib/api";
+import { KnowledgeDocument } from "../../../lib/api";
 import DocumentRow from "./DocumentRow";
 
 interface DocumentTableProps {
-  documents: KbDocument[];
+  documents: KnowledgeDocument[];
   onDelete: (id: string) => void;
   loading: boolean;
 }

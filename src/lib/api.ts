@@ -106,6 +106,16 @@ export class AuthenticationError extends Error {
   }
 }
 
+/**
+ * Session expiration error for automatic session refresh
+ */
+export class SessionExpiredError extends Error {
+  constructor(message: string = 'Session expired') {
+    super(message);
+    this.name = 'SessionExpiredError';
+  }
+}
+
 async function handleAuthError(): Promise<void> {
   // Clear stored auth data
   await authManager.clearAuthState();
@@ -116,9 +126,69 @@ async function handleAuthError(): Promise<void> {
 }
 
 /**
+ * Handle session expiration by clearing stale session and triggering refresh
+ */
+async function handleSessionExpired(): Promise<void> {
+  // Clear stale session from storage
+  if (typeof browser !== 'undefined' && browser.storage) {
+    await browser.storage.local.remove(['sessionId', 'sessionCreatedAt', 'sessionResumed']);
+  }
+
+  console.warn('[API] Session expired - cleared from storage');
+  throw new SessionExpiredError('Session expired - please refresh');
+}
+
+/**
  * Enhanced fetch wrapper with auth error handling and error classification
  * Enriches errors with HTTP status codes for proper error classification
  */
+/**
+ * Wrapper for authenticated fetch with automatic session refresh on expiration
+ *
+ * Session Expiration Handling (Option C):
+ * 1. If backend returns 401 with SESSION_EXPIRED error code
+ * 2. Clear stale session_id from storage
+ * 3. Call createSession() to get fresh session (uses client_id for resumption)
+ * 4. Retry the request once with new session_id
+ *
+ * This implements the frontend requirement from backend team:
+ * - Handle 401 responses with SESSION_EXPIRED code
+ * - Automatically refresh session and retry
+ * - Maintain client_id for session resumption
+ *
+ * @param url - API endpoint URL
+ * @param options - Fetch options
+ * @returns Response from API
+ * @throws SessionExpiredError if session refresh fails
+ * @throws AuthenticationError if auth is invalid
+ */
+async function authenticatedFetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
+  try {
+    return await authenticatedFetch(url, options);
+  } catch (error) {
+    // If session expired, refresh and retry once
+    if (error instanceof SessionExpiredError ||
+        (error instanceof Error && error.name === 'SessionExpiredError')) {
+      console.log('[API] Session expired, attempting refresh and retry...');
+
+      try {
+        // Get fresh session (this will call createSession which uses client_id)
+        const newSession = await createSession();
+        console.log('[API] Fresh session obtained:', newSession.session_id);
+
+        // Retry the request with the same options
+        return await authenticatedFetch(url, options);
+      } catch (refreshError) {
+        console.error('[API] Session refresh failed:', refreshError);
+        throw refreshError;
+      }
+    }
+
+    // Re-throw other errors
+    throw error;
+  }
+}
+
 async function authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
   try {
     const headers = await getAuthHeaders();
@@ -147,8 +217,20 @@ async function authenticatedFetch(url: string, options: RequestInit = {}): Promi
       }
     });
 
-    // Handle auth errors immediately
+    // Handle 401 errors - distinguish between auth failure and session expiration
     if (response.status === 401) {
+      const errorData = await response.json().catch(() => ({ detail: 'Unauthorized' }));
+
+      // Check if this is a session expiration (backend returns specific error code)
+      if (errorData.code === 'SESSION_EXPIRED' ||
+          errorData.detail?.toLowerCase().includes('session expired') ||
+          errorData.detail?.toLowerCase().includes('session not found')) {
+        await handleSessionExpired();
+        // handleSessionExpired throws SessionExpiredError
+        throw new Error('Session expired'); // Fallback
+      }
+
+      // Otherwise it's an authentication failure
       await handleAuthError();
       // handleAuthError throws, but add explicit throw for TypeScript safety
       throw new Error('Authentication required');
@@ -216,6 +298,7 @@ export interface SourceMetadata {
 
 export interface UploadedData {
   data_id: string;
+  case_id: string;  // Actual case ID (may differ from optimistic ID in request)
   session_id: string;
   data_type: 'log_file' | 'error_message' | 'stack_trace' | 'metrics_data' | 'config_file' | 'documentation' | 'unknown';
   content: string;
@@ -912,8 +995,6 @@ export interface KnowledgeDocument {
   metadata?: Record<string, any>;
 }
 
-// Type alias for UI components
-export type KbDocument = KnowledgeDocument;
 
 export interface DocumentListResponse {
   documents: KnowledgeDocument[];
@@ -1367,7 +1448,7 @@ export interface CreateCaseRequest {
 }
 
 export async function createCase(data: CreateCaseRequest): Promise<UserCase> {
-  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases`, {
+  const response = await authenticatedFetchWithRetry(`${config.apiUrl}/api/v1/cases`, {
     method: 'POST',
     body: JSON.stringify(data || {}),
     credentials: 'include'
@@ -1399,7 +1480,7 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
     context: request.context || {},
     priority: request.priority || 'medium'
   } as const;
-  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}/queries`, {
+  const response = await authenticatedFetchWithRetry(`${config.apiUrl}/api/v1/cases/${caseId}/queries`, {
     method: 'POST',
     body: JSON.stringify(body),
     credentials: 'include'
@@ -1435,7 +1516,7 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
     let delay = POLL_INITIAL_MS;
     let elapsed = 0;
     for (let i = 0; elapsed <= POLL_MAX_TOTAL_MS; i++) {
-      const res = await authenticatedFetch(jobUrl, { method: 'GET', credentials: 'include' });
+      const res = await authenticatedFetchWithRetry(jobUrl, { method: 'GET', credentials: 'include' });
       const lcorr = res.headers.get('x-correlation-id') || res.headers.get('X-Correlation-ID');
       if (lcorr) console.log('[API] poll job', { i, correlationId: lcorr, status: res.status });
       if (res.status >= 500) {
@@ -1445,7 +1526,7 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
         const finalLoc = res.headers.get('Location');
         if (!finalLoc) throw new Error('Missing final resource Location');
         const finalUrl = new URL(finalLoc, config.apiUrl).toString();
-        const finalRes = await authenticatedFetch(finalUrl, { method: 'GET', credentials: 'include' });
+        const finalRes = await authenticatedFetchWithRetry(finalUrl, { method: 'GET', credentials: 'include' });
         const fcorr = finalRes.headers.get('x-correlation-id') || finalRes.headers.get('X-Correlation-ID');
         if (fcorr) console.log('[API] poll final', { correlationId: fcorr, status: finalRes.status });
         if (finalRes.status >= 500) {
@@ -1506,7 +1587,7 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
       let elapsed = 0;
       for (let i = 0; elapsed <= POLL_MAX_TOTAL_MS; i++) {
         console.log('[API] DEBUG: Polling attempt', i, 'to', createdUrl);
-        const createdRes = await authenticatedFetch(createdUrl, { method: 'GET', credentials: 'include' });
+        const createdRes = await authenticatedFetchWithRetry(createdUrl, { method: 'GET', credentials: 'include' });
         const ccorr = createdRes.headers.get('x-correlation-id') || createdRes.headers.get('X-Correlation-ID');
         if (ccorr) console.log('[API] poll created', { i, correlationId: ccorr, status: createdRes.status });
         if (createdRes.status >= 500) {
@@ -1516,7 +1597,7 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
           const finalLoc = createdRes.headers.get('Location');
           if (!finalLoc) throw new Error('Missing final resource Location');
           const finalUrl = new URL(finalLoc, config.apiUrl).toString();
-          const finalRes = await authenticatedFetch(finalUrl, { method: 'GET', credentials: 'include' });
+          const finalRes = await authenticatedFetchWithRetry(finalUrl, { method: 'GET', credentials: 'include' });
           const fcorr = finalRes.headers.get('x-correlation-id') || finalRes.headers.get('X-Correlation-ID');
           if (fcorr) console.log('[API] poll final', { correlationId: fcorr, status: finalRes.status });
           if (finalRes.status >= 500) {
@@ -1627,12 +1708,12 @@ export async function uploadDataToCase(
   form.append('file', file);
   if (description) form.append('description', description);
   if (sourceMetadata) form.append('source_metadata', JSON.stringify(sourceMetadata));
-  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/cases/${caseId}/data`, { method: 'POST', body: form, credentials: 'include' });
+  const response = await authenticatedFetchWithRetry(`${config.apiUrl}/api/v1/cases/${caseId}/data`, { method: 'POST', body: form, credentials: 'include' });
   if (response.status === 202) {
     const jobLocation = response.headers.get('Location');
     if (!jobLocation) throw new Error('Missing job Location header');
     for (let i = 0; i < 20; i++) {
-      const jobRes = await authenticatedFetch(jobLocation, { method: 'GET', credentials: 'include' });
+      const jobRes = await authenticatedFetchWithRetry(jobLocation, { method: 'GET', credentials: 'include' });
       const jobJson = await jobRes.json();
       if (jobJson.status === 'completed' && jobJson.result) return jobJson.result;
       if (jobJson.status === 'failed') throw new Error(jobJson.error?.message || 'Upload job failed');
@@ -1881,23 +1962,6 @@ export async function devLogin(
   }
 }
 
-// TODO: Backend endpoint /api/v1/auth/session/{session_id} not implemented yet
-// This function is kept for future implementation when session verification is available
-export async function verifyAuthSession(sessionId: string): Promise<never> {
-  throw new Error('Session verification endpoint not implemented in backend yet');
-
-  // Future implementation:
-  // const response = await fetch(`${config.apiUrl}/api/v1/auth/session/${sessionId}`, {
-  //   method: 'GET',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   credentials: 'include'
-  // });
-  // if (!response.ok) {
-  //   const errorData: APIError = await response.json().catch(() => ({}));
-  //   throw new Error(errorData.detail || `Session verification failed: ${response.status}`);
-  // }
-  // return response.json();
-}
 
 export async function getCurrentUser(): Promise<UserProfile> {
   const response = await authenticatedFetch(`${config.apiUrl}/api/v1/auth/me`, {

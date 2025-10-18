@@ -8,6 +8,7 @@
 export class OptimisticIdGenerator {
   private static caseCounter = 0;
   private static messageCounter = 0;
+  private static genericCounter = 0;
 
   /**
    * Generate a unique optimistic case ID
@@ -52,15 +53,19 @@ export class OptimisticIdGenerator {
 
   /**
    * Generic generate method (backward compatibility)
+   *
+   * FIXED: Now uses incrementing counter instead of Math.random()
+   * to prevent ID collision risk
    */
   static generate(prefix: string): string {
     if (prefix === 'opt_case') return this.generateCaseId();
     if (prefix === 'opt_msg') return this.generateMessageId();
 
     // Default implementation for unknown prefixes
+    // Uses incrementing counter to guarantee uniqueness
+    this.genericCounter++;
     const timestamp = Date.now();
-    const counter = Math.floor(Math.random() * 1000);
-    return `${prefix}_${timestamp}_${counter}`;
+    return `${prefix}_${timestamp}_${this.genericCounter}`;
   }
 
   /**
@@ -69,5 +74,6 @@ export class OptimisticIdGenerator {
   static resetCounters(): void {
     this.caseCounter = 0;
     this.messageCounter = 0;
+    this.genericCounter = 0;
   }
 }

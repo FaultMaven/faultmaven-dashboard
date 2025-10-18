@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { KbDocument } from "../../../lib/api";
+import { KnowledgeDocument } from "../../../lib/api";
 import { normalizeTags } from "../../../lib/utils/safe-tags";
 
 interface DocumentRowProps {
-  document: KbDocument;
+  document: KnowledgeDocument;
   onDelete: (id: string) => void;
 }
 
