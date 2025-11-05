@@ -111,6 +111,7 @@ describe('PersistenceManager', () => {
       const mockCases = [
         {
           case_id: 'case1',
+          owner_id: 'user1',  // v2.0: required field
           title: 'Test Chat 1',
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T01:00:00Z',
@@ -119,6 +120,7 @@ describe('PersistenceManager', () => {
         },
         {
           case_id: 'case2',
+          owner_id: 'user1',  // v2.0: required field
           title: 'Test Chat 2',
           created_at: '2023-01-02T00:00:00Z',
           updated_at: '2023-01-02T01:00:00Z',
@@ -241,6 +243,7 @@ describe('PersistenceManager', () => {
       const mockCases = [
         {
           case_id: 'case1',
+          owner_id: 'user1',  // v2.0: required field
           title: 'Working Chat',
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T01:00:00Z',
@@ -249,6 +252,7 @@ describe('PersistenceManager', () => {
         },
         {
           case_id: 'case2',
+          owner_id: 'user1',  // v2.0: required field
           title: 'Broken Chat',
           created_at: '2023-01-02T00:00:00Z',
           updated_at: '2023-01-02T01:00:00Z',

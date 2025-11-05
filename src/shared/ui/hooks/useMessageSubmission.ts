@@ -102,37 +102,24 @@ export function useMessageSubmission(props: UseMessageSubmissionProps) {
     let targetCaseId = props.activeCaseId;
 
     if (!targetCaseId) {
-      log.debug('No active case, creating case via session endpoint');
+      log.debug('No active case, creating case via createOptimisticCaseInBackground');
 
       try {
-        // Call session endpoint to get or create case
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const url = `${baseUrl}/api/v1/cases/sessions/${props.sessionId}/case`;
+        // Generate optimistic case ID and create in background
+        const optimisticCaseId = OptimisticIdGenerator.generateCaseId();
+        targetCaseId = optimisticCaseId;
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'idempotency-key': `case_${props.sessionId}_${Date.now()}`
-          },
-          credentials: 'include'
-        });
-
-        if (!response.ok) {
-          throw new Error(`Case creation failed: ${response.status}`);
-        }
-
-        const caseData = await response.json();
-        targetCaseId = caseData.case_id;
-
-        // Update UI with real case ID
+        // Update UI with optimistic ID immediately
         props.setActiveCaseId(targetCaseId);
         props.setHasUnsavedNewChat(false);
 
-        // Store in localStorage for persistence
-        await browser.storage.local.set({ active_case_id: targetCaseId });
+        // Store in localStorage for persistence (frontend state management v2.0)
+        await browser.storage.local.set({ faultmaven_current_case: targetCaseId });
 
-        log.info('Case created via session endpoint', { caseId: targetCaseId });
+        // Create actual case in background (will reconcile ID later)
+        await props.createOptimisticCaseInBackground(optimisticCaseId, 'New troubleshooting case');
+
+        log.info('Case created with optimistic ID', { caseId: targetCaseId });
       } catch (error) {
         log.error('Failed to create case', error);
         props.showError('Failed to create case. Please try again.');

@@ -61,6 +61,8 @@ import { ReportGenerationDialog } from "./components/ReportGenerationDialog";
 import { PersistenceManager } from "../../lib/utils/persistence-manager";
 import { memoryManager } from "../../lib/utils/memory-manager";
 import { useAuth } from "./hooks/useAuth";
+// Phase 1 Week 1: New layout components
+import { CollapsibleNavigation, ContentArea } from "./layouts";
 
 // Make PersistenceManager available globally for debugging
 if (typeof window !== 'undefined') {
@@ -114,7 +116,10 @@ function SidePanelAppContent() {
 
   // OODA Framework v3.2.0: Investigation progress tracking
   const [investigationProgress, setInvestigationProgress] = useState<Record<string, any>>({});
-  
+
+  // Phase 3 Week 7: Evidence tracking per case
+  const [caseEvidence, setCaseEvidence] = useState<Record<string, UploadedData[]>>({});
+
   // Document viewing state
   const [viewingDocument, setViewingDocument] = useState<any | null>(null);
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
@@ -739,8 +744,10 @@ function SidePanelAppContent() {
         // Already have the correct case selected
       } else {
         // Create minimal case object to avoid unnecessary API call
+        // v2.0: owner_id is required - use empty string as placeholder (will be populated from backend)
         const minimalCase: UserCase = {
           case_id: caseId,
+          owner_id: '',  // v2.0: required field (will be populated when full case data loads)
           title: conversationTitles[caseId] || 'Loading...',
           status: 'active',
           created_at: new Date().toISOString(),
@@ -915,11 +922,15 @@ function SidePanelAppContent() {
         console.log('[SidePanelApp] ✅ New session created:', currentSessionId);
       }
 
-      // Create real case via API
-      console.log('[SidePanelApp] 📡 Creating real case via API...', { sessionId: currentSessionId, title });
+      // Create real case via API (v2.0: owner_id auto-populated from session)
+      console.log('[SidePanelApp] 📡 Creating real case via API (v2.0)...', { title });
       const realCase = await createCase({
-        session_id: currentSessionId,
-        title: title
+        title: title,
+        priority: 'medium',
+        metadata: {
+          created_via: 'browser_extension',
+          optimistic_id: optimisticCaseId
+        }
       });
       const realCaseId = realCase.case_id;
 
@@ -996,9 +1007,9 @@ function SidePanelAppContent() {
       const existingTitle = prev[sid];
       const existingSource = titleSources[sid];
 
-      // REINFORCED PROTECTION RULES:
+      // TITLE PROTECTION RULES:
       // 1. User titles are NEVER overwritten by backend or system
-      // 2. System titles can be overwritten by user but not backend
+      // 2. System titles (timestamps) can be overwritten by backend (old auto-rename flow)
       // 3. Backend titles can be overwritten by user or system
       // 4. Empty/undefined titles can be set by anyone
 
@@ -1221,48 +1232,20 @@ function SidePanelAppContent() {
     let targetCaseId = activeCaseId;
 
     if (!targetCaseId) {
-      console.log('[SidePanelApp] No active case, creating case via session endpoint');
+      console.log('[SidePanelApp] No active case, creating case via /api/v1/cases (v2.0)');
 
       try {
-        // Call session endpoint to get or create case
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const caseTitle = IdUtils.generateChatTitle();
-        const url = new URL(`${baseUrl}/api/v1/cases/sessions/${sessionId}/case`);
-        url.searchParams.set('title', caseTitle);
-
-        const response = await fetch(url.toString(), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'idempotency-key': `case_${sessionId}_${Date.now()}`
-          },
-          credentials: 'include'
+        // Backend auto-generates title in format: Case-MMDD-N
+        // No need to fetch existing cases or generate title on frontend
+        const caseData = await createCase({
+          title: undefined,  // Let backend auto-generate
+          priority: 'medium',
+          metadata: {
+            created_via: 'browser_extension',
+            auto_generated: true
+          }
         });
 
-        if (!response.ok) {
-          // Handle specific HTTP status codes with user-friendly messages
-          let errorMessage = 'Failed to create case';
-
-          if (response.status === 401) {
-            errorMessage = 'Authentication failed. Please log in again.';
-          } else if (response.status === 403) {
-            errorMessage = 'You do not have permission to create cases.';
-          } else if (response.status === 500) {
-            errorMessage = 'Server error. Please try again later.';
-          } else {
-            // Try to get error details from response
-            try {
-              const errorData = await response.json();
-              errorMessage = errorData.detail || errorData.message || `Case creation failed (${response.status})`;
-            } catch {
-              errorMessage = `Case creation failed (${response.status})`;
-            }
-          }
-
-          throw new Error(errorMessage);
-        }
-
-        const caseData = await response.json();
         const newCaseId = caseData.case_id;
 
         if (!newCaseId) {
@@ -1276,11 +1259,28 @@ function SidePanelAppContent() {
         setHasUnsavedNewChat(false);
 
         // Set activeCase to enable input (critical for canInteract check in ChatWindow)
+        // v2.0: owner_id is now required, session_id removed
+
+        // Validate critical fields from backend
+        if (!caseData.status) {
+          console.error('[SidePanelApp] ⚠️ Backend did not provide status for new case:', caseData);
+          showError('Backend error: Case created without status. Please contact support.');
+          setSubmitting(false);
+          return;
+        }
+
+        console.log('[SidePanelApp] 📊 Backend case data:', {
+          status: caseData.status,
+          title: caseData.title,
+          created_at: caseData.created_at,
+          updated_at: caseData.updated_at
+        });
+
         setActiveCase({
           case_id: newCaseId,
-          session_id: sessionId || undefined,  // Convert null to undefined for type compatibility
-          title: caseData.title || IdUtils.generateChatTitle(),
-          status: 'active',
+          owner_id: caseData.owner_id,  // v2.0: required field
+          title: caseData.title || 'Untitled Case',  // Backend auto-generates Case-MMDD-N format
+          status: caseData.status,  // Required - no fallback to expose backend issues
           created_at: caseData.created_at || new Date().toISOString(),
           updated_at: caseData.updated_at || new Date().toISOString(),
           message_count: 0
@@ -1305,13 +1305,13 @@ function SidePanelAppContent() {
           }));
         }
 
-        // Store in localStorage for persistence
-        await browser.storage.local.set({ active_case_id: targetCaseId });
+        // Store in localStorage for persistence (frontend state management v2.0)
+        await browser.storage.local.set({ faultmaven_current_case: targetCaseId });
 
         // Trigger ConversationsList refresh to load new case from backend
         setRefreshSessions(prev => prev + 1);
 
-        console.log('[SidePanelApp] ✅ Case created via session endpoint:', targetCaseId);
+        console.log('[SidePanelApp] ✅ Case created via v2.0 API:', targetCaseId);
       } catch (error) {
         console.error('[SidePanelApp] Failed to create case:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to create case. Please try again.';
@@ -1444,6 +1444,39 @@ function SidePanelAppContent() {
           [caseId]: response.view_state!.investigation_progress
         }));
         console.log('[SidePanelApp] 🔍 Investigation progress updated:', response.view_state.investigation_progress);
+      }
+
+      // Phase 3 Week 7: Update evidence from view_state
+      if (response.view_state && response.view_state.uploaded_data) {
+        setCaseEvidence(prev => ({
+          ...prev,
+          [caseId]: response.view_state!.uploaded_data
+        }));
+        console.log('[SidePanelApp] 📎 Evidence updated:', response.view_state.uploaded_data.length, 'items');
+      }
+
+      // Update active case with real data from view_state
+      if (response.view_state && response.view_state.active_case) {
+        const backendCase = response.view_state.active_case;
+
+        console.log('[SidePanelApp] 📊 Backend view_state.active_case:', {
+          status: backendCase.status,
+          title: backendCase.title,
+          created_at: backendCase.created_at,
+          updated_at: backendCase.updated_at
+        });
+
+        setActiveCase(backendCase);
+
+        // Update conversation title if backend provides one
+        if (backendCase.title) {
+          setConversationTitles(prev => ({
+            ...prev,
+            [caseId]: backendCase.title
+          }));
+        }
+
+        console.log('[SidePanelApp] 📋 Case updated:', backendCase.title);
       }
 
       // Update conversations: replace optimistic messages with real data
@@ -1605,48 +1638,21 @@ function SidePanelAppContent() {
       let targetCaseId = activeCaseId;
 
       if (!targetCaseId) {
-        console.log('[SidePanelApp] No active case, creating case via session endpoint');
+        console.log('[SidePanelApp] No active case, creating case via /api/v1/cases (v2.0)');
 
         try {
-          // Call session endpoint to get or create case
-          const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+          // Create case using v2.0 API (owner_id auto-populated from session)
           const caseTitle = IdUtils.generateChatTitle();
-          const url = new URL(`${baseUrl}/api/v1/cases/sessions/${sessionId}/case`);
-          url.searchParams.set('title', caseTitle);
 
-          const response = await fetch(url.toString(), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'idempotency-key': `case_${sessionId}_${Date.now()}`
-            },
-            credentials: 'include'
+          const caseData = await createCase({
+            title: caseTitle,
+            priority: 'medium',
+            metadata: {
+              created_via: 'browser_extension',
+              auto_generated: true
+            }
           });
 
-          if (!response.ok) {
-            // Handle specific HTTP status codes with user-friendly messages
-            let errorMessage = 'Failed to create case';
-
-            if (response.status === 401) {
-              errorMessage = 'Authentication failed. Please log in again.';
-            } else if (response.status === 403) {
-              errorMessage = 'You do not have permission to create cases.';
-            } else if (response.status === 500) {
-              errorMessage = 'Server error. Please try again later.';
-            } else {
-              // Try to get error details from response
-              try {
-                const errorData = await response.json();
-                errorMessage = errorData.detail || errorData.message || `Case creation failed (${response.status})`;
-              } catch {
-                errorMessage = `Case creation failed (${response.status})`;
-              }
-            }
-
-            throw new Error(errorMessage);
-          }
-
-          const caseData = await response.json();
           const newCaseId = caseData.case_id;
 
           if (!newCaseId) {
@@ -1660,10 +1666,11 @@ function SidePanelAppContent() {
           setHasUnsavedNewChat(false);
 
           // Set activeCase to enable input (critical for canInteract check in ChatWindow)
+          // v2.0: owner_id is now required, session_id removed
           setActiveCase({
             case_id: newCaseId,
-            session_id: sessionId,  // Use the sessionId state variable
-            title: caseData.title || IdUtils.generateChatTitle(),
+            owner_id: caseData.owner_id,  // v2.0: required field
+            title: caseData.title || caseTitle,
             status: 'active',
             created_at: caseData.created_at || new Date().toISOString(),
             updated_at: caseData.updated_at || new Date().toISOString(),
@@ -1689,13 +1696,13 @@ function SidePanelAppContent() {
             }));
           }
 
-          // Store in localStorage for persistence
-          await browser.storage.local.set({ active_case_id: targetCaseId });
+          // Store in localStorage for persistence (frontend state management v2.0)
+          await browser.storage.local.set({ faultmaven_current_case: targetCaseId });
 
           // Trigger ConversationsList refresh to load new case from backend
           setRefreshSessions(prev => prev + 1);
 
-          console.log('[SidePanelApp] ✅ Case created via session endpoint:', targetCaseId);
+          console.log('[SidePanelApp] ✅ Case created via v2.0 API:', targetCaseId);
         } catch (error) {
           console.error('[SidePanelApp] Failed to create case:', error);
           const errorMessage = error instanceof Error ? error.message : 'Failed to create case. Please try again.';
@@ -1818,6 +1825,12 @@ function SidePanelAppContent() {
         [targetCaseId]: [...(prev[targetCaseId] || []), userMessage, aiMessage]
       }));
 
+      // Phase 3 Week 7: Add uploaded data to evidence list
+      setCaseEvidence(prev => ({
+        ...prev,
+        [targetCaseId]: [...(prev[targetCaseId] || []), uploadResponse]
+      }));
+
       // Focus/highlight the active case in the sidebar (important for existing cases)
       setActiveCaseId(targetCaseId);
 
@@ -1879,6 +1892,20 @@ function SidePanelAppContent() {
     setSidebarCollapsed(!sidebarCollapsed);
   };
 
+  // Phase 1 Week 1: Handler for tab changes from navigation
+  const handleTabChange = (tab: 'copilot' | 'kb' | 'admin-kb') => {
+    setActiveTab(tab);
+    if (tab === 'kb' || tab === 'admin-kb') {
+      setHasUnsavedNewChat(false);
+    }
+  };
+
+  // Phase 1 Week 1: Handler for new chat from navigation
+  const handleNewChatFromNav = () => {
+    setActiveTab('copilot');
+    handleNewSession('');
+  };
+
   // Handle document viewing from sources
   const handleDocumentView = async (documentId: string) => {
     try {
@@ -1888,6 +1915,37 @@ function SidePanelAppContent() {
       setActiveTab('kb');
     } catch {
       // noop
+    }
+  };
+
+  // Phase 3 Week 7: Handle evidence removal
+  const handleRemoveEvidence = async (caseId: string, dataId: string) => {
+    if (!sessionId) return;
+
+    try {
+      // Call DELETE endpoint
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/v1/data/${dataId}?session_id=${sessionId}`,
+        {
+          method: 'DELETE',
+          credentials: 'include'
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete evidence: ${response.status}`);
+      }
+
+      // Remove from local state
+      setCaseEvidence(prev => ({
+        ...prev,
+        [caseId]: (prev[caseId] || []).filter(item => item.data_id !== dataId)
+      }));
+
+      console.log('[SidePanelApp] Evidence removed:', dataId);
+    } catch (error) {
+      console.error('[SidePanelApp] Evidence removal failed:', error);
+      throw error; // Re-throw so ChatWindow can handle the error
     }
   };
 
@@ -1936,354 +1994,71 @@ function SidePanelAppContent() {
     );
   }
 
-  // Render the collapsible sidebar
-  const renderSidebar = () => {
-    return (
-      <div className={`flex-shrink-0 bg-white border-r border-gray-200 transition-all duration-300 ${
-        sidebarCollapsed ? 'w-16' : 'w-72 max-w-72'
-      }`}>
-        {sidebarCollapsed ? (
-          <div className="flex flex-col h-full">
-            <div className="flex-shrink-0 p-4 border-b border-gray-200">
-              <div className="flex items-center justify-center">
-                <img
-                  src="/icon/design-light.svg"
-                  alt="FaultMaven Logo"
-                  className="h-8 w-auto"
-                />
-              </div>
-            </div>
-            <div className="flex-1 p-3 space-y-3">
-              <button
-                onClick={() => handleNewSession('')}
-                disabled={hasUnsavedNewChat}
-                className="w-full h-10 flex items-center justify-center bg-blue-300 text-white rounded-lg hover:bg-blue-400 transition-colors disabled:opacity-50"
-                title="New Chat"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
-              <button
-                onClick={toggleSidebar}
-                className="w-full h-10 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Expand Sidebar"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-            <div className="flex-shrink-0 p-3 border-t border-gray-200">
-              <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center mx-auto">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col h-full">
-            <div className="flex-shrink-0 p-4 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <img
-                    src="/icon/design-light.svg"
-                    alt="FaultMaven Logo"
-                    className="h-8 w-auto"
-                  />
-                  <h1 className="text-lg font-semibold text-gray-900">FaultMaven</h1>
-                </div>
-                <button
-                  onClick={toggleSidebar}
-                  className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Collapse Sidebar"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-              </div>
-
-            </div>
-            <div className="flex-shrink-0 px-4 py-2 space-y-2">
-              <button
-                onClick={() => {
-                  setActiveTab('kb');
-                  setHasUnsavedNewChat(false);
-                }}
-                className={`w-full flex items-center gap-3 py-2.5 px-4 rounded-lg transition-colors ${
-                  activeTab === 'kb'
-                    ? 'bg-blue-300 text-white hover:bg-blue-400'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-                title="My Knowledge Base"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-                <span className="text-sm font-medium">My Knowledge Base</span>
-              </button>
-              {isAdmin() && (
-                <button
-                  onClick={() => {
-                    setActiveTab('admin-kb');
-                    setHasUnsavedNewChat(false);
-                  }}
-                  className={`w-full flex items-center gap-3 py-2.5 px-4 rounded-lg transition-colors ${
-                    activeTab === 'admin-kb'
-                      ? 'bg-purple-500 text-white hover:bg-purple-600'
-                      : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                  }`}
-                  title="Global KB Management (Admin)"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  <span className="text-sm font-medium">Global KB (Admin)</span>
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setActiveTab('copilot');
-                  handleNewSession('');
-                }}
-                className={`w-full flex items-center gap-3 py-2.5 px-4 rounded-lg transition-colors ${
-                  activeTab === 'copilot'
-                    ? 'bg-blue-300 text-white hover:bg-blue-400'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-                title="Start new conversation"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span className="text-sm font-medium">New Chat</span>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <ErrorBoundary
-                fallback={
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg m-4">
-                    <p className="text-sm text-red-700">Error loading conversations</p>
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="mt-2 px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                }
-              >
-                <ConversationsList
-                  activeSessionId={sessionId || undefined}
-                  activeCaseId={activeCaseId}
-                  onCaseSelect={handleCaseSelect}
-                  onNewSession={handleNewSession}
-                  conversationTitles={conversationTitles}
-                  hasUnsavedNewChat={hasUnsavedNewChat}
-                  refreshTrigger={refreshSessions}
-                  className="h-full"
-                  collapsed={false}
-                  onFirstCaseDetected={() => setHasUnsavedNewChat(false)}
-                  onAfterDelete={handleAfterDelete}
-                  onCasesLoaded={(loadedCases) => {
-                    // Remove optimistic cases that now exist as real cases
-                    const loadedCaseIds = new Set(loadedCases.map(c => c.case_id));
-                    setOptimisticCases(prev => {
-                      const filtered = prev.filter(optimisticCase => {
-                        const realId = idMappingManager.getRealId(optimisticCase.case_id);
-                        if (realId && loadedCaseIds.has(realId)) {
-                          console.log('[SidePanelApp] 🧹 Removing optimistic case - real case found in backend:', { optimistic: optimisticCase.case_id, real: realId });
-                          return false; // Remove this optimistic case
-                        }
-                        return true; // Keep this optimistic case
-                      });
-                      return filtered;
-                    });
-                  }}
-                  pendingCases={optimisticCases}
-                  onCaseTitleChange={(caseId, newTitle) => {
-                    console.log('[SidePanelApp] 🚀 User title change - using optimistic update:', { caseId, newTitle });
-                    handleOptimisticTitleUpdate(caseId, newTitle);
-                  }}
-                  pinnedCases={pinnedCases}
-                  onPinToggle={handlePinToggle}
-                />
-              </ErrorBoundary>
-            </div>
-            <div className="flex-shrink-0 p-4 border-t border-gray-200">
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-3 py-2.5 px-4 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Logout"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                <span className="text-sm font-medium">Logout</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderChatContent = () => {
-    // Always render ChatWindow only when a case is active or we are in explicit new chat flow
-    if (!activeCaseId && !hasUnsavedNewChat) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center max-w-md p-6">
-            <h2 className="text-base font-semibold text-gray-800 mb-2">Start a conversation</h2>
-            <p className="text-sm text-gray-600 mb-4">Select a chat from the list or create a new one.</p>
-            <button
-              onClick={() => handleNewSession('')}
-              className="inline-flex items-center gap-2 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-            >
-              New chat
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    // Check for failed operations that need user attention
-    const failedOperations = getFailedOperationsForUser();
-
-    return (
-      <ErrorBoundary
-        fallback={
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700">Error loading chat</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-2 px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-            >
-              Retry
-            </button>
-          </div>
-        }
-      >
-        <div className="h-full flex flex-col">
-          {/* Failed Operations Alert */}
-          {failedOperations.length > 0 && (
-            <div className="flex-shrink-0 p-4 space-y-3">
-              {failedOperations.map((operation) => {
-                const errorInfo = getErrorMessageForOperation(operation);
-                return (
-                  <div key={operation.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                          </svg>
-                          <h4 className="text-sm font-medium text-yellow-800">{errorInfo.title}</h4>
-                        </div>
-                        <p className="text-xs text-yellow-700 mt-1">{errorInfo.message}</p>
-                        <p className="text-xs text-yellow-600 mt-2 italic">{errorInfo.recoveryHint}</p>
-                      </div>
-                      <div className="flex items-center gap-2 ml-3">
-                        <button
-                          onClick={() => handleUserRetry(operation.id)}
-                          className="px-3 py-1 text-xs bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200 transition-colors font-medium"
-                        >
-                          Retry
-                        </button>
-                        <button
-                          onClick={() => handleDismissFailedOperation(operation.id)}
-                          className="p-1 text-yellow-600 hover:text-yellow-800 transition-colors"
-                          title="Dismiss this error"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Main Chat Window */}
-          <div className="flex-1 min-h-0">
-            <ChatWindow
-              conversation={conversations[activeCaseId || ''] || []}
-              activeCase={activeCase}
-              loading={loading}
-              submitting={submitting}
-              sessionId={sessionId}
-              isNewUnsavedChat={hasUnsavedNewChat}
-              investigationProgress={activeCaseId ? investigationProgress[activeCaseId] : null}
-              onQuerySubmit={handleQuerySubmit}
-              onDataUpload={handleDataUpload}
-              onDocumentView={handleDocumentView}
-              onGenerateReports={() => setShowReportDialog(true)}
-              className="h-full"
-            />
-          </div>
-        </div>
-      </ErrorBoundary>
-    );
-  };
-
-  const renderMainContent = () => {
-    return (
-      <div className="flex w-full h-full">
-        {renderSidebar()}
-        <div className="flex-1 flex flex-col min-w-0 max-w-none">
-          <div className="flex-1 overflow-y-auto">
-            <div className={`h-full ${activeTab === 'copilot' ? 'block' : 'hidden'}`}>
-              {renderChatContent()}
-            </div>
-            <div className={`h-full ${activeTab === 'kb' ? 'block' : 'hidden'}`}>
-              <ErrorBoundary
-                fallback={
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-700">Error loading Knowledge Base</p>
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="mt-2 px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                }
-              >
-                <KnowledgeBaseView className="h-full" />
-              </ErrorBoundary>
-            </div>
-            <div className={`h-full ${activeTab === 'admin-kb' ? 'block' : 'hidden'}`}>
-              <ErrorBoundary
-                fallback={
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-red-700">Error loading Global KB Management</p>
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="mt-2 px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                }
-              >
-                <GlobalKBView className="h-full" />
-              </ErrorBoundary>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  // Phase 1 Week 1: Replaced renderSidebar(), renderChatContent(), and renderMainContent()
+  // with new CollapsibleNavigation and ContentArea components
 
   return (
     <ErrorBoundary>
       <div className="flex h-screen bg-gray-50 text-gray-800 text-sm font-sans">
-        {renderMainContent()}
+        {/* Phase 1 Week 1: New component-based layout */}
+        <CollapsibleNavigation
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebar}
+          activeTab={activeTab}
+          activeCaseId={activeCaseId}
+          sessionId={sessionId || undefined}
+          hasUnsavedNewChat={hasUnsavedNewChat}
+          isAdmin={isAdmin()}
+          conversationTitles={conversationTitles}
+          optimisticCases={optimisticCases}
+          pinnedCases={pinnedCases}
+          refreshTrigger={refreshSessions}
+          onTabChange={handleTabChange}
+          onCaseSelect={handleCaseSelect}
+          onNewChat={handleNewChatFromNav}
+          onLogout={handleLogout}
+          onCaseTitleChange={handleOptimisticTitleUpdate}
+          onPinToggle={handlePinToggle}
+          onAfterDelete={handleAfterDelete}
+          onCasesLoaded={(loadedCases) => {
+            // Remove optimistic cases that now exist as real cases
+            const loadedCaseIds = new Set(loadedCases.map(c => c.case_id));
+            setOptimisticCases(prev => {
+              const filtered = prev.filter(optimisticCase => {
+                const realId = idMappingManager.getRealId(optimisticCase.case_id);
+                if (realId && loadedCaseIds.has(realId)) {
+                  console.log('[SidePanelApp] 🧹 Removing optimistic case - real case found in backend:', { optimistic: optimisticCase.case_id, real: realId });
+                  return false;
+                }
+                return true;
+              });
+              return filtered;
+            });
+          }}
+        />
+
+        <ContentArea
+          activeTab={activeTab}
+          activeCaseId={activeCaseId}
+          activeCase={activeCase}
+          conversations={conversations}
+          loading={loading}
+          submitting={submitting}
+          sessionId={sessionId}
+          hasUnsavedNewChat={hasUnsavedNewChat}
+          investigationProgress={investigationProgress}
+          caseEvidence={caseEvidence}
+          failedOperations={getFailedOperationsForUser()}
+          onQuerySubmit={handleQuerySubmit}
+          onDataUpload={handleDataUpload}
+          onDocumentView={handleDocumentView}
+          onGenerateReports={() => setShowReportDialog(true)}
+          onNewChat={handleNewChatFromNav}
+          onRetryFailedOperation={handleUserRetry}
+          onDismissFailedOperation={handleDismissFailedOperation}
+          getErrorMessageForOperation={getErrorMessageForOperation}
+          onRemoveEvidence={activeCaseId ? (dataId) => handleRemoveEvidence(activeCaseId, dataId) : undefined}
+        />
       </div>
 
       {/* Error Handling UI */}

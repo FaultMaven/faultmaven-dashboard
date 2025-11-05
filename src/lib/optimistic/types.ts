@@ -81,8 +81,10 @@ export interface UserCase {
 
 /**
  * Optimistic user case with additional metadata
+ * v2.0: owner_id is optional here (populated when real data arrives)
  */
-export interface OptimisticUserCase extends UserCase {
+export interface OptimisticUserCase extends Omit<UserCase, 'owner_id'> {
+  owner_id?: string;  // Optional for optimistic cases, required for real cases
   optimistic?: boolean;
   failed?: boolean;
   pendingOperationId?: string;

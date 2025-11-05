@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserCase, getUserCases, deleteCase as deleteCaseApi, generateCaseTitle, updateCaseTitle as apiUpdateCaseTitle } from '../../../lib/api';
+import { OptimisticUserCase } from '../../../lib/optimistic/types';
 import { ConversationItem } from './ConversationItem';
 import LoadingSpinner from './LoadingSpinner';
 import {
@@ -29,7 +30,7 @@ interface ConversationsListProps {
   onFirstCaseDetected?: () => void;
   onAfterDelete?: (deletedCaseId: string, remaining: Array<{ case_id: string; updated_at?: string; created_at?: string }>) => void;
   onCasesLoaded?: (cases: UserCase[]) => void;
-  pendingCases?: UserCase[];
+  pendingCases?: OptimisticUserCase[];  // v2.0: Uses OptimisticUserCase with owner_id
   onCaseTitleChange?: (caseId: string, newTitle: string) => void;
   pinnedCases?: Set<string>;
   onPinToggle?: (caseId: string) => void;
@@ -164,15 +165,8 @@ export function ConversationsList({
     const t = caseTitles[c.case_id] || (conversationTitles && conversationTitles[c.case_id]) || c.title;
     if (t && t.trim()) return t;
 
-    // Use same readable format as handleCaseActivated
-    const timestamp = new Date(c.updated_at || c.created_at || Date.now()).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-    return `Chat-${timestamp}`;
+    // Fallback to original title if it exists and looks like Case-MMDD-N format
+    return c.title || 'Untitled Case';
   };
 
   const updateCaseTitle = (caseId: string, title: string) => {
@@ -240,25 +234,29 @@ export function ConversationsList({
       }
     } catch (e: any) {
       console.error('[ConversationsList] Title generation error:', e);
-      const msg = (e?.message || '').toString().toLowerCase();
-      if (msg.includes('insufficient context')) {
-        console.info('[ConversationsList] Title generation skipped: insufficient context');
-        setTitleGenStatus({ message: "More conversation needed for a meaningful title", type: "info" });
-        return;
-      }
-      console.warn('[ConversationsList] Title generation failed:', e);
-      setTitleGenStatus({ message: "Title generation failed", type: "error" });
+      const errorMessage = e?.message || 'Title generation failed';
+
+      // Display the exact backend error message to user (no interpretation)
+      // Backend handles validation and provides user-friendly messages
+      console.info('[ConversationsList] Backend response:', errorMessage);
+      setTitleGenStatus({
+        message: errorMessage,  // Show backend message as-is
+        type: "info"  // Treat backend validation messages as info, not errors
+      });
     }
   };
 
   const handleDeleteCase = async (caseId: string) => {
+    let timeoutId: NodeJS.Timeout | null = null;
+
     try {
       // Add to recently deleted set BEFORE API call (defensive filtering)
       setRecentlyDeleted(prev => new Set(prev).add(caseId));
       console.log('[ConversationsList] 🛡️ Added to recentlyDeleted:', caseId);
 
       // Auto-clear from recentlyDeleted after 5 seconds
-      setTimeout(() => {
+      // Store timeout ID so we can cancel it if delete fails
+      timeoutId = setTimeout(() => {
         setRecentlyDeleted(prev => {
           const newSet = new Set(prev);
           newSet.delete(caseId);
@@ -268,6 +266,7 @@ export function ConversationsList({
       }, 5000);
 
       await deleteCaseApi(caseId);
+
       setCases(prev => {
         const remaining = prev.filter(c => c.case_id !== caseId);
         // Notify parent first
@@ -286,16 +285,26 @@ export function ConversationsList({
         } catch {}
         return remaining;
       });
+
       // Refresh from server to ensure list reflects backend state
       try { await loadCases(); } catch {}
-    } catch (e) {
-      console.error('[ConversationsList] Delete failed:', e);
-      // Remove from recentlyDeleted if deletion failed
+    } catch (e: any) {
+      console.error('[ConversationsList] Delete failed:', { caseId, error: e.message || e });
+
+      // Cancel the auto-clear timeout since delete failed
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      // Remove from recentlyDeleted immediately if deletion failed
       setRecentlyDeleted(prev => {
         const newSet = new Set(prev);
         newSet.delete(caseId);
         return newSet;
       });
+
+      // Re-fetch to ensure UI reflects actual backend state
+      try { await loadCases(); } catch {}
     }
   };
 
@@ -363,6 +372,7 @@ export function ConversationsList({
               isUnsavedNew={false}
               isPinned={pinnedCases.has(c.case_id)}
               isPending={pendingIdSet.has(c.case_id)}
+              messageCount={c.message_count || 0}
               onSelect={(id) => onCaseSelect && onCaseSelect(id)}
               onDelete={(id) => handleDeleteCase(id)}
               onRename={(id, t) => handleRenameCase(id, t)}

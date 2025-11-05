@@ -6,6 +6,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Phase 1 Week 2: Three-tier Knowledge Base Color Scheme */
+/* Per enhanced-ui-design.md: Blue (Personal), Orange (Team/Evidence), Purple (Global) */
+:root {
+  /* Personal KB - Blue */
+  --kb-personal-primary: #3B82F6;
+  --kb-personal-light: #DBEAFE;
+  --kb-personal-dark: #1E40AF;
+  --kb-personal-text: #1E3A8A;
+
+  /* Team/Evidence - Orange */
+  --kb-team-primary: #F97316;
+  --kb-team-light: #FFEDD5;
+  --kb-team-dark: #C2410C;
+  --kb-team-text: #9A3412;
+
+  /* Global KB - Purple */
+  --kb-global-primary: #A855F7;
+  --kb-global-light: #F3E8FF;
+  --kb-global-dark: #7C3AED;
+  --kb-global-text: #6B21A8;
+
+  /* Neutral colors for general UI */
+  --color-gray-50: #F9FAFB;
+  --color-gray-100: #F3F4F6;
+  --color-gray-200: #E5E7EB;
+  --color-gray-300: #D1D5DB;
+  --color-gray-600: #4B5563;
+  --color-gray-800: #1F2937;
+}
+
 /* Sidebar Container */
 #faultmaven-sidebar {
   @apply bg-[#fdfbf8] font-sans text-sm;

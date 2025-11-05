@@ -11,7 +11,9 @@ import {
   InvestigationProgress,
   CommandSuggestion,
   CommandValidation,
-  ScopeAssessment
+  ScopeAssessment,
+  UserCaseStatus,
+  getStatusChangeMessage
 } from "../../../lib/api";
 import InlineSourcesRenderer from "./InlineSourcesRenderer";
 import { InvestigationProgressIndicator } from "./InvestigationProgressIndicator";
@@ -23,6 +25,11 @@ import { ClarifyingQuestions } from "./ClarifyingQuestions";
 import { CommandValidationDisplay } from "./CommandValidationDisplay";
 import { ProblemDetectedAlert } from "./ProblemDetectedAlert";
 import { ScopeAssessmentDisplay } from "./ScopeAssessmentDisplay";
+import { UnifiedInputBar } from "./UnifiedInputBar";
+import { EvidencePanel } from "./EvidencePanel";
+import { EvidenceAnalysisModal } from "./EvidenceAnalysisModal";
+import { RemoveEvidenceDialog } from "./RemoveEvidenceDialog";
+import { CaseHeader } from "./CaseHeader";
 
 // TypeScript interfaces
 interface ConversationItem {
@@ -94,11 +101,15 @@ interface ChatWindowProps {
   // OODA Framework v3.2.0
   investigationProgress?: InvestigationProgress | null;
 
+  // Phase 3 Week 7: Evidence Management
+  evidence?: UploadedData[];
+
   // Action callbacks only (no state management)
   onQuerySubmit: (query: string) => void;
   onDataUpload: (data: string | File, dataSource: "text" | "file" | "page") => Promise<{ success: boolean; message: string }>;
   onDocumentView?: (documentId: string) => void;
   onGenerateReports?: () => void;  // FR-CM-006: Trigger report generation for resolved cases
+  onRemoveEvidence?: (dataId: string) => Promise<void>;
 }
 
 // PERFORMANCE OPTIMIZATION: Memoized component to prevent unnecessary re-renders
@@ -112,12 +123,42 @@ const ChatWindowComponent = function ChatWindow({
   isNewUnsavedChat = false,
   className = '',
   investigationProgress,
+  evidence = [],
   onQuerySubmit,
   onDataUpload,
   onDocumentView,
-  onGenerateReports
+  onGenerateReports,
+  onRemoveEvidence
 }: ChatWindowProps) {
   const MAX_QUERY_LENGTH = 4000;
+
+  // Phase 3 Week 7: Evidence panel state
+  const [evidencePanelExpanded, setEvidencePanelExpanded] = useState(true);
+  const [viewingEvidence, setViewingEvidence] = useState<UploadedData | null>(null);
+  const [removingEvidence, setRemovingEvidence] = useState<UploadedData | null>(null);
+  const [isRemovingEvidence, setIsRemovingEvidence] = useState(false);
+  const [removalError, setRemovalError] = useState<string | null>(null);
+
+  /**
+   * Handle status change request from CaseHeader dropdown
+   * Implements Option A: Send as regular query to agent (FRONTEND_STATUS_CHANGE_CONFIRMATION_FLOW.md)
+   */
+  const handleStatusChangeRequest = useCallback((newStatus: UserCaseStatus) => {
+    if (!activeCase) return;
+
+    // Get the predefined message for this transition
+    const message = getStatusChangeMessage(activeCase.status, newStatus);
+
+    if (!message) {
+      console.error('[ChatWindow] Invalid status transition:', activeCase.status, '→', newStatus);
+      return;
+    }
+
+    console.log('[ChatWindow] Status change request:', { from: activeCase.status, to: newStatus, message });
+
+    // Send as regular query - agent will respond with confirmation prompt
+    onQuerySubmit(message);
+  }, [activeCase, onQuerySubmit]);
 
   // UI-only state (no data management)
   const [queryInput, setQueryInput] = useState("");
@@ -207,6 +248,60 @@ const ChatWindowComponent = function ChatWindow({
     }
   };
 
+  // Phase 1 Week 2: Handler for page injection from UnifiedInputBar (Step 1 only - capture)
+  const handlePageInject = async (): Promise<string> => {
+    // Capture the page content and return it to UnifiedInputBar
+    await getPageContent();
+    // Return the captured content so UnifiedInputBar can send it on Submit
+    return pageContent;
+  };
+
+  // Phase 3 Week 7: Evidence panel handlers
+  const handleViewAnalysis = (item: UploadedData) => {
+    setViewingEvidence(item);
+  };
+
+  const handleRemoveEvidence = (item: UploadedData) => {
+    setRemovingEvidence(item);
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!removingEvidence || !onRemoveEvidence) return;
+
+    setIsRemovingEvidence(true);
+    setRemovalError(null); // Clear previous errors
+
+    try {
+      await onRemoveEvidence(removingEvidence.data_id);
+      setRemovingEvidence(null); // Success - close dialog
+    } catch (error) {
+      console.error('[ChatWindow] Evidence removal failed:', error);
+
+      // Parse error and create user-friendly message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      if (errorMessage.includes('404')) {
+        setRemovalError('This evidence no longer exists on the server. It may have already been deleted. Please refresh the page to see the current state.');
+      } else if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+        setRemovalError('Unable to connect to the server. Please check your internet connection and try again.');
+      } else {
+        setRemovalError(`Failed to remove evidence: ${errorMessage}. Please try again or contact support if the issue persists.`);
+      }
+    } finally {
+      setIsRemovingEvidence(false);
+    }
+  };
+
+  const handleDownloadEvidence = (item: UploadedData) => {
+    // For files, trigger browser download
+    if (item.file_name) {
+      // Note: This would need backend support to serve the file
+      // For now, just log - backend doesn't have download endpoint yet
+      console.log('[ChatWindow] Download requested for:', item.file_name);
+      // TODO: Implement when backend adds GET /api/v1/data/{data_id}/download endpoint
+    }
+  };
+
   const handleSubmitQuery = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -278,6 +373,15 @@ const ChatWindowComponent = function ChatWindow({
 
   return (
     <div className={`flex flex-col h-full space-y-1 overflow-y-auto ${className}`}>
+      {/* Phase 3 Week 7: Case Header + Status Dropdown */}
+      <CaseHeader
+        activeCase={activeCase}
+        evidenceCount={evidence.length}
+        evidencePanelExpanded={evidencePanelExpanded}
+        onToggleEvidence={() => setEvidencePanelExpanded(!evidencePanelExpanded)}
+        onStatusChangeRequest={handleStatusChangeRequest}
+      />
+
       {/* OODA Investigation Progress (v3.2.0) */}
       {investigationProgress && (
         <div className="ooda-investigation-panel px-2 py-1">
@@ -294,6 +398,18 @@ const ChatWindowComponent = function ChatWindow({
             <AnomalyAlert anomaly={investigationProgress.anomaly_frame} />
           )}
         </div>
+      )}
+
+      {/* Phase 3 Week 7: Evidence Panel */}
+      {evidence && evidence.length > 0 && (
+        <EvidencePanel
+          evidence={evidence}
+          isExpanded={evidencePanelExpanded}
+          onToggleExpand={() => setEvidencePanelExpanded(!evidencePanelExpanded)}
+          onViewAnalysis={handleViewAnalysis}
+          onRemove={handleRemoveEvidence}
+          onDownload={handleDownloadEvidence}
+        />
       )}
 
       {/* Report Generation Button for Resolved Cases (FR-CM-006) */}
@@ -416,14 +532,7 @@ const ChatWindowComponent = function ChatWindow({
                     <div className="text-[10px] text-gray-400 mt-1 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span>{item.timestamp}</span>
-                        {item.optimistic && item.loading && !item.failed && (
-                          <span className="text-blue-600 flex items-center gap-1" title="Processing...">
-                            <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                            Thinking...
-                          </span>
-                        )}
+                        {/* Removed "Thinking..." spinner - processing indicator is shown in input area */}
                         {item.failed && (
                           <span className="text-red-600 flex items-center gap-1" title={item.errorMessage || "Failed to process"}>
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -458,126 +567,35 @@ const ChatWindowComponent = function ChatWindow({
         )}
       </div>
 
-      {!canInteract && (
-        <div className="flex-shrink-0 text-center p-1 text-xs text-gray-600 my-1">
-          <span className="text-gray-600">Start a new chat to begin.</span>
-        </div>
-      )}
+      {/* Phase 1 Week 2: Unified Input Bar replaces separate Ask/Provide sections */}
+      <UnifiedInputBar
+        disabled={!canInteract}
+        loading={loading}
+        submitting={submitting}
+        onQuerySubmit={onQuerySubmit}
+        onDataUpload={onDataUpload}
+        onPageInject={handlePageInject}
+        maxLength={MAX_QUERY_LENGTH}
+      />
 
-      {/* Ask a Question Section */}
-      <div className="flex-shrink-0 bg-white rounded-lg border border-gray-200 p-2 shadow-sm space-y-1">
-        <div className="flex justify-between items-center border-b border-gray-200 pb-1 mb-1">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Ask a Question</h3>
-        </div>
-        <textarea
-          id="query-input"
-          value={queryInput}
-          onChange={(e) => setQueryInput(e.target.value)}
-          onKeyDown={handleSubmitQuery}
-          placeholder="Type your question here and press Enter..."
-          rows={3}
-          className="block w-full p-2 text-sm border border-gray-300 rounded resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={loading || submitting || !canInteract}
-          maxLength={MAX_QUERY_LENGTH}
-          ref={queryInputRef}
-        />
-      </div>
+      {/* Phase 3 Week 7: Evidence modals */}
+      <EvidenceAnalysisModal
+        evidence={viewingEvidence}
+        isOpen={viewingEvidence !== null}
+        onClose={() => setViewingEvidence(null)}
+      />
 
-      {/* Provide Data Section */}
-      <div className="flex-shrink-0 bg-white rounded-lg border border-gray-200 p-2 shadow-sm space-y-2">
-        <div className="flex justify-between items-center border-b border-gray-200 pb-1 mb-1">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">Provide Data</h3>
-          <button
-            type="button"
-            onClick={() => setShowDataSection(!showDataSection)}
-            aria-label={showDataSection ? 'Collapse data section' : 'Expand data section'}
-            className="h-6 w-6 text-xs flex items-center justify-center rounded border border-gray-300 bg-gray-100 hover:bg-gray-200"
-            title={showDataSection ? 'Collapse' : 'Expand'}
-          >
-            {showDataSection ? '▼' : '▲'}
-          </button>
-        </div>
-
-        {showDataSection && (
-          <>
-            <div className="flex justify-between items-start">
-              <div className="space-y-1 text-xs">
-                {["text", "file", "page"].map((value) => (
-                  <label key={value} className="flex items-center gap-1 text-[11px] text-gray-700 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="data-source"
-                      value={value}
-                      checked={dataSource === value}
-                      onChange={handleDataSourceChange}
-                      className="accent-blue-500"
-                      disabled={loading || submitting || !canInteract}
-                    />
-                    {value === "text" ? "Type or Paste Logs" : value === "file" ? "Upload a File" : "Analyze Page Content"}
-                  </label>
-                ))}
-              </div>
-              <button
-                id="submit-data"
-                onClick={handleDataSubmit}
-                disabled={!isSubmitEnabled || loading || !canInteract}
-                className="w-36 text-center py-1.5 px-3 text-xs font-medium bg-gray-200 text-gray-800 border border-gray-300 rounded hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Submit Data
-              </button>
-            </div>
-
-            {dataSource === "text" && (
-              <textarea
-                id="data-input"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Paste logs, metrics, or monitoring data here..."
-                rows={3}
-                className="block w-full p-2 mt-2 text-sm border border-gray-300 rounded resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-                disabled={loading || submitting || !canInteract}
-              />
-            )}
-
-            {dataSource === "file" && (
-              <input
-                type="file"
-                id="file-input"
-                ref={fileInputRef}
-                accept=".txt,.log,.json,.csv"
-                title="Supported formats: .txt, .log, .json, .csv"
-                onChange={(e) => setFileSelected(!!e.target.files?.length)}
-                className="block w-full mt-2 text-xs border rounded p-1.5 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
-                disabled={loading || submitting || !canInteract}
-              />
-            )}
-
-            {dataSource === "page" && (
-              <div className="mt-2 space-y-2">
-                <button
-                  id="analyze-page-button"
-                  onClick={getPageContent}
-                  disabled={loading || submitting || !canInteract}
-                  className="w-auto py-1.5 px-4 text-xs font-medium bg-gray-200 text-gray-700 border border-gray-300 rounded hover:bg-gray-300 transition-colors whitespace-nowrap"
-                >
-                  Analyze Current Page
-                </button>
-                {injectionStatus.message && (
-                  <div id="injection-status" className={`px-2 py-1 rounded text-xs ${
-                    injectionStatus.type === "error"
-                      ? "text-red-700 bg-red-100"
-                      : injectionStatus.type === "success"
-                      ? "text-green-700 bg-green-100"
-                      : "text-gray-600"
-                  }`}>
-                    {injectionStatus.message}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      <RemoveEvidenceDialog
+        evidence={removingEvidence}
+        isOpen={removingEvidence !== null}
+        onConfirm={handleConfirmRemove}
+        onCancel={() => {
+          setRemovingEvidence(null);
+          setRemovalError(null); // Clear error on cancel
+        }}
+        isRemoving={isRemovingEvidence}
+        errorMessage={removalError}
+      />
     </div>
   );
 };

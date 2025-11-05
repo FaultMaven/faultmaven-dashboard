@@ -12,6 +12,7 @@
  */
 
 import { UserCase } from '../api';
+import { OptimisticUserCase } from '../optimistic/types';
 
 // ============================================================================
 // Type Definitions for Strict Data Separation
@@ -114,15 +115,16 @@ export const sanitizeBackendCases = (cases: UserCase[], context: string = 'unkno
 /**
  * Extract ONLY optimistic cases from mixed data
  * Logs violations and filters out contamination
+ * v2.0: Updated to accept OptimisticUserCase[] (which extends UserCase with owner_id)
  */
-export const sanitizeOptimisticCases = (cases: UserCase[], context: string = 'unknown'): OptimisticCase[] => {
+export const sanitizeOptimisticCases = (cases: OptimisticUserCase[], context: string = 'unknown'): OptimisticCase[] => {
   if (!Array.isArray(cases)) {
     console.warn(`[DataIntegrity] Invalid cases array in ${context}:`, cases);
     return [];
   }
 
   const optimisticCases: OptimisticCase[] = [];
-  const contaminatedCases: UserCase[] = [];
+  const contaminatedCases: OptimisticUserCase[] = [];  // v2.0: Allow Optional owner_id
 
   cases.forEach(caseItem => {
     if (!caseItem || !caseItem.case_id) {
@@ -166,10 +168,11 @@ export interface MergeResult {
 
 /**
  * Safely merge optimistic and real cases with strict separation
+ * v2.0: Updated to accept OptimisticUserCase[] (which extends UserCase with owner_id)
  */
 export const mergeOptimisticAndReal = (
   backendCases: UserCase[],
-  optimisticCases: UserCase[],
+  optimisticCases: OptimisticUserCase[],
   context: string = 'unknown'
 ): MergeResult => {
   const violations: string[] = [];
@@ -222,11 +225,12 @@ export const mergeOptimisticAndReal = (
 
 /**
  * Validate state integrity across the application
+ * v2.0: Updated to accept OptimisticUserCase[] (which extends UserCase with owner_id)
  */
 export const validateStateIntegrity = (state: {
   conversations?: Record<string, any[]>;
   conversationTitles?: Record<string, string>;
-  optimisticCases?: UserCase[];
+  optimisticCases?: OptimisticUserCase[];
 }, context: string = 'unknown'): boolean => {
   let isValid = true;
   const violations: string[] = [];

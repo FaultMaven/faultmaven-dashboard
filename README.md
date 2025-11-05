@@ -74,14 +74,31 @@ This extension is built using the modern **WXT framework**, with **React 19+**, 
 
     This command will also run `wxt prepare` to set up the development environment.
 
-4.  **Configure API Endpoint**: Create a `.env.local` file in the root of the project to tell the extension where to find your backend server.
+4.  **Configure Environment Variables**: Create a `.env.local` file from the example template:
 
     ```bash
-    # For local development
-    VITE_API_URL=http://api.faultmaven.local:8000
+    cp .env.example .env.local
     ```
 
-    - If not set, the extension defaults to `https://api.faultmaven.ai`.
+    Edit `.env.local` to configure your settings:
+
+    ```bash
+    # Backend API endpoint (required)
+    VITE_API_URL=http://api.faultmaven.local:8000
+
+    # Input limits (optional - uncomment to customize)
+    #VITE_DATA_MODE_LINES=100        # Lines to trigger data upload mode
+    #VITE_MAX_QUERY_LENGTH=10000     # Max input characters
+    #VITE_MAX_FILE_SIZE_MB=10        # Max file upload size in MB
+    ```
+
+    **Available Configuration Options:**
+    - **`VITE_API_URL`**: Backend API endpoint (default: `http://127.0.0.1:8000`)
+    - **`VITE_DATA_MODE_LINES`**: Smart detection threshold - lines that trigger data upload mode (default: `100`)
+    - **`VITE_MAX_QUERY_LENGTH`**: Maximum characters in text input (default: `10000`)
+    - **`VITE_MAX_FILE_SIZE_MB`**: Maximum file upload size in megabytes (default: `10`)
+
+    See [`.env.example`](./.env.example) for complete documentation.
 
 5.  **Fonts**: The UI uses the Inter typeface for crisp readability.
 

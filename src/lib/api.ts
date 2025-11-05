@@ -294,13 +294,14 @@ export interface Session {
   status: 'active' | 'idle' | 'expired';
   last_activity?: string;
   metadata?: Record<string, any>;
-  // Additional fields that might be returned by backend
-  user_id?: string;
+  // REQUIRED fields per architectural compliance v2.0
+  user_id: string;                   // NOW REQUIRED (was optional)
   session_type?: string;
   usage_type?: string;
   // Client-based session management fields
-  client_id?: string;
-  session_resumed?: boolean;
+  client_id?: string;                // Device/browser identifier
+  session_resumed?: boolean;         // Indicates if session was resumed
+  expires_at?: string;               // Session expiration timestamp (TTL)
   message?: string;
 }
 
@@ -609,7 +610,7 @@ export interface User {
 }
 
 /**
- * Case information from backend
+ * Case information from backend (v2.0 - Session-Independent)
  */
 export interface Case {
   case_id: string;
@@ -621,10 +622,12 @@ export interface Case {
   priority?: string;
   resolved_at?: string;
   message_count?: number;
+  owner_id: string;                  // NOW REQUIRED (was optional) - security fix
+  // session_id REMOVED - cases are session-independent
 }
 
 /**
- * Message information from backend
+ * Message information from backend (v2.0 - User Attribution Required)
  */
 export interface Message {
   message_id: string;
@@ -632,6 +635,8 @@ export interface Message {
   content: string;
   created_at: string;
   metadata?: Record<string, any>;
+  author_id: string;                 // NOW REQUIRED (was optional) - user attribution
+  // session_id REMOVED - use author_id instead
 }
 
 /**
@@ -1592,7 +1597,6 @@ export async function deleteSession(sessionId: string): Promise<void> {
 // ===== Chat and Cases: Types and Functions required by UI =====
 export interface UserCase {
   case_id: string;
-  session_id?: string;
   status: string;
   title: string;
   description?: string;
@@ -1601,14 +1605,152 @@ export interface UserCase {
   updated_at?: string;
   resolved_at?: string;
   message_count?: number;
+  owner_id: string;                  // NOW REQUIRED - authorization security
+  // session_id REMOVED - cases are session-independent (v2.0)
+}
+
+/**
+ * User-Facing Case Status Types (4 states)
+ * Based on FRONTEND_CASE_STATUS_DROPDOWN_GUIDE.md
+ * Note: Different from CaseStatus enum which is used for investigation phases
+ */
+export type UserCaseStatus =
+  | 'consulting'      // Q&A mode, exploring issue
+  | 'investigating'   // Active troubleshooting (Phases 1-5)
+  | 'resolved'        // Closed with root cause + solution
+  | 'closed';         // Closed without resolution
+
+/**
+ * Allowed status transitions
+ * Terminal states (resolved, closed) have no transitions
+ */
+export const ALLOWED_TRANSITIONS: Record<UserCaseStatus, UserCaseStatus[]> = {
+  consulting: ['investigating', 'closed'],
+  investigating: ['resolved', 'closed'],
+  resolved: [],     // Terminal
+  closed: []        // Terminal
+};
+
+/**
+ * Human-readable status labels
+ */
+export const STATUS_LABELS: Record<UserCaseStatus, string> = {
+  consulting: 'Consulting',
+  investigating: 'Investigating',
+  resolved: 'Resolved',
+  closed: 'Closed'
+};
+
+/**
+ * Status descriptions for tooltips
+ */
+export const STATUS_DESCRIPTIONS: Record<UserCaseStatus, string> = {
+  consulting: 'Q&A mode - exploring the issue',
+  investigating: 'Active troubleshooting - systematic investigation',
+  resolved: 'Issue resolved with root cause and solution',
+  closed: 'Case closed without resolution'
+};
+
+/**
+ * Predefined messages for status change requests
+ * Sent to agent as regular queries (Option A - FRONTEND_STATUS_CHANGE_CONFIRMATION_FLOW.md)
+ */
+export const STATUS_CHANGE_MESSAGES: Record<string, string> = {
+  'consulting_to_investigating': 'I want to start a formal investigation to find the root cause.',
+  'consulting_to_closed': "Close this case. I don't need further investigation.",
+  'investigating_to_resolved': 'The issue is resolved. Generate final documentation with root cause and solution.',
+  'investigating_to_closed': 'Close this case as unresolved. Summarize what we found so far.'
+};
+
+/**
+ * Get valid transitions for current status
+ */
+export function getValidTransitions(currentStatus: string): UserCaseStatus[] {
+  const normalizedStatus = normalizeStatus(currentStatus);
+  return ALLOWED_TRANSITIONS[normalizedStatus] || [];
+}
+
+/**
+ * Get status change message for a transition
+ */
+export function getStatusChangeMessage(from: string, to: string): string | null {
+  const fromNormalized = normalizeStatus(from);
+  const toNormalized = normalizeStatus(to);
+  const key = `${fromNormalized}_to_${toNormalized}`;
+  return STATUS_CHANGE_MESSAGES[key] || null;
+}
+
+/**
+ * Check if a status is terminal (no transitions allowed)
+ */
+export function isTerminalStatus(status: string): boolean {
+  const normalized = normalizeStatus(status);
+  return normalized === 'resolved' || normalized === 'closed';
+}
+
+/**
+ * Normalize status string to UserCaseStatus type
+ * Handles various backend representations
+ */
+export function normalizeStatus(status: string): UserCaseStatus {
+  const normalized = status.toLowerCase();
+
+  if (normalized === 'open' || normalized === 'active') {
+    return 'investigating';
+  }
+  if (normalized === 'resolved' || normalized === 'closed_resolved') {
+    return 'resolved';
+  }
+  if (normalized === 'closed' || normalized === 'unresolved' || normalized === 'closed_unresolved') {
+    return 'closed';
+  }
+  if (normalized === 'consulting') {
+    return 'consulting';
+  }
+  if (normalized === 'investigating') {
+    return 'investigating';
+  }
+
+  // Default to consulting for unknown statuses
+  return 'consulting';
+}
+
+/**
+ * Generate default case name in format: Case-MMDD-N
+ * Example: Case-1028-1, Case-1028-2
+ *
+ * @param existingCases - List of existing cases to determine next sequential number
+ * @returns Default case name
+ */
+export function generateDefaultCaseName(existingCases?: UserCase[]): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const datePrefix = `${month}${day}`;
+
+  // Find existing cases with same date prefix
+  const todayCases = (existingCases || []).filter(c =>
+    c.title && c.title.startsWith(`Case-${datePrefix}-`)
+  );
+
+  // Extract numbers and find max
+  const numbers = todayCases.map(c => {
+    const match = c.title?.match(/Case-\d{4}-(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  });
+
+  const nextNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+
+  return `Case-${datePrefix}-${nextNumber}`;
 }
 
 export interface CreateCaseRequest {
   title?: string;
   priority?: 'low' | 'medium' | 'high' | 'critical';
   metadata?: Record<string, any>;
-  session_id?: string;
   initial_message?: string;
+  // session_id REMOVED - use X-Session-ID header (v2.0)
+  // owner_id NOT needed - auto-populated from session user_id (v2.0)
 }
 
 export async function createCase(data: CreateCaseRequest): Promise<UserCase> {
@@ -2234,6 +2376,10 @@ export async function deleteCase(caseId: string): Promise<void> {
     method: 'DELETE',
     credentials: 'include'
   });
+
+  const corr = response.headers.get('x-correlation-id') || response.headers.get('X-Correlation-ID');
+  console.log('[API] deleteCase', { caseId, status: response.status, correlationId: corr });
+
   if (!response.ok && response.status !== 204) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to delete case: ${response.status}`);

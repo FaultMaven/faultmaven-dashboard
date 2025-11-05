@@ -1,19 +1,23 @@
 /**
- * useCaseManagement Hook
+ * useCaseManagement Hook (v2.0 - Session-Independent Cases)
  *
- * Manages case lifecycle with session-based lazy creation pattern.
- * Implements the pattern from FRONTEND_IMPLEMENTATION_GUIDE.md
+ * Manages case lifecycle with frontend-only state management.
+ * Updated to comply with architectural specification v2.0:
+ * - Cases are session-independent resources
+ * - Current case tracking is frontend state (not server)
+ * - Uses /api/v1/cases with X-Session-ID header
  *
  * Key responsibilities:
  * - Lazy case creation on first action (query or upload)
- * - Case reuse within session
- * - Persistence across browser reloads
+ * - Frontend state management for current case
+ * - Persistence across browser reloads (localStorage)
  * - Idempotent case creation (prevents duplicates)
  */
 
 import { useState, useCallback, useRef } from 'react';
 import { browser } from 'wxt/browser';
 import { createLogger } from '../../../lib/utils/logger';
+import { createCase, CreateCaseRequest } from '../../../lib/api';
 
 const log = createLogger('useCaseManagement');
 
@@ -26,7 +30,8 @@ interface CaseCreationResponse {
   case_id: string;
   title: string;
   created_at: string;
-  session_id: string;
+  owner_id: string;  // v2.0: NOW REQUIRED (was session_id)
+  // session_id REMOVED - cases are session-independent
 }
 
 export function useCaseManagement(sessionId: string | null) {
@@ -39,14 +44,15 @@ export function useCaseManagement(sessionId: string | null) {
   const caseCreationPromise = useRef<Promise<string> | null>(null);
 
   /**
-   * Ensures a case exists for the current session.
+   * Ensures a case exists for the current session (v2.0 - Frontend State Only).
    *
    * Flow:
    * 1. Check memory (currentCaseId state) → Return if exists
    * 2. Check localStorage (persisted across reloads) → Return if exists
-   * 3. Call backend /cases/sessions/{session_id}/case → Return new ID
+   * 3. Call backend /api/v1/cases (with X-Session-ID header) → Return new ID
    *
    * This is idempotent - multiple concurrent calls return the same case_id.
+   * Note: owner_id is auto-populated from session user_id by backend
    */
   const ensureCaseExists = useCallback(async (): Promise<string> => {
     // Guard: Require session
@@ -62,11 +68,11 @@ export function useCaseManagement(sessionId: string | null) {
 
     // Step 2: Check localStorage (survives reloads)
     try {
-      const stored = await browser.storage.local.get(['active_case_id']);
-      if (stored.active_case_id) {
-        log.debug('Case restored from storage:', stored.active_case_id);
-        setState(prev => ({ ...prev, currentCaseId: stored.active_case_id }));
-        return stored.active_case_id;
+      const stored = await browser.storage.local.get(['faultmaven_current_case']);
+      if (stored.faultmaven_current_case) {
+        log.debug('Case restored from storage:', stored.faultmaven_current_case);
+        setState(prev => ({ ...prev, currentCaseId: stored.faultmaven_current_case }));
+        return stored.faultmaven_current_case;
       }
     } catch (error) {
       log.warn('Failed to read from storage:', error);
@@ -78,18 +84,18 @@ export function useCaseManagement(sessionId: string | null) {
       return await caseCreationPromise.current;
     }
 
-    // Step 4: Create new case via backend
+    // Step 4: Create new case via backend (v2.0: uses /api/v1/cases with X-Session-ID)
     log.info('No case exists, creating new case for session:', sessionId);
     setState(prev => ({ ...prev, isCreatingCase: true }));
 
-    const creationPromise = createCaseForSession(sessionId);
+    const creationPromise = createNewCaseViaAPI();
     caseCreationPromise.current = creationPromise;
 
     try {
       const caseId = await creationPromise;
 
-      // Persist to storage
-      await browser.storage.local.set({ active_case_id: caseId });
+      // Persist to storage (frontend state)
+      await browser.storage.local.set({ faultmaven_current_case: caseId });
 
       setState({
         currentCaseId: caseId,
@@ -120,10 +126,10 @@ export function useCaseManagement(sessionId: string | null) {
     setState(prev => ({ ...prev, isCreatingCase: true }));
 
     try {
-      const caseId = await createCaseForSession(sessionId, true);
+      const caseId = await createNewCaseViaAPI();
 
-      // Update state and storage
-      await browser.storage.local.set({ active_case_id: caseId });
+      // Update state and storage (frontend state management)
+      await browser.storage.local.set({ faultmaven_current_case: caseId });
       setState({
         currentCaseId: caseId,
         isCreatingCase: false
@@ -140,25 +146,27 @@ export function useCaseManagement(sessionId: string | null) {
 
   /**
    * Sets the active case ID (used when selecting existing case from list)
+   * v2.0: Frontend-only state management
    */
   const setActiveCase = useCallback(async (caseId: string | null) => {
     log.debug('Setting active case:', caseId);
     setState(prev => ({ ...prev, currentCaseId: caseId }));
 
     if (caseId) {
-      await browser.storage.local.set({ active_case_id: caseId });
+      await browser.storage.local.set({ faultmaven_current_case: caseId });
     } else {
-      await browser.storage.local.remove(['active_case_id']);
+      await browser.storage.local.remove(['faultmaven_current_case']);
     }
   }, []);
 
   /**
    * Clears the current case (used for "New Chat" button - NO backend call)
+   * v2.0: Frontend-only state management
    */
   const clearCurrentCase = useCallback(async () => {
     log.debug('Clearing current case (no backend call)');
     setState(prev => ({ ...prev, currentCaseId: null }));
-    await browser.storage.local.remove(['active_case_id']);
+    await browser.storage.local.remove(['faultmaven_current_case']);
   }, []);
 
   return {
@@ -172,46 +180,34 @@ export function useCaseManagement(sessionId: string | null) {
 }
 
 /**
- * Backend API call to create or get case for session.
+ * Backend API call to create a new case (v2.0 - Session-Independent)
  *
- * @param sessionId - Current session ID
- * @param forceNew - If true, always creates new case (for "New Chat" after using a case)
+ * Uses /api/v1/cases endpoint with X-Session-ID header.
+ * Owner_id is auto-populated from session user_id by backend.
+ *
  * @returns Case ID (UUID from backend)
  */
-async function createCaseForSession(
-  sessionId: string,
-  forceNew: boolean = false
-): Promise<string> {
-  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+async function createNewCaseViaAPI(): Promise<string> {
+  log.debug('Creating new case via /api/v1/cases (v2.0)');
 
-  // Build URL with optional force_new parameter
-  const url = new URL(`/api/v1/cases/sessions/${sessionId}/case`, baseUrl);
-  if (forceNew) {
-    url.searchParams.append('force_new', 'true');
-  }
+  // Create case with minimal data - owner_id auto-populated from session
+  // Backend auto-generates title in format: Case-MMDD-N
+  const request: CreateCaseRequest = {
+    title: undefined,  // Let backend auto-generate
+    priority: 'medium',
+    metadata: {
+      created_via: 'browser_extension',
+      auto_generated: true
+    }
+  };
 
-  // Generate idempotency key to prevent duplicate case creation on retry
-  const idempotencyKey = `case_${sessionId}_${Date.now()}`;
+  // Call API (uses authenticatedFetchWithRetry with X-Session-ID header)
+  const caseData = await createCase(request);
 
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'idempotency-key': idempotencyKey
-    },
-    credentials: 'include'
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Case creation failed: ${response.status} - ${errorText}`);
-  }
-
-  const data: CaseCreationResponse = await response.json();
-
-  if (!data.case_id) {
+  if (!caseData.case_id) {
     throw new Error('Backend response missing case_id');
   }
 
-  return data.case_id;
+  log.info('Case created via v2.0 API', { caseId: caseData.case_id });
+  return caseData.case_id;
 }

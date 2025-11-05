@@ -10,13 +10,14 @@ export interface SessionCreateRequest {
 
 export interface SessionCreateResponse {
   session_id: string;
-  user_id?: string;
-  client_id?: string; // NEW - Echoed back from request
-  status: string; // "active"
-  created_at: string; // UTC ISO 8601 format
+  user_id: string;                   // NOW REQUIRED (v2.0)
+  client_id?: string;                // Device identifier for session resumption
+  status: string;                    // "active"
+  created_at: string;                // UTC ISO 8601 format
   session_type: string;
-  session_resumed?: boolean; // NEW - true if existing session was resumed
-  message: string; // "Session created successfully" or "Session resumed successfully"
+  session_resumed?: boolean;         // true if existing session was resumed
+  expires_at?: string;               // Session expiration timestamp (TTL) - v2.0
+  message: string;                   // "Session created successfully" or "Session resumed successfully"
   last_activity?: string;
   metadata?: Record<string, any>;
 }

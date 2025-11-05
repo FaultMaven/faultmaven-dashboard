@@ -39,6 +39,34 @@ pnpm test:coverage             # Generate coverage report
 pnpm generate-icons            # Generate extension icons from SVG
 ```
 
+## Configuration
+
+### Environment Variables
+All configuration is done via environment variables (set before build):
+
+```bash
+# Copy example template
+cp .env.example .env.local
+
+# Edit .env.local with your settings
+```
+
+**Available Variables:**
+- `VITE_API_URL` - Backend API endpoint (default: `http://127.0.0.1:8000`)
+- `VITE_DATA_MODE_LINES` - Lines threshold for data upload mode (default: `100`)
+- `VITE_MAX_QUERY_LENGTH` - Max input characters (default: `10000`)
+- `VITE_MAX_FILE_SIZE_MB` - Max file upload size in MB (default: `10`)
+
+**Configuration Files:**
+- **`src/config.ts`** - Central configuration with environment variable parsing
+- **`src/shared/ui/layouts/constants.ts`** - UI constants derived from config
+- **`.env.example`** - Complete documentation of all available variables
+- **`.env.local`** - Your local overrides (gitignored)
+
+**Important:** All VITE_* variables are replaced at BUILD TIME. Changing them requires:
+- Dev mode: Restart `pnpm dev`
+- Production: Rebuild with `pnpm build`
+
 ## High-Level Architecture
 
 ### Browser Extension Architecture

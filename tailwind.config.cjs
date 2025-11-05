@@ -6,6 +6,12 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // Custom responsive breakpoints per enhanced-ui-design.md section 3.3
+      screens: {
+        'xs': '400px',   // Minimum usable mobile width
+        'sm': '500px',   // Mobile optimization threshold
+        'md': '700px',   // Tablet/small desktop threshold
+      },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "Noto Sans", "sans-serif", "Apple Color Emoji", "Segoe UI Emoji"],
       },

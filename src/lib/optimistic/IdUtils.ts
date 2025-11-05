@@ -1,90 +1,69 @@
 /**
  * IdUtils - Utility functions for ID and title generation
  *
- * Provides granular title generation with seconds precision to avoid
- * duplicate titles when multiple chats are created quickly.
+ * Generates case names in format: Case-MMDD-N
+ * Example: Case-1028-1, Case-1028-2
  */
+
+interface CaseWithTitle {
+  title?: string;
+}
 
 export class IdUtils {
   /**
-   * Generate a unique chat title with high granularity
-   * Format: "Chat-Sep 27, 7:26:35 PM" (includes seconds)
+   * Generate a unique case title in format: Case-MMDD-N
+   * Example: Case-1028-1, Case-1028-2, Case-1028-3
    *
-   * If multiple titles are generated in the same second, adds milliseconds
-   * to ensure uniqueness: "Chat-Sep 27, 7:26:35.123 PM"
+   * @param existingCases - Optional list of existing cases for determining sequence number
+   * @returns Case title like "Case-1028-1"
    */
-  static generateChatTitle(): string {
+  static generateChatTitle(existingCases?: CaseWithTitle[]): string {
     const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const datePrefix = `${month}${day}`;
 
-    // Get base timestamp with seconds
-    const baseTitle = this.formatTimestampWithSeconds(now);
+    // Find existing cases with same date prefix
+    const todayCases = (existingCases || []).filter(c =>
+      c.title && c.title.startsWith(`Case-${datePrefix}-`)
+    );
 
-    // Check if we need to add milliseconds for uniqueness
-    // (This is a simple approach - in production you might want to track recent titles)
-    const milliseconds = now.getMilliseconds();
+    // Extract numbers and find max
+    const numbers = todayCases.map(c => {
+      const match = c.title?.match(/Case-\d{4}-(\d+)/);
+      return match ? parseInt(match[1], 10) : 0;
+    });
 
-    // Add milliseconds if non-zero to increase uniqueness
-    if (milliseconds > 0) {
-      const ms = milliseconds.toString().padStart(3, '0');
-      return `Chat-${baseTitle.replace(' PM', `.${ms} PM`).replace(' AM', `.${ms} AM`)}`;
-    }
+    const nextNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
 
-    return `Chat-${baseTitle}`;
+    return `Case-${datePrefix}-${nextNumber}`;
   }
 
   /**
-   * Format timestamp with seconds precision
-   * Example: "Sep 27, 7:26:35 PM"
+   * Check if a title is a generated case title (vs user-renamed)
+   * Generated titles match: Case-MMDD-N
    */
-  private static formatTimestampWithSeconds(date: Date): string {
-    const options: Intl.DateTimeFormatOptions = {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    };
-
-    return date.toLocaleString('en-US', options);
+  static isGeneratedChatTitle(title: string): boolean {
+    return /^Case-\d{4}-\d+$/.test(title);
   }
 
   /**
-   * Generate a unique title with microsecond precision (for extreme edge cases)
-   * Format: "Chat-Sep 27, 7:26:35.123456 PM"
+   * Extract date from case title
+   * Returns Date object if title matches Case-MMDD-N format
    */
-  static generateUniqueChatTitle(): string {
-    const now = new Date();
-    const baseTitle = this.formatTimestampWithSeconds(now);
-
-    // Add microseconds using performance.now() for sub-millisecond precision
-    const performanceTime = performance.now();
-    const microseconds = Math.floor((performanceTime % 1) * 1000000);
-    const microStr = microseconds.toString().padStart(6, '0');
-
-    return `Chat-${baseTitle.replace(' PM', `.${microStr} PM`).replace(' AM', `.${microStr} AM`)}`;
-  }
-
-  /**
-   * Extract timestamp from chat title
-   * Returns null if title doesn't match expected format
-   */
-  static extractTimestampFromTitle(title: string): Date | null {
-    const match = title.match(/^Chat-(.+)$/);
+  static extractDateFromTitle(title: string): Date | null {
+    const match = title.match(/^Case-(\d{2})(\d{2})-\d+$/);
     if (!match) return null;
 
+    const month = parseInt(match[1], 10);
+    const day = parseInt(match[2], 10);
+    const year = new Date().getFullYear();
+
     try {
-      return new Date(match[1]);
+      return new Date(year, month - 1, day);
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Check if a title is a generated chat title (vs user-renamed)
-   */
-  static isGeneratedChatTitle(title: string): boolean {
-    return title.startsWith('Chat-') && this.extractTimestampFromTitle(title) !== null;
   }
 
   /**

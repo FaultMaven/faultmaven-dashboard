@@ -22,13 +22,33 @@ export default function UploadArea({ onUpload }: UploadAreaProps) {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
+
+    // File size limit: 10MB (matches backend MAX_UPLOAD_SIZE_MB)
+    const MAX_FILE_SIZE_MB = 10;
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
     const validFiles = files.filter(file => {
       // Backend supports these file types based on MIME type validation
       const supportedTypes = ['.md', '.txt', '.log', '.json', '.csv', '.pdf', '.doc', '.docx'];
       const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-      return supportedTypes.includes(fileExtension);
+
+      // Check file type
+      if (!supportedTypes.includes(fileExtension)) {
+        console.warn(`[Upload] Rejected file (unsupported type): ${file.name}`);
+        return false;
+      }
+
+      // Check file size
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        console.error(`[Upload] File too large: ${file.name} (${sizeMB}MB exceeds ${MAX_FILE_SIZE_MB}MB limit)`);
+        alert(`File "${file.name}" is too large (${sizeMB}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
+        return false;
+      }
+
+      return true;
     });
 
     if (validFiles.length > 0) {
@@ -38,8 +58,24 @@ export default function UploadArea({ onUpload }: UploadAreaProps) {
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      handleFiles(files);
+
+    // File size limit: 10MB (matches backend MAX_UPLOAD_SIZE_MB)
+    const MAX_FILE_SIZE_MB = 10;
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+    // Validate file sizes before upload
+    const validFiles = files.filter(file => {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        console.error(`[Upload] File too large: ${file.name} (${sizeMB}MB exceeds ${MAX_FILE_SIZE_MB}MB limit)`);
+        alert(`File "${file.name}" is too large (${sizeMB}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length > 0) {
+      handleFiles(validFiles);
     }
   }, []);
 
@@ -108,9 +144,10 @@ export default function UploadArea({ onUpload }: UploadAreaProps) {
             </p>
           </div>
 
-          {/* File Types */}
+          {/* File Types and Size Limit */}
           <div className="text-xs text-gray-400">
-            Supported formats: MD, TXT, LOG, JSON, CSV, PDF, DOC, DOCX
+            <div>Supported formats: MD, TXT, LOG, JSON, CSV, PDF, DOC, DOCX</div>
+            <div className="mt-1">Maximum file size: 10MB</div>
           </div>
 
           {/* Upload Progress */}
