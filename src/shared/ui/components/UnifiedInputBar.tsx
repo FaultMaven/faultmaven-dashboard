@@ -160,13 +160,26 @@ export function UnifiedInputBar({
         const result = await onDataUpload(data, dataSource);
 
         if (result.success) {
+          // Success - clear all inputs
           setInput("");
           setSelectedFile(null);
           setCapturedPageUrl(null);
           setCapturedPageContent("");
+        } else {
+          // Upload failed - show error to user
+          console.warn('[UnifiedInputBar] Upload failed:', result.message);
         }
+      } catch (error) {
+        // Catch any unhandled errors from onDataUpload to ensure unlock
+        console.error('[UnifiedInputBar] Unexpected error during upload:', error);
       } finally {
+        // CRITICAL: Always clear selected data and unlock input, even on error
+        // This ensures the input is never stuck in locked state
+        console.log('[UnifiedInputBar] 🔓 Unlocking input after upload (finally block)');
         setIsUploadingData(false);
+        setSelectedFile(null);
+        setCapturedPageUrl(null);
+        setCapturedPageContent("");
       }
     }
   };

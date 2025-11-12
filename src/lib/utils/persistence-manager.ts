@@ -287,7 +287,7 @@ export class PersistenceManager {
                 question: msg.content,
                 response: agentResponse ? agentResponse.content : '', // Empty if no response yet
                 error: false,
-                timestamp: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: msg.created_at, // Use ISO 8601 format from backend
                 optimistic: false, // Backend messages are confirmed
                 loading: !agentResponse, // Still loading if no response
                 failed: false,
@@ -310,7 +310,7 @@ export class PersistenceManager {
                   question: '', // No user question found
                   response: msg.content,
                   error: false,
-                  timestamp: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  timestamp: msg.created_at, // Use ISO 8601 format from backend
                   optimistic: false,
                   loading: false,
                   failed: false,

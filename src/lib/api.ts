@@ -1089,71 +1089,13 @@ export async function createFreshSession(metadata?: Record<string, any>): Promis
   return response.json();
 }
 
-/**
- * Enhanced data upload with new endpoint and response structure
- */
-export async function uploadData(
-  sessionId: string,
-  caseId: string,
-  data: File | string,
-  dataType: 'file' | 'text' | 'page'
-): Promise<UploadedData> {
-  const formData = new FormData();
-  formData.append('session_id', sessionId);
-  formData.append('case_id', caseId);
-
-  if (data instanceof File) {
-    formData.append('file', data);
-  } else {
-    // For text/page content, create a text file
-    const blob = new Blob([data], { type: 'text/plain' });
-    const file = new File([blob], 'content.txt', { type: 'text/plain' });
-    formData.append('file', file);
-  }
-
-  // Use authenticatedFetch which automatically handles FormData Content-Type
-  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/data/upload`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorData: APIError = await response.json().catch(() => ({}));
-
-    // Handle 422 validation error for missing case_id
-    if (response.status === 422 && errorData.detail?.includes('case_id')) {
-      throw new Error('Please select or create a case before uploading data');
-    }
-
-    throw new Error(errorData.detail || `Failed to upload data: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Batch upload multiple files
- */
-export async function batchUploadData(sessionId: string, files: File[]): Promise<UploadedData[]> {
-  const formData = new FormData();
-  formData.append('session_id', sessionId);
-  
-  files.forEach((file, index) => {
-    formData.append('files', file);
-  });
-
-  const response = await authenticatedFetch(`${config.apiUrl}/api/v1/data/batch-upload`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errorData: APIError = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to batch upload data: ${response.status}`);
-  }
-
-  return response.json();
-}
+// REMOVED: Legacy session-based upload functions
+// - uploadData() → Use uploadDataToCase() instead (case-centric, RESTful)
+// - batchUploadData() → Not implemented in v2.0 architecture (use uploadDataToCase multiple times)
+// These functions used deprecated endpoints:
+//   - POST /api/v1/data/upload (legacy session-based)
+//   - POST /api/v1/data/batch-upload (not supported in v2.0)
+// Modern v2.0 endpoint: POST /api/v1/cases/{case_id}/data
 
 /**
  * Get session data with pagination
@@ -1695,7 +1637,12 @@ export function isTerminalStatus(status: string): boolean {
 export function normalizeStatus(status: string): UserCaseStatus {
   const normalized = status.toLowerCase();
 
-  if (normalized === 'open' || normalized === 'active') {
+  // Backend returns: consulting | investigating | resolved | closed
+  // Just validate and return, no mapping needed
+  if (normalized === 'consulting') {
+    return 'consulting';
+  }
+  if (normalized === 'investigating') {
     return 'investigating';
   }
   if (normalized === 'resolved' || normalized === 'closed_resolved') {
@@ -1704,14 +1651,9 @@ export function normalizeStatus(status: string): UserCaseStatus {
   if (normalized === 'closed' || normalized === 'unresolved' || normalized === 'closed_unresolved') {
     return 'closed';
   }
-  if (normalized === 'consulting') {
-    return 'consulting';
-  }
-  if (normalized === 'investigating') {
-    return 'investigating';
-  }
 
   // Default to consulting for unknown statuses
+  console.warn('[normalizeStatus] Unknown status:', status, '- defaulting to consulting');
   return 'consulting';
 }
 
@@ -1777,15 +1719,17 @@ export async function createCase(data: CreateCaseRequest): Promise<UserCase> {
 
 
 export async function submitQueryToCase(caseId: string, request: QueryRequest): Promise<AgentResponse> {
-  if (!request?.session_id || !request?.query) {
-    throw new Error('Missing required fields: session_id and query');
+  if (!request?.query) {
+    throw new Error('Missing required field: query');
   }
+
+  // Map old QueryRequest to new CreateTurnRequest format
   const body = {
-    session_id: request.session_id,
-    query: request.query,
-    context: request.context || {},
-    priority: request.priority || 'medium'
-  } as const;
+    message: request.query,  // Changed: query → message
+    attachments: request.context?.uploaded_data_ids?.map(id => ({ file_id: id })) || undefined
+    // Removed: session_id, priority, context (auth handled by backend)
+  };
+
   const response = await authenticatedFetchWithRetry(`${config.apiUrl}/api/v1/cases/${caseId}/queries`, {
     method: 'POST',
     body: JSON.stringify(body),
@@ -1963,13 +1907,43 @@ export async function submitQueryToCase(caseId: string, request: QueryRequest): 
     // No body result and no Location — fall through to generic handling
   }
 
-  // Fallback: expect a body with AgentResponse
+  // Fallback: expect a body with AgentResponse or CreateTurnResponse
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to submit query to case: ${response.status}`);
   }
   const json = await response.json();
   console.log('[API] DEBUG: Raw backend response:', { status: response.status, json, caseId });
+
+  // Handle new /turns endpoint CreateTurnResponse format
+  if (json.agent_response && json.turn_number !== undefined) {
+    console.log('[API] Mapping CreateTurnResponse to AgentResponse');
+    const turnResponse = json as {
+      agent_response: string;
+      turn_number: number;
+      milestones_completed: string[];
+      case_status: string;
+      progress_made: boolean;
+      is_stuck: boolean;
+    };
+
+    return {
+      content: turnResponse.agent_response,
+      response_type: ResponseType.ANSWER,
+      session_id: request.session_id,
+      case_id: caseId,
+      confidence_score: turnResponse.progress_made ? 0.8 : 0.5,
+      sources: [],
+      evidence_requests: [],
+      investigation_mode: InvestigationMode.ACTIVE_INCIDENT,  // Required field
+      case_status: turnResponse.case_status as any,  // Map from backend case_status
+      metadata: {
+        turn_number: turnResponse.turn_number,
+        milestones_completed: turnResponse.milestones_completed,
+        is_stuck: turnResponse.is_stuck
+      }
+    } as AgentResponse;
+  }
 
   // Defensive: Detect API contract violations
   if (json.choices && Array.isArray(json.choices) && json.choices[0]?.message?.content) {
@@ -2029,6 +2003,10 @@ export async function uploadDataToCase(
   }
   if (!response.ok) {
     const errorData: APIError = await response.json().catch(() => ({}));
+    // Enhanced error message for 404 - case not found
+    if (response.status === 404) {
+      throw new Error('Case not found: Please refresh and try again');
+    }
     throw new Error(errorData.detail || `Failed to upload data to case: ${response.status}`);
   }
   return response.json();
@@ -2356,8 +2334,33 @@ export async function getUserCases(filters?: {
     const errorData: APIError = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to get cases: ${response.status}`);
   }
-  const data = await response.json().catch(() => []);
-  return Array.isArray(data) ? (data as UserCase[]) : [];
+  const data = await response.json().catch(() => ({ cases: [] }));
+
+  // Per OpenAPI spec: backend returns CaseListResponse { cases, total_count, limit, offset, has_more }
+  console.log('[API] getUserCases raw response:', {
+    hasData: !!data,
+    hasCasesProperty: 'cases' in data,
+    casesIsArray: Array.isArray(data?.cases),
+    casesLength: data?.cases?.length,
+    fullData: data
+  });
+
+  if (!data || typeof data !== 'object') {
+    console.error('[API] getUserCases: Invalid response format - not an object');
+    return [];
+  }
+
+  if (!('cases' in data)) {
+    console.error('[API] getUserCases: Missing cases property in response');
+    return [];
+  }
+
+  if (!Array.isArray(data.cases)) {
+    console.error('[API] getUserCases: cases property is not an array');
+    return [];
+  }
+
+  return data.cases as UserCase[];
 } 
 
 export async function archiveCase(caseId: string): Promise<void> {

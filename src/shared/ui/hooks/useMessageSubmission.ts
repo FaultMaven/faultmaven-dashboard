@@ -96,7 +96,7 @@ export function useMessageSubmission(props: UseMessageSubmissionProps) {
     // Generate optimistic message IDs
     const userMessageId = OptimisticIdGenerator.generateMessageId();
     const aiMessageId = OptimisticIdGenerator.generateMessageId();
-    const messageTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const messageTimestamp = new Date().toISOString(); // ISO 8601 format to match backend
 
     // Step 1: Ensure case exists using session-based lazy creation
     let targetCaseId = props.activeCaseId;

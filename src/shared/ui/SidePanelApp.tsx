@@ -749,7 +749,7 @@ function SidePanelAppContent() {
           case_id: caseId,
           owner_id: '',  // v2.0: required field (will be populated when full case data loads)
           title: conversationTitles[caseId] || 'Loading...',
-          status: 'active',
+          status: 'consulting', // New cases start in consulting phase
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           message_count: 0
@@ -759,7 +759,10 @@ function SidePanelAppContent() {
 
       // ARCHITECTURAL FIX: Check for conversation data under both selected and resolved IDs
       // This prevents unnecessary API calls after ID reconciliation
-      const hasConversationData = conversations[caseId] || conversations[resolvedCaseId];
+      // BUG FIX: Check for non-empty arrays (empty array [] is truthy but means no data)
+      const hasConversationData =
+        (conversations[caseId] && conversations[caseId].length > 0) ||
+        (conversations[resolvedCaseId] && conversations[resolvedCaseId].length > 0);
 
       if (!hasConversationData) {
         setLoading(true);
@@ -782,11 +785,12 @@ function SidePanelAppContent() {
         const messages = conversationData.messages || [];
         const backendMessages: OptimisticConversationItem[] = messages.map((msg: any) => {
           // Transform backend Message format to ChatWindow ConversationItem format
-          // Backend: { message_id, role: 'user'|'agent', content, created_at }
-          // Frontend: { id, question?, response?, timestamp }
+          // Backend: { message_id, turn_number, role: 'user'|'agent', content, created_at }
+          // Frontend: { id, turn_number, question?, response?, timestamp }
           const transformed: OptimisticConversationItem = {
             id: msg.message_id,
             timestamp: msg.created_at,
+            turn_number: msg.turn_number, // Backend now provides turn_number
             optimistic: false,
             originalId: msg.message_id
           };
@@ -1226,7 +1230,7 @@ function SidePanelAppContent() {
     // Generate optimistic message IDs
     const userMessageId = OptimisticIdGenerator.generateMessageId();
     const aiMessageId = OptimisticIdGenerator.generateMessageId();
-    const messageTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const messageTimestamp = new Date().toISOString(); // ISO 8601 format to match backend
 
     // Step 1: Ensure case exists using session-based lazy creation
     let targetCaseId = activeCaseId;
@@ -1551,8 +1555,40 @@ function SidePanelAppContent() {
     } catch (error) {
       console.error('[SidePanelApp] ❌ Background query submission failed:', error);
 
-      // Mark operation as failed
-      pendingOpsManager.fail(aiMessageId, error instanceof Error ? error.message : 'Unknown error');
+      // CRITICAL: Detect stale case ID (404 - case no longer exists in backend)
+      // This happens after server restart or database reset
+      const errorMessage = error instanceof Error ? error.message : '';
+      const isStaleCase = errorMessage.includes('Case not found') ||
+                          errorMessage.includes('404') ||
+                          errorMessage.includes('access denied');
+
+      if (isStaleCase) {
+        console.warn('[SidePanelApp] ⚠️ Detected stale case ID - case no longer exists in backend:', caseId);
+        console.log('[SidePanelApp] 🔄 Clearing stale case from cache to allow new case creation');
+
+        // Clear stale case from localStorage (yield to server as source of truth)
+        await browser.storage.local.remove(['faultmaven_current_case']);
+
+        // Clear from active state
+        setActiveCaseId(undefined);
+
+        // Remove stale conversation data
+        setConversations(prev => {
+          const updated = { ...prev };
+          delete updated[caseId];
+          return updated;
+        });
+
+        // Show helpful error message
+        showError('Your previous case no longer exists (server was restarted). Please click "New Chat" to start fresh.');
+
+        // Mark operation as failed but don't show in conversation
+        pendingOpsManager.remove(aiMessageId);
+        return;
+      }
+
+      // For other errors, mark operation as failed
+      pendingOpsManager.fail(aiMessageId, errorMessage);
 
       // Update AI message to show error state
       setConversations(prev => {
@@ -1561,7 +1597,7 @@ function SidePanelAppContent() {
           if (item.id === aiMessageId) {
             return {
               ...item,
-              response: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}. Please try again.`,
+              response: `❌ Error: ${errorMessage || 'Unknown error occurred'}. Please try again.`,
               error: true,
               optimistic: false,
               loading: false,
@@ -1671,7 +1707,7 @@ function SidePanelAppContent() {
             case_id: newCaseId,
             owner_id: caseData.owner_id,  // v2.0: required field
             title: caseData.title || caseTitle,
-            status: 'active',
+            status: caseData.status || 'consulting', // Use actual backend status
             created_at: caseData.created_at || new Date().toISOString(),
             updated_at: caseData.updated_at || new Date().toISOString(),
             message_count: 0
@@ -1775,12 +1811,63 @@ function SidePanelAppContent() {
       }
 
       // Step 2: Upload data to the case (now that we have a real case ID)
-      const uploadResponse = await uploadDataToCase(
-        targetCaseId,
-        sessionId,
-        fileToUpload,
-        sourceMetadata
-      );
+      let uploadResponse;
+      try {
+        uploadResponse = await uploadDataToCase(
+          targetCaseId,
+          sessionId,
+          fileToUpload,
+          sourceMetadata
+        );
+      } catch (error) {
+        // If case not found (404), the case may have been deleted - create a new one
+        if (error instanceof Error && error.message.includes('Case not found')) {
+          console.warn('[SidePanelApp] Case not found, creating new case and retrying upload');
+
+          // Create a new case
+          const caseTitle = IdUtils.generateChatTitle();
+          const caseData = await createCase({
+            title: caseTitle,
+            priority: 'medium',
+            metadata: {
+              created_via: 'browser_extension',
+              auto_generated: true,
+              recovery_reason: 'case_not_found_404'
+            }
+          });
+
+          const newCaseId = caseData.case_id;
+          if (!newCaseId) {
+            throw new Error('Backend response missing case_id during recovery');
+          }
+
+          // Update UI with the new case
+          targetCaseId = newCaseId;
+          setActiveCaseId(newCaseId);
+          setActiveCase({
+            case_id: newCaseId,
+            owner_id: caseData.owner_id,
+            title: caseData.title || caseTitle,
+            status: caseData.status || 'consulting', // Use actual backend status
+            created_at: caseData.created_at || new Date().toISOString(),
+            updated_at: caseData.updated_at || new Date().toISOString(),
+            message_count: 0
+          });
+
+          // Retry upload with new case ID
+          uploadResponse = await uploadDataToCase(
+            targetCaseId,
+            sessionId,
+            fileToUpload,
+            sourceMetadata
+          );
+
+          console.log('[SidePanelApp] Successfully recovered from 404 with new case:', newCaseId);
+        } else {
+          // Re-throw other errors
+          throw error;
+        }
+      }
 
       // No ID reconciliation needed - targetCaseId is already the real UUID from backend
       console.log('[SidePanelApp] ✅ Data uploaded successfully to case:', targetCaseId);
@@ -1884,6 +1971,7 @@ function SidePanelAppContent() {
         message: `${errorMessage}: ${errorDetails}`
       };
     } finally {
+      console.log('[SidePanelApp] 🔓 Unlocking loading state after upload (finally block)');
       setLoading(false);
     }
   };
@@ -1918,36 +2006,6 @@ function SidePanelAppContent() {
     }
   };
 
-  // Phase 3 Week 7: Handle evidence removal
-  const handleRemoveEvidence = async (caseId: string, dataId: string) => {
-    if (!sessionId) return;
-
-    try {
-      // Call DELETE endpoint
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/api/v1/data/${dataId}?session_id=${sessionId}`,
-        {
-          method: 'DELETE',
-          credentials: 'include'
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete evidence: ${response.status}`);
-      }
-
-      // Remove from local state
-      setCaseEvidence(prev => ({
-        ...prev,
-        [caseId]: (prev[caseId] || []).filter(item => item.data_id !== dataId)
-      }));
-
-      console.log('[SidePanelApp] Evidence removed:', dataId);
-    } catch (error) {
-      console.error('[SidePanelApp] Evidence removal failed:', error);
-      throw error; // Re-throw so ChatWindow can handle the error
-    }
-  };
 
   // Login screen
   const renderLogin = () => (
@@ -2057,7 +2115,6 @@ function SidePanelAppContent() {
           onRetryFailedOperation={handleUserRetry}
           onDismissFailedOperation={handleDismissFailedOperation}
           getErrorMessageForOperation={getErrorMessageForOperation}
-          onRemoveEvidence={activeCaseId ? (dataId) => handleRemoveEvidence(activeCaseId, dataId) : undefined}
         />
       </div>
 

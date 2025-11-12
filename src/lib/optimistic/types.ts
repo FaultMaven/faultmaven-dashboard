@@ -56,6 +56,7 @@ export interface ConversationItem {
   originalId?: string;
   errorMessage?: string; // User-friendly error message
   onRetry?: (itemId: string) => void | Promise<void>; // Retry callback
+  turn_number?: number; // Turn number for navigation to conversation context
 }
 
 /**
@@ -69,11 +70,12 @@ export interface OptimisticConversationItem extends ConversationItem {
 
 /**
  * Base user case interface
+ * Matches backend CaseSummary schema - consulting/investigating/resolved/closed
  */
 export interface UserCase {
   case_id: string;
   title: string;
-  status: 'active' | 'resolved' | 'closed';
+  status: 'consulting' | 'investigating' | 'resolved' | 'closed';
   created_at: string;
   updated_at: string;
   message_count: number;

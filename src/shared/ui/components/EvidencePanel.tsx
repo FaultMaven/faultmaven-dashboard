@@ -6,8 +6,6 @@ interface EvidencePanelProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
   onViewAnalysis: (item: UploadedData) => void;
-  onRemove: (item: UploadedData) => void;
-  onDownload?: (item: UploadedData) => void;
 }
 
 /**
@@ -16,7 +14,7 @@ interface EvidencePanelProps {
  * Displays uploaded/pasted/injected evidence for a case with:
  * - Collapsible list view
  * - Evidence metadata (source, timestamp, size)
- * - Actions: View Analysis, Download, Remove
+ * - Action: View Analysis
  *
  * Phase 3 Week 7: Evidence Management
  */
@@ -24,9 +22,7 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = memo(({
   evidence,
   isExpanded,
   onToggleExpand,
-  onViewAnalysis,
-  onRemove,
-  onDownload
+  onViewAnalysis
 }) => {
   // Only show when expanded and has evidence
   if (!isExpanded || evidence.length === 0) {
@@ -42,8 +38,6 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = memo(({
             key={item.data_id}
             item={item}
             onViewAnalysis={() => onViewAnalysis(item)}
-            onRemove={() => onRemove(item)}
-            onDownload={onDownload ? () => onDownload(item) : undefined}
           />
         ))}
       </div>
@@ -59,15 +53,11 @@ EvidencePanel.displayName = 'EvidencePanel';
 interface EvidenceItemProps {
   item: UploadedData;
   onViewAnalysis: () => void;
-  onRemove: () => void;
-  onDownload?: () => void;
 }
 
 const EvidenceItem: React.FC<EvidenceItemProps> = memo(({
   item,
-  onViewAnalysis,
-  onRemove,
-  onDownload
+  onViewAnalysis
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -89,9 +79,6 @@ const EvidenceItem: React.FC<EvidenceItemProps> = memo(({
 
   // Extract key findings count (if available)
   const findingsCount = item.agent_response?.response_metadata?.key_findings?.length || 0;
-
-  // Check if download is available (only for file uploads)
-  const canDownload = !!onDownload && item.file_name;
 
   return (
     <div
@@ -167,34 +154,14 @@ const EvidenceItem: React.FC<EvidenceItemProps> = memo(({
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Button */}
       <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
         <button
           onClick={onViewAnalysis}
-          className="flex-1 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+          className="w-full px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
           aria-label="View analysis details"
         >
           View Analysis
-        </button>
-
-        {canDownload && (
-          <button
-            onClick={onDownload}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 transition-colors"
-            aria-label="Download file"
-            title="Download original file"
-          >
-            Download
-          </button>
-        )}
-
-        <button
-          onClick={onRemove}
-          className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
-          aria-label="Remove evidence"
-          title="Remove from case"
-        >
-          Remove
         </button>
       </div>
     </div>

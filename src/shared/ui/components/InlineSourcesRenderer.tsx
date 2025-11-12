@@ -6,12 +6,15 @@ import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
 import { cleanResponseText } from '../../../lib/utils/text-processor';
 import EvidenceRequestCard from './EvidenceRequestCard';
+import { ConfirmationButtons } from './ConfirmationButtons';
 
 interface InlineSourcesRendererProps {
   content: string;
   sources?: Source[];
   evidenceRequests?: EvidenceRequest[];
   onDocumentView?: (documentId: string) => void;
+  onConfirmationYes?: () => void;
+  onConfirmationNo?: () => void;
   className?: string;
 }
 
@@ -145,6 +148,23 @@ const PIIBadge: React.FC<PIIBadgeProps> = memo(({ label }) => {
 PIIBadge.displayName = 'PIIBadge';
 
 /**
+ * Detects if content contains confirmation button pattern
+ * Pattern: [✅ Yes]  [❌ No]
+ */
+function hasConfirmationButtons(text: string): boolean {
+  const buttonPattern = /\[✅\s*Yes\]\s*\[❌\s*No\]/;
+  return buttonPattern.test(text);
+}
+
+/**
+ * Strips confirmation button pattern from content
+ */
+function stripConfirmationButtons(text: string): string {
+  const buttonPattern = /\[✅\s*Yes\]\s*\[❌\s*No\]/g;
+  return text.replace(buttonPattern, '').trim();
+}
+
+/**
  * Process text to replace PII token markers with React components
  */
 function processPIITokens(text: string): React.ReactNode[] {
@@ -179,10 +199,19 @@ const InlineSourcesRenderer: React.FC<InlineSourcesRendererProps> = memo(({
   sources = [],
   evidenceRequests = [],
   onDocumentView,
+  onConfirmationYes,
+  onConfirmationNo,
   className = ''
 }) => {
   // Clean the response text before rendering
   const cleanedContent = useMemo(() => cleanResponseText(content), [content]);
+
+  // Detect and strip confirmation buttons
+  const hasButtons = useMemo(() => hasConfirmationButtons(cleanedContent), [cleanedContent]);
+  const contentWithoutButtons = useMemo(() =>
+    hasButtons ? stripConfirmationButtons(cleanedContent) : cleanedContent,
+    [cleanedContent, hasButtons]
+  );
 
   // If no sources, render plain markdown with PII handling
   if (!sources || sources.length === 0) {
@@ -195,8 +224,16 @@ const InlineSourcesRenderer: React.FC<InlineSourcesRendererProps> = memo(({
           disallowedElements={['script', 'iframe', 'object', 'embed']}
           unwrapDisallowed
         >
-          {cleanedContent}
+          {contentWithoutButtons}
         </ReactMarkdown>
+
+        {/* Render confirmation buttons if detected */}
+        {hasButtons && onConfirmationYes && onConfirmationNo && (
+          <ConfirmationButtons
+            onConfirm={onConfirmationYes}
+            onCancel={onConfirmationNo}
+          />
+        )}
 
         {/* Render evidence requests below content */}
         {evidenceRequests && evidenceRequests.length > 0 && (
@@ -217,11 +254,19 @@ const InlineSourcesRenderer: React.FC<InlineSourcesRendererProps> = memo(({
   }
 
   // Split content into sentences and paragraphs for intelligent source placement
-  const enhancedContent = injectSourceCitations(cleanedContent, sources, onDocumentView);
+  const enhancedContent = injectSourceCitations(contentWithoutButtons, sources, onDocumentView);
 
   return (
     <div className={className}>
       {enhancedContent}
+
+      {/* Render confirmation buttons if detected */}
+      {hasButtons && onConfirmationYes && onConfirmationNo && (
+        <ConfirmationButtons
+          onConfirm={onConfirmationYes}
+          onCancel={onConfirmationNo}
+        />
+      )}
 
       {/* Render evidence requests below content and sources */}
       {evidenceRequests && evidenceRequests.length > 0 && (

@@ -456,28 +456,8 @@ describe('Authentication API', () => {
       );
     });
 
-    it('uploadData includes auth headers', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 201,
-        json: () => Promise.resolve({ data_id: 'data-123' })
-      });
-
-      const mockFile = new File(['test'], 'test.txt', { type: 'text/plain' });
-      const { uploadData } = await import('../../lib/api');
-      await uploadData('session-123', 'case-456', mockFile, 'file');
-
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.faultmaven.ai/api/v1/data/upload',
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            'Authorization': 'Bearer valid-auth-token',
-            'X-Session-Id': 'test-session-id'
-          })
-        })
-      );
-    });
+    // REMOVED: Legacy uploadData() test
+    // Function removed in favor of uploadDataToCase() (already tested above)
 
     it('getSessionData includes auth headers', async () => {
       global.fetch = vi.fn().mockResolvedValue({

@@ -251,18 +251,17 @@ export function ConversationItem({
               {onGenerateTitle && !isUnsavedNew && (
                 <button
                   onClick={handleMenuAction(() => onGenerateTitle(session.session_id))}
-                  disabled={messageCount === 0}
+                  disabled={messageCount < 5}
                   className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 ${
-                    messageCount === 0
+                    messageCount < 5
                       ? 'text-gray-400 cursor-not-allowed'
                       : 'text-gray-700 hover:bg-gray-100'
                   }`}
-                  title={messageCount === 0 ? 'Send a message first to generate a title' : 'Generate title from conversation'}
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3l2.2 4.46L19 8l-3.6 3.2L16.4 16 12 14l-4.4 2 1-4.8L5 8l4.8-.54L12 3z" />
                   </svg>
-                  Generate title
+                  <span>Generate title</span>
                 </button>
               )}
               {onRename && (

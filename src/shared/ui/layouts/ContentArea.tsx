@@ -46,9 +46,6 @@ export interface ContentAreaProps {
   onRetryFailedOperation: (operationId: string) => void;
   onDismissFailedOperation: (operationId: string) => void;
   getErrorMessageForOperation: (operation: any) => { title: string; message: string; recoveryHint: string };
-
-  // Evidence callbacks (Phase 3 Week 7)
-  onRemoveEvidence?: (dataId: string) => Promise<void>;
 }
 
 /**
@@ -77,7 +74,6 @@ const ContentAreaComponent = ({
   onRetryFailedOperation,
   onDismissFailedOperation,
   getErrorMessageForOperation,
-  onRemoveEvidence,
 }: ContentAreaProps) => {
   // Render chat content (copilot tab)
   const renderChatContent = () => {
@@ -171,7 +167,6 @@ const ContentAreaComponent = ({
               onDataUpload={onDataUpload}
               onDocumentView={onDocumentView}
               onGenerateReports={onGenerateReports}
-              onRemoveEvidence={onRemoveEvidence}
               className="h-full"
             />
           </div>
