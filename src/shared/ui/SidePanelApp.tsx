@@ -49,9 +49,11 @@ import {
   isRealId,
   debugDataSeparation
 } from "../../lib/utils/data-integrity";
-import KnowledgeBaseView from "./KnowledgeBaseView";
-import GlobalKBView from "./GlobalKBView";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { WelcomeScreen } from "./components/WelcomeScreen";
+import { LoadingScreen } from "./components/LoadingScreen";
+import { ErrorScreen } from "./components/ErrorScreen";
+import { capabilitiesManager, type BackendCapabilities } from "../../lib/capabilities";
 import { ErrorState } from "./components/ErrorState";
 import ConversationsList from "./components/ConversationsList";
 import { ChatWindow } from "./components/ChatWindow";
@@ -95,7 +97,11 @@ function SidePanelAppContent() {
   const { showError, showErrorWithRetry } = useError();
   const { isAdmin } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'copilot' | 'kb' | 'admin-kb'>('copilot');
+  const [activeTab, setActiveTab] = useState<'copilot'>('copilot');
+  const [hasCompletedFirstRun, setHasCompletedFirstRun] = useState<boolean | null>(null);
+  const [capabilities, setCapabilities] = useState<BackendCapabilities | null>(null);
+  const [initializingCapabilities, setInitializingCapabilities] = useState(true);
+  const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [conversationTitles, setConversationTitles] = useState<Record<string, string>>({});
   const [titleSources, setTitleSources] = useState<Record<string, 'user' | 'backend' | 'system'>>({});
@@ -148,14 +154,40 @@ function SidePanelAppContent() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Route protection: redirect non-admins away from admin-kb tab
+  // Initialize capabilities and check first-run
   useEffect(() => {
-    if (activeTab === 'admin-kb' && !isAdmin()) {
-      console.warn('[SidePanelApp] Non-admin attempted to access admin-kb, redirecting to copilot');
-      setActiveTab('copilot');
-      showError('Admin access required for Global KB Management');
-    }
-  }, [activeTab, isAdmin, showError]);
+    const initializeCapabilities = async () => {
+      try {
+        // 1. Check if first run
+        const stored = await browser.storage.local.get(['hasCompletedFirstRun', 'apiEndpoint']);
+        const completedFirstRun = stored.hasCompletedFirstRun || false;
+        const apiEndpoint = stored.apiEndpoint || 'https://api.faultmaven.ai';
+
+        setHasCompletedFirstRun(completedFirstRun);
+
+        if (!completedFirstRun) {
+          // Show welcome screen - don't fetch capabilities yet
+          setInitializingCapabilities(false);
+          return;
+        }
+
+        // 2. Fetch capabilities from backend
+        console.log('[SidePanelApp] Fetching capabilities from:', apiEndpoint);
+        const caps = await capabilitiesManager.fetch(apiEndpoint);
+        setCapabilities(caps);
+        setCapabilitiesError(null);
+        console.log('[SidePanelApp] Capabilities loaded:', caps.deploymentMode);
+
+      } catch (error) {
+        console.error('[SidePanelApp] Failed to load capabilities:', error);
+        setCapabilitiesError(error instanceof Error ? error.message : 'Unknown error');
+      } finally {
+        setInitializingCapabilities(false);
+      }
+    };
+
+    initializeCapabilities();
+  }, [hasCompletedFirstRun]);
 
   // Track whether we need to load conversations from backend (after rebuild/login)
 
@@ -1980,12 +2012,9 @@ function SidePanelAppContent() {
     setSidebarCollapsed(!sidebarCollapsed);
   };
 
-  // Phase 1 Week 1: Handler for tab changes from navigation
-  const handleTabChange = (tab: 'copilot' | 'kb' | 'admin-kb') => {
+  // Phase 1 Week 1: Handler for tab changes from navigation (chat-only now)
+  const handleTabChange = (tab: 'copilot') => {
     setActiveTab(tab);
-    if (tab === 'kb' || tab === 'admin-kb') {
-      setHasUnsavedNewChat(false);
-    }
   };
 
   // Phase 1 Week 1: Handler for new chat from navigation
@@ -2000,9 +2029,18 @@ function SidePanelAppContent() {
       const document = await getKnowledgeDocument(documentId);
       setViewingDocument(document);
       setIsDocumentModalOpen(true);
-      setActiveTab('kb');
     } catch {
       // noop
+    }
+  };
+
+  // Open dashboard for KB management
+  const handleOpenDashboard = () => {
+    const dashboardUrl = capabilities?.dashboardUrl;
+    if (dashboardUrl) {
+      window.open(dashboardUrl, '_blank');
+    } else {
+      showError('Dashboard URL not available');
     }
   };
 
@@ -2040,6 +2078,44 @@ function SidePanelAppContent() {
       </div>
     </div>
   );
+
+  // Show welcome screen on first run
+  if (hasCompletedFirstRun === false) {
+    return (
+      <ErrorBoundary>
+        <WelcomeScreen
+          onComplete={async () => {
+            setHasCompletedFirstRun(true);
+            // Capabilities will be fetched by useEffect when hasCompletedFirstRun becomes true
+          }}
+        />
+      </ErrorBoundary>
+    );
+  }
+
+  // Show loading while initializing capabilities
+  if (initializingCapabilities) {
+    return (
+      <ErrorBoundary>
+        <LoadingScreen message="Connecting to FaultMaven..." />
+      </ErrorBoundary>
+    );
+  }
+
+  // Show error if capabilities fetch failed
+  if (capabilitiesError) {
+    return (
+      <ErrorBoundary>
+        <ErrorScreen
+          message={`Failed to connect to backend: ${capabilitiesError}`}
+          action={{
+            label: "Open Settings",
+            onClick: () => browser.runtime.openOptionsPage()
+          }}
+        />
+      </ErrorBoundary>
+    );
+  }
 
   // Auth gate
   if (!isAuthenticated) {
