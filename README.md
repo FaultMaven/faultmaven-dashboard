@@ -1,6 +1,6 @@
 # FaultMaven Copilot – WXT Browser Extension
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](./package.json)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](./LICENSE.md)
 [![Framework](https://img.shields.io/badge/framework-WXT-orange.svg)](https://wxt.dev/)
 [![React](https://img.shields.io/badge/React-19+-61DAFB.svg?logo=react&logoColor=white)](https://react.dev/)
@@ -22,10 +22,14 @@ This extension is built using the modern **WXT framework**, with **React 19+**, 
       * Paste logs, metrics, or error messages directly into the chat.
       * Upload files for immediate analysis with insights.
   * 🔄 **Session Management**: Maintain conversation context across browser sessions with automatic session persistence and heartbeat management.
-  * 🗂️ **Centralized Knowledge Base**: The Copilot features a dedicated tab to build and manage your team's knowledge base.
-      * **Upload Documents**: Easily upload runbooks, post-mortems, and other documentation (MD, TXT, LOG, JSON, CSV, PDF, DOC, DOCX) via drag-and-drop.
-      * **Monitor Ingestion Status**: Track the real-time status of your uploads with clear visual indicators for "Processing," "Indexed," or "Error".
-      * **Manage Knowledge**: View and delete documents to ensure your knowledge base remains current and relevant.
+  * ⚙️ **Universal Deployment**: Single extension binary that adapts to your deployment mode:
+      * **Self-Hosted**: Connect to your local backend (`http://localhost:8000`)
+      * **Enterprise Cloud**: Connect to managed SaaS (`https://api.faultmaven.ai`)
+  * 🎯 **First-Run Setup**: Professional welcome screen guides you through deployment mode selection.
+  * 📊 **Knowledge Base Dashboard**: Manage your team's knowledge base via integrated dashboard (opens in new tab):
+      * Upload runbooks, post-mortems, and documentation
+      * Track ingestion status in real-time
+      * Manage and search documents efficiently
   * 🔒 **Privacy-First Design**: All interactions are designed with security in mind, ensuring sensitive data is handled appropriately by the backend's PII redaction services.
   * ♿ **Accessibility First**: Built with WCAG 2.1 AA compliance, featuring keyboard navigation, screen reader support, and proper ARIA labels.
   * 🛡️ **Error Resilience**: React Error Boundaries provide crash protection and graceful error recovery throughout the application.
@@ -138,6 +142,26 @@ pnpm test:coverage
 4.  Select the `.output/chrome-mv3-dev/` folder from this project's directory.
 
 The **FaultMaven Copilot** icon will now appear in your browser toolbar, and the side panel will be available.
+
+### First-Run Setup
+
+When you open the extension for the first time, you'll see a welcome screen with two deployment options:
+
+1. **Enterprise Cloud (Recommended)**: Zero setup - connects to `https://api.faultmaven.ai`
+2. **Self-Hosted**: For running your own backend - connects to `http://localhost:8000`
+
+After setup, the extension will automatically adapt its UI based on the backend capabilities.
+
+### Changing API Endpoint
+
+To change the API endpoint after initial setup:
+
+1. Right-click the extension icon → **Options**
+2. Enter your API endpoint URL
+3. Click **Test Connection** to verify
+4. Click **Save Settings** and refresh the extension
+
+The extension supports both self-hosted and enterprise deployments with the same binary.
 
 -----
 
