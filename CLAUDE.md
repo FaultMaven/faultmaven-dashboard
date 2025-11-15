@@ -69,7 +69,7 @@ cp .env.example .env.local
 
 ## High-Level Architecture
 
-### Browser Extension Architecture
+### Browser Extension Architecture (v0.4.0 - Universal Split Architecture)
 The extension follows WXT framework conventions with clear separation of concerns:
 
 ```
@@ -77,16 +77,23 @@ src/
 ├── entrypoints/              # WXT entry points
 │   ├── background.ts         # Service worker (session management, messaging)
 │   ├── page-content.content.ts # Content script
-│   └── sidepanel_manual/     # Side panel entry point
+│   ├── sidepanel_manual/     # Side panel entry point (chat UI)
+│   └── options/              # Settings page entry point
 ├── lib/                      # Core logic
-│   ├── api.ts               # FaultMaven API client (sessions, queries, KB)
+│   ├── api.ts               # FaultMaven API client (sessions, queries, cases)
+│   ├── capabilities.ts      # Backend capabilities detection
 │   └── utils/               # Helper utilities
 ├── shared/ui/               # React components
-│   ├── SidePanelApp.tsx     # Main app with tabbed interface
-│   ├── KnowledgeBaseView.tsx # Knowledge base management
-│   └── components/          # Reusable UI components
+│   ├── SidePanelApp.tsx     # Main app (chat-only)
+│   ├── components/          # Reusable UI components
+│   │   ├── WelcomeScreen.tsx   # First-run setup
+│   │   ├── LoadingScreen.tsx   # Loading states
+│   │   └── ErrorScreen.tsx     # Error handling
+│   └── layouts/             # Layout components
 └── config.ts                # Environment configuration
 ```
+
+**Note**: KB management is now handled by the separate `faultmaven-dashboard` web application.
 
 ### Key Patterns
 
@@ -95,36 +102,49 @@ src/
 3. **Side Panel API**: Modern Chrome extension UI pattern
 4. **Session Management**: Backend session creation with local storage caching
 5. **API Integration**: RESTful communication with FaultMaven backend
-6. **Knowledge Base**: Document upload/management for team documentation
-7. **Error Boundaries**: React error boundaries for crash protection
+6. **Universal Deployment**: Single binary adapts to self-hosted or enterprise backend
+7. **Capabilities-Driven UI**: Extension adapts based on backend `/v1/meta/capabilities`
+8. **Error Boundaries**: React error boundaries for crash protection
 
 ### API Integration
 
 The extension communicates with the FaultMaven backend through structured API calls:
 
+- **Capabilities**: `GET /v1/meta/capabilities` - Detects deployment mode and features
 - **Sessions**: `createSession()`, `deleteSession()`, `heartbeatSession()`
-- **Troubleshooting**: `processQuery()` with contextual data
-- **Data Upload**: `uploadData()` for files/text/page content
-- **Knowledge Base**: `uploadKnowledgeDocument()`, `getKnowledgeDocuments()`
+- **Cases**: `createCase()`, `getCaseConversation()`, `updateCaseTitle()`
+- **Troubleshooting**: `submitQueryToCase()` with contextual data
+- **Data Upload**: `uploadDataToCase()` for files/text/page content
+- **Knowledge Base**: `getKnowledgeDocument()` (read-only for viewing sources)
 
-Configuration is handled via `src/config.ts` with environment variable support:
-- Production: `https://api.faultmaven.ai` (default)
-- Development: `http://api.faultmaven.local:8000` (via `VITE_API_URL`)
+**API Endpoint Configuration:**
+- Set during first-run via welcome screen
+- Can be changed in extension options page
+- Self-hosted: `http://localhost:8000`
+- Enterprise: `https://api.faultmaven.ai` (default)
 
 ### Browser Extension Flow
 
-1. **Background Script**: Manages sessions, handles extension lifecycle
-2. **Side Panel**: Main UI with two tabs (Copilot chat, Knowledge Base)
-3. **Content Script**: Injects page analysis capabilities
-4. **Storage**: Chrome storage API for session persistence
-5. **Messaging**: Runtime messaging between components
+1. **First-Run**: Welcome screen guides deployment mode selection
+2. **Capabilities Fetch**: Extension fetches backend capabilities on startup
+3. **Background Script**: Manages sessions, handles extension lifecycle
+4. **Side Panel**: Chat-only UI (KB management via dashboard button)
+5. **Content Script**: Injects page analysis capabilities
+6. **Storage**: Chrome storage API for session persistence and settings
+7. **Messaging**: Runtime messaging between components
 
 ### Component Architecture
 
-- **SidePanelApp**: Main application with tabbed interface, session management
-- **KnowledgeBaseView**: Document management interface with drag-drop upload
+- **SidePanelApp**: Main application (chat-only), capabilities-driven UI, session management
+- **WelcomeScreen**: First-run setup component (Enterprise vs Self-Hosted selection)
+- **LoadingScreen**: Loading state display during capabilities fetch
+- **ErrorScreen**: Error handling with actionable retry/settings options
+- **CollapsibleNavigation**: Sidebar with chat, dashboard button, conversation list
+- **OptionsApp**: Settings page for API endpoint configuration
 - **Error Boundaries**: Graceful error handling throughout the UI
 - **Accessible Components**: WCAG 2.1 AA compliant UI elements
+
+**Note**: Knowledge Base UI components have been removed in v0.4.0 and are now in the separate dashboard.
 
 ### Testing Infrastructure
 
@@ -172,4 +192,10 @@ When working with backend integration:
 - All API functions include proper error handling
 - Response types are strictly typed with TypeScript interfaces
 - Session management includes automatic timeout and cleanup
-- Knowledge Base operations support real-time status updates
+- Capabilities are fetched on startup and cached in browser storage
+- KB management API calls have been removed (use dashboard)
+
+**Important Files:**
+- `src/lib/capabilities.ts` - Backend capabilities detection and caching
+- `src/lib/api.ts` - API client (KB functions removed in v0.4.0)
+- `src/config.ts` - Configuration and environment variables
