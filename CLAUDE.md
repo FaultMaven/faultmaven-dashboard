@@ -4,39 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is the **FaultMaven Copilot** browser extension - an AI-powered troubleshooting assistant built with WXT framework. The extension provides engineers (especially in SRE and DevOps roles) with in-context help, analyzes web content, and enables interaction with the FaultMaven AI to diagnose and resolve issues efficiently.
+This is the **FaultMaven Dashboard** - a web application for managing Knowledge Base content. It provides a clean interface for uploading, organizing, and searching runbooks, post-mortems, and documentation that powers the FaultMaven AI assistant.
 
-**Key Technologies**: WXT v0.20.6, React 19+, TypeScript, Tailwind CSS, Vitest
+**Key Technologies**: Vite 6.0+, React 19+, React Router 7+, TypeScript, Tailwind CSS
 
 ## Common Commands
 
 ### Development
 ```bash
 pnpm install                    # Install dependencies
-pnpm dev                       # Chrome development with HMR
-pnpm dev:firefox               # Firefox development
-pnpm compile                   # TypeScript compilation check
+pnpm dev                       # Start development server (localhost:5173)
+npm run dev                    # Alternative with npm
 ```
 
-### Building and Packaging
+### Building and Deployment
 ```bash
-pnpm build                     # Chrome production build
-pnpm build:firefox             # Firefox production build
-pnpm zip                       # Package for Chrome Web Store
-pnpm zip:firefox               # Package for Firefox Add-ons
-```
-
-### Testing
-```bash
-pnpm test                      # Run all tests
-pnpm test --watch              # Run tests in watch mode
-pnpm test:ui                   # Run tests with UI
-pnpm test:coverage             # Generate coverage report
-```
-
-### Asset Generation
-```bash
-pnpm generate-icons            # Generate extension icons from SVG
+pnpm build                     # Production build
+pnpm preview                   # Preview production build locally
+docker build -t faultmaven/dashboard:latest .  # Build Docker image
 ```
 
 ## Configuration
@@ -52,14 +37,11 @@ cp .env.example .env.local
 ```
 
 **Available Variables:**
-- `VITE_API_URL` - Backend API endpoint (default: `http://127.0.0.1:8000`)
-- `VITE_DATA_MODE_LINES` - Lines threshold for data upload mode (default: `100`)
-- `VITE_MAX_QUERY_LENGTH` - Max input characters (default: `10000`)
+- `VITE_API_URL` - Backend API endpoint (default: `http://localhost:8000`)
 - `VITE_MAX_FILE_SIZE_MB` - Max file upload size in MB (default: `10`)
 
 **Configuration Files:**
-- **`src/config.ts`** - Central configuration with environment variable parsing
-- **`src/shared/ui/layouts/constants.ts`** - UI constants derived from config
+- **`src/lib/config.ts`** - Central configuration with environment variable parsing
 - **`.env.example`** - Complete documentation of all available variables
 - **`.env.local`** - Your local overrides (gitignored)
 
@@ -69,107 +51,81 @@ cp .env.example .env.local
 
 ## High-Level Architecture
 
-### Browser Extension Architecture (v0.4.0 - Universal Split Architecture)
-The extension follows WXT framework conventions with clear separation of concerns:
+### Web Application Architecture
+The dashboard is a standard React single-page application:
 
 ```
 src/
-├── entrypoints/              # WXT entry points
-│   ├── background.ts         # Service worker (session management, messaging)
-│   ├── page-content.content.ts # Content script
-│   ├── sidepanel_manual/     # Side panel entry point (chat UI)
-│   └── options/              # Settings page entry point
-├── lib/                      # Core logic
-│   ├── api.ts               # FaultMaven API client (sessions, queries, cases)
-│   ├── capabilities.ts      # Backend capabilities detection
-│   └── utils/               # Helper utilities
-├── shared/ui/               # React components
-│   ├── SidePanelApp.tsx     # Main app (chat-only)
-│   ├── components/          # Reusable UI components
-│   │   ├── WelcomeScreen.tsx   # First-run setup
-│   │   ├── LoadingScreen.tsx   # Loading states
-│   │   └── ErrorScreen.tsx     # Error handling
-│   └── layouts/             # Layout components
-└── config.ts                # Environment configuration
+├── main.tsx                  # Application entry point
+├── App.tsx                   # Root component with routing
+├── index.css                 # Global styles
+├── pages/                    # Page components
+│   ├── LoginPage.tsx         # Authentication page
+│   ├── KBPage.tsx            # User KB management
+│   └── AdminKBPage.tsx       # Admin KB management (enterprise)
+├── components/               # Reusable UI components
+├── hooks/                    # Custom React hooks
+└── lib/                      # Core logic
+    ├── api.ts                # FaultMaven API client
+    ├── storage.ts            # LocalStorage adapter
+    ├── config.ts             # Configuration
+    └── utils/                # Helper utilities
 ```
-
-**Note**: KB management is now handled by the separate `faultmaven-dashboard` web application.
 
 ### Key Patterns
 
-1. **WXT Framework**: Uses modern WebExtension toolkit with Vite-based build system
-2. **Manifest V3**: Chrome extensions with background service worker
-3. **Side Panel API**: Modern Chrome extension UI pattern
-4. **Session Management**: Backend session creation with local storage caching
-5. **API Integration**: RESTful communication with FaultMaven backend
-6. **Universal Deployment**: Single binary adapts to self-hosted or enterprise backend
-7. **Capabilities-Driven UI**: Extension adapts based on backend `/v1/meta/capabilities`
-8. **Error Boundaries**: React error boundaries for crash protection
+1. **Vite**: Fast build tool with HMR for development
+2. **React Router**: Client-side routing for SPA
+3. **LocalStorage**: Web storage for auth tokens and state
+4. **API Integration**: RESTful communication with FaultMaven backend
+5. **Tailwind CSS**: Utility-first CSS framework
+6. **TypeScript Strict**: Type safety throughout
 
 ### API Integration
 
-The extension communicates with the FaultMaven backend through structured API calls:
+The dashboard communicates with the FaultMaven backend through API calls:
 
-- **Capabilities**: `GET /v1/meta/capabilities` - Detects deployment mode and features
-- **Sessions**: `createSession()`, `deleteSession()`, `heartbeatSession()`
-- **Cases**: `createCase()`, `getCaseConversation()`, `updateCaseTitle()`
-- **Troubleshooting**: `submitQueryToCase()` with contextual data
-- **Data Upload**: `uploadDataToCase()` for files/text/page content
-- **Knowledge Base**: `getKnowledgeDocument()` (read-only for viewing sources)
+- **Authentication**: `devLogin()`, `logoutAuth()`
+- **Knowledge Base**: Upload, list, search, delete documents
+- **User KB**: Personal runbooks and documentation
+- **Admin KB**: Organization-wide knowledge (enterprise only)
 
 **API Endpoint Configuration:**
-- Set during first-run via welcome screen
-- Can be changed in extension options page
 - Self-hosted: `http://localhost:8000`
-- Enterprise: `https://api.faultmaven.ai` (default)
+- Enterprise: `https://api.faultmaven.ai`
 
-### Browser Extension Flow
+### Application Flow
 
-1. **First-Run**: Welcome screen guides deployment mode selection
-2. **Capabilities Fetch**: Extension fetches backend capabilities on startup
-3. **Background Script**: Manages sessions, handles extension lifecycle
-4. **Side Panel**: Chat-only UI (KB management via dashboard button)
-5. **Content Script**: Injects page analysis capabilities
-6. **Storage**: Chrome storage API for session persistence and settings
-7. **Messaging**: Runtime messaging between components
+1. **Login**: User enters username (dev mode) or credentials (production)
+2. **Auth Storage**: Token stored in localStorage via storage adapter
+3. **Routing**: React Router manages navigation between pages
+4. **KB Management**: Upload, search, organize documents
+5. **Protected Routes**: Admin routes require admin privileges
 
 ### Component Architecture
 
-- **SidePanelApp**: Main application (chat-only), capabilities-driven UI, session management
-- **WelcomeScreen**: First-run setup component (Enterprise vs Self-Hosted selection)
-- **LoadingScreen**: Loading state display during capabilities fetch
-- **ErrorScreen**: Error handling with actionable retry/settings options
-- **CollapsibleNavigation**: Sidebar with chat, dashboard button, conversation list
-- **OptionsApp**: Settings page for API endpoint configuration
-- **Error Boundaries**: Graceful error handling throughout the UI
-- **Accessible Components**: WCAG 2.1 AA compliant UI elements
-
-**Note**: Knowledge Base UI components have been removed in v0.4.0 and are now in the separate dashboard.
-
-### Testing Infrastructure
-
-- **Vitest**: Fast testing with jsdom environment
-- **React Testing Library**: Component testing utilities
-- **Coverage**: Comprehensive test coverage tracking
-- **Mock Setup**: Browser API mocking in `src/test/setup.ts`
-
-Current test results: ✓ 19 tests passed across 2 test files
+- **LoginPage**: Authentication interface with FaultMaven branding
+- **KBPage**: User knowledge base management
+- **AdminKBPage**: Organization KB management (admin only)
+- **Storage Adapter**: Browser extension API compatibility layer for web
+- **Error Handling**: Graceful error display and recovery
 
 ## Development Guidelines
 
 ### Environment Setup
 
-1. **Backend Dependency**: Extension requires FaultMaven backend running
+1. **Backend Dependency**: Dashboard requires FaultMaven backend running
 2. **Environment Configuration**: Use `.env.local` for API endpoint:
    ```bash
-   VITE_API_URL=http://api.faultmaven.local:8000
+   VITE_API_URL=http://localhost:8000
    ```
 
-### Extension Development
+### Web Development
 
-1. **Load Extension**: Use `.output/chrome-mv3-dev/` folder in chrome://extensions
-2. **Hot Reload**: WXT provides automatic reloading during development
-3. **Cross-Browser**: Test in both Chrome (`pnpm dev`) and Firefox (`pnpm dev:firefox`)
+1. **Hot Module Replacement**: Vite provides instant updates during development
+2. **Type Safety**: TypeScript strict mode enabled
+3. **Responsive Design**: Mobile-first approach with Tailwind
+4. **Accessibility**: WCAG 2.1 AA compliance
 
 ### Code Patterns
 
@@ -178,24 +134,58 @@ Current test results: ✓ 19 tests passed across 2 test files
 - **Error Handling**: Comprehensive try-catch with user-friendly messages
 - **Accessibility**: ARIA labels, keyboard navigation, screen reader support
 
-### Extension Manifest
-
-Key permissions and features:
-- **Permissions**: storage, sidePanel, activeTab, tabs, scripting
-- **Host Permissions**: FaultMaven API endpoints
-- **CSP**: Secure content security policy for extension pages
-- **Icons**: Generated automatically from SVG sources
-
 ### API Development
 
 When working with backend integration:
 - All API functions include proper error handling
 - Response types are strictly typed with TypeScript interfaces
-- Session management includes automatic timeout and cleanup
-- Capabilities are fetched on startup and cached in browser storage
-- KB management API calls have been removed (use dashboard)
+- Auth tokens stored via storage adapter (localStorage)
+- API client is compatible with both web and extension environments
 
 **Important Files:**
-- `src/lib/capabilities.ts` - Backend capabilities detection and caching
-- `src/lib/api.ts` - API client (KB functions removed in v0.4.0)
-- `src/config.ts` - Configuration and environment variables
+- `src/lib/storage.ts` - LocalStorage adapter for browser.storage compatibility
+- `src/lib/api.ts` - API client (shared with copilot extension)
+- `src/lib/config.ts` - Configuration and environment variables
+
+## Deployment
+
+### Docker Deployment
+
+The dashboard is containerized with Nginx for production:
+
+```dockerfile
+# Multi-stage build
+# Stage 1: Build with Node
+# Stage 2: Serve with Nginx
+```
+
+**Key files:**
+- `Dockerfile` - Multi-stage build configuration
+- `nginx.conf` - Nginx server configuration
+- `.dockerignore` - Files to exclude from Docker build
+
+### Production Build
+
+```bash
+# Build for production
+pnpm build
+
+# Output: dist/ directory with optimized static files
+```
+
+### Environment-Specific Builds
+
+```bash
+# Self-hosted
+docker build --build-arg VITE_API_URL=http://localhost:8000 -t dashboard:self-hosted .
+
+# Enterprise
+docker build --build-arg VITE_API_URL=https://api.faultmaven.ai -t dashboard:enterprise .
+```
+
+## Related Projects
+
+- **FaultMaven Copilot**: Browser extension for chat interface (separate repository)
+- **FaultMaven Backend**: AI-powered troubleshooting backend API
+
+This dashboard complements the copilot extension by providing dedicated KB management UI.

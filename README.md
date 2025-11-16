@@ -1,264 +1,249 @@
-# FaultMaven Copilot – WXT Browser Extension
+# FaultMaven Dashboard
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](./package.json)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](./LICENSE.md)
-[![Framework](https://img.shields.io/badge/framework-WXT-orange.svg)](https://wxt.dev/)
 [![React](https://img.shields.io/badge/React-19+-61DAFB.svg?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4+-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Testing](https://img.shields.io/badge/testing-Vitest-6E56CF.svg?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.0+-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-**FaultMaven Copilot** is an AI-powered troubleshooting assistant embedded directly in your browser as a side panel. It provides **engineers—especially in SRE and DevOps roles**—with in-context help, analyzes web content, and enables users to interact with the FaultMaven AI to diagnose and resolve issues efficiently.
+**FaultMaven Dashboard** is the Knowledge Base management web application for FaultMaven. It provides a clean, professional interface for uploading, organizing, and managing runbooks, post-mortems, and documentation that powers the FaultMaven AI assistant.
 
-This extension is built using the modern **WXT framework**, with **React 19+**, **Tailwind CSS**, **TypeScript**, and comprehensive **testing infrastructure**.
+This dashboard works with both **self-hosted** and **enterprise** deployments of FaultMaven.
 
------
+---
 
 ## ✨ Key Features
 
-  * 💬 **Conversational Troubleshooting**: Engage in a stateful, interactive dialogue with the FaultMaven AI. Submit logs, ask questions, and receive guided insights with findings, recommendations, and confidence scores to pinpoint the root cause of issues.
-  * 🌐 **Contextual Data Analysis**: Provide evidence to the AI directly from your workflow.
-      * Analyze the content of your current browser page.
-      * Paste logs, metrics, or error messages directly into the chat.
-      * Upload files for immediate analysis with insights.
-  * 🔄 **Session Management**: Maintain conversation context across browser sessions with automatic session persistence and heartbeat management.
-  * ⚙️ **Universal Deployment**: Single extension binary that adapts to your deployment mode:
-      * **Self-Hosted**: Connect to your local backend (`http://localhost:8000`)
-      * **Enterprise Cloud**: Connect to managed SaaS (`https://api.faultmaven.ai`)
-  * 🎯 **First-Run Setup**: Professional welcome screen guides you through deployment mode selection.
-  * 📊 **Knowledge Base Dashboard**: Manage your team's knowledge base via integrated dashboard (opens in new tab):
-      * Upload runbooks, post-mortems, and documentation
-      * Track ingestion status in real-time
-      * Manage and search documents efficiently
-  * 🔒 **Privacy-First Design**: All interactions are designed with security in mind, ensuring sensitive data is handled appropriately by the backend's PII redaction services.
-  * ♿ **Accessibility First**: Built with WCAG 2.1 AA compliance, featuring keyboard navigation, screen reader support, and proper ARIA labels.
-  * 🛡️ **Error Resilience**: React Error Boundaries provide crash protection and graceful error recovery throughout the application.
-  * 📝 **Rich Markdown Rendering**: AI responses are rendered with headings, lists, code blocks, and inline formatting for readability.
+* 📚 **Knowledge Base Management**: Upload and organize your team's runbooks and documentation
+* 🔍 **Search & Discovery**: Find relevant documents quickly with semantic search
+* 👥 **Team Collaboration**: Share knowledge across your organization (enterprise)
+* 🔐 **Admin Controls**: Organization-wide KB management for admins (enterprise)
+* 🐳 **Easy Deployment**: Docker-based deployment with Nginx
+* 📱 **Responsive Design**: Works seamlessly on desktop and mobile devices
 
------
+---
 
 ## 🛠️ Tech Stack
 
-| Component         | Details                                                                              |
-| :---------------- | :----------------------------------------------------------------------------------- |
-| **Framework** | [WXT](https://wxt.dev/) v0.20.6 (Vite-based Web Extension Toolkit)                     |
-| **UI** | React 19+                                                                            |
-| **Styling** | Tailwind CSS v3                                                                      |
-| **Language** | TypeScript                                                                           |
-| **Testing** | Vitest + React Testing Library                                                      |
-| **Package Manager** | pnpm                                                                                 |
-| **Browser APIs** | Manifest V3, Side Panel API, `chrome.storage`, `chrome.runtime.messaging`, `chrome.tabs` |
+| Component | Details |
+|:----------|:--------|
+| **Framework** | Vite 6.0+ (Fast web app build tool) |
+| **UI** | React 19+ |
+| **Routing** | React Router 7+ |
+| **Styling** | Tailwind CSS 3+ |
+| **Language** | TypeScript 5.8+ |
+| **Deployment** | Docker + Nginx |
 
------
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-  * [Node.js](https://nodejs.org/) (v20+ recommended)
-  * [pnpm](https://pnpm.io/installation) (v8+ recommended)
-  * A running instance of the **FaultMaven Backend API**.
+* [Node.js](https://nodejs.org/) v20+ (or use Docker)
+* [pnpm](https://pnpm.io/installation) v8+ (or npm)
+* A running **FaultMaven Backend API**
 
-### Setup
+### Local Development
 
-1.  **Run the Backend First**: The Copilot requires a running FaultMaven API server to function. Ensure your backend is running at `http://api.faultmaven.local:8000` or update the configuration accordingly.
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/FaultMaven/faultmaven-dashboard.git
+   cd faultmaven-dashboard
+   ```
 
-2.  **Clone this Repository**:
+2. **Install dependencies**:
+   ```bash
+   pnpm install
+   ```
 
-    ```bash
-    git clone https://github.com/your-org/faultmaven-copilot.git
-    cd faultmaven-copilot
-    ```
+3. **Configure environment**:
+   ```bash
+   cp .env.example .env.local
+   ```
 
-3.  **Install Dependencies**:
+   Edit `.env.local`:
+   ```bash
+   # For local development
+   VITE_API_URL=http://localhost:8000
+   ```
 
-    ```bash
-    pnpm install
-    ```
+4. **Start development server**:
+   ```bash
+   pnpm dev
+   ```
 
-    This command will also run `wxt prepare` to set up the development environment.
+   The dashboard will be available at `http://localhost:5173`
 
-4.  **Configure Environment Variables**: Create a `.env.local` file from the example template:
+5. **Login**:
+   - Navigate to `http://localhost:5173`
+   - Enter any username (development mode)
+   - Start managing your knowledge base!
 
-    ```bash
-    cp .env.example .env.local
-    ```
-
-    Edit `.env.local` to configure your settings:
-
-    ```bash
-    # Backend API endpoint (required)
-    VITE_API_URL=http://api.faultmaven.local:8000
-
-    # Input limits (optional - uncomment to customize)
-    #VITE_DATA_MODE_LINES=100        # Lines to trigger data upload mode
-    #VITE_MAX_QUERY_LENGTH=10000     # Max input characters
-    #VITE_MAX_FILE_SIZE_MB=10        # Max file upload size in MB
-    ```
-
-    **Available Configuration Options:**
-    - **`VITE_API_URL`**: Backend API endpoint (default: `http://127.0.0.1:8000`)
-    - **`VITE_DATA_MODE_LINES`**: Smart detection threshold - lines that trigger data upload mode (default: `100`)
-    - **`VITE_MAX_QUERY_LENGTH`**: Maximum characters in text input (default: `10000`)
-    - **`VITE_MAX_FILE_SIZE_MB`**: Maximum file upload size in megabytes (default: `10`)
-
-    See [`.env.example`](./.env.example) for complete documentation.
-
-5.  **Fonts**: The UI uses the Inter typeface for crisp readability.
-
-    - Inter is bundled via `@fontsource/inter` and enabled by Tailwind `font-sans`.
-
-### Development Workflow
-
-Start the dev server, which enables Hot Module Replacement (HMR) for a fast development experience.
+### Building for Production
 
 ```bash
-pnpm dev
+# Build optimized production bundle
+pnpm build
+
+# Preview production build locally
+pnpm preview
 ```
 
-### Testing
+The built files will be in `dist/` directory.
 
-Run the comprehensive test suite to ensure code quality:
+---
+
+## 🐳 Docker Deployment
+
+### Build Docker Image
 
 ```bash
-# Run all tests
-pnpm test
+# Self-hosted deployment
+docker build -t faultmaven/dashboard:latest \
+  --build-arg VITE_API_URL=http://localhost:8000 \
+  .
 
-# Run tests in watch mode
-pnpm test --watch
-
-# Run tests with UI
-pnpm test:ui
-
-# Generate coverage report
-pnpm test:coverage
+# Enterprise deployment
+docker build -t faultmaven/dashboard:latest \
+  --build-arg VITE_API_URL=https://api.faultmaven.ai \
+  .
 ```
 
-### Load the Extension in Chrome
+### Run Container
 
-1.  Navigate to `chrome://extensions` in your browser.
-2.  Enable **Developer mode** using the toggle in the top-right corner.
-3.  Click **Load unpacked**.
-4.  Select the `.output/chrome-mv3-dev/` folder from this project's directory.
+```bash
+docker run -d \
+  -p 3000:80 \
+  --name faultmaven-dashboard \
+  faultmaven/dashboard:latest
+```
 
-The **FaultMaven Copilot** icon will now appear in your browser toolbar, and the side panel will be available.
+The dashboard will be available at `http://localhost:3000`
 
-### First-Run Setup
+### Docker Compose
 
-When you open the extension for the first time, you'll see a welcome screen with two deployment options:
+For integrated deployment with the backend:
 
-1. **Enterprise Cloud (Recommended)**: Zero setup - connects to `https://api.faultmaven.ai`
-2. **Self-Hosted**: For running your own backend - connects to `http://localhost:8000`
+```yaml
+version: '3.8'
 
-After setup, the extension will automatically adapt its UI based on the backend capabilities.
+services:
+  dashboard:
+    build:
+      context: .
+      args:
+        - VITE_API_URL=http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - faultmaven
 
-### Changing API Endpoint
+networks:
+  faultmaven:
+    driver: bridge
+```
 
-To change the API endpoint after initial setup:
-
-1. Right-click the extension icon → **Options**
-2. Enter your API endpoint URL
-3. Click **Test Connection** to verify
-4. Click **Save Settings** and refresh the extension
-
-The extension supports both self-hosted and enterprise deployments with the same binary.
-
------
-
-## 📦 Production and Packaging
-
-  * **Create an optimized production build**: `pnpm build`
-  * **Package for store submission**: `pnpm zip`
-
------
+---
 
 ## 📂 Project Structure
 
-The project follows a standard WXT structure, organizing code by its function within the browser extension.
-
 ```
-faultmaven-copilot/
-├── public/                  # Static assets (icons)
-├── src/                     # Main application source
-│   ├── entrypoints/         # WXT entrypoints (background, sidepanel)
-│   ├── lib/                 # Core logic (API clients, utils)
-│   ├── shared/              # Reusable React components and UI
-│   │   └── ui/
-│   │       ├── SidePanelApp.tsx     # Main app with tabbed interface
-│   │       ├── KnowledgeBaseView.tsx  # Knowledge base management view
-│   │       └── components/          # Reusable UI components
-│   │           ├── ErrorBoundary.tsx    # React error boundary
-│   │           ├── LoadingSpinner.tsx   # Loading states and spinners
-│   │           └── AccessibleComponents.tsx # Accessible UI components
-│   └── test/                # Test files and setup
-│       ├── setup.ts         # Test configuration and mocks
-│       ├── components/      # Component tests
-│       └── api/            # API function tests
-├── wxt.config.ts            # WXT configuration file
-├── vitest.config.ts         # Vitest testing configuration
+faultmaven-dashboard/
+├── public/                  # Static assets (icons, images)
+├── src/
+│   ├── main.tsx            # Application entry point
+│   ├── App.tsx             # Root component with routing
+│   ├── index.css           # Global styles
+│   ├── pages/              # Page components
+│   │   ├── LoginPage.tsx          # Login page
+│   │   ├── KBPage.tsx             # User KB management
+│   │   └── AdminKBPage.tsx        # Admin KB management
+│   ├── components/         # Reusable UI components
+│   ├── hooks/              # Custom React hooks
+│   └── lib/                # Core logic
+│       ├── api.ts                 # FaultMaven API client
+│       ├── storage.ts             # LocalStorage adapter
+│       ├── config.ts              # Configuration
+│       └── utils/                 # Helper utilities
+├── Dockerfile              # Docker build configuration
+├── nginx.conf              # Nginx configuration
+├── vite.config.ts          # Vite configuration
+├── tailwind.config.cjs     # Tailwind CSS configuration
 └── package.json
 ```
 
------
+---
 
-## 🧪 Testing
+## 🔧 Configuration
 
-The project includes comprehensive testing infrastructure:
+### Environment Variables
 
-### Test Coverage
-- **Component Tests**: LoadingSpinner, ErrorBoundary, AccessibleComponents
-- **API Tests**: Session management, query processing, data upload
-- **Integration Tests**: User interactions and error scenarios
+Configure via `.env.local` file:
 
-### Running Tests
-```bash
-# Run all tests
-pnpm test
+| Variable | Description | Default |
+|:---------|:------------|:--------|
+| `VITE_API_URL` | Backend API endpoint | `http://localhost:8000` |
+| `VITE_MAX_FILE_SIZE_MB` | Max upload size (MB) | `10` |
 
-# Run tests in watch mode
-pnpm test --watch
+**Note**: All `VITE_*` variables are replaced at **BUILD TIME**. Changing them requires rebuilding the application.
 
-# Run tests with UI
-pnpm test:ui
+---
 
-# Generate coverage report
-pnpm test:coverage
-```
+## 📖 Usage
 
-### Test Results
-```
-✓ 19 tests passed
-✓ 2 test files
-✓ 827ms total duration
-```
+### For End Users
 
------
+1. **Login**: Use your username to access the dashboard
+2. **Upload Documents**: Drag and drop or click to upload runbooks, documentation
+3. **Search**: Use the search bar to find relevant documents
+4. **Manage**: Edit metadata, organize by categories, delete outdated docs
 
-## ♿ Accessibility
+### For Administrators
 
-The extension is built with accessibility in mind:
+1. Navigate to **Admin KB** tab (admin users only)
+2. Upload organization-wide documentation
+3. Manage categories and organization structure
+4. Monitor KB usage and analytics (enterprise feature)
 
-- **WCAG 2.1 AA Compliance**: Meets web accessibility standards
-- **Keyboard Navigation**: Full keyboard support for all features
-- **Screen Reader Support**: Proper ARIA labels and semantic HTML
-- **Focus Management**: Logical tab order and focus indicators
-- **High Contrast**: Support for high contrast mode
-
------
+---
 
 ## 🤝 Contributing
 
-We welcome contributions from the community! We encourage you to open issues for bugs, feature requests, and suggestions. If you'd like to contribute code, please see our [Contributing Guidelines](https://www.google.com/search?q=CONTRIBUTING.md) for details on our development process and how to submit a pull request.
+We welcome contributions! Please:
 
-### Development Guidelines
-- Write tests for new features
-- Ensure accessibility compliance
-- Follow TypeScript strict mode
-- Use the provided error boundaries
-- Test with screen readers and keyboard navigation
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
------
+---
 
 ## 📜 License
 
-This project is licensed under the **Apache-2.0 License**. See the `LICENSE.md` file for full terms.
+This project is licensed under the **Apache-2.0 License**. See the `LICENSE.md` file for details.
+
+---
+
+## 🔗 Related Projects
+
+* [FaultMaven Copilot](https://github.com/FaultMaven/faultmaven-copilot) - Browser extension for chat interface
+* [FaultMaven Backend](https://github.com/FaultMaven/faultmaven-backend) - AI-powered troubleshooting backend
+
+---
+
+## 📚 Documentation
+
+* [Migration Guide](./MIGRATION_GUIDE_V2.md) - Architecture and design decisions
+* [Execution Guide](./EXECUTION_GUIDE.md) - Step-by-step implementation
+
+---
+
+## 💬 Support
+
+* **Documentation**: [docs.faultmaven.ai](https://docs.faultmaven.ai)
+* **Issues**: [GitHub Issues](https://github.com/FaultMaven/faultmaven-dashboard/issues)
+* **Community**: [Discussions](https://github.com/FaultMaven/faultmaven-dashboard/discussions)
