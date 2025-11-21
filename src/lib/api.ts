@@ -91,7 +91,7 @@ export class AuthenticationError extends Error {
  * Development login (no password required)
  */
 export async function devLogin(username: string): Promise<AuthState> {
-  const response = await fetch(`${config.apiUrl}/v1/dev/login`, {
+  const response = await fetch(`${config.apiUrl}/api/v1/auth/dev-login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
