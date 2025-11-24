@@ -6,24 +6,30 @@ import AdminKBPage from './pages/AdminKBPage';
 
 function ProtectedRoute({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
   // Check if user is authenticated
-  const authToken = localStorage.getItem('faultmaven_authToken');
+  const authStateStr = localStorage.getItem('faultmaven_authState');
 
-  if (!authToken) {
+  if (!authStateStr) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Parse and validate auth state
+  let authState;
+  try {
+    authState = JSON.parse(authStateStr);
+  } catch {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Check if token is expired
+  if (Date.now() >= authState.expires_at) {
     return <Navigate to="/login" replace />;
   }
 
   if (requireAdmin) {
-    // Check if user is admin (you can enhance this logic based on your auth system)
-    const authState = localStorage.getItem('faultmaven_authState');
-    if (authState) {
-      try {
-        const parsed = JSON.parse(authState);
-        if (!parsed.is_admin) {
-          return <Navigate to="/kb" replace />;
-        }
-      } catch {
-        return <Navigate to="/kb" replace />;
-      }
+    // Check if user is admin
+    const isAdmin = authState.user?.roles?.includes('admin') || authState.user?.is_admin;
+    if (!isAdmin) {
+      return <Navigate to="/kb" replace />;
     }
   }
 
