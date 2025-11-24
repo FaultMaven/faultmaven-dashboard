@@ -129,5 +129,148 @@ export async function logoutAuth(): Promise<void> {
   }
 }
 
+// ===== Knowledge Base API =====
+
+export interface KBDocument {
+  document_id: string;
+  user_id: string;
+  title: string;
+  content: string;
+  document_type: string;
+  tags: string[];
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentListResponse {
+  documents: KBDocument[];
+  total_count: number;
+  limit: number;
+  offset: number;
+}
+
+export interface UploadDocumentParams {
+  file: File;
+  title: string;
+  document_type: string;
+  tags?: string;
+  source_url?: string;
+  description?: string;
+}
+
+/**
+ * Upload a document to the personal knowledge base
+ */
+export async function uploadDocument(params: UploadDocumentParams): Promise<KBDocument> {
+  const token = await authManager.getAccessToken();
+  if (!token) {
+    throw new AuthenticationError('Not authenticated');
+  }
+
+  const authState = await authManager.getAuthState();
+  if (!authState) {
+    throw new AuthenticationError('Not authenticated');
+  }
+
+  const formData = new FormData();
+  formData.append('file', params.file);
+  formData.append('title', params.title);
+  formData.append('document_type', params.document_type);
+
+  if (params.tags) {
+    formData.append('tags', params.tags);
+  }
+  if (params.source_url) {
+    formData.append('source_url', params.source_url);
+  }
+  if (params.description) {
+    formData.append('description', params.description);
+  }
+
+  const response = await fetch(`${config.apiUrl}/api/v1/documents/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-User-ID': authState.user.user_id,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+    throw new Error(error.detail || 'Upload failed');
+  }
+
+  return await response.json();
+}
+
+/**
+ * List documents from the personal knowledge base
+ */
+export async function listDocuments(params?: {
+  limit?: number;
+  offset?: number;
+  document_type?: string;
+}): Promise<DocumentListResponse> {
+  const token = await authManager.getAccessToken();
+  if (!token) {
+    throw new AuthenticationError('Not authenticated');
+  }
+
+  const authState = await authManager.getAuthState();
+  if (!authState) {
+    throw new AuthenticationError('Not authenticated');
+  }
+
+  const queryParams = new URLSearchParams();
+  if (params?.limit) queryParams.set('limit', params.limit.toString());
+  if (params?.offset) queryParams.set('offset', params.offset.toString());
+  if (params?.document_type) queryParams.set('document_type', params.document_type);
+
+  const url = `${config.apiUrl}/api/v1/documents?${queryParams.toString()}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-User-ID': authState.user.user_id,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to list documents');
+  }
+
+  return await response.json();
+}
+
+/**
+ * Delete a document from the personal knowledge base
+ */
+export async function deleteDocument(documentId: string): Promise<void> {
+  const token = await authManager.getAccessToken();
+  if (!token) {
+    throw new AuthenticationError('Not authenticated');
+  }
+
+  const authState = await authManager.getAuthState();
+  if (!authState) {
+    throw new AuthenticationError('Not authenticated');
+  }
+
+  const response = await fetch(`${config.apiUrl}/api/v1/documents/${documentId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-User-ID': authState.user.user_id,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to delete document');
+  }
+}
+
 // Export for use in pages
 export { config };
