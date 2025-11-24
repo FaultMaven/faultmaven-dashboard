@@ -154,7 +154,7 @@ export default function AdminKBPage() {
           <div className="flex items-center gap-4">
             <nav className="flex gap-2">
               <button onClick={() => navigate('/kb')} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">My Knowledge Base</button>
-              <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg">Admin KB</button>
+              <button className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg">Global KB</button>
             </nav>
             <button onClick={handleLogout} className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Logout</button>
           </div>

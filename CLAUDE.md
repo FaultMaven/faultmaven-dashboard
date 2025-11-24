@@ -61,8 +61,8 @@ src/
 ├── index.css                 # Global styles
 ├── pages/                    # Page components
 │   ├── LoginPage.tsx         # Authentication page
-│   ├── KBPage.tsx            # User KB management
-│   └── AdminKBPage.tsx       # Admin KB management (enterprise)
+│   ├── KBPage.tsx            # Personal KB management
+│   └── AdminKBPage.tsx       # Global KB management (system-wide)
 ├── components/               # Reusable UI components
 ├── hooks/                    # Custom React hooks
 └── lib/                      # Core logic
@@ -87,8 +87,8 @@ The dashboard communicates with the FaultMaven backend through API calls:
 
 - **Authentication**: `devLogin()`, `logoutAuth()`
 - **Knowledge Base**: Upload, list, search, delete documents
-- **User KB**: Personal runbooks and documentation
-- **Admin KB**: Organization-wide knowledge (enterprise only)
+- **Personal KB**: User's private runbooks and documentation
+- **Global KB**: System-wide knowledge visible to all users
 
 **API Endpoint Configuration:**
 - Self-hosted: `http://localhost:8000`
