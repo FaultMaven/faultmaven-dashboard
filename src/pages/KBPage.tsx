@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logoutAuth } from '../lib/api';
 
 export default function KBPage() {
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Check if user is admin
@@ -12,7 +13,8 @@ export default function KBPage() {
     if (authState) {
       try {
         const parsed = JSON.parse(authState);
-        setIsAdmin(parsed.is_admin || false);
+        const isUserAdmin = parsed.user?.roles?.includes('admin') || parsed.user?.is_admin || false;
+        setIsAdmin(isUserAdmin);
       } catch {
         setIsAdmin(false);
       }
@@ -26,6 +28,19 @@ export default function KBPage() {
       console.error('Logout error:', error);
     }
     navigate('/login');
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      console.log('Selected files:', Array.from(files).map(f => f.name));
+      // TODO: Implement file upload logic
+      alert(`Selected ${files.length} file(s). Upload functionality coming soon!`);
+    }
   };
 
   return (
@@ -85,7 +100,10 @@ export default function KBPage() {
         {/* Upload Section */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Documents</h3>
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer">
+          <div
+            onClick={handleUploadClick}
+            className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer"
+          >
             <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -97,10 +115,12 @@ export default function KBPage() {
             <p className="text-gray-700 font-medium mb-1">Click to upload or drag and drop</p>
             <p className="text-sm text-gray-500">Markdown, text, JSON, CSV, or log files</p>
             <input
+              ref={fileInputRef}
               type="file"
               className="hidden"
               accept=".md,.txt,.json,.csv,.log"
               multiple
+              onChange={handleFileChange}
             />
           </div>
         </div>
