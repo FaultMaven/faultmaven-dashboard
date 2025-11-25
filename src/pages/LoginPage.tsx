@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { devLogin } from '../lib/api';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isExtensionLogin, setIsExtensionLogin] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('source') === 'extension') {
+      setIsExtensionLogin(true);
+    }
+  }, [location]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,15 +28,39 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await devLogin(username.trim());
-      // Auth manager will handle storage
-      navigate('/kb');
+      const authState = await devLogin(username.trim());
+      
+      // 1. Dispatch event for Extension Auth Bridge (primary method)
+      window.postMessage({
+        type: 'FM_AUTH_SUCCESS',
+        payload: authState
+      }, window.location.origin);
+
+      // 2. Store in localStorage for Extension Auth Bridge (fallback method)
+      localStorage.setItem('fm_auth_state', JSON.stringify(authState));
+
+      // Auth manager will handle internal storage via storage adapter
+
+      if (isExtensionLogin) {
+        // Show success message for extension users
+        // We don't redirect immediately so the bridge has time to process
+        setTimeout(() => {
+          navigate('/kb');
+        }, 1500);
+      } else {
+        navigate('/kb');
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your connection to the backend.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (isExtensionLogin && loading === false && error === null && localStorage.getItem('fm_auth_state')) {
+     // Optional: Show "Login Successful" state if we want to be fancy, 
+     // but staying on form with a success toast/redirect is fine for now.
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
