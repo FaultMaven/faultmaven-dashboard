@@ -33,8 +33,9 @@ interface Config {
  */
 const config: Config = {
   // API Configuration
-  // Development default; override via VITE_API_URL for other environments
-  apiUrl: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000",
+  // Development default points to API Gateway (port 8090)
+  // Override via VITE_API_URL for other environments
+  apiUrl: import.meta.env.VITE_API_URL || "http://127.0.0.1:8090",
 
   // Input Limits Configuration
   inputLimits: {
