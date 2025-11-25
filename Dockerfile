@@ -24,14 +24,8 @@ RUN pnpm build
 # Stage 2: Production
 FROM nginx:alpine
 
-# Build args for CSP configuration
-ARG VITE_API_URL
-ENV VITE_API_URL=${VITE_API_URL:-https://api.faultmaven.ai}
-
-# Copy custom nginx config template and substitute VITE_API_URL_HOST
-COPY nginx.conf /tmp/nginx.conf.template
-RUN sed "s|VITE_API_URL_HOST|${VITE_API_URL}|g" /tmp/nginx.conf.template > /etc/nginx/conf.d/default.conf && \
-    rm /tmp/nginx.conf.template
+# Copy custom nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
