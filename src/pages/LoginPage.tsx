@@ -41,26 +41,42 @@ export default function LoginPage() {
 
       // Auth manager will handle internal storage via storage adapter
 
-      if (isExtensionLogin) {
-        // Show success message for extension users
-        // We don't redirect immediately so the bridge has time to process
-        setTimeout(() => {
-          navigate('/kb');
-        }, 1500);
-      } else {
-        navigate('/kb');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your connection to the backend.');
-    } finally {
-      setLoading(false);
+    if (isExtensionLogin) {
+      // Show success message for extension users
+      setLoading(false); // Stop loading indicator
+      return; // Stop execution, don't redirect
+    } else {
+      navigate('/kb');
     }
-  };
-
-  if (isExtensionLogin && loading === false && error === null && localStorage.getItem('fm_auth_state')) {
-     // Optional: Show "Login Successful" state if we want to be fancy, 
-     // but staying on form with a success toast/redirect is fine for now.
+  } catch (err: any) {
+    setError(err.message || 'Login failed. Please check your connection to the backend.');
+    setLoading(false);
   }
+};
+
+if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !error) {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">Sign in Successful!</h2>
+        <p className="text-gray-600 mb-6">
+          You have successfully authenticated with FaultMaven. You can now close this tab and return to the browser extension.
+        </p>
+        <button 
+          onClick={() => window.close()}
+          className="px-6 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+        >
+          Close Tab
+        </button>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
