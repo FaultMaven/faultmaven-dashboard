@@ -4,6 +4,7 @@ import { devLogin } from '../lib/api';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isExtensionLogin, setIsExtensionLogin] = useState(false);
@@ -23,6 +24,11 @@ export default function LoginPage() {
 
     if (!username || username.trim().length < 3) {
       setError('Username must be at least 3 characters');
+      return;
+    }
+
+    if (!password || password.length < 3) {
+      setError('Password must be at least 3 characters');
       return;
     }
 
@@ -119,6 +125,21 @@ if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !er
             />
           </div>
 
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              Password
+            </label>
+            <input
+              type="password"
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Enter your password"
+              disabled={loading}
+            />
+          </div>
+
           {error && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg">
               {error}
@@ -136,7 +157,7 @@ if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !er
 
         {/* Help Text */}
         <div className="mt-6 text-center text-sm text-gray-500">
-          <p>Development mode: any username works</p>
+          <p>Development mode: any username/password works</p>
         </div>
       </div>
     </div>
