@@ -94,10 +94,10 @@ if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !er
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">
-            FaultMaven Dashboard
+            FaultMaven System
           </h1>
           <p className="text-gray-600">
-            Knowledge Base Management
+            Sign in to access Knowledge Base or Copilot
           </p>
         </div>
 
