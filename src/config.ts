@@ -25,16 +25,21 @@ interface Config {
 /**
  * Application Configuration
  *
- * Environment Variables (set before build):
- * - VITE_API_URL: Backend API endpoint
+ * Configuration Sources (in priority order):
+ * 1. Runtime (Docker/K8s): window.ENV.API_URL - injected at container startup
+ * 2. Build-time: VITE_API_URL - for local development builds
+ * 3. Default: http://127.0.0.1:8090 - local API Gateway
+ *
+ * Other Environment Variables (set before build):
  * - VITE_DATA_MODE_LINES: Lines threshold for data mode (default: 100)
  * - VITE_MAX_QUERY_LENGTH: Max input characters (default: 200000 = 200KB, matches backend)
  * - VITE_MAX_FILE_SIZE_MB: Max file size in MB (default: 10, matches backend MAX_UPLOAD_SIZE_MB)
  */
 const config: Config = {
   // API Configuration
-  // Development default; override via VITE_API_URL for other environments
-  apiUrl: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000",
+  // Priority: Runtime config > Build-time env > Default
+  // Runtime config allows same Docker image to work in any environment
+  apiUrl: (window as any).ENV?.API_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8090",
 
   // Input Limits Configuration
   inputLimits: {

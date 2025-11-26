@@ -159,8 +159,8 @@ faultmaven-dashboard/
 │   ├── index.css           # Global styles
 │   ├── pages/              # Page components
 │   │   ├── LoginPage.tsx          # Login page
-│   │   ├── KBPage.tsx             # User KB management
-│   │   └── AdminKBPage.tsx        # Admin KB management
+│   │   ├── KBPage.tsx             # Personal KB management
+│   │   └── AdminKBPage.tsx        # Global KB management
 │   ├── components/         # Reusable UI components
 │   ├── hooks/              # Custom React hooks
 │   └── lib/                # Core logic
@@ -203,8 +203,8 @@ Configure via `.env.local` file:
 
 ### For Administrators
 
-1. Navigate to **Admin KB** tab (admin users only)
-2. Upload organization-wide documentation
+1. Navigate to **Global KB** tab (admin users only)
+2. Upload system-wide documentation visible to all users
 3. Manage categories and organization structure
 4. Monitor KB usage and analytics (enterprise feature)
 

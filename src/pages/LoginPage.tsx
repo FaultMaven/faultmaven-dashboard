@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { devLogin } from '../lib/api';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isExtensionLogin, setIsExtensionLogin] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('source') === 'extension') {
+      setIsExtensionLogin(true);
+    }
+  }, [location]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,15 +28,55 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      await devLogin(username.trim());
-      // Auth manager will handle storage
+      const authState = await devLogin(username.trim());
+      
+      // 1. Dispatch event for Extension Auth Bridge (primary method)
+      window.postMessage({
+        type: 'FM_AUTH_SUCCESS',
+        payload: authState
+      }, window.location.origin);
+
+      // 2. Store in localStorage for Extension Auth Bridge (fallback method)
+      localStorage.setItem('fm_auth_state', JSON.stringify(authState));
+
+      // Auth manager will handle internal storage via storage adapter
+
+    if (isExtensionLogin) {
+      // Show success message for extension users
+      setLoading(false); // Stop loading indicator
+      return; // Stop execution, don't redirect
+    } else {
       navigate('/kb');
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your connection to the backend.');
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err: any) {
+    setError(err.message || 'Login failed. Please check your connection to the backend.');
+    setLoading(false);
+  }
+};
+
+if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !error) {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">Sign in Successful!</h2>
+        <p className="text-gray-600 mb-6">
+          You have successfully authenticated with FaultMaven. You can now close this tab and return to the browser extension.
+        </p>
+        <button 
+          onClick={() => window.close()}
+          className="px-6 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+        >
+          Close Tab
+        </button>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
