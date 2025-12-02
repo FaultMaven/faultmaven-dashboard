@@ -41,6 +41,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signin" element={<Navigate to="/login" replace />} />
         <Route path="/" element={<Navigate to="/kb" replace />} />
         <Route
           path="/kb"
