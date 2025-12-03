@@ -43,3 +43,5 @@ pnpm-lock.yaml # Or add this if you prefer not to commit the lockfile, though co
 # Temporary files
 *.tmp
 *.swp
+.vercel
+.env*.local
