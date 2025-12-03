@@ -7,7 +7,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/((?!assets/|icon/|favicon.ico|.*\\.).*)",
+      "source": "/(.*)"
       "destination": "/index.html"
     }
   ],
