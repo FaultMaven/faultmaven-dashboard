@@ -1,249 +1,94 @@
 # FaultMaven Dashboard
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](./package.json)
-[![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](./LICENSE.md)
-[![React](https://img.shields.io/badge/React-19+-61DAFB.svg?logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6.0+-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
+**The Command Center for Your Knowledge Engine**
 
-**FaultMaven Dashboard** is the Knowledge Base management web application for FaultMaven. It provides a clean, professional interface for uploading, organizing, and managing runbooks, post-mortems, and documentation that powers the FaultMaven AI assistant.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://hub.docker.com/r/faultmaven/faultmaven-dashboard)
 
-This dashboard works with both **self-hosted** and **enterprise** deployments of FaultMaven.
+> **FaultMaven Dashboard** is the web application for managing your [FaultMaven](https://github.com/FaultMaven/faultmaven) knowledge base, viewing case history, and configuring AI agents.
 
 ---
 
-## ✨ Key Features
+## About FaultMaven
 
-* 📚 **Knowledge Base Management**: Upload and organize your team's runbooks and documentation
-* 🔍 **Search & Discovery**: Find relevant documents quickly with semantic search
-* 👥 **Team Collaboration**: Share knowledge across your organization (enterprise)
-* 🔐 **Admin Controls**: Organization-wide KB management for admins (enterprise)
-* 🐳 **Easy Deployment**: Docker-based deployment with Nginx
-* 📱 **Responsive Design**: Works seamlessly on desktop and mobile devices
+FaultMaven is an AI-powered troubleshooting copilot for modern engineering. Learn more at [faultmaven.ai](https://faultmaven.ai).
 
 ---
 
-## 🛠️ Tech Stack
+## 🧠 Purpose
 
-| Component | Details |
-|:----------|:--------|
-| **Framework** | Vite 6.0+ (Fast web app build tool) |
-| **UI** | React 19+ |
-| **Routing** | React Router 7+ |
-| **Styling** | Tailwind CSS 3+ |
-| **Language** | TypeScript 5.8+ |
-| **Deployment** | Docker + Nginx |
+While the [Copilot](https://github.com/FaultMaven/faultmaven-copilot) is for *reacting* to incidents, the **Dashboard** is for *proactive* management:
+
+- **Knowledge Base**: Upload runbooks, edit indexed documents, and manage vectors
+- **Case History**: View, search, and export past troubleshooting sessions
+- **Configuration**: Manage LLM providers (OpenAI/Ollama) and API keys
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quick Start
 
-### Prerequisites
+This app is included automatically in the main `docker-compose` stack.
 
-* [Node.js](https://nodejs.org/) v20+ (or use Docker)
-* [pnpm](https://pnpm.io/installation) v8+ (or npm)
-* A running **FaultMaven Backend API**
-
-### Local Development
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/FaultMaven/faultmaven-dashboard.git
-   cd faultmaven-dashboard
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pnpm install
-   ```
-
-3. **Configure environment**:
-   ```bash
-   cp .env.example .env.local
-   ```
-
-   Edit `.env.local`:
-   ```bash
-   # For local development
-   VITE_API_URL=http://localhost:8000
-   ```
-
-4. **Start development server**:
-   ```bash
-   pnpm dev
-   ```
-
-   The dashboard will be available at `http://localhost:5173`
-
-5. **Login**:
-   - Navigate to `http://localhost:5173`
-   - Enter any username (development mode)
-   - Start managing your knowledge base!
-
-### Building for Production
+**To run only this dashboard locally:**
 
 ```bash
-# Build optimized production bundle
-pnpm build
+# 1. Clone
+git clone https://github.com/FaultMaven/faultmaven-dashboard.git
+cd faultmaven-dashboard
 
-# Preview production build locally
-pnpm preview
+# 2. Install & Run
+npm install
+npm run dev
 ```
 
-The built files will be in `dist/` directory.
+Access at `http://localhost:5173`.
+
+> **Note**: This is a client-side SPA (Vite + React). It requires a running FaultMaven API Gateway to function.
+>
+> **Need the backend?** Deploy FaultMaven in 5 minutes: [Quick Start](https://github.com/FaultMaven/faultmaven#quick-start)
 
 ---
 
-## 🐳 Docker Deployment
+## 🏗️ Architecture
 
-### Build Docker Image
-
-```bash
-# Self-hosted deployment
-docker build -t faultmaven/dashboard:latest \
-  --build-arg VITE_API_URL=http://localhost:8000 \
-  .
-
-# Enterprise deployment
-docker build -t faultmaven/dashboard:latest \
-  --build-arg VITE_API_URL=https://api.faultmaven.ai \
-  .
-```
-
-### Run Container
-
-```bash
-docker run -d \
-  -p 3000:80 \
-  --name faultmaven-dashboard \
-  faultmaven/dashboard:latest
-```
-
-The dashboard will be available at `http://localhost:3000`
-
-### Docker Compose
-
-For integrated deployment with the backend:
-
-```yaml
-version: '3.8'
-
-services:
-  dashboard:
-    build:
-      context: .
-      args:
-        - VITE_API_URL=http://localhost:8000
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
-    networks:
-      - faultmaven
-
-networks:
-  faultmaven:
-    driver: bridge
-```
-
----
-
-## 📂 Project Structure
-
-```
-faultmaven-dashboard/
-├── public/                  # Static assets (icons, images)
-├── src/
-│   ├── main.tsx            # Application entry point
-│   ├── App.tsx             # Root component with routing
-│   ├── index.css           # Global styles
-│   ├── pages/              # Page components
-│   │   ├── LoginPage.tsx          # Login page
-│   │   ├── KBPage.tsx             # Personal KB management
-│   │   └── AdminKBPage.tsx        # Global KB management
-│   ├── components/         # Reusable UI components
-│   ├── hooks/              # Custom React hooks
-│   └── lib/                # Core logic
-│       ├── api.ts                 # FaultMaven API client
-│       ├── storage.ts             # LocalStorage adapter
-│       ├── config.ts              # Configuration
-│       └── utils/                 # Helper utilities
-├── Dockerfile              # Docker build configuration
-├── nginx.conf              # Nginx configuration
-├── vite.config.ts          # Vite configuration
-├── tailwind.config.cjs     # Tailwind CSS configuration
-└── package.json
-```
-
----
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Configure via `.env.local` file:
-
-| Variable | Description | Default |
-|:---------|:------------|:--------|
-| `VITE_API_URL` | Backend API endpoint | `http://localhost:8000` |
-| `VITE_MAX_FILE_SIZE_MB` | Max upload size (MB) | `10` |
-
-**Note**: All `VITE_*` variables are replaced at **BUILD TIME**. Changing them requires rebuilding the application.
-
----
-
-## 📖 Usage
-
-### For End Users
-
-1. **Login**: Use your username to access the dashboard
-2. **Upload Documents**: Drag and drop or click to upload runbooks, documentation
-3. **Search**: Use the search bar to find relevant documents
-4. **Manage**: Edit metadata, organize by categories, delete outdated docs
-
-### For Administrators
-
-1. Navigate to **Global KB** tab (admin users only)
-2. Upload system-wide documentation visible to all users
-3. Manage categories and organization structure
-4. Monitor KB usage and analytics (enterprise feature)
+- **Framework**: React + Vite (SPA)
+- **Styling**: Tailwind CSS
+- **State**: TanStack Query
+- **Deployment**: Static files (served via Nginx in production)
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+We welcome PRs! Note that this repo contains only the web dashboard UI. For backend features, see [faultmaven](https://github.com/FaultMaven/faultmaven).
 
 ---
 
-## 📜 License
+## 📄 License
 
-This project is licensed under the **Apache-2.0 License**. See the `LICENSE.md` file for details.
+This project is licensed under the **Apache 2.0 License** - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 🔗 Related Projects
 
-* [FaultMaven Copilot](https://github.com/FaultMaven/faultmaven-copilot) - Browser extension for chat interface
-* [FaultMaven Backend](https://github.com/FaultMaven/faultmaven-backend) - AI-powered troubleshooting backend
+The FaultMaven ecosystem includes:
+
+- **[faultmaven](https://github.com/FaultMaven/faultmaven)** - Main repository with microservices backend
+- **[faultmaven-copilot](https://github.com/FaultMaven/faultmaven-copilot)** - Browser extension for in-flow troubleshooting
+- **[faultmaven-deploy](https://github.com/FaultMaven/faultmaven-deploy)** - Deployment configurations and tooling
+- **[faultmaven-website](https://github.com/FaultMaven/faultmaven-website)** - Official website
 
 ---
 
-## 📚 Documentation
+## 🆘 Support
 
-* [Migration Guide](./MIGRATION_GUIDE_V2.md) - Architecture and design decisions
-* [Execution Guide](./EXECUTION_GUIDE.md) - Step-by-step implementation
+- **Website**: [faultmaven.ai](https://faultmaven.ai)
+- **Documentation**: [GitHub README](https://github.com/FaultMaven/faultmaven)
+- **Issues**: [GitHub Issues](https://github.com/FaultMaven/faultmaven-dashboard/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/FaultMaven/faultmaven/discussions)
+- **Email**: [support@faultmaven.ai](mailto:support@faultmaven.ai)
 
 ---
 
-## 💬 Support
-
-* **Documentation**: [docs.faultmaven.ai](https://docs.faultmaven.ai)
-* **Issues**: [GitHub Issues](https://github.com/FaultMaven/faultmaven-dashboard/issues)
-* **Community**: [Discussions](https://github.com/FaultMaven/faultmaven-dashboard/discussions)
+**FaultMaven** — Your AI copilot for incident response.
