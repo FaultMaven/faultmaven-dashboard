@@ -91,4 +91,4 @@ The FaultMaven ecosystem includes:
 
 ---
 
-**FaultMaven** — Your AI copilot for incident response.
+**FaultMaven** — Your AI copilot for troubleshooting.
