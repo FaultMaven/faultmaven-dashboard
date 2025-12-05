@@ -7,6 +7,8 @@
 
 > **FaultMaven Dashboard** is the web application for managing your [FaultMaven](https://github.com/FaultMaven/faultmaven) knowledge base, viewing case history, and configuring AI agents.
 
+<!-- TODO: Add screenshot here showing knowledge base view, case history, and configuration interface -->
+
 ---
 
 ## About FaultMaven
@@ -28,13 +30,36 @@ While the [Copilot](https://github.com/FaultMaven/faultmaven-copilot) is for *re
 - **Case History**: View, search, and export past troubleshooting sessions
 - **Configuration**: Manage LLM providers (OpenAI/Ollama) and API keys
 
+### Dashboard vs Copilot
+
+| Component | Purpose | When to Use |
+|-----------|---------|-------------|
+| **Dashboard** | Knowledge base management, case history, configuration | Proactive: uploading docs, reviewing past cases |
+| **Copilot** | AI chat, real-time troubleshooting, evidence capture | Reactive: during incidents, debugging |
+
+Both connect to the same FaultMaven backend.
+
 ---
 
 ## 🚀 Quick Start
 
-This app is included automatically in the main `docker-compose` stack.
+> ⚠️ **Requires Backend:** This is a frontend-only application. You need a running FaultMaven API Gateway to use it.
+> [Deploy the full stack →](https://github.com/FaultMaven/faultmaven-deploy)
 
-**To run only this dashboard locally:**
+### Using the Full Stack (Recommended)
+
+The dashboard is included automatically in the main deployment:
+
+```bash
+git clone https://github.com/FaultMaven/faultmaven-deploy.git && cd faultmaven-deploy
+./faultmaven start
+```
+
+Access the dashboard at `http://localhost:3000`.
+
+### Local Development
+
+To run only this dashboard locally for development:
 
 ```bash
 # 1. Clone
@@ -48,17 +73,59 @@ npm run dev
 
 Access at `http://localhost:5173`.
 
-> **Note**: This is a client-side SPA (Vite + React). It requires a running FaultMaven API Gateway to function.
->
-> **Need the backend?** Deploy FaultMaven in 5 minutes: [Quick Start](https://github.com/FaultMaven/faultmaven#quick-start)
+> **Note**: You still need a running FaultMaven API Gateway at `http://localhost:8090`.
+
+### Docker Standalone
+
+```bash
+docker run -p 3000:80 \
+  -e API_URL=http://localhost:8090 \
+  faultmaven/faultmaven-dashboard:latest
+```
+
+Or use the [full stack deployment](https://github.com/FaultMaven/faultmaven-deploy).
 
 ---
 
-## 🏗️ Architecture
+## 🛠️ Development
 
-- **Framework**: React + Vite (SPA)
+### Setup
+
+```bash
+# Clone and install
+git clone https://github.com/FaultMaven/faultmaven-dashboard.git
+cd faultmaven-dashboard
+npm install
+
+# Run dev server (requires backend at localhost:8090)
+npm run dev
+
+# Run tests
+npm run test
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+### Project Structure
+
+```text
+src/
+├── components/    # Reusable UI components
+├── pages/         # Route pages
+├── hooks/         # Custom React hooks
+├── api/           # API client functions
+└── utils/         # Utilities
+```
+
+### Tech Stack
+
+- **Framework**: React 19 + Vite (SPA)
 - **Styling**: Tailwind CSS
-- **State**: TanStack Query
+- **State Management**: TanStack Query
 - **Deployment**: Static files (served via Nginx in production)
 
 ---
