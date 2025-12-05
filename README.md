@@ -11,7 +11,12 @@
 
 ## About FaultMaven
 
-FaultMaven is an AI-powered troubleshooting copilot for modern engineering. Learn more at [faultmaven.ai](https://faultmaven.ai).
+FaultMaven is an AI-powered troubleshooting copilot that correlates your live telemetry with your runbooks, docs, and past fixes. It delivers answers grounded in your actual system—not generic guesses.
+
+**Learn More:**
+- **[Product Overview](https://faultmaven.ai/product)** — See what FaultMaven can do
+- **[Use Cases](https://faultmaven.ai/use-cases)** — Real-world troubleshooting scenarios
+- **[Main Repository](https://github.com/FaultMaven/faultmaven)** — Architecture and documentation
 
 ---
 
@@ -60,7 +65,14 @@ Access at `http://localhost:5173`.
 
 ## 🤝 Contributing
 
-We welcome PRs! Note that this repo contains only the web dashboard UI. For backend features, see [faultmaven](https://github.com/FaultMaven/faultmaven).
+We welcome contributions to the FaultMaven Dashboard! Whether it's improving the knowledge base UI, adding new visualizations, or enhancing the user experience, your help makes FaultMaven better for everyone.
+
+**Note:** This repository contains only the web dashboard UI. For backend features (AI agent, knowledge base, microservices), see the main [FaultMaven repository](https://github.com/FaultMaven/faultmaven).
+
+**Getting Started:**
+- Check out [`good-first-issue`](https://github.com/search?q=org%3AFaultMaven+label%3A%22good+first+issue%22+state%3Aopen+repo%3Afaultmaven-dashboard) tags for beginner-friendly tasks
+- Read the [Contributing Guide](https://github.com/FaultMaven/faultmaven/blob/main/CONTRIBUTING.md) for code style and workflow
+- Join [GitHub Discussions](https://github.com/FaultMaven/faultmaven/discussions) to share ideas
 
 ---
 
