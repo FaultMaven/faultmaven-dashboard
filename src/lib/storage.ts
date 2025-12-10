@@ -3,9 +3,8 @@
  * Provides localStorage-based storage compatible with the API client's expectations
  */
 
-interface StorageData {
-  [key: string]: any;
-}
+type StorageValue = string | number | boolean | Record<string, unknown> | Array<unknown>;
+type StorageData = Record<string, StorageValue>;
 
 class LocalStorageAdapter {
   async get(keys: string[]): Promise<StorageData> {
@@ -44,5 +43,5 @@ export const storage = {
 
 // Make it available globally for the API client
 if (typeof window !== 'undefined') {
-  (window as any).browser = { storage };
+  (window as unknown as { browser?: { storage: { local: LocalStorageAdapter } } }).browser = { storage };
 }

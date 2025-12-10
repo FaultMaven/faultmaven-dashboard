@@ -1,22 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { devLogin } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isExtensionLogin, setIsExtensionLogin] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { setAuthState } = useAuth();
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('source') === 'extension') {
-      setIsExtensionLogin(true);
-    }
-  }, [location]);
+  const isExtensionLogin = new URLSearchParams(location.search).get('source') === 'extension';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,17 +41,18 @@ export default function LoginPage() {
       // 2. Store in localStorage for Extension Auth Bridge (fallback method)
       localStorage.setItem('fm_auth_state', JSON.stringify(authState));
 
-      // Auth manager will handle internal storage via storage adapter
+      // 3. Update AuthContext (also persists via authManager)
+      await setAuthState(authState);
 
-    if (isExtensionLogin) {
-      // Show success message for extension users
-      setLoading(false); // Stop loading indicator
-      return; // Stop execution, don't redirect
-    } else {
-      navigate('/kb');
-    }
-  } catch (err: any) {
-    setError(err.message || 'Login failed. Please check your connection to the backend.');
+      if (isExtensionLogin) {
+        setLoading(false);
+        return;
+      } else {
+        navigate('/kb');
+      }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Login failed. Please check your connection to the backend.';
+    setError(message);
     setLoading(false);
   }
 };

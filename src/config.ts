@@ -35,11 +35,12 @@ interface Config {
  * - VITE_MAX_QUERY_LENGTH: Max input characters (default: 200000 = 200KB, matches backend)
  * - VITE_MAX_FILE_SIZE_MB: Max file size in MB (default: 10, matches backend MAX_UPLOAD_SIZE_MB)
  */
+const runtimeEnv = (globalThis as { ENV?: { API_URL?: string } }).ENV;
 const config: Config = {
   // API Configuration
   // Priority: Runtime config > Build-time env > Default
   // Runtime config allows same Docker image to work in any environment
-  apiUrl: (window as any).ENV?.API_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8090",
+  apiUrl: runtimeEnv?.API_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8090",
 
   // Input Limits Configuration
   inputLimits: {
