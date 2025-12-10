@@ -1,6 +1,9 @@
 # Node dependencies
 node_modules/
 
+# Build output
+dist/
+
 # WXT build output and cache
 .output/
 .wxt/
