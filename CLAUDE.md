@@ -6,22 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the **FaultMaven Dashboard** - a web application for managing Knowledge Base content. It provides a clean interface for uploading, organizing, and searching runbooks, post-mortems, and documentation that powers the FaultMaven AI assistant.
 
-**Key Technologies**: Vite 6.0+, React 19+, React Router 7+, TypeScript, Tailwind CSS
+**Key Technologies**: Vite 6.0+, React 19+, React Router 7+, TypeScript, Tailwind CSS, Vitest
 
 ## Common Commands
 
 ### Development
 ```bash
-pnpm install                    # Install dependencies
-pnpm dev                       # Start development server (localhost:5173)
-npm run dev                    # Alternative with npm
-```
-
-### Building and Deployment
-```bash
-pnpm build                     # Production build
-pnpm preview                   # Preview production build locally
-docker build -t faultmaven/dashboard:latest .  # Build Docker image
+pnpm install               # Install dependencies
+pnpm dev                   # Start development server (localhost:5173)
+pnpm lint                  # ESLint (flat config)
+pnpm test                  # Vitest + RTL
+pnpm build                 # TypeScript + Vite build
 ```
 
 ## Configuration
@@ -30,24 +25,17 @@ docker build -t faultmaven/dashboard:latest .  # Build Docker image
 All configuration is done via environment variables (set before build):
 
 ```bash
-# Copy example template
 cp .env.example .env.local
-
-# Edit .env.local with your settings
+# Edit .env.local
 ```
 
-**Available Variables:**
-- `VITE_API_URL` - Backend API endpoint (default: `http://localhost:8000`)
+**Available Variables (common):**
+- `VITE_API_URL` - Backend API endpoint (default: `http://127.0.0.1:8090`)
 - `VITE_MAX_FILE_SIZE_MB` - Max file upload size in MB (default: `10`)
 
-**Configuration Files:**
-- **`src/lib/config.ts`** - Central configuration with environment variable parsing
-- **`.env.example`** - Complete documentation of all available variables
-- **`.env.local`** - Your local overrides (gitignored)
-
-**Important:** All VITE_* variables are replaced at BUILD TIME. Changing them requires:
-- Dev mode: Restart `pnpm dev`
-- Production: Rebuild with `pnpm build`
+**Notes**
+- Config is parsed in `src/config.ts`.
+- VITE_* are build-time; restart dev server or rebuild after changes.
 
 ## High-Level Architecture
 
@@ -63,10 +51,11 @@ src/
 │   ├── LoginPage.tsx         # Authentication page
 │   ├── KBPage.tsx            # Personal KB management
 │   └── AdminKBPage.tsx       # Global KB management (system-wide)
-├── components/               # Reusable UI components
-├── hooks/                    # Custom React hooks
+├── components/               # Reusable UI components (Header, UploadModal, ConfirmDialog, etc.)
+├── context/                  # AuthContext (global auth state)
+├── hooks/                    # Custom hooks (useKBList for KB paging/search/delete)
 └── lib/                      # Core logic
-    ├── api.ts                # FaultMaven API client
+    ├── api.ts                # Unified API (auth + user/admin KB)
     ├── storage.ts            # LocalStorage adapter
     ├── config.ts             # Configuration
     └── utils/                # Helper utilities
@@ -76,19 +65,18 @@ src/
 
 1. **Vite**: Fast build tool with HMR for development
 2. **React Router**: Client-side routing for SPA
-3. **LocalStorage**: Web storage for auth tokens and state
-4. **API Integration**: RESTful communication with FaultMaven backend
-5. **Tailwind CSS**: Utility-first CSS framework
-6. **TypeScript Strict**: Type safety throughout
+3. **AuthContext**: Global auth state for protected routes
+4. **Custom Hooks**: `useKBList` for KB pagination/search/delete
+5. **API Integration**: RESTful communication with FaultMaven backend
+6. **Tailwind CSS**: Utility-first CSS framework
+7. **TypeScript Strict**: Type safety throughout
 
 ### API Integration
 
 The dashboard communicates with the FaultMaven backend through API calls:
 
-- **Authentication**: `devLogin()`, `logoutAuth()`
-- **Knowledge Base**: Upload, list, search, delete documents
-- **Personal KB**: User's private runbooks and documentation
-- **Global KB**: System-wide knowledge visible to all users
+- **Authentication**: `devLogin()`, `logoutAuth()`, AuthContext powered
+- **Knowledge Base**: Upload, list (paginated), delete documents (user + admin scopes)
 
 **API Endpoint Configuration:**
 - Self-hosted: `http://localhost:8000`
@@ -96,11 +84,10 @@ The dashboard communicates with the FaultMaven backend through API calls:
 
 ### Application Flow
 
-1. **Login**: User enters username (dev mode) or credentials (production)
-2. **Auth Storage**: Token stored in localStorage via storage adapter
-3. **Routing**: React Router manages navigation between pages
-4. **KB Management**: Upload, search, organize documents
-5. **Protected Routes**: Admin routes require admin privileges
+1. **Login**: User signs in; AuthContext stores token/state via storage adapter
+2. **Routing**: React Router manages navigation between pages
+3. **KB Management**: Upload, paginate, client-side search, delete documents
+4. **Protected Routes**: Admin routes require admin privileges
 
 ### Component Architecture
 
@@ -125,14 +112,15 @@ The dashboard communicates with the FaultMaven backend through API calls:
 1. **Hot Module Replacement**: Vite provides instant updates during development
 2. **Type Safety**: TypeScript strict mode enabled
 3. **Responsive Design**: Mobile-first approach with Tailwind
-4. **Accessibility**: WCAG 2.1 AA compliance
+4. **Accessibility**: Dialogs use role/aria-modal; confirm/upload modals accessible
 
 ### Code Patterns
 
 - **Path Aliases**: Use `~/*` for `src/*` and `~lib/*` for `src/lib/*`
 - **TypeScript Strict**: Strict mode enabled for type safety
-- **Error Handling**: Comprehensive try-catch with user-friendly messages
-- **Accessibility**: ARIA labels, keyboard navigation, screen reader support
+- **Auth**: Use AuthContext (do not read localStorage directly)
+- **KB State**: Use `useKBList` for KB lists instead of duplicating fetch logic
+- **Accessibility**: ARIA labels, keyboard navigation, accessible dialogs
 
 ### API Development
 

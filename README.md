@@ -117,19 +117,22 @@ npm run preview
 
 ```text
 src/
-├── components/    # Reusable UI components
-├── pages/         # Route pages
-├── hooks/         # Custom React hooks
-├── api/           # API client functions
-└── utils/         # Utilities
+├── components/     # Shared UI (Header, UploadModal, ConfirmDialog, etc.)
+├── context/        # AuthContext (global auth state)
+├── hooks/          # Custom hooks (useKBList for KB paging/search/delete)
+├── lib/            # API client, config, storage adapter
+├── pages/          # Route pages (Login, KB, Admin KB)
+└── utils/          # Helpers (debounce)
 ```
 
 ### Tech Stack
 
 - **Framework**: React 19 + Vite (SPA)
+- **Routing**: React Router 7
 - **Styling**: Tailwind CSS
-- **State Management**: TanStack Query
-- **Deployment**: Static files (served via Nginx in production)
+- **State**: React Context + custom hooks (no external state lib)
+- **Testing**: Vitest + Testing Library
+- **Deployment**: Static files (Nginx)
 
 ---
 
