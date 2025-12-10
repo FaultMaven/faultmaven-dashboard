@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logoutAuth, uploadDocument, type KBDocument } from '../lib/api';
 import { UploadZone } from '../components/UploadZone';
@@ -9,10 +9,11 @@ import { PaginationControls } from '../components/PaginationControls';
 import { useKBList } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useAuth } from '../context/AuthContext';
 
 export default function KBPage() {
   const navigate = useNavigate();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { isAdmin } = useAuth();
   const {
     filteredDocuments,
     totalCount,
@@ -37,19 +38,6 @@ export default function KBPage() {
   const [uploading, setUploading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const authState = localStorage.getItem('faultmaven_authState');
-    if (authState) {
-      try {
-        const parsed = JSON.parse(authState);
-        const isUserAdmin = parsed.user?.roles?.includes('admin') || parsed.user?.is_admin || false;
-        setIsAdmin(isUserAdmin);
-      } catch {
-        setIsAdmin(false);
-      }
-    }
-  }, []);
 
   const handleLogout = async () => {
     try {

@@ -20,7 +20,12 @@ export function ConfirmDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+    >
       <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-lg" role="document">
         <h3 className="text-lg font-semibold text-gray-900 mb-3" id="confirm-dialog-title">
           {title}
