@@ -31,6 +31,9 @@ describe('App Smoke Tests', () => {
     await act(async () => {
       render(<App />);
     });
+
+    // Intentional failure for CI gate verification (will be reverted)
+    expect(true).toBe(false);
   });
 
   it('redirects to login page when unauthenticated', async () => {
