@@ -74,7 +74,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          # Note: do not enable setup-node pnpm cache unless pnpm is already available on PATH.
+          # pnpm is installed in the next step via corepack.
 
       - name: Install pnpm
         run: |
