@@ -249,202 +249,17 @@ jobs:
           echo "**Environment**: ${{ steps.tags.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "Next: Production deployment..." >> $GITHUB_STEP_SUMMARY
+            echo "Next: Promote image via enterprise-infra (no direct deploy from this repo)." >> $GITHUB_STEP_SUMMARY
           else
             echo "Development image ready for testing." >> $GITHUB_STEP_SUMMARY
           fi
-
-  # ============================================================================
-  # Stage 5: Production Deployment (main branch only)
-  # ============================================================================
-  deploy:
-    name: Deploy to Production
-    needs: push
-    if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, production]
-    environment: on-prem
-
-    steps:
-      - name: Checkout enterprise-infra
-        uses: actions/checkout@v4
-        with:
-          repository: FaultMaven/faultmaven-enterprise-infra
-          token: ${{ secrets.INFRA_REPO_PAT }}
-          path: infra
-
-      - name: Update image tag in K8s manifest
-        run: |
-          cd infra/kubernetes/apps/faultmaven/base/${{ env.SERVICE_NAME }}
-
-          echo "Current kustomization:"
-          cat kustomization.yaml
-
-          echo ""
-          echo "Updating image to: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-
-          kustomize edit set image \
-            ${{ env.IMAGE_NAME }}=${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-
-          echo ""
-          echo "Updated kustomization:"
-          cat kustomization.yaml
-
-      - name: Deploy to Kubernetes
-        run: |
-          cd infra/kubernetes/apps/faultmaven/base/${{ env.SERVICE_NAME }}
-
-          echo "Applying manifests to cluster..."
-          kubectl apply -k .
-
-          echo ""
-          echo "Waiting for rollout to complete..."
-          kubectl rollout status deployment/${{ env.SERVICE_NAME }} -n faultmaven --timeout=300s
-
-      - name: Verify deployment
-        run: |
-          echo "Deployment status:"
-          kubectl get deployment ${{ env.SERVICE_NAME }} -n faultmaven
-
-          echo ""
-          echo "Pod status:"
-          kubectl get pods -n faultmaven -l app=${{ env.SERVICE_NAME }}
-
-          echo ""
-          echo "Service status:"
-          kubectl get service ${{ env.SERVICE_NAME }} -n faultmaven
-
-      - name: Deployment summary
-        if: success()
-        run: |
-          echo "### ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Service**: ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Image**: \`${{ env.IMAGE_NAME }}:sha-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Namespace**: faultmaven" >> $GITHUB_STEP_SUMMARY
-          echo "**Cluster**: production (192.168.0.100:6443)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Next: Post-deployment canary checks..." >> $GITHUB_STEP_SUMMARY
-
-      - name: Rollback on failure
-        if: failure()
-        run: |
-          echo "❌ Deployment failed, initiating rollback..."
-          kubectl rollout undo deployment/${{ env.SERVICE_NAME }} -n faultmaven
-          kubectl rollout status deployment/${{ env.SERVICE_NAME }} -n faultmaven --timeout=300s
-          echo "Rollback complete. Previous version restored."
-
-          echo "### ❌ Deployment Failed - Rolled Back" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The deployment failed and has been rolled back to the previous version." >> $GITHUB_STEP_SUMMARY
-          echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
-
-  # ============================================================================
-  # Stage 6: Post-Deploy Canary Checks (Production Safety Net)
-  # ============================================================================
-  canary:
-    name: Post-Deploy Canary Checks
-    needs: deploy
-    if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, production]
-    environment: on-prem
-
-    steps:
-      - name: Wait for rollout stabilization
-        run: |
-          echo "Waiting for deployment to stabilize..."
-          sleep 10
-
-      - name: Verify rollout status
-        run: |
-          kubectl rollout status deployment/${{ env.SERVICE_NAME }} -n faultmaven --timeout=60s
-
-      - name: Check pod health
-        run: |
-          echo "Checking pod health..."
-          PODS=$(kubectl get pods -n faultmaven -l app=${{ env.SERVICE_NAME }} -o jsonpath='{.items[*].metadata.name}')
-
-          if [ -z "$PODS" ]; then
-            echo "❌ No pods found for ${{ env.SERVICE_NAME }}"
-            exit 1
-          fi
-
-          for POD in $PODS; do
-            STATUS=$(kubectl get pod $POD -n faultmaven -o jsonpath='{.status.phase}')
-            READY=$(kubectl get pod $POD -n faultmaven -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
-
-            echo "Pod: $POD"
-            echo "  Status: $STATUS"
-            echo "  Ready: $READY"
-
-            if [ "$STATUS" != "Running" ] || [ "$READY" != "True" ]; then
-              echo "❌ Pod $POD is not healthy"
-              kubectl describe pod $POD -n faultmaven
-              kubectl logs $POD -n faultmaven --tail=50
-              exit 1
-            fi
-          done
-
-          echo "✅ All pods are healthy"
-
-      - name: Health check via service endpoint
-        run: |
-          echo "Testing service endpoint health..."
-          MAX_ATTEMPTS=10
-          ATTEMPT=0
-
-          # Get the service cluster IP
-          SERVICE_IP=$(kubectl get service ${{ env.SERVICE_NAME }} -n faultmaven -o jsonpath='{.spec.clusterIP}')
-          SERVICE_PORT=$(kubectl get service ${{ env.SERVICE_NAME }} -n faultmaven -o jsonpath='{.spec.ports[0].port}')
-
-          echo "Service endpoint: http://$SERVICE_IP:$SERVICE_PORT/"
-
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            if kubectl run curl-test-${{ github.sha }} \
-              --image=curlimages/curl:latest \
-              --rm -i --restart=Never \
-              --namespace=faultmaven \
-              --command -- curl -sf "http://$SERVICE_IP:$SERVICE_PORT/" > /dev/null 2>&1; then
-              echo "✅ Health check passed!"
-              exit 0
-            fi
-
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS failed, retrying in 3s..."
-            sleep 3
-          done
-
-          echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
-          exit 1
-
-      - name: Canary summary
-        if: success()
-        run: |
-          echo "### ✅ Canary Checks Passed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All post-deployment health checks passed:" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Rollout status verified" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ All pods healthy and ready" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Service endpoint responding" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Deployment is fully verified and operational!**" >> $GITHUB_STEP_SUMMARY
-
-      - name: Canary failure
-        if: failure()
-        run: |
-          echo "### ❌ Canary Checks Failed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Post-deployment health checks failed." >> $GITHUB_STEP_SUMMARY
-          echo "The deployment completed but the service may not be healthy." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Manual intervention required!**" >> $GITHUB_STEP_SUMMARY
-          exit 1
 
   # ============================================================================
   # Pipeline Summary
   # ============================================================================
   summary:
     name: Pipeline Summary
-    needs: [build, test, smoke, push, deploy, canary]
+    needs: [build, test, smoke, push]
     if: always()
     runs-on: ubuntu-latest
 
@@ -462,5 +277,3 @@ jobs:
           echo "| Frontend Tests | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Smoke Test | ${{ needs.smoke.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Push to Registry | ${{ needs.push.result == 'success' && '✅ Passed' || needs.push.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Production Deploy | ${{ needs.deploy.result == 'success' && '✅ Passed' || needs.deploy.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Canary Checks | ${{ needs.canary.result == 'success' && '✅ Passed' || needs.canary.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
