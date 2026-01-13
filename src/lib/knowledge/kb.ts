@@ -1,6 +1,7 @@
 // Knowledge Base API functions
 
 import { makeAuthenticatedRequest, buildQueryParams } from './client';
+import { handleAPIResponse } from './errors';
 import type {
   KBDocument,
   AdminKBDocument,
@@ -18,7 +19,7 @@ import type {
  * @param params - Upload parameters
  * @returns Uploaded document
  * @throws {AuthenticationError} If not authenticated
- * @throws {Error} If upload fails
+ * @throws {APIError} If upload fails
  */
 export async function uploadDocument(params: UploadDocumentParams): Promise<KBDocument> {
   const formData = new FormData();
@@ -35,11 +36,7 @@ export async function uploadDocument(params: UploadDocumentParams): Promise<KBDo
     body: formData,
   });
 
-  if (!response.ok) {
-    const error = (await response.json().catch(() => ({ detail: 'Upload failed' }))) as { detail?: string };
-    throw new Error(error.detail || 'Upload failed');
-  }
-
+  await handleAPIResponse(response, 'Upload failed');
   return await response.json();
 }
 
@@ -49,7 +46,7 @@ export async function uploadDocument(params: UploadDocumentParams): Promise<KBDo
  * @param params - List parameters (limit, offset, document_type)
  * @returns Document list response
  * @throws {AuthenticationError} If not authenticated
- * @throws {Error} If request fails
+ * @throws {APIError} If request fails
  */
 export async function listDocuments(params?: {
   limit?: number;
@@ -63,10 +60,7 @@ export async function listDocuments(params?: {
     method: 'GET',
   });
 
-  if (!response.ok) {
-    throw new Error('Failed to list documents');
-  }
-
+  await handleAPIResponse(response, 'Failed to list documents');
   return await response.json();
 }
 
@@ -75,16 +69,14 @@ export async function listDocuments(params?: {
  *
  * @param documentId - ID of document to delete
  * @throws {AuthenticationError} If not authenticated
- * @throws {Error} If deletion fails
+ * @throws {APIError} If deletion fails
  */
 export async function deleteDocument(documentId: string): Promise<void> {
   const response = await makeAuthenticatedRequest(`/api/v1/documents/${documentId}`, {
     method: 'DELETE',
   });
 
-  if (!response.ok) {
-    throw new Error('Failed to delete document');
-  }
+  await handleAPIResponse(response, 'Failed to delete document');
 }
 
 // ===== Admin Knowledge Base =====
@@ -95,13 +87,13 @@ export async function deleteDocument(documentId: string): Promise<void> {
  * @param params - Upload parameters
  * @returns Uploaded document
  * @throws {AuthenticationError} If not authenticated
- * @throws {Error} If upload fails
+ * @throws {APIError} If upload fails
  */
 export async function uploadAdminDocument(params: UploadAdminDocumentParams): Promise<AdminKBDocument> {
   const formData = new FormData();
   formData.append('file', params.file);
-  formData.append('title', params.title);
   formData.append('document_type', params.document_type);
+  formData.append('title', params.title);
 
   if (params.category) formData.append('category', params.category);
   if (params.tags) formData.append('tags', params.tags);
@@ -113,14 +105,7 @@ export async function uploadAdminDocument(params: UploadAdminDocumentParams): Pr
     body: formData,
   });
 
-  if (!response.ok) {
-    const error = (await response.json().catch(() => ({ detail: 'Upload failed' }))) as {
-      detail?: string;
-      message?: string;
-    };
-    throw new Error(error.detail || error.message || 'Upload failed');
-  }
-
+  await handleAPIResponse(response, 'Admin document upload failed');
   return await response.json();
 }
 
@@ -130,7 +115,7 @@ export async function uploadAdminDocument(params: UploadAdminDocumentParams): Pr
  * @param params - List parameters (limit, offset, document_type)
  * @returns Admin document list response
  * @throws {AuthenticationError} If not authenticated
- * @throws {Error} If request fails
+ * @throws {APIError} If request fails
  */
 export async function listAdminDocuments(params?: {
   limit?: number;
@@ -144,10 +129,7 @@ export async function listAdminDocuments(params?: {
     method: 'GET',
   });
 
-  if (!response.ok) {
-    throw new Error('Failed to list admin documents');
-  }
-
+  await handleAPIResponse(response, 'Failed to list admin documents');
   return await response.json();
 }
 
@@ -156,14 +138,12 @@ export async function listAdminDocuments(params?: {
  *
  * @param documentId - ID of document to delete
  * @throws {AuthenticationError} If not authenticated
- * @throws {Error} If deletion fails
+ * @throws {APIError} If deletion fails
  */
 export async function deleteAdminDocument(documentId: string): Promise<void> {
   const response = await makeAuthenticatedRequest(`/api/v1/admin/kb/documents/${documentId}`, {
     method: 'DELETE',
   });
 
-  if (!response.ok) {
-    throw new Error('Failed to delete admin document');
-  }
+  await handleAPIResponse(response, 'Failed to delete admin document');
 }

@@ -1,4 +1,4 @@
-// API module exports
+// Knowledge Base API module exports
 
 // KB functions
 export {
@@ -19,6 +19,9 @@ export type {
   UploadDocumentParams,
   UploadAdminDocumentParams,
 } from './types';
+
+// Error classes
+export { APIError, NetworkError, handleAPIResponse } from './errors';
 
 // Client utilities (for advanced use cases)
 export { makeAuthenticatedRequest, buildQueryParams } from './client';
