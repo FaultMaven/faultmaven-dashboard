@@ -48,3 +48,6 @@ pnpm-lock.yaml # Or add this if you prefer not to commit the lockfile, though co
 *.swp
 .vercel
 .env*.local
+
+# Working/temporary documentation (keep local only)
+docs/working/
