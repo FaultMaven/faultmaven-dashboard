@@ -30,8 +30,13 @@ cp .env.example .env.local
 ```
 
 **Available Variables (common):**
-- `VITE_API_URL` - Backend API endpoint (default: `http://127.0.0.1:8090`)
+- `VITE_API_URL` - Backend API endpoint (default: `http://127.0.0.1:8000`)
 - `VITE_MAX_FILE_SIZE_MB` - Max file upload size in MB (default: `10`)
+
+**Port Reference:**
+- `8000` - FaultMaven API (monolithic backend)
+- `3000` - Dashboard (Docker/production)
+- `5173` - Dashboard (Vite development server)
 
 **Notes**
 - Config is parsed in `src/config.ts`.

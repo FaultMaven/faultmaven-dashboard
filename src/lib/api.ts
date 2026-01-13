@@ -132,6 +132,10 @@ export async function logoutAuth(): Promise<void> {
 
 // ===== Knowledge Base API =====
 
+/**
+ * Knowledge Base document interface
+ * Represents both user and admin knowledge base documents
+ */
 export interface KBDocument {
   document_id: string;
   user_id: string;
@@ -144,17 +148,11 @@ export interface KBDocument {
   updated_at: string;
 }
 
-export interface AdminKBDocument {
-  document_id: string;
-  user_id: string;
-  title: string;
-  content: string;
-  document_type: string;
-  tags: string[];
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
+/**
+ * Type alias for admin KB documents
+ * Structurally identical to KBDocument, used for semantic clarity in admin-scoped contexts
+ */
+export type AdminKBDocument = KBDocument;
 
 export interface DocumentListResponse {
   documents: KBDocument[];

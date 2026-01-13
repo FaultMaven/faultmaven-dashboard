@@ -28,7 +28,7 @@ interface Config {
  * Configuration Sources (in priority order):
  * 1. Runtime (Docker/K8s): window.ENV.API_URL - injected at container startup
  * 2. Build-time: VITE_API_URL - for local development builds
- * 3. Default: http://127.0.0.1:8090 - local API Gateway
+ * 3. Default: http://127.0.0.1:8000 - local FaultMaven API (monolithic backend)
  *
  * Other Environment Variables (set before build):
  * - VITE_DATA_MODE_LINES: Lines threshold for data mode (default: 100)
@@ -40,7 +40,7 @@ const config: Config = {
   // API Configuration
   // Priority: Runtime config > Build-time env > Default
   // Runtime config allows same Docker image to work in any environment
-  apiUrl: runtimeEnv?.API_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8090",
+  apiUrl: runtimeEnv?.API_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8000",
 
   // Input Limits Configuration
   inputLimits: {

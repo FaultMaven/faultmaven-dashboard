@@ -46,17 +46,23 @@ Both connect to the same FaultMaven backend.
 
 ## 🚀 Quick Start
 
-> ⚠️ **Requires Backend:** This is a frontend-only application. You need a running FaultMaven API Gateway to use it.
-> [Deploy the full stack →](https://github.com/FaultMaven/faultmaven-deploy)
+> ⚠️ **Requires Backend:** This is a frontend-only application. You need a running FaultMaven API to use it.
+> [Deploy the full stack →](https://github.com/FaultMaven/faultmaven)
 
 ### Using the Full Stack (Recommended)
 
-The dashboard is included automatically in the main deployment:
+The dashboard is included automatically in the main FaultMaven deployment:
 
 ```bash
-git clone https://github.com/FaultMaven/faultmaven-deploy.git && cd faultmaven-deploy
-./faultmaven start
+git clone https://github.com/FaultMaven/faultmaven.git
+cd faultmaven
+./faultmaven.sh start
+# Or: docker compose up -d
 ```
+
+This starts both the API (localhost:8000) and Dashboard (localhost:3000).
+
+For detailed deployment options, see the [FaultMaven Quick Start](https://github.com/FaultMaven/faultmaven#quick-start).
 
 Access the dashboard at `http://localhost:3000`.
 
@@ -76,17 +82,17 @@ npm run dev
 
 Access at `http://localhost:5173`.
 
-> **Note**: You still need a running FaultMaven API Gateway at `http://localhost:8090`.
+> **Note**: You need the FaultMaven API running at `http://localhost:8000`. See [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/development/local-setup.md).
 
 ### Docker Standalone
 
 ```bash
 docker run -p 3000:80 \
-  -e API_URL=http://localhost:8090 \
+  -e API_URL=http://localhost:8000 \
   faultmaven/faultmaven-dashboard:latest
 ```
 
-Or use the [full stack deployment](https://github.com/FaultMaven/faultmaven-deploy).
+For the full stack (API + Dashboard), use the [main FaultMaven deployment](https://github.com/FaultMaven/faultmaven#quick-start).
 
 ---
 
@@ -100,7 +106,7 @@ git clone https://github.com/FaultMaven/faultmaven-dashboard.git
 cd faultmaven-dashboard
 npm install
 
-# Run dev server (requires backend at localhost:8090)
+# Run dev server (requires backend at localhost:8000)
 npm run dev
 
 # Run tests
@@ -159,10 +165,14 @@ This project is licensed under the **Apache 2.0 License** - see the [LICENSE](LI
 
 The FaultMaven ecosystem includes:
 
-- **[faultmaven](https://github.com/FaultMaven/faultmaven)** - Main repository with microservices backend
+- **[faultmaven](https://github.com/FaultMaven/faultmaven)** - Main repository with monolithic backend API
 - **[faultmaven-copilot](https://github.com/FaultMaven/faultmaven-copilot)** - Browser extension for in-flow troubleshooting
-- **[faultmaven-deploy](https://github.com/FaultMaven/faultmaven-deploy)** - Deployment configurations and tooling
 - **[faultmaven-website](https://github.com/FaultMaven/faultmaven-website)** - Official website
+
+For local development of both components, see:
+
+- [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/development/local-setup.md)
+- [Dashboard Development](#%EF%B8%8F-development) (this README)
 
 ---
 
