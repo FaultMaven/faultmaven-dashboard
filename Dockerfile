@@ -32,9 +32,9 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY inject-config.sh /docker-entrypoint.d/40-inject-config.sh
 RUN chmod +x /docker-entrypoint.d/40-inject-config.sh
 
-# Add healthcheck
+# Add healthcheck - use /health endpoint with BusyBox wget (use 127.0.0.1 for DNS-less resolution)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:80/ || exit 1
+  CMD wget --quiet --tries=1 -O /dev/null http://127.0.0.1:80/health || exit 1
 
 EXPOSE 80
 

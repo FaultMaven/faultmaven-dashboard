@@ -34,3 +34,13 @@ export function PaginationControls({ page, pageSize, total, onPageChange }: Pagi
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+

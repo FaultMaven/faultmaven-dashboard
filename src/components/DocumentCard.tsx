@@ -51,3 +51,13 @@ export function DocumentCard({ document, onDelete, accent = 'blue', actionLabel 
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+

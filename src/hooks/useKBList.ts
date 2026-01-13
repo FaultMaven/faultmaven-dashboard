@@ -89,3 +89,13 @@ export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocu
     deleteById,
   };
 }
+
+
+
+
+
+
+
+
+
+

@@ -5,3 +5,13 @@ export function debounce<Args extends unknown[]>(fn: (...args: Args) => void, de
     timer = setTimeout(() => fn(...args), delay);
   };
 }
+
+
+
+
+
+
+
+
+
+
