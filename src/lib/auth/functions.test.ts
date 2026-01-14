@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { AuthState } from './types';
 
+
 // Mock config - must be hoisted before imports
 vi.mock('../../config', () => ({
   default: {
@@ -34,7 +35,7 @@ describe('devLogin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchSpy = vi.fn();
-    global.fetch = fetchSpy;
+    globalThis.fetch = fetchSpy as any;
   });
 
   afterEach(() => {
@@ -44,13 +45,16 @@ describe('devLogin', () => {
   it('should successfully login with valid username', async () => {
     const mockAuthState: AuthState = {
       access_token: 'test-token-123',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: ['user'],
+        display_name: 'Test User',
+        is_dev_user: true,
         is_active: true,
+        roles: ['user'],
       },
     };
 
@@ -115,13 +119,16 @@ describe('devLogin', () => {
   it('should handle empty username', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: [],
+        display_name: 'Test User',
+        is_dev_user: true,
         is_active: true,
+        roles: [],
       },
     };
 
@@ -146,13 +153,16 @@ describe('devLogin', () => {
   it('should handle username with special characters', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'user+test',
         email: 'test@example.com',
-        roles: [],
+        display_name: 'Test User',
+        is_dev_user: true,
         is_active: true,
+        roles: [],
       },
     };
 
@@ -180,7 +190,7 @@ describe('logoutAuth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchSpy = vi.fn();
-    global.fetch = fetchSpy;
+    globalThis.fetch = fetchSpy as any;
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 

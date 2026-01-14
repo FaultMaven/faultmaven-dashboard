@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import type { AuthState } from '../auth/types';
 
+
 // Mock config
 vi.mock('../../config', () => ({
   default: {
@@ -37,7 +38,7 @@ describe('makeAuthenticatedRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchSpy = vi.fn();
-    global.fetch = fetchSpy;
+    globalThis.fetch = fetchSpy as any;
   });
 
   afterEach(() => {
@@ -47,13 +48,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should make authenticated request with token and user headers', async () => {
     const mockAuthState: AuthState = {
       access_token: 'test-token-123',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: ['user'],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: ['user'],
       },
     };
 
@@ -81,13 +85,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should handle multiple roles in X-User-Roles header', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'adminuser',
         email: 'admin@example.com',
-        roles: ['admin', 'user', 'moderator'],
+        display_name: 'Admin User',
+        is_dev_user: false,
         is_active: true,
+        roles: ['admin', 'user', 'moderator'],
       },
     };
 
@@ -106,13 +113,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should not set X-User-Roles when roles is undefined', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: undefined as unknown as string[],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: undefined as unknown as string[],
       },
     };
 
@@ -131,13 +141,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should handle empty roles array', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: [],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: [],
       },
     };
 
@@ -171,13 +184,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should handle absolute URLs', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: [],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: [],
       },
     };
 
@@ -196,13 +212,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should pass through request options', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: [],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: [],
       },
     };
 
@@ -225,13 +244,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should merge custom headers with auth headers', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: ['user'],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: ['user'],
       },
     };
 
@@ -258,13 +280,16 @@ describe('makeAuthenticatedRequest', () => {
   it('should return fetch response', async () => {
     const mockAuthState: AuthState = {
       access_token: 'token',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000,
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: [],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: [],
       },
     };
 

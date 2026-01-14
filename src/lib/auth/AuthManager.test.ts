@@ -35,13 +35,16 @@ describe('AuthManager', () => {
     // Create mock auth state with future expiry
     mockAuthState = {
       access_token: 'test-token-123',
-      token_type: 'Bearer',
+      token_type: 'bearer',
       expires_at: Date.now() + 3600000, // 1 hour from now
       user: {
         user_id: 'user-123',
+        username: 'testuser',
         email: 'test@example.com',
-        roles: ['user'],
+        display_name: 'Test User',
+        is_dev_user: false,
         is_active: true,
+        roles: ['user'],
       },
     };
   });
@@ -59,13 +62,16 @@ describe('AuthManager', () => {
     it('should handle saving auth state with minimal user data', async () => {
       const minimalAuthState: AuthState = {
         access_token: 'token',
-        token_type: 'Bearer',
+        token_type: 'bearer',
         expires_at: Date.now() + 3600000,
         user: {
           user_id: 'user-123',
+          username: 'testuser',
           email: 'test@example.com',
-          roles: [],
+          display_name: 'Test User',
+          is_dev_user: false,
           is_active: true,
+          roles: [],
         },
       };
 
