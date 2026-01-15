@@ -5,6 +5,17 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests (emergency only - not recommended)'
+        required: false
+        default: 'false'
+        type: boolean
+      reason:
+        description: 'Reason for manual trigger'
+        required: false
+        type: string
 
 env:
   SERVICE_NAME: faultmaven-dashboard
@@ -88,6 +99,7 @@ jobs:
   test:
     name: Frontend Tests
     # Removed needs: build to allow parallel execution with build job
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip_tests != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
