@@ -85,7 +85,6 @@ jobs:
 
       - name: Wait for image and pull to local
         run: |
-          set -e  # Exit on any error for better debugging
           echo "Waiting for image to be available in GHCR and pulling to local..."
           IMAGE_TAG="sha-${{ github.sha }}"
           FULL_IMAGE="${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
@@ -97,18 +96,31 @@ jobs:
           
           # Verify we're still authenticated to GHCR
           echo "Verifying GHCR authentication..."
-          docker login ghcr.io -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}" 2>&1 | grep -v "WARNING!" || true
+          if ! docker login ghcr.io -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}" 2>&1 | grep -v "WARNING!"; then
+            echo "⚠️  Login output shown above"
+          fi
           
           MAX_ATTEMPTS=15
           ATTEMPT=0
+          LAST_ERROR=""
           
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             echo ""
             echo "=== Attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS ==="
             
-            # Try to pull the image and capture output
-            PULL_OUTPUT=$(docker pull "${FULL_IMAGE}" 2>&1)
-            PULL_EXIT=$?
+            # Try to pull the image and capture both stdout and stderr
+            echo "Attempting to pull: ${FULL_IMAGE}"
+            if PULL_OUTPUT=$(docker pull "${FULL_IMAGE}" 2>&1); then
+              PULL_EXIT=0
+            else
+              PULL_EXIT=$?
+              LAST_ERROR="$PULL_OUTPUT"
+            fi
+            
+            # Always show the output
+            echo "Docker pull output:"
+            echo "$PULL_OUTPUT"
+            echo ""
             
             if [ $PULL_EXIT -eq 0 ]; then
               echo "✅ Pull command succeeded, verifying image..."
@@ -124,13 +136,11 @@ jobs:
                 echo "⚠️  Pull reported success but image not found locally"
                 echo "Listing all images with repository name:"
                 docker images | grep "${{ env.IMAGE_NAME }}" || echo "No matching images found"
+                LAST_ERROR="Pull succeeded but image not found locally"
               fi
             else
               echo "❌ Pull failed with exit code $PULL_EXIT"
-              echo ""
-              echo "Full error output:"
-              echo "$PULL_OUTPUT"
-              echo ""
+              LAST_ERROR="$PULL_OUTPUT"
               
               # Check error type from captured output
               if echo "$PULL_OUTPUT" | grep -qi "MANIFEST_UNKNOWN\|manifest unknown"; then
@@ -162,10 +172,13 @@ jobs:
           echo "- Image: ${FULL_IMAGE}"
           echo "- Commit: ${{ github.sha }}"
           echo "- Last error output:"
-          echo "$PULL_OUTPUT"
+          echo "$LAST_ERROR"
           echo ""
           echo "Recent images:"
           docker images | head -10
+          echo ""
+          echo "Checking if image exists in registry using manifest inspect:"
+          docker manifest inspect "${FULL_IMAGE}" 2>&1 || echo "Manifest inspect also failed"
           exit 1
 
       - name: Verify image is available locally
