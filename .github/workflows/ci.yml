@@ -74,26 +74,44 @@ jobs:
         id: image-tag
         run: echo "tag=sha-${{ github.sha }}" >> $GITHUB_OUTPUT
 
-      - name: Wait for image to be available in registry
+      - name: Wait for image and pull to local
         run: |
-          echo "Waiting for image to be available in GHCR..."
+          echo "Waiting for image to be available in GHCR and pulling to local..."
           MAX_ATTEMPTS=10
           ATTEMPT=0
           
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            if docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }} > /dev/null 2>&1; then
-              echo "✅ Image is now available in registry"
-              exit 0
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Trying to pull image..."
+            if docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}; then
+              echo "✅ Image pulled successfully to local Docker daemon"
+              # Verify image is actually in local Docker
+              if docker image inspect ${{ env.IMAGE_NAME }}:sha-${{ github.sha }} > /dev/null 2>&1; then
+                echo "✅ Image verified in local Docker daemon"
+                echo "Image details:"
+                docker images | grep "${{ env.IMAGE_NAME }}" | grep "sha-${{ github.sha }}" || docker images | grep "${{ env.IMAGE_NAME }}"
+                exit 0
+              else
+                echo "⚠️  Pull succeeded but image not found locally, retrying..."
+              fi
+            else
+              echo "❌ Pull failed, image may not be available yet"
             fi
             
             ATTEMPT=$((ATTEMPT + 1))
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Image not yet available, waiting 5s..."
-            sleep 5
+            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+              echo "Waiting 5s before next attempt..."
+              sleep 5
+            fi
           done
           
-          echo "⚠️  Image may not be fully propagated, but proceeding with scan..."
-          # Try to pull one more time (will fail if truly not available)
-          docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          echo "❌ Failed to pull image after $MAX_ATTEMPTS attempts"
+          exit 1
+
+      - name: Verify image is available locally
+        run: |
+          echo "Verifying image is available for Trivy scan..."
+          docker image inspect ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          echo "✅ Image is ready for scanning"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -103,6 +121,12 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
+          # Provide authentication for Trivy to access private GHCR image if needed
+          github-pat: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          # Explicitly provide credentials for Trivy to access GHCR
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build summary
         run: |
