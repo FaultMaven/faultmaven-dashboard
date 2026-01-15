@@ -108,18 +108,16 @@ jobs:
             echo ""
             echo "=== Attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS ==="
             
-            # Try to pull the image and capture both stdout and stderr
+            # Try to pull the image - output will be visible in real-time
             echo "Attempting to pull: ${FULL_IMAGE}"
-            if PULL_OUTPUT=$(docker pull "${FULL_IMAGE}" 2>&1); then
-              PULL_EXIT=0
-            else
-              PULL_EXIT=$?
-              LAST_ERROR="$PULL_OUTPUT"
-            fi
+            echo "--- Docker pull output (start) ---"
             
-            # Always show the output
-            echo "Docker pull output:"
-            echo "$PULL_OUTPUT"
+            # Run docker pull and capture exit code without suppressing output
+            PULL_EXIT=0
+            docker pull "${FULL_IMAGE}" || PULL_EXIT=$?
+            
+            echo "--- Docker pull output (end) ---"
+            echo "Pull exit code: $PULL_EXIT"
             echo ""
             
             if [ $PULL_EXIT -eq 0 ]; then
@@ -140,6 +138,8 @@ jobs:
               fi
             else
               echo "❌ Pull failed with exit code $PULL_EXIT"
+              # Get error details for analysis
+              PULL_OUTPUT=$(docker pull "${FULL_IMAGE}" 2>&1 || true)
               LAST_ERROR="$PULL_OUTPUT"
               
               # Check error type from captured output
