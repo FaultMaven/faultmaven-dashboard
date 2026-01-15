@@ -145,6 +145,7 @@ jobs:
   smoke:
     name: Smoke Test
     needs: [build, test]
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
