@@ -75,8 +75,17 @@ jobs:
         id: image-tag
         run: echo "tag=sha-${{ github.sha }}" >> $GITHUB_OUTPUT
 
+      - name: Verify build step succeeded
+        run: |
+          if [ "${{ steps.build-push.outcome }}" != "success" ]; then
+            echo "❌ Build step did not succeed. Outcome: ${{ steps.build-push.outcome }}"
+            exit 1
+          fi
+          echo "✅ Build step completed successfully"
+
       - name: Wait for image and pull to local
         run: |
+          set -e  # Exit on any error for better debugging
           echo "Waiting for image to be available in GHCR and pulling to local..."
           IMAGE_TAG="sha-${{ github.sha }}"
           FULL_IMAGE="${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
@@ -84,6 +93,11 @@ jobs:
           echo "Looking for image: ${FULL_IMAGE}"
           echo "Registry: ghcr.io"
           echo "Repository: faultmaven/faultmaven-dashboard"
+          echo "Commit SHA: ${{ github.sha }}"
+          
+          # Verify we're still authenticated to GHCR
+          echo "Verifying GHCR authentication..."
+          docker login ghcr.io -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}" 2>&1 | grep -v "WARNING!" || true
           
           MAX_ATTEMPTS=15
           ATTEMPT=0
@@ -113,16 +127,23 @@ jobs:
               fi
             else
               echo "❌ Pull failed with exit code $PULL_EXIT"
+              echo ""
+              echo "Full error output:"
+              echo "$PULL_OUTPUT"
+              echo ""
               
               # Check error type from captured output
               if echo "$PULL_OUTPUT" | grep -qi "MANIFEST_UNKNOWN\|manifest unknown"; then
                 echo "   → Image not yet available in registry (propagation delay)"
-              elif echo "$PULL_OUTPUT" | grep -qi "unauthorized\|authentication\|denied"; then
+              elif echo "$PULL_OUTPUT" | grep -qi "unauthorized\|authentication\|denied\|403"; then
                 echo "   → Authentication issue detected"
-                echo "   → Credentials should already be available from docker/login-action"
+                echo "   → Attempting to re-authenticate..."
+                docker login ghcr.io -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}" 2>&1 | grep -v "WARNING!" || true
+              elif echo "$PULL_OUTPUT" | grep -qi "404\|not found"; then
+                echo "   → Image not found in registry (404)"
+                echo "   → This may indicate the image was not pushed successfully"
               else
                 echo "   → Unknown error, will retry"
-                echo "   → Error output: ${PULL_OUTPUT:0:200}"  # Show first 200 chars
               fi
             fi
             
@@ -136,7 +157,14 @@ jobs:
           
           echo ""
           echo "❌ Failed to pull image after $MAX_ATTEMPTS attempts"
-          echo "Final check - listing recent images:"
+          echo ""
+          echo "Final diagnostic information:"
+          echo "- Image: ${FULL_IMAGE}"
+          echo "- Commit: ${{ github.sha }}"
+          echo "- Last error output:"
+          echo "$PULL_OUTPUT"
+          echo ""
+          echo "Recent images:"
           docker images | head -10
           exit 1
 
