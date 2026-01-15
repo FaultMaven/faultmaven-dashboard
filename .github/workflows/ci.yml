@@ -74,6 +74,27 @@ jobs:
         id: image-tag
         run: echo "tag=sha-${{ github.sha }}" >> $GITHUB_OUTPUT
 
+      - name: Wait for image to be available in registry
+        run: |
+          echo "Waiting for image to be available in GHCR..."
+          MAX_ATTEMPTS=10
+          ATTEMPT=0
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            if docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }} > /dev/null 2>&1; then
+              echo "✅ Image is now available in registry"
+              exit 0
+            fi
+            
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Image not yet available, waiting 5s..."
+            sleep 5
+          done
+          
+          echo "⚠️  Image may not be fully propagated, but proceeding with scan..."
+          # Try to pull one more time (will fail if truly not available)
+          docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
