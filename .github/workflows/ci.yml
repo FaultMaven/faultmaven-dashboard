@@ -59,6 +59,7 @@ jobs:
             type=ref,event=pr
 
       - name: Build and push image (SHA tag only)
+        id: build-push
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -77,34 +78,66 @@ jobs:
       - name: Wait for image and pull to local
         run: |
           echo "Waiting for image to be available in GHCR and pulling to local..."
-          MAX_ATTEMPTS=10
+          IMAGE_TAG="sha-${{ github.sha }}"
+          FULL_IMAGE="${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+          
+          echo "Looking for image: ${FULL_IMAGE}"
+          echo "Registry: ghcr.io"
+          echo "Repository: faultmaven/faultmaven-dashboard"
+          
+          MAX_ATTEMPTS=15
           ATTEMPT=0
           
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: Trying to pull image..."
-            if docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}; then
-              echo "✅ Image pulled successfully to local Docker daemon"
+            echo ""
+            echo "=== Attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS ==="
+            
+            # Try to pull the image and capture output
+            PULL_OUTPUT=$(docker pull "${FULL_IMAGE}" 2>&1)
+            PULL_EXIT=$?
+            
+            if [ $PULL_EXIT -eq 0 ]; then
+              echo "✅ Pull command succeeded, verifying image..."
+              
               # Verify image is actually in local Docker
-              if docker image inspect ${{ env.IMAGE_NAME }}:sha-${{ github.sha }} > /dev/null 2>&1; then
+              if docker image inspect "${FULL_IMAGE}" > /dev/null 2>&1; then
                 echo "✅ Image verified in local Docker daemon"
+                echo ""
                 echo "Image details:"
-                docker images | grep "${{ env.IMAGE_NAME }}" | grep "sha-${{ github.sha }}" || docker images | grep "${{ env.IMAGE_NAME }}"
+                docker images "${FULL_IMAGE}" | head -2
                 exit 0
               else
-                echo "⚠️  Pull succeeded but image not found locally, retrying..."
+                echo "⚠️  Pull reported success but image not found locally"
+                echo "Listing all images with repository name:"
+                docker images | grep "${{ env.IMAGE_NAME }}" || echo "No matching images found"
               fi
             else
-              echo "❌ Pull failed, image may not be available yet"
+              echo "❌ Pull failed with exit code $PULL_EXIT"
+              
+              # Check error type from captured output
+              if echo "$PULL_OUTPUT" | grep -qi "MANIFEST_UNKNOWN\|manifest unknown"; then
+                echo "   → Image not yet available in registry (propagation delay)"
+              elif echo "$PULL_OUTPUT" | grep -qi "unauthorized\|authentication\|denied"; then
+                echo "   → Authentication issue detected"
+                echo "   → Credentials should already be available from docker/login-action"
+              else
+                echo "   → Unknown error, will retry"
+                echo "   → Error output: ${PULL_OUTPUT:0:200}"  # Show first 200 chars
+              fi
             fi
             
             ATTEMPT=$((ATTEMPT + 1))
             if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-              echo "Waiting 5s before next attempt..."
-              sleep 5
+              WAIT_TIME=5
+              echo "Waiting ${WAIT_TIME}s before next attempt..."
+              sleep ${WAIT_TIME}
             fi
           done
           
+          echo ""
           echo "❌ Failed to pull image after $MAX_ATTEMPTS attempts"
+          echo "Final check - listing recent images:"
+          docker images | head -10
           exit 1
 
       - name: Verify image is available locally
@@ -153,14 +186,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: '9'
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
-
-      - name: Install pnpm
-        run: npm install -g pnpm@9
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
