@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI Pipeline
 
 on:
   push:
@@ -168,6 +168,7 @@ jobs:
           load: true
           tags: ${{ env.IMAGE_NAME }}:smoke-${{ github.sha }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Start nginx container
         run: |
