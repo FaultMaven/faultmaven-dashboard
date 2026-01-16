@@ -24,16 +24,14 @@ env:
 
 jobs:
   # ============================================================================
-  # Stage 1: Build and Push (Push Early, Promote Later Pattern)
+  # Stage 1: Build and Verify (CI verification only, no push)
+  # Publishing is handled by publish-docker.yml workflow
   # ============================================================================
   build:
-    name: Build and Push Image
+    name: Build and Verify Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-    outputs:
-      image_tag: ${{ steps.image-tag.outputs.tag }}
 
     steps:
       - name: Checkout code
@@ -42,198 +40,57 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=sha-
-            type=ref,event=pr
-
-      - name: Build and push image (SHA tag only)
-        id: build-push
+      - name: Build Docker image (verification only)
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      - name: Verify build and push succeeded
+      - name: Verify build succeeded
         run: |
-          echo "=== Build/Push Verification ==="
-          echo "Build step outcome: ${{ steps.build-push.outcome }}"
-          echo "Generated tags: ${{ steps.meta.outputs.tags }}"
-          echo "Image name: ${{ env.IMAGE_NAME }}"
-          echo "Expected tag: sha-${{ github.sha }}"
+          echo "=== Build Verification ==="
+          echo "Build step outcome: ${{ steps.build.outcome }}"
+          echo "Image tag: ${{ env.IMAGE_NAME }}:ci-${{ github.sha }}"
           echo ""
-          
-          if [ "${{ steps.build-push.outcome }}" != "success" ]; then
-            echo "❌ Build step did not succeed. Outcome: ${{ steps.build-push.outcome }}"
+
+          if [ "${{ steps.build.outcome }}" != "success" ]; then
+            echo "❌ Build step did not succeed. Outcome: ${{ steps.build.outcome }}"
             exit 1
           fi
-          
+
           echo "✅ Build step completed successfully"
           echo ""
-          echo "Verifying image was pushed to registry..."
-          
-          # Check if we can see the image in the registry
-          EXPECTED_IMAGE="${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
-          echo "Checking for image: ${EXPECTED_IMAGE}"
-          
-          # Try to inspect manifest (this will fail if image doesn't exist)
-          if docker manifest inspect "${EXPECTED_IMAGE}" > /dev/null 2>&1; then
-            echo "✅ Image found in registry!"
-            docker manifest inspect "${EXPECTED_IMAGE}" | head -20
-          else
-            echo "⚠️  Image not immediately available in registry (this is normal, may need propagation time)"
-            echo "Will retry in next step..."
-          fi
-
-      - name: Set image tag output
-        id: image-tag
-        run: echo "tag=sha-${{ github.sha }}" >> $GITHUB_OUTPUT
-
-      - name: Wait for image and pull to local
-        run: |
-          echo "Waiting for image to be available in GHCR and pulling to local..."
-          IMAGE_TAG="sha-${{ github.sha }}"
-          FULL_IMAGE="${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
-          
-          echo "Looking for image: ${FULL_IMAGE}"
-          echo "Registry: ghcr.io"
-          echo "Repository: faultmaven/faultmaven-dashboard"
-          echo "Commit SHA: ${{ github.sha }}"
-          
-          # Verify we're still authenticated to GHCR
-          echo "Verifying GHCR authentication..."
-          if ! docker login ghcr.io -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}" 2>&1 | grep -v "WARNING!"; then
-            echo "⚠️  Login output shown above"
-          fi
-          
-          MAX_ATTEMPTS=15
-          ATTEMPT=0
-          LAST_ERROR=""
-          
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            echo ""
-            echo "=== Attempt $((ATTEMPT + 1))/$MAX_ATTEMPTS ==="
-            
-            # Try to pull the image - output will be visible in real-time
-            echo "Attempting to pull: ${FULL_IMAGE}"
-            echo "--- Docker pull output (start) ---"
-            
-            # Run docker pull and capture exit code without suppressing output
-            PULL_EXIT=0
-            docker pull "${FULL_IMAGE}" || PULL_EXIT=$?
-            
-            echo "--- Docker pull output (end) ---"
-            echo "Pull exit code: $PULL_EXIT"
-            echo ""
-            
-            if [ $PULL_EXIT -eq 0 ]; then
-              echo "✅ Pull command succeeded, verifying image..."
-              
-              # Verify image is actually in local Docker
-              if docker image inspect "${FULL_IMAGE}" > /dev/null 2>&1; then
-                echo "✅ Image verified in local Docker daemon"
-                echo ""
-                echo "Image details:"
-                docker images "${FULL_IMAGE}" | head -2
-                exit 0
-              else
-                echo "⚠️  Pull reported success but image not found locally"
-                echo "Listing all images with repository name:"
-                docker images | grep "${{ env.IMAGE_NAME }}" || echo "No matching images found"
-                LAST_ERROR="Pull succeeded but image not found locally"
-              fi
-            else
-              echo "❌ Pull failed with exit code $PULL_EXIT"
-              # Get error details for analysis
-              PULL_OUTPUT=$(docker pull "${FULL_IMAGE}" 2>&1 || true)
-              LAST_ERROR="$PULL_OUTPUT"
-              
-              # Check error type from captured output
-              if echo "$PULL_OUTPUT" | grep -qi "MANIFEST_UNKNOWN\|manifest unknown"; then
-                echo "   → Image not yet available in registry (propagation delay)"
-              elif echo "$PULL_OUTPUT" | grep -qi "unauthorized\|authentication\|denied\|403"; then
-                echo "   → Authentication issue detected"
-                echo "   → Attempting to re-authenticate..."
-                docker login ghcr.io -u ${{ github.actor }} -p "${{ secrets.GITHUB_TOKEN }}" 2>&1 | grep -v "WARNING!" || true
-              elif echo "$PULL_OUTPUT" | grep -qi "404\|not found"; then
-                echo "   → Image not found in registry (404)"
-                echo "   → This may indicate the image was not pushed successfully"
-              else
-                echo "   → Unknown error, will retry"
-              fi
-            fi
-            
-            ATTEMPT=$((ATTEMPT + 1))
-            if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-              WAIT_TIME=5
-              echo "Waiting ${WAIT_TIME}s before next attempt..."
-              sleep ${WAIT_TIME}
-            fi
-          done
-          
-          echo ""
-          echo "❌ Failed to pull image after $MAX_ATTEMPTS attempts"
-          echo ""
-          echo "Final diagnostic information:"
-          echo "- Image: ${FULL_IMAGE}"
-          echo "- Commit: ${{ github.sha }}"
-          echo "- Last error output:"
-          echo "$LAST_ERROR"
-          echo ""
-          echo "Recent images:"
-          docker images | head -10
-          echo ""
-          echo "Checking if image exists in registry using manifest inspect:"
-          docker manifest inspect "${FULL_IMAGE}" 2>&1 || echo "Manifest inspect also failed"
-          exit 1
-
-      - name: Verify image is available locally
-        run: |
-          echo "Verifying image is available for Trivy scan..."
-          docker image inspect ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          echo "✅ Image is ready for scanning"
+          echo "Verifying image is available locally..."
+          docker image inspect ${{ env.IMAGE_NAME }}:ci-${{ github.sha }}
+          echo "✅ Image verified in local Docker daemon"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.IMAGE_NAME }}:sha-${{ github.sha }}'
+          image-ref: '${{ env.IMAGE_NAME }}:ci-${{ github.sha }}'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
-          # Provide authentication for Trivy to access private GHCR image if needed
-          github-pat: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          # Explicitly provide credentials for Trivy to access GHCR
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build summary
         run: |
-          echo "### ✅ Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Build Verification Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image**: \`${{ env.IMAGE_NAME }}:sha-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: \`${{ env.IMAGE_NAME }}:ci-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status**: Pushed to GHCR with SHA tag" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: Built and verified locally (not pushed)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Next: Running tests and smoke checks in parallel..." >> $GITHUB_STEP_SUMMARY
+          echo "Publishing is handled by the publish-docker.yml workflow." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Next: Running tests and smoke checks..." >> $GITHUB_STEP_SUMMARY
 
   # ============================================================================
   # Stage 2: Frontend Tests (Quality Gate) - Runs in parallel with build
@@ -285,33 +142,39 @@ jobs:
           exit 1
 
   # ============================================================================
-  # Stage 3: Smoke Test (Pre-Promote Quality Gate)
+  # Stage 3: Smoke Test (Quality Gate)
   # ============================================================================
   smoke:
     name: Smoke Test
     needs: [build, test]
-    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    if: always() && needs.build.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Pull image from registry
-        run: docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for smoke test
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:smoke-${{ github.sha }}
+          cache-from: type=gha
 
       - name: Start nginx container
         run: |
           docker run -d \
             --name smoke-${{ github.sha }} \
             -p 8080:80 \
-            ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:smoke-${{ github.sha }}
 
       - name: Wait for service to be ready
         run: |
@@ -349,7 +212,8 @@ jobs:
           echo "### ✅ Smoke Test Passed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Dashboard container started successfully and is serving content." >> $GITHUB_STEP_SUMMARY
-          echo "Next: Promoting image tags..." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "CI verification complete. Publishing is handled by publish-docker.yml workflow." >> $GITHUB_STEP_SUMMARY
 
       - name: Smoke test failure
         if: failure()
@@ -360,91 +224,32 @@ jobs:
           exit 1
 
   # ============================================================================
-  # Stage 4: Promote Image Tags (After All Tests Pass)
-  # Uses "Push Early, Promote Later" pattern - image already in registry
-  # ============================================================================
-  promote:
-    name: Promote Image Tags
-    needs: smoke
-    if: |
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Determine tags
-        id: tags
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "tag_suffix=latest" >> $GITHUB_OUTPUT
-          else
-            echo "environment=development" >> $GITHUB_OUTPUT
-            echo "tag_suffix=develop" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Pull and promote image tags
-        run: |
-          # Pull the SHA-tagged image (already in registry)
-          docker pull ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          # Re-tag for promotion (fast - layers already in registry)
-          docker tag ${{ env.IMAGE_NAME }}:sha-${{ github.sha }} ${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.tag_suffix }}
-          # Push the promoted tag
-          docker push ${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.tag_suffix }}
-
-      - name: Promote summary
-        run: |
-          echo "### ✅ Image Tags Promoted" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**SHA Tag**: \`${{ env.IMAGE_NAME }}:sha-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Promoted Tag**: \`${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.tag_suffix }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Registry**: ghcr.io" >> $GITHUB_STEP_SUMMARY
-          echo "**Environment**: ${{ steps.tags.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Image promoted using 'Push Early, Promote Later' pattern" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "Next: Promote image via enterprise-infra (no direct deploy from this repo)." >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Development image ready for testing." >> $GITHUB_STEP_SUMMARY
-          fi
-
-  # ============================================================================
   # Pipeline Summary
   # ============================================================================
   summary:
     name: Pipeline Summary
-    needs: [build, test, smoke, promote]
+    needs: [build, test, smoke]
     if: always()
     runs-on: ubuntu-latest
 
     steps:
       - name: Pipeline summary
         run: |
-          echo "### 📊 CI/CD Pipeline Complete" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 CI Pipeline Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Build & Push (SHA) | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Verify | ${{ needs.build.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Tests | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Smoke Test | ${{ needs.smoke.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Promote Tags | ${{ needs.promote.result == 'success' && '✅ Passed' || needs.promote.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Performance Improvements Applied:**" >> $GITHUB_STEP_SUMMARY
+          echo "**CI Features:**" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Build and Test run in parallel" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Push Early, Promote Later pattern (no artifact upload/download)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Docker image build verification (no push)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ pnpm caching enabled" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Trivy vulnerability scanning" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Publishing:** Images are published by the publish-docker.yml workflow to Docker Hub and GHCR." >> $GITHUB_STEP_SUMMARY
