@@ -71,17 +71,40 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      - name: Set image tag output
-        id: image-tag
-        run: echo "tag=sha-${{ github.sha }}" >> $GITHUB_OUTPUT
-
-      - name: Verify build step succeeded
+      - name: Verify build and push succeeded
         run: |
+          echo "=== Build/Push Verification ==="
+          echo "Build step outcome: ${{ steps.build-push.outcome }}"
+          echo "Generated tags: ${{ steps.meta.outputs.tags }}"
+          echo "Image name: ${{ env.IMAGE_NAME }}"
+          echo "Expected tag: sha-${{ github.sha }}"
+          echo ""
+          
           if [ "${{ steps.build-push.outcome }}" != "success" ]; then
             echo "❌ Build step did not succeed. Outcome: ${{ steps.build-push.outcome }}"
             exit 1
           fi
+          
           echo "✅ Build step completed successfully"
+          echo ""
+          echo "Verifying image was pushed to registry..."
+          
+          # Check if we can see the image in the registry
+          EXPECTED_IMAGE="${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+          echo "Checking for image: ${EXPECTED_IMAGE}"
+          
+          # Try to inspect manifest (this will fail if image doesn't exist)
+          if docker manifest inspect "${EXPECTED_IMAGE}" > /dev/null 2>&1; then
+            echo "✅ Image found in registry!"
+            docker manifest inspect "${EXPECTED_IMAGE}" | head -20
+          else
+            echo "⚠️  Image not immediately available in registry (this is normal, may need propagation time)"
+            echo "Will retry in next step..."
+          fi
+
+      - name: Set image tag output
+        id: image-tag
+        run: echo "tag=sha-${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: Wait for image and pull to local
         run: |
