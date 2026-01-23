@@ -61,12 +61,23 @@ export default function LoginPage() {
 
       // 6. Default redirect to KB
       navigate('/kb');
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Login failed. Please check your connection to the backend.';
-    setError(message);
-    setLoading(false);
-  }
-};
+    } catch (err: unknown) {
+      // Enhanced error handling with network-specific messages
+      let errorMessage = 'Login failed. Please check your connection to the backend.';
+
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+
+      // Check if it's a network error (fetch failed)
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        errorMessage = 'Could not reach API. Is the backend running on port 8090?';
+      }
+
+      setError(errorMessage);
+      setLoading(false);
+    }
+  };
 
 if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !error) {
   return (
@@ -94,9 +105,20 @@ if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !er
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md relative">
+        {/* Local Mode Badge */}
+        <div className="absolute top-4 right-4">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full border border-amber-200">
+            <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+            LOCAL MODE ACTIVE
+          </div>
+          <div className="text-[10px] text-amber-700 text-right mt-1 font-medium">
+            Authentication Bypassed
+          </div>
+        </div>
+
         {/* Logo and Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 mt-6">
           <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
             <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -108,10 +130,10 @@ if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !er
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">
-            FaultMaven System
+            FaultMaven Console
           </h1>
           <p className="text-gray-600">
-            Sign in to access Knowledge Base or Copilot
+            Authenticate to access the Knowledge Base, view case metrics, and launch the AI Copilot.
           </p>
         </div>
 
@@ -162,11 +184,6 @@ if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !er
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        {/* Help Text */}
-        <div className="mt-6 text-center text-sm text-gray-500">
-          <p>Development mode: any username/password works</p>
-        </div>
       </div>
     </div>
   );
