@@ -3,10 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import KBPage from './pages/KBPage';
 import AdminKBPage from './pages/AdminKBPage';
+import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
-function ProtectedRoute({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
+function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   const { authState, loading, isAdmin } = useAuth();
 
   if (loading) return null;
@@ -15,7 +17,7 @@ function ProtectedRoute({ children, requireAdmin = false }: { children: React.Re
     return <Navigate to="/login" replace />;
   }
 
-  if (requireAdmin && !isAdmin) {
+  if (!isAdmin) {
     return <Navigate to="/kb" replace />;
   }
 
@@ -32,6 +34,14 @@ export default function App() {
             <Route path="/signin" element={<Navigate to="/login" replace />} />
             <Route path="/" element={<Navigate to="/kb" replace />} />
             <Route
+              path="/auth/authorize"
+              element={
+                <ProtectedRoute>
+                  <OAuthAuthorizePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/kb"
               element={
                 <ProtectedRoute>
@@ -42,9 +52,9 @@ export default function App() {
             <Route
               path="/admin/kb"
               element={
-                <ProtectedRoute requireAdmin>
+                <AdminProtectedRoute>
                   <AdminKBPage />
-                </ProtectedRoute>
+                </AdminProtectedRoute>
               }
             />
             <Route path="*" element={<Navigate to="/kb" replace />} />

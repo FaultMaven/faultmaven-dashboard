@@ -47,9 +47,18 @@ export default function LoginPage() {
       if (isExtensionLogin) {
         setLoading(false);
         return;
-      } else {
-        navigate('/kb');
       }
+
+      // 4. Check for OAuth redirect after login
+      const oauthRedirect = sessionStorage.getItem('oauth_redirect_after_login');
+      if (oauthRedirect) {
+        sessionStorage.removeItem('oauth_redirect_after_login');
+        navigate(oauthRedirect);
+        return;
+      }
+
+      // 5. Default redirect to KB
+      navigate('/kb');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Login failed. Please check your connection to the backend.';
     setError(message);
