@@ -30,7 +30,7 @@ cp .env.example .env.local
 ```
 
 **Available Variables (common):**
-- `VITE_API_URL` - Backend API endpoint (default: `http://127.0.0.1:8000`)
+- `VITE_API_URL` - Backend API endpoint (default: `http://127.0.0.1:8090`)
 - `VITE_MAX_FILE_SIZE_MB` - Max file upload size in MB (default: `10`)
 
 **Port Reference:**
@@ -84,7 +84,7 @@ The dashboard communicates with the FaultMaven backend through API calls:
 - **Knowledge Base**: Upload, list (paginated), delete documents (user + admin scopes)
 
 **API Endpoint Configuration:**
-- Self-hosted: `http://localhost:8000`
+- Self-hosted: `http://localhost:8090`
 - Enterprise: `https://api.faultmaven.ai`
 
 ### Application Flow
@@ -109,7 +109,7 @@ The dashboard communicates with the FaultMaven backend through API calls:
 1. **Backend Dependency**: Dashboard requires FaultMaven backend running
 2. **Environment Configuration**: Use `.env.local` for API endpoint:
    ```bash
-   VITE_API_URL=http://localhost:8000
+   VITE_API_URL=http://localhost:8090
    ```
 
 ### Web Development
@@ -170,7 +170,7 @@ pnpm build
 
 ```bash
 # Self-hosted
-docker build --build-arg VITE_API_URL=http://localhost:8000 -t dashboard:self-hosted .
+docker build --build-arg VITE_API_URL=http://localhost:8090 -t dashboard:self-hosted .
 
 # Enterprise
 docker build --build-arg VITE_API_URL=https://api.faultmaven.ai -t dashboard:enterprise .

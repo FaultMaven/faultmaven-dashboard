@@ -60,11 +60,11 @@ cd faultmaven
 # Or: docker compose up -d
 ```
 
-This starts both the API (localhost:8000) and Dashboard (localhost:3000).
+This starts both the API (localhost:8090) and Dashboard (localhost:3333).
 
 For detailed deployment options, see the [FaultMaven Quick Start](https://github.com/FaultMaven/faultmaven#quick-start).
 
-Access the dashboard at `http://localhost:3000`.
+Access the dashboard at `http://localhost:3333`.
 
 ### Local Development
 
@@ -82,13 +82,13 @@ npm run dev
 
 Access at `http://localhost:5173`.
 
-> **Note**: You need the FaultMaven API running at `http://localhost:8000`. See [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/development/local-setup.md).
+> **Note**: You need the FaultMaven API running at `http://localhost:8090`. See [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/development/local-setup.md).
 
 ### Docker Standalone
 
 ```bash
 docker run -p 3000:80 \
-  -e API_URL=http://localhost:8000 \
+  -e API_URL=http://localhost:8090 \
   faultmaven/faultmaven-dashboard:latest
 ```
 
@@ -106,7 +106,7 @@ git clone https://github.com/FaultMaven/faultmaven-dashboard.git
 cd faultmaven-dashboard
 npm install
 
-# Run dev server (requires backend at localhost:8000)
+# Run dev server (requires backend at localhost:8090)
 npm run dev
 
 # Run tests

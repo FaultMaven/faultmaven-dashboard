@@ -85,12 +85,12 @@ function getApiUrl(): string {
 
     if (isLocalNetwork) {
       // Backend API is on same host at port 8000
-      return `${protocol}//${hostname}:8000`;
+      return `${protocol}//${hostname}:8090`;
     }
   }
 
   // Fallback: Default local development URL
-  return "http://127.0.0.1:8000";
+  return "http://127.0.0.1:8090";
 }
 
 const config: Config = {

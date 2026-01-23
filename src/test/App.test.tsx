@@ -19,7 +19,7 @@ vi.mock('../lib/api', () => {
       clearAuthState: vi.fn(),
       getAccessToken: vi.fn().mockResolvedValue(null),
     },
-    config: { apiUrl: 'http://localhost:8000' },
+    config: { apiUrl: 'http://localhost:8090' },
     AuthenticationError: class AuthenticationError extends Error {
       constructor(message: string) { super(message); this.name = 'AuthenticationError'; }
     },
