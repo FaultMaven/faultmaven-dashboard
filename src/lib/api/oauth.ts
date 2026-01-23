@@ -5,7 +5,7 @@
  * Dashboard acts as the Identity Provider (IdP) for the browser extension.
  */
 
-import { getApiUrl } from '../../config';
+import config from '../../config';
 
 export interface OAuthConsentData {
   client_id: string;
@@ -49,7 +49,7 @@ export interface OAuthApprovalResponse {
 export async function getOAuthConsent(
   searchParams: URLSearchParams
 ): Promise<OAuthConsentData | OAuthApprovalResponse> {
-  const apiUrl = getApiUrl();
+  const apiUrl = config.apiUrl;
   const response = await fetch(`${apiUrl}/auth/oauth/authorize?${searchParams.toString()}`, {
     method: 'GET',
     credentials: 'include', // Send session cookie
@@ -75,7 +75,7 @@ export async function getOAuthConsent(
 export async function submitOAuthApproval(
   approval: OAuthApprovalRequest
 ): Promise<OAuthApprovalResponse> {
-  const apiUrl = getApiUrl();
+  const apiUrl = config.apiUrl;
   const response = await fetch(`${apiUrl}/auth/oauth/authorize`, {
     method: 'POST',
     credentials: 'include', // Send session cookie

@@ -78,7 +78,7 @@ export default function OAuthAuthorizePage() {
     try {
       setSubmitting(true);
 
-      const denial = await submitOAuthApproval({
+      await submitOAuthApproval({
         approved: false,
         client_id: consent.client_id,
         redirect_uri: consent.redirect_uri,
