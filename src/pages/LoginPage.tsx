@@ -44,12 +44,8 @@ export default function LoginPage() {
       // 3. Update AuthContext (also persists via authManager)
       await setAuthState(authState);
 
-      if (isExtensionLogin) {
-        setLoading(false);
-        return;
-      }
-
-      // 4. Check for OAuth redirect after login
+      // 4. Check for OAuth redirect after login (MUST be before isExtensionLogin check)
+      // This handles the flow: Extension → /auth/authorize → /login → back to /auth/authorize
       const oauthRedirect = sessionStorage.getItem('oauth_redirect_after_login');
       if (oauthRedirect) {
         sessionStorage.removeItem('oauth_redirect_after_login');
@@ -57,7 +53,13 @@ export default function LoginPage() {
         return;
       }
 
-      // 5. Default redirect to KB
+      // 5. Handle extension login (when user logs in from extension without OAuth flow)
+      if (isExtensionLogin) {
+        setLoading(false);
+        return;
+      }
+
+      // 6. Default redirect to KB
       navigate('/kb');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Login failed. Please check your connection to the backend.';
