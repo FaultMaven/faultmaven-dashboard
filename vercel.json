@@ -8,14 +8,7 @@
 
   "rewrites": [
     {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "header",
-          "key": "Accept",
-          "value": "text/html"
-        }
-      ],
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
