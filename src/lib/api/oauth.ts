@@ -50,7 +50,7 @@ export async function getOAuthConsent(
   searchParams: URLSearchParams
 ): Promise<OAuthConsentData | OAuthApprovalResponse> {
   const apiUrl = config.apiUrl;
-  const response = await fetch(`${apiUrl}/auth/oauth/authorize?${searchParams.toString()}`, {
+  const response = await fetch(`${apiUrl}/api/v1/auth/oauth/authorize?${searchParams.toString()}`, {
     method: 'GET',
     credentials: 'include', // Send session cookie
     headers: {
@@ -76,7 +76,7 @@ export async function submitOAuthApproval(
   approval: OAuthApprovalRequest
 ): Promise<OAuthApprovalResponse> {
   const apiUrl = config.apiUrl;
-  const response = await fetch(`${apiUrl}/auth/oauth/authorize`, {
+  const response = await fetch(`${apiUrl}/api/v1/auth/oauth/authorize`, {
     method: 'POST',
     credentials: 'include', // Send session cookie
     headers: {
