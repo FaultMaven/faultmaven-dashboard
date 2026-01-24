@@ -6,6 +6,7 @@
  */
 
 import config from '../../config';
+import { authManager } from '../auth';
 
 export interface OAuthConsentData {
   client_id: string;
@@ -50,12 +51,21 @@ export async function getOAuthConsent(
   searchParams: URLSearchParams
 ): Promise<OAuthConsentData | OAuthApprovalResponse> {
   const apiUrl = config.apiUrl;
+  const authState = await authManager.getAuthState();
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add Authorization header if user is authenticated
+  if (authState?.access_token) {
+    headers['Authorization'] = `Bearer ${authState.access_token}`;
+  }
+
   const response = await fetch(`${apiUrl}/api/v1/auth/oauth/authorize?${searchParams.toString()}`, {
     method: 'GET',
-    credentials: 'include', // Send session cookie
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    credentials: 'include', // Send session cookie (if any)
+    headers,
   });
 
   if (!response.ok) {
@@ -76,12 +86,21 @@ export async function submitOAuthApproval(
   approval: OAuthApprovalRequest
 ): Promise<OAuthApprovalResponse> {
   const apiUrl = config.apiUrl;
+  const authState = await authManager.getAuthState();
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add Authorization header if user is authenticated
+  if (authState?.access_token) {
+    headers['Authorization'] = `Bearer ${authState.access_token}`;
+  }
+
   const response = await fetch(`${apiUrl}/api/v1/auth/oauth/authorize`, {
     method: 'POST',
-    credentials: 'include', // Send session cookie
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    credentials: 'include', // Send session cookie (if any)
+    headers,
     body: JSON.stringify(approval),
   });
 
