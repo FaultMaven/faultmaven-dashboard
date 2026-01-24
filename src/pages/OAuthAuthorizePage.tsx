@@ -1,22 +1,34 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   getOAuthConsent,
   submitOAuthApproval,
   OAuthConsentData,
   OAuthApprovalResponse,
 } from '../lib/api/oauth';
+import { useAuth } from '../context/AuthContext';
 
 export default function OAuthAuthorizePage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { authState } = useAuth();
   const [consent, setConsent] = useState<OAuthConsentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    // Redirect to login if not authenticated
+    if (!authState) {
+      // Save OAuth redirect for after login
+      const oauthParams = searchParams.toString();
+      sessionStorage.setItem('oauth_redirect_after_login', `/auth/authorize?${oauthParams}`);
+      navigate('/login');
+      return;
+    }
+
     loadConsentData();
-  }, []);
+  }, [authState]);
 
   async function loadConsentData() {
     try {
