@@ -9,6 +9,16 @@ import { browser } from './storage';
  * Handles token storage, retrieval, expiry checking, and cleanup.
  */
 export class AuthManager {
+  constructor() {
+    // Dev-mode assertion: Ensure storage adapter is initialized
+    if (import.meta.env.DEV && typeof window !== 'undefined' && !window.browser?.storage) {
+      console.error(
+        '❌ CRITICAL: Browser storage adapter not initialized! ' +
+        'Auth will fail. Ensure lib/storage.ts is imported in main.tsx.'
+      );
+    }
+  }
+
   /**
    * Save authentication state to browser storage
    */

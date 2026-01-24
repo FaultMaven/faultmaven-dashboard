@@ -1,8 +1,6 @@
 // Browser storage adapter for authentication state
 
-// Import storage adapter to initialize window.browser
-import '../storage';
-
+// Note: Storage adapter is initialized in main.tsx
 // Use the global browser object provided by storage adapter
 declare global {
   interface Window {

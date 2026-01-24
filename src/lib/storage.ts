@@ -1,6 +1,30 @@
 /**
- * Storage Adapter for Web Application
- * Provides localStorage-based storage compatible with the API client's expectations
+ * BROWSER EXTENSION API ADAPTER (Web Polyfill)
+ * ============================================
+ *
+ * This file polyfills the `window.browser` and `browser.storage` APIs so that code
+ * shared between the Browser Extension and the Dashboard (Web) can run without modification.
+ *
+ * **CRITICAL REQUIREMENT:**
+ * This file MUST be imported in main.tsx for side-effects BEFORE any auth code runs.
+ *
+ * **Why this exists:**
+ * - Browser Extension uses: `browser.storage.local` (native extension API)
+ * - Dashboard (Web) needs: localStorage wrapper that mimics the same API
+ * - Without this adapter: `window.browser` is undefined → Auth fails with 401
+ *
+ * **Usage:**
+ * ```typescript
+ * // main.tsx (REQUIRED - do not remove!)
+ * import './lib/storage';  // ✅ Initializes window.browser
+ * ```
+ *
+ * **Testing:**
+ * After login, verify in browser console:
+ * ```javascript
+ * window.browser  // Should exist: { storage: { local: {...} } }
+ * localStorage.getItem('faultmaven_authState')  // Should have JWT token
+ * ```
  */
 
 type StorageValue = string | number | boolean | Record<string, unknown> | Array<unknown>;
