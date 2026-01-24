@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   getOAuthConsent,
@@ -16,6 +16,7 @@ export default function OAuthAuthorizePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -27,7 +28,11 @@ export default function OAuthAuthorizePage() {
       return;
     }
 
-    loadConsentData();
+    // Only load consent data once
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadConsentData();
+    }
   }, [authState]);
 
   async function loadConsentData() {
