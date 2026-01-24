@@ -1,5 +1,8 @@
 // Browser storage adapter for authentication state
 
+// Import storage adapter to initialize window.browser
+import '../storage';
+
 // Use the global browser object provided by storage adapter
 declare global {
   interface Window {
