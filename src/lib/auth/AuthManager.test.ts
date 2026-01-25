@@ -3,26 +3,26 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { AuthState } from './types';
 
-// Mock browser storage - must be hoisted before imports
-vi.mock('./storage', () => ({
-  browser: {
-    storage: {
-      local: {
-        set: vi.fn().mockResolvedValue(undefined),
-        get: vi.fn().mockResolvedValue({}),
-        remove: vi.fn().mockResolvedValue(undefined),
-      },
+// Create mock browser object
+const mockBrowser = {
+  storage: {
+    local: {
+      set: vi.fn().mockResolvedValue(undefined),
+      get: vi.fn().mockResolvedValue({}),
+      remove: vi.fn().mockResolvedValue(undefined),
     },
   },
-}));
+};
+
+// Set up window.browser before importing AuthManager
+(global as any).window = { browser: mockBrowser };
 
 import { AuthManager } from './AuthManager';
-import { browser } from './storage';
 
 // Get mocked functions for assertions
-const mockSet = browser?.storage?.local.set as ReturnType<typeof vi.fn>;
-const mockGet = browser?.storage?.local.get as ReturnType<typeof vi.fn>;
-const mockRemove = browser?.storage?.local.remove as ReturnType<typeof vi.fn>;
+const mockSet = mockBrowser.storage.local.set;
+const mockGet = mockBrowser.storage.local.get;
+const mockRemove = mockBrowser.storage.local.remove;
 
 describe('AuthManager', () => {
   let authManager: AuthManager;
