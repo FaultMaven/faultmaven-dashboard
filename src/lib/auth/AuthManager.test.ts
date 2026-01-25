@@ -15,7 +15,8 @@ const mockBrowser = {
 };
 
 // Set up window.browser before importing AuthManager
-(global as any).window = { browser: mockBrowser };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).window = { browser: mockBrowser };
 
 import { AuthManager } from './AuthManager';
 

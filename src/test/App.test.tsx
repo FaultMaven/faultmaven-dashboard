@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import App from '../App';
 
 // Set up window.browser and window.location before any imports that might use it
-Object.defineProperty(global, 'window', {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+Object.defineProperty(globalThis as any, 'window', {
   value: {
     location: {
       origin: 'http://localhost:3000',
