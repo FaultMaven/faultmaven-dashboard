@@ -22,6 +22,9 @@ RUN pnpm build
 # Stage 2: Production
 FROM nginx:alpine
 
+# Update Alpine packages to fix security vulnerabilities
+RUN apk update && apk upgrade --no-cache
+
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
