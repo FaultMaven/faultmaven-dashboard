@@ -16,6 +16,7 @@ export default function OAuthAuthorizePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -116,9 +117,31 @@ export default function OAuthAuthorizePage() {
   }
 
   function redirectToExtension(approval: OAuthApprovalResponse) {
-    if (!consent) return;
-    const redirectUrl = `${consent.redirect_uri}?code=${approval.code}&state=${approval.state}`;
-    window.location.href = redirectUrl;
+    // Get redirect_uri from URL params (works for both consent and auto-approval flows)
+    const redirectUri = searchParams.get('redirect_uri');
+
+    if (!redirectUri) {
+      setError('Invalid authorization request: missing redirect_uri');
+      setLoading(false);
+      return;
+    }
+
+    if (!approval.code || !approval.state) {
+      setError(`Invalid OAuth response from server. Missing ${!approval.code ? 'code' : 'state'}`);
+      setLoading(false);
+      return;
+    }
+
+    // Build URL with code and state parameters
+    const callbackUrl = `${window.location.origin}${window.location.pathname}?code=${approval.code}&state=${approval.state}`;
+
+    // Update the browser URL to include code and state
+    // The extension will monitor for this and extract the code
+    window.history.replaceState({}, '', callbackUrl);
+
+    // Show success message
+    setRedirectUrl(callbackUrl);
+    setLoading(false);
   }
 
   if (loading) {
@@ -127,6 +150,35 @@ export default function OAuthAuthorizePage() {
         <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md text-center">
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <h2 className="text-xl font-semibold text-gray-800">Loading authorization request...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  if (redirectUrl) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md">
+          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2 text-center">Authorization Successful!</h2>
+          <p className="text-gray-600 mb-6 text-center">
+            Sign-in complete! This window will close automatically.
+          </p>
+          <div className="flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <p className="text-xs text-gray-500 text-center mt-4">
+            Returning to FaultMaven Copilot...
+          </p>
         </div>
       </div>
     );

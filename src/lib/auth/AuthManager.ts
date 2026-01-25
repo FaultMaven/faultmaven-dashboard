@@ -1,7 +1,13 @@
 // Authentication manager for handling auth state
 
 import type { AuthState } from './types';
-import { browser } from './storage';
+
+// Access window.browser directly to avoid module load-time evaluation issues
+// The storage adapter (lib/storage.ts) initializes window.browser as a side-effect
+function getBrowserStorage() {
+  if (typeof window === 'undefined') return undefined;
+  return window.browser;
+}
 
 /**
  * Manages authentication state in browser storage
@@ -11,7 +17,7 @@ import { browser } from './storage';
 export class AuthManager {
   constructor() {
     // Dev-mode assertion: Ensure storage adapter is initialized
-    if (import.meta.env.DEV && typeof window !== 'undefined' && !window.browser?.storage) {
+    if (import.meta.env.DEV && typeof window !== 'undefined' && !getBrowserStorage()?.storage) {
       console.error(
         '❌ CRITICAL: Browser storage adapter not initialized! ' +
         'Auth will fail. Ensure lib/storage.ts is imported in main.tsx.'
@@ -23,6 +29,7 @@ export class AuthManager {
    * Save authentication state to browser storage
    */
   async saveAuthState(authState: AuthState): Promise<void> {
+    const browser = getBrowserStorage();
     if (browser?.storage) {
       await browser.storage.local.set({ authState });
     }
@@ -33,12 +40,15 @@ export class AuthManager {
    * Returns null if not authenticated or token is expired
    */
   async getAuthState(): Promise<AuthState | null> {
+    const browser = getBrowserStorage();
     try {
       if (browser?.storage) {
         const result = (await browser.storage.local.get(['authState'])) as { authState?: AuthState };
         const authState = result.authState;
 
-        if (!authState) return null;
+        if (!authState) {
+          return null;
+        }
 
         // Check if token is expired
         if (Date.now() >= authState.expires_at) {
@@ -58,6 +68,7 @@ export class AuthManager {
    * Clear authentication state from browser storage
    */
   async clearAuthState(): Promise<void> {
+    const browser = getBrowserStorage();
     if (browser?.storage) {
       await browser.storage.local.remove(['authState']);
     }
