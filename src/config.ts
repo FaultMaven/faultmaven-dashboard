@@ -29,8 +29,9 @@ interface Config {
  * 1. Runtime (Docker/K8s): window.ENV.API_URL - injected at container startup
  * 2. Build-time: VITE_API_URL - for production/staging builds
  * 3. Dynamic (Development): Auto-detect based on window.location.hostname
- *    - Allows seamless testing from localhost, local network IPs (192.168.x.x, 10.x.x.x)
- *    - Backend API runs on same hostname at port 8000
+ *    - LOCALHOST ONLY: Supports localhost and 127.0.0.1
+ *    - For remote servers, use SSH tunnel: ssh -L 3333:localhost:3333 -L 8090:localhost:8090 user@server
+ *    - Backend API runs on same host at port 8090
  *
  * Other Environment Variables (set before build):
  * - VITE_DATA_MODE_LINES: Lines threshold for data mode (default: 100)
@@ -41,7 +42,11 @@ const runtimeEnv = (globalThis as { ENV?: { API_URL?: string } }).ENV;
 
 /**
  * Dynamically determine API URL based on current hostname
- * Supports localhost, local network IPs, and production domains
+ *
+ * LOCALHOST ONLY DEPLOYMENT:
+ * - Supports localhost and 127.0.0.1 only
+ * - For remote servers, use SSH tunnel to keep localhost addressing
+ * - Example: ssh -L 3333:localhost:3333 -L 8090:localhost:8090 user@server
  */
 function getApiUrl(): string {
   // Priority 1: Runtime config (Docker/K8s injection)
@@ -54,37 +59,18 @@ function getApiUrl(): string {
     return import.meta.env.VITE_API_URL;
   }
 
-  // Priority 3: Dynamic detection for development (localhost + local network)
-  // This enables accessing dashboard from phone/tablet via local network IP
+  // Priority 3: Dynamic detection for localhost development
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
 
-    // Check if we're on a local network or localhost
-    const isLocalNetwork =
+    // LOCALHOST ONLY: Support localhost and 127.0.0.1
+    const isLocalhost =
       hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname.startsWith('192.168.') ||
-      hostname.startsWith('10.') ||
-      hostname.startsWith('172.16.') ||
-      hostname.startsWith('172.17.') ||
-      hostname.startsWith('172.18.') ||
-      hostname.startsWith('172.19.') ||
-      hostname.startsWith('172.20.') ||
-      hostname.startsWith('172.21.') ||
-      hostname.startsWith('172.22.') ||
-      hostname.startsWith('172.23.') ||
-      hostname.startsWith('172.24.') ||
-      hostname.startsWith('172.25.') ||
-      hostname.startsWith('172.26.') ||
-      hostname.startsWith('172.27.') ||
-      hostname.startsWith('172.28.') ||
-      hostname.startsWith('172.29.') ||
-      hostname.startsWith('172.30.') ||
-      hostname.startsWith('172.31.');
+      hostname === '127.0.0.1';
 
-    if (isLocalNetwork) {
-      // Backend API is on same host at port 8000
+    if (isLocalhost) {
+      // Backend API is on same host at port 8090
       return `${protocol}//${hostname}:8090`;
     }
   }
