@@ -499,7 +499,7 @@ export interface paths {
          * @description Create a new troubleshooting case (v2.0 milestone-based)
          *
          *     Creates a new case with milestone-based investigation tracking.
-         *     Initial status is CONSULTING (problem definition phase).
+         *     Initial status is INQUIRY (problem definition phase).
          *
          *     Returns CaseSummary with basic case info and milestone progress.
          */
@@ -522,7 +522,7 @@ export interface paths {
          * @description Get phase-adaptive UI-optimized case response.
          *
          *     Returns different response schemas based on case status:
-         *     - CONSULTING: Focus on problem understanding, clarifying questions
+         *     - INQUIRY: Focus on problem understanding, clarifying questions
          *     - INVESTIGATING: Milestone progress, hypotheses, evidence, working conclusion
          *     - RESOLVED: Root cause, solution, verification, resolution summary
          *
@@ -3355,7 +3355,7 @@ export interface components {
             investigation_mode: components["schemas"]["InvestigationStrategy"];
             /**
              * @description Current case investigation state
-             * @default consulting
+             * @default inquiry
              */
             case_status: components["schemas"]["CaseStatus"];
         } & {
@@ -3549,10 +3549,10 @@ export interface components {
             description?: string | null;
             /**
              * Status
-             * @default consulting
+             * @default inquiry
              * @enum {string}
              */
-            status: "consulting" | "investigating" | "resolved" | "closed";
+            status: "inquiry" | "investigating" | "resolved" | "closed";
             /**
              * Priority
              * @default medium
@@ -3592,7 +3592,7 @@ export interface components {
             description: string | null;
             /**
              * Initial Message
-             * @description First user message (for CONSULTING phase)
+             * @description First user message (for INQUIRY phase)
              */
             initial_message?: string | null;
             /**
@@ -3859,14 +3859,14 @@ export interface components {
          * @description Case lifecycle status.
          *
          *     Lifecycle Flow:
-         *       CONSULTING → INVESTIGATING → RESOLVED (terminal)
+         *       INQUIRY → INVESTIGATING → RESOLVED (terminal)
          *                                  → CLOSED (terminal)
          *                ↘ CLOSED (terminal)
          *
          *     Terminal States: RESOLVED, CLOSED (no further transitions)
          * @enum {string}
          */
-        CaseStatus: "consulting" | "investigating" | "resolved" | "closed";
+        CaseStatus: "inquiry" | "investigating" | "resolved" | "closed";
         /**
          * CaseSummary
          * @description Minimal case information for list views.
@@ -3911,23 +3911,23 @@ export interface components {
             is_terminal: boolean;
         };
         /**
-         * CaseUIResponse_Consulting
-         * @description UI response for CONSULTING phase.
+         * CaseUIResponse_Inquiry
+         * @description UI response for INQUIRY phase.
          *
          *     Focus: Understanding the problem, asking clarifying questions.
          *     User hasn't committed to full investigation yet.
          */
-        CaseUIResponse_Consulting: {
+        CaseUIResponse_Inquiry: {
             /**
              * Case Id
              * @description Case identifier
              */
             case_id: string;
             /**
-             * @description Always 'consulting' for this response type (enum property replaced by openapi-typescript)
+             * @description Always 'inquiry' for this response type (enum property replaced by openapi-typescript)
              * @enum {string}
              */
-            status: "consulting";
+            status: "inquiry";
             /**
              * Title
              * @description Case title
@@ -3955,8 +3955,8 @@ export interface components {
              * @description Total files uploaded
              */
             uploaded_files_count: number;
-            /** @description Nested consulting phase data */
-            consulting: components["schemas"]["ConsultingResponseData"];
+            /** @description Nested inquiry phase data */
+            inquiry: components["schemas"]["InquiryResponseData"];
         };
         /**
          * CaseUIResponse_Investigating
@@ -4108,10 +4108,10 @@ export interface components {
             status?: components["schemas"]["CaseStatus"] | null;
         };
         /**
-         * ConsultingResponseData
-         * @description Nested consulting data for CONSULTING phase response.
+         * InquiryResponseData
+         * @description Nested inquiry data for INQUIRY phase response.
          */
-        ConsultingResponseData: {
+        InquiryResponseData: {
             /**
              * Proposed Problem Statement
              * @description Agent's formalized problem statement (if ready)
@@ -4131,7 +4131,7 @@ export interface components {
             decided_to_investigate: boolean;
             /**
              * Consultation Turns
-             * @description Number of conversation turns during consulting phase
+             * @description Number of conversation turns during inquiry phase
              * @default 0
              */
             consultation_turns: number;
@@ -7023,7 +7023,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CaseUIResponse_Consulting"] | components["schemas"]["CaseUIResponse_Investigating"] | components["schemas"]["CaseUIResponse_Resolved"];
+                    "application/json": components["schemas"]["CaseUIResponse_Inquiry"] | components["schemas"]["CaseUIResponse_Investigating"] | components["schemas"]["CaseUIResponse_Resolved"];
                 };
             };
             /** @description Validation Error */

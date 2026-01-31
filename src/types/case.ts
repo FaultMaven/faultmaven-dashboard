@@ -9,11 +9,11 @@ import { components } from './api.generated';
 
 // ==================== Type Aliases from API Contract ====================
 
-export type CaseStatus = 'consulting' | 'investigating' | 'resolved' | 'closed';
+export type CaseStatus = 'inquiry' | 'investigating' | 'resolved' | 'closed';
 
-// Consulting Phase Types
-export type CaseUIResponse_Consulting = components['schemas']['CaseUIResponse_Consulting'];
-export type ConsultingData = components['schemas']['ConsultingResponseData'];
+// Inquiry Phase Types
+export type CaseUIResponse_Inquiry = components['schemas']['CaseUIResponse_Inquiry'];
+export type InquiryData = components['schemas']['InquiryResponseData'];
 
 // Investigating Phase Types
 export type CaseUIResponse_Investigating = components['schemas']['CaseUIResponse_Investigating'];
@@ -29,7 +29,7 @@ export type Solution = components['schemas']['SolutionSummary'];
 
 // Union type for all UI responses (discriminated by status)
 export type CaseUIResponse =
-  | CaseUIResponse_Consulting
+  | CaseUIResponse_Inquiry
   | CaseUIResponse_Investigating
   | CaseUIResponse_Resolved;
 
@@ -45,10 +45,10 @@ export type RelatedHypothesis = components['schemas']['RelatedHypothesis'];
 
 // ==================== Type Guards ====================
 
-export function isCaseConsulting(
+export function isCaseInquiry(
   caseData: CaseUIResponse
-): caseData is CaseUIResponse_Consulting {
-  return caseData.status === 'consulting';
+): caseData is CaseUIResponse_Inquiry {
+  return caseData.status === 'inquiry';
 }
 
 export function isCaseInvestigating(
