@@ -16,6 +16,7 @@ export interface AuthState {
     is_active: boolean;
     roles?: string[];
     is_admin?: boolean;
+    organization_id?: string; // Multi-tenant organization context per backend storage fixes
   };
 }
 

@@ -1,21 +1,37 @@
+/* ADR-003: Design System Foundation */
+@import './styles/design-tokens.css';
+
+/* Fonts */
 @import '@fontsource/inter/400.css';
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
 @import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ADR-003: SRE-Native Dark Theme base styles */
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-display);
+  font-size: var(--font-size-body);
   line-height: 1.5;
-  color: #1f2937;
-  background-color: #f9fafb;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
   margin: 0;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* ADR-003: "Candidate" border utility - dashed border for unreviewed AI suggestions */
+.border-candidate {
+  border: 2px dashed var(--border-default);
+}
+
+/* ADR-003: Verified border - solid border for reviewed content */
+.border-reviewed {
+  border: 2px solid var(--border-default);
 }
