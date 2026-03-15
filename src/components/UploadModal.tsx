@@ -26,13 +26,13 @@ export function UploadModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-lg">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4" id="upload-modal-title">{title}</h3>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true">
+      <div className="bg-fm-surface border border-fm-border rounded-fm-card p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-fm-card">
+        <h3 className="text-lg font-semibold text-fm-text-primary mb-4" id="upload-modal-title">{title}</h3>
 
         <form onSubmit={onSubmit} className="space-y-4" aria-labelledby="upload-modal-title">
           {fileName && (
-            <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded" data-testid="upload-file-name">
+            <div className="text-sm text-fm-text-secondary bg-fm-elevated p-3 rounded-fm-btn" data-testid="upload-file-name">
               <strong>File:</strong> {fileName}
             </div>
           )}
@@ -40,7 +40,7 @@ export function UploadModal({
           {children}
 
           {errorMessage && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded">
+            <div className="text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border p-3 rounded-fm-btn">
               {errorMessage}
             </div>
           )}
@@ -50,7 +50,7 @@ export function UploadModal({
               type="button"
               onClick={onCancel}
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated disabled:opacity-50 transition-colors"
               autoFocus
             >
               {cancelLabel}
@@ -58,7 +58,7 @@ export function UploadModal({
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Uploading...' : submitLabel}
             </button>
@@ -68,13 +68,3 @@ export function UploadModal({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-

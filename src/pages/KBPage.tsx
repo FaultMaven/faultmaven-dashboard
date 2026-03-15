@@ -11,6 +11,8 @@ import { debounce } from '../utils/debounce';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 
+const inputClass = 'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
+
 export default function KBPage() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -117,20 +119,20 @@ export default function KBPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-fm-canvas">
       <PageHeader
         title="FaultMaven Dashboard"
         navButtons={[
-          { label: 'My Knowledge Base', active: true, variant: 'primary' },
-          ...(isAdmin ? [{ label: 'Global KB', onClick: () => navigate('/admin/kb'), variant: 'ghost' as const }] : []),
+          { label: 'My Knowledge Base', active: true },
+          ...(isAdmin ? [{ label: 'Global KB', onClick: () => navigate('/admin/kb') }] : []),
         ]}
         onLogout={handleLogout}
       />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">My Knowledge Base</h2>
-          <p className="text-gray-600">
+          <h2 className="text-fm-heading font-bold text-fm-text-primary mb-2">My Knowledge Base</h2>
+          <p className="text-fm-text-secondary">
             Upload and manage your personal runbooks, documentation, and troubleshooting guides.
           </p>
         </div>
@@ -141,20 +143,20 @@ export default function KBPage() {
             defaultValue={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search title or tags"
-            className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className={`max-w-md ${inputClass}`}
             aria-label="Search documents"
           />
-          <div className="text-sm text-gray-500">Total: {totalCount}</div>
+          <div className="text-sm text-fm-text-tertiary">Total: {totalCount}</div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Documents</h3>
+        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
+          <h3 className="text-lg font-semibold text-fm-text-primary mb-4">Upload Documents</h3>
           <UploadZone onFileSelected={handleFileSelect} />
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
           {deleteError && (
-            <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">
+            <div className="mb-3 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
               {deleteError}
             </div>
           )}
@@ -163,7 +165,6 @@ export default function KBPage() {
             loading={loading}
             totalCount={totalCount}
             onDelete={handleDeleteDocument}
-            accent="blue"
             emptyMessage="No documents yet"
           />
           <PaginationControls
@@ -195,28 +196,28 @@ export default function KBPage() {
         onSubmit={handleUploadSubmit}
       >
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Title <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
+            Title <span className="text-fm-critical">*</span>
           </label>
           <input
             type="text"
             required
             value={uploadForm.title}
             onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className={inputClass}
             placeholder="Enter document title"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Document Type <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
+            Document Type <span className="text-fm-critical">*</span>
           </label>
           <select
             required
             value={uploadForm.document_type}
             onChange={(e) => setUploadForm({ ...uploadForm, document_type: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className={inputClass}
           >
             <option value="guide">Guide</option>
             <option value="article">Article</option>
@@ -227,26 +228,26 @@ export default function KBPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
             Tags (comma-separated)
           </label>
           <input
             type="text"
             value={uploadForm.tags}
             onChange={(e) => setUploadForm({ ...uploadForm, tags: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className={inputClass}
             placeholder="e.g. kubernetes, docker, networking"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
             Description
           </label>
           <textarea
             value={uploadForm.description}
             onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className={inputClass}
             rows={3}
             placeholder="Brief description of the document"
           />

@@ -10,6 +10,8 @@ import { useKBList } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
+const inputClass = 'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
+
 export default function AdminKBPage() {
   const navigate = useNavigate();
 
@@ -138,20 +140,20 @@ export default function AdminKBPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-fm-canvas">
       <PageHeader
         title="FaultMaven Admin Dashboard"
         navButtons={[
-          { label: 'My Knowledge Base', onClick: () => navigate('/kb'), variant: 'ghost' },
-          { label: 'Global KB', active: true, variant: 'primary' },
+          { label: 'My Knowledge Base', onClick: () => navigate('/kb') },
+          { label: 'Global KB', active: true },
         ]}
         onLogout={handleLogout}
       />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">System-Wide Knowledge Base</h2>
-          <p className="text-gray-600">Manage system-wide playbooks, troubleshooting guides, and references visible to all users.</p>
+          <h2 className="text-fm-heading font-bold text-fm-text-primary mb-2">System-Wide Knowledge Base</h2>
+          <p className="text-fm-text-secondary">Manage system-wide playbooks, troubleshooting guides, and references visible to all users.</p>
         </div>
 
         <div className="flex items-center justify-between mb-4 gap-4">
@@ -160,20 +162,20 @@ export default function AdminKBPage() {
             defaultValue={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Search title or tags"
-            className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            className={`max-w-md ${inputClass}`}
             aria-label="Search admin documents"
           />
-          <div className="text-sm text-gray-500">Total: {totalCount}</div>
+          <div className="text-sm text-fm-text-tertiary">Total: {totalCount}</div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload System Document</h3>
-          <UploadZone onFileSelected={handleFileSelect} accent="red" />
+        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
+          <h3 className="text-lg font-semibold text-fm-text-primary mb-4">Upload System Document</h3>
+          <UploadZone onFileSelected={handleFileSelect} />
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
           {deleteError && (
-            <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">
+            <div className="mb-3 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
               {deleteError}
             </div>
           )}
@@ -182,7 +184,6 @@ export default function AdminKBPage() {
             loading={loading}
             totalCount={totalCount}
             onDelete={handleDeleteDocument}
-            accent="red"
             emptyMessage="No system documents yet"
           />
           <PaginationControls
@@ -213,13 +214,13 @@ export default function AdminKBPage() {
         submitLabel="Upload"
       >
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Title <span className="text-red-500">*</span></label>
-          <input type="text" required value={uploadForm.title} onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent" placeholder="Enter document title" />
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Title <span className="text-fm-critical">*</span></label>
+          <input type="text" required value={uploadForm.title} onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })} className={inputClass} placeholder="Enter document title" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Document Type <span className="text-red-500">*</span></label>
-          <select required value={uploadForm.document_type} onChange={(e) => setUploadForm({ ...uploadForm, document_type: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent">
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Document Type <span className="text-fm-critical">*</span></label>
+          <select required value={uploadForm.document_type} onChange={(e) => setUploadForm({ ...uploadForm, document_type: e.target.value })} className={inputClass}>
             <option value="playbook">Playbook</option>
             <option value="troubleshooting_guide">Troubleshooting Guide</option>
             <option value="reference">Reference</option>
@@ -228,23 +229,23 @@ export default function AdminKBPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-          <input type="text" value={uploadForm.category} onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent" placeholder="e.g. Infrastructure, Networking" />
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Category</label>
+          <input type="text" value={uploadForm.category} onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value })} className={inputClass} placeholder="e.g. Infrastructure, Networking" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tags (comma-separated)</label>
-          <input type="text" value={uploadForm.tags} onChange={(e) => setUploadForm({ ...uploadForm, tags: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent" placeholder="e.g. kubernetes, docker" />
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Tags (comma-separated)</label>
+          <input type="text" value={uploadForm.tags} onChange={(e) => setUploadForm({ ...uploadForm, tags: e.target.value })} className={inputClass} placeholder="e.g. kubernetes, docker" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Source URL</label>
-          <input type="url" value={uploadForm.source_url} onChange={(e) => setUploadForm({ ...uploadForm, source_url: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent" placeholder="https://example.com/original-doc" />
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Source URL</label>
+          <input type="url" value={uploadForm.source_url} onChange={(e) => setUploadForm({ ...uploadForm, source_url: e.target.value })} className={inputClass} placeholder="https://example.com/original-doc" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-          <textarea value={uploadForm.description} onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent" rows={3} placeholder="Brief description of the document" />
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Description</label>
+          <textarea value={uploadForm.description} onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })} className={inputClass} rows={3} placeholder="Brief description of the document" />
         </div>
       </UploadModal>
     </div>

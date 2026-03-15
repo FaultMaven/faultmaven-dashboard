@@ -11,7 +11,7 @@ export function PaginationControls({ page, pageSize, total, onPageChange }: Pagi
   const canNext = page + 1 < pageCount;
 
   return (
-    <div className="flex items-center justify-between text-sm text-gray-600 mt-4">
+    <div className="flex items-center justify-between text-sm text-fm-text-tertiary mt-4">
       <div>
         Page {page + 1} of {pageCount} · Showing {Math.min((page + 1) * pageSize, total)} of {total}
       </div>
@@ -19,14 +19,14 @@ export function PaginationControls({ page, pageSize, total, onPageChange }: Pagi
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={!canPrev}
-          className="px-3 py-1 border border-gray-300 rounded disabled:opacity-50"
+          className="px-3 py-1 border border-fm-border rounded-fm-btn text-fm-text-secondary hover:bg-fm-elevated disabled:opacity-50 transition-colors"
         >
           Prev
         </button>
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={!canNext}
-          className="px-3 py-1 border border-gray-300 rounded disabled:opacity-50"
+          className="px-3 py-1 border border-fm-border rounded-fm-btn text-fm-text-secondary hover:bg-fm-elevated disabled:opacity-50 transition-colors"
         >
           Next
         </button>
@@ -34,13 +34,3 @@ export function PaginationControls({ page, pageSize, total, onPageChange }: Pagi
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-

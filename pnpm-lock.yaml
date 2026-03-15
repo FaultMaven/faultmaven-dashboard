@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@fontsource/inter':
-        specifier: ^5.2.6
-        version: 5.2.6
+      '@fontsource/dm-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@fontsource/jetbrains-mono':
         specifier: ^5.2.8
         version: 5.2.8
@@ -494,8 +494,8 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@fontsource/inter@5.2.6':
-    resolution: {integrity: sha512-CZs9S1CrjD0jPwsNy9W6j0BhsmRSQrgwlTNkgQXTsAeDRM42LBRLo3eo9gCzfH4GvV7zpyf78Ozfl773826csw==}
+  '@fontsource/dm-sans@5.2.8':
+    resolution: {integrity: sha512-tlovG42m9ESG28WiHpLq3F5umAlm64rv0RkqTbYowRn70e9OlRr5a3yTJhrhrY+k5lftR/OFJjPzOLQzk8EfCA==}
 
   '@fontsource/jetbrains-mono@5.2.8':
     resolution: {integrity: sha512-6w8/SG4kqvIMu7xd7wt6x3idn1Qux3p9N62s6G3rfldOUYHpWcc2FKrqf+Vo44jRvqWj2oAtTHrZXEP23oSKwQ==}
@@ -3181,7 +3181,7 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@fontsource/inter@5.2.6': {}
+  '@fontsource/dm-sans@5.2.8': {}
 
   '@fontsource/jetbrains-mono@5.2.8': {}
 

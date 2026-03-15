@@ -20,16 +20,13 @@ export default function OAuthAuthorizePage() {
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
-    // Redirect to login if not authenticated
     if (!authState) {
-      // Save OAuth redirect for after login
       const oauthParams = searchParams.toString();
       sessionStorage.setItem('oauth_redirect_after_login', `/auth/authorize?${oauthParams}`);
       navigate('/login');
       return;
     }
 
-    // Only load consent data once
     if (!hasLoadedRef.current) {
       hasLoadedRef.current = true;
       loadConsentData();
@@ -43,14 +40,12 @@ export default function OAuthAuthorizePage() {
 
       const data = await getOAuthConsent(searchParams);
 
-      // Check if auto-approved (dev mode)
       if ('code' in data && data.code) {
         const approvalResponse = data as OAuthApprovalResponse;
         redirectToExtension(approvalResponse);
         return;
       }
 
-      // Show consent screen
       setConsent(data as OAuthConsentData);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load authorization request';
@@ -106,18 +101,15 @@ export default function OAuthAuthorizePage() {
         state: consent.state,
       });
 
-      // Redirect with error
       const errorUrl = `${consent.redirect_uri}?error=access_denied&error_description=User denied authorization&state=${consent.state}`;
       window.location.href = errorUrl;
-    } catch (err) {
-      // Even if backend call fails, redirect with error
+    } catch {
       const errorUrl = `${consent.redirect_uri}?error=access_denied&error_description=User denied authorization&state=${consent.state}`;
       window.location.href = errorUrl;
     }
   }
 
   function redirectToExtension(approval: OAuthApprovalResponse) {
-    // Get redirect_uri from URL params (works for both consent and auto-approval flows)
     const redirectUri = searchParams.get('redirect_uri');
 
     if (!redirectUri) {
@@ -132,24 +124,18 @@ export default function OAuthAuthorizePage() {
       return;
     }
 
-    // Build URL with code and state parameters
     const callbackUrl = `${window.location.origin}${window.location.pathname}?code=${approval.code}&state=${approval.state}`;
-
-    // Update the browser URL to include code and state
-    // The extension will monitor for this and extract the code
     window.history.replaceState({}, '', callbackUrl);
-
-    // Show success message
     setRedirectUrl(callbackUrl);
     setLoading(false);
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-800">Loading authorization request...</h2>
+      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+        <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md text-center">
+          <div className="w-12 h-12 border-4 border-fm-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-fm-text-primary">Loading authorization request...</h2>
         </div>
       </div>
     );
@@ -157,26 +143,21 @@ export default function OAuthAuthorizePage() {
 
   if (redirectUrl) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md">
-          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+        <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
+          <div className="w-16 h-16 bg-fm-success-bg text-fm-success rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2 text-center">Authorization Successful!</h2>
-          <p className="text-gray-600 mb-6 text-center">
+          <h2 className="text-2xl font-bold text-fm-text-primary mb-2 text-center">Authorization Successful!</h2>
+          <p className="text-fm-text-secondary mb-6 text-center">
             Sign-in complete! This window will close automatically.
           </p>
           <div className="flex items-center justify-center">
-            <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-8 h-8 border-4 border-fm-success border-t-transparent rounded-full animate-spin"></div>
           </div>
-          <p className="text-xs text-gray-500 text-center mt-4">
+          <p className="text-fm-xs text-fm-text-tertiary text-center mt-4">
             Returning to FaultMaven Copilot...
           </p>
         </div>
@@ -186,23 +167,18 @@ export default function OAuthAuthorizePage() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md">
-          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+        <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
+          <div className="w-16 h-16 bg-fm-critical-bg text-fm-critical rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2 text-center">Authorization Error</h2>
-          <p className="text-gray-600 mb-6 text-center">{error}</p>
+          <h2 className="text-2xl font-bold text-fm-text-primary mb-2 text-center">Authorization Error</h2>
+          <p className="text-fm-text-secondary mb-6 text-center">{error}</p>
           <button
             onClick={() => window.close()}
-            className="w-full px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+            className="w-full px-4 py-2 bg-fm-elevated text-fm-text-secondary font-medium rounded-fm-btn hover:bg-fm-surface-alt transition-colors"
           >
             Close Window
           </button>
@@ -217,110 +193,48 @@ export default function OAuthAuthorizePage() {
 
   const scopes = consent.scope.split(' ');
 
+  const ScopeItem = ({ children }: { children: React.ReactNode }) => (
+    <li className="flex items-start">
+      <svg className="w-5 h-5 text-fm-accent mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path
+          fillRule="evenodd"
+          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+          clipRule="evenodd"
+        />
+      </svg>
+      <span className="text-fm-text-secondary">{children}</span>
+    </li>
+  );
+
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-8 w-full max-w-md">
+    <div className="flex items-center justify-center min-h-screen bg-fm-canvas p-4">
+      <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">Authorize FaultMaven Copilot</h1>
-          <p className="text-gray-600">
+          <img src="/icon/square-transparent.svg" alt="FaultMaven" className="w-16 h-16 rounded-xl mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-fm-text-primary mb-2">Authorize FaultMaven Copilot</h1>
+          <p className="text-fm-text-secondary">
             The FaultMaven browser extension is requesting access to your account.
           </p>
         </div>
 
         {/* User Info */}
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-          <div className="text-sm text-gray-600 mb-1">Signing in as:</div>
-          <div className="font-semibold text-gray-800">{consent.user.display_name}</div>
-          <div className="text-sm text-gray-600">{consent.user.email}</div>
+        <div className="bg-fm-elevated border border-fm-border rounded-fm-btn p-4 mb-6">
+          <div className="text-sm text-fm-text-tertiary mb-1">Signing in as:</div>
+          <div className="font-semibold text-fm-text-primary">{consent.user.display_name}</div>
+          <div className="text-sm text-fm-text-secondary">{consent.user.email}</div>
         </div>
 
         {/* Permissions */}
         <div className="mb-6">
-          <h3 className="font-semibold text-gray-800 mb-3">This application will be able to:</h3>
+          <h3 className="font-semibold text-fm-text-primary mb-3">This application will be able to:</h3>
           <ul className="space-y-2">
-            {scopes.includes('openid') && (
-              <li className="flex items-start">
-                <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-gray-700">Access your user ID</span>
-              </li>
-            )}
-            {scopes.includes('profile') && (
-              <li className="flex items-start">
-                <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-gray-700">Access your profile information</span>
-              </li>
-            )}
-            {scopes.includes('cases:read') && (
-              <li className="flex items-start">
-                <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-gray-700">Read your cases</span>
-              </li>
-            )}
-            {scopes.includes('cases:write') && (
-              <li className="flex items-start">
-                <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-gray-700">Create and update cases</span>
-              </li>
-            )}
-            {scopes.includes('knowledge:read') && (
-              <li className="flex items-start">
-                <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-gray-700">Read knowledge base articles</span>
-              </li>
-            )}
-            {scopes.includes('evidence:read') && (
-              <li className="flex items-start">
-                <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-gray-700">Read evidence files</span>
-              </li>
-            )}
+            {scopes.includes('openid') && <ScopeItem>Access your user ID</ScopeItem>}
+            {scopes.includes('profile') && <ScopeItem>Access your profile information</ScopeItem>}
+            {scopes.includes('cases:read') && <ScopeItem>Read your cases</ScopeItem>}
+            {scopes.includes('cases:write') && <ScopeItem>Create and update cases</ScopeItem>}
+            {scopes.includes('knowledge:read') && <ScopeItem>Read knowledge base articles</ScopeItem>}
+            {scopes.includes('evidence:read') && <ScopeItem>Read evidence files</ScopeItem>}
           </ul>
         </div>
 
@@ -329,21 +243,21 @@ export default function OAuthAuthorizePage() {
           <button
             onClick={handleDeny}
             disabled={submitting}
-            className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 px-4 py-3 bg-fm-elevated text-fm-text-secondary font-medium rounded-fm-btn hover:bg-fm-surface-alt disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleApprove}
             disabled={submitting}
-            className="flex-1 px-4 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {submitting ? 'Authorizing...' : 'Authorize'}
           </button>
         </div>
 
         {/* Security Note */}
-        <p className="text-xs text-gray-500 text-center mt-6">
+        <p className="text-fm-xs text-fm-text-tertiary text-center mt-6">
           This authorization expires in 7 days. You can revoke access anytime from your account settings.
         </p>
       </div>
