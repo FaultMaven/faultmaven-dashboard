@@ -1,4 +1,7 @@
 // Knowledge Base API functions
+// All KB endpoints live under /api/v1/knowledge/documents.
+// There is no user/admin URL split — all documents are in one unified KB.
+// Write operations (upload, delete) require admin privileges on the backend.
 
 import { makeAuthenticatedRequest, buildQueryParams } from './client';
 import { handleAPIResponse } from './errors';
@@ -11,15 +14,11 @@ import type {
   UploadAdminDocumentParams,
 } from './types';
 
-// ===== Personal Knowledge Base =====
+const KB_BASE = '/api/v1/knowledge/documents';
 
 /**
- * Upload a document to the personal knowledge base
- *
- * @param params - Upload parameters
- * @returns Uploaded document
- * @throws {AuthenticationError} If not authenticated
- * @throws {APIError} If upload fails
+ * Upload a document to the knowledge base.
+ * Requires admin privileges on the backend.
  */
 export async function uploadDocument(params: UploadDocumentParams): Promise<KBDocument> {
   const formData = new FormData();
@@ -31,7 +30,7 @@ export async function uploadDocument(params: UploadDocumentParams): Promise<KBDo
   if (params.source_url) formData.append('source_url', params.source_url);
   if (params.description) formData.append('description', params.description);
 
-  const response = await makeAuthenticatedRequest('/api/v1/documents/upload', {
+  const response = await makeAuthenticatedRequest(KB_BASE, {
     method: 'POST',
     body: formData,
   });
@@ -41,12 +40,8 @@ export async function uploadDocument(params: UploadDocumentParams): Promise<KBDo
 }
 
 /**
- * List documents from the personal knowledge base
- *
- * @param params - List parameters (limit, offset, document_type)
- * @returns Document list response
- * @throws {AuthenticationError} If not authenticated
- * @throws {APIError} If request fails
+ * List knowledge base documents.
+ * No admin required for listing.
  */
 export async function listDocuments(params?: {
   limit?: number;
@@ -54,7 +49,7 @@ export async function listDocuments(params?: {
   document_type?: string;
 }): Promise<DocumentListResponse> {
   const queryString = params ? buildQueryParams(params as Record<string, string | number>) : '';
-  const url = `/api/v1/documents${queryString ? `?${queryString}` : ''}`;
+  const url = `${KB_BASE}${queryString ? `?${queryString}` : ''}`;
 
   const response = await makeAuthenticatedRequest(url, {
     method: 'GET',
@@ -65,85 +60,31 @@ export async function listDocuments(params?: {
 }
 
 /**
- * Delete a document from the personal knowledge base
- *
- * @param documentId - ID of document to delete
- * @throws {AuthenticationError} If not authenticated
- * @throws {APIError} If deletion fails
+ * Delete (archive) a document from the knowledge base.
+ * Requires admin privileges on the backend.
  */
 export async function deleteDocument(documentId: string): Promise<void> {
-  const response = await makeAuthenticatedRequest(`/api/v1/documents/${documentId}`, {
+  const response = await makeAuthenticatedRequest(`${KB_BASE}/${documentId}`, {
     method: 'DELETE',
   });
 
   await handleAPIResponse(response, 'Failed to delete document');
 }
 
-// ===== Admin Knowledge Base =====
+// ===== Admin aliases (same endpoint, kept for backward compat with useKBList scope) =====
 
-/**
- * Upload a document to the admin (system-wide) knowledge base
- *
- * @param params - Upload parameters
- * @returns Uploaded document
- * @throws {AuthenticationError} If not authenticated
- * @throws {APIError} If upload fails
- */
 export async function uploadAdminDocument(params: UploadAdminDocumentParams): Promise<AdminKBDocument> {
-  const formData = new FormData();
-  formData.append('file', params.file);
-  formData.append('document_type', params.document_type);
-  formData.append('title', params.title);
-
-  if (params.category) formData.append('category', params.category);
-  if (params.tags) formData.append('tags', params.tags);
-  if (params.source_url) formData.append('source_url', params.source_url);
-  if (params.description) formData.append('description', params.description);
-
-  const response = await makeAuthenticatedRequest('/api/v1/admin/kb/documents', {
-    method: 'POST',
-    body: formData,
-  });
-
-  await handleAPIResponse(response, 'Admin document upload failed');
-  return await response.json();
+  return uploadDocument(params as UploadDocumentParams) as Promise<AdminKBDocument>;
 }
 
-/**
- * List admin documents
- *
- * @param params - List parameters (limit, offset, document_type)
- * @returns Admin document list response
- * @throws {AuthenticationError} If not authenticated
- * @throws {APIError} If request fails
- */
 export async function listAdminDocuments(params?: {
   limit?: number;
   offset?: number;
   document_type?: string;
 }): Promise<AdminDocumentListResponse> {
-  const queryString = params ? buildQueryParams(params as Record<string, string | number>) : '';
-  const url = `/api/v1/admin/kb/documents${queryString ? `?${queryString}` : ''}`;
-
-  const response = await makeAuthenticatedRequest(url, {
-    method: 'GET',
-  });
-
-  await handleAPIResponse(response, 'Failed to list admin documents');
-  return await response.json();
+  return listDocuments(params) as Promise<AdminDocumentListResponse>;
 }
 
-/**
- * Delete an admin document
- *
- * @param documentId - ID of document to delete
- * @throws {AuthenticationError} If not authenticated
- * @throws {APIError} If deletion fails
- */
 export async function deleteAdminDocument(documentId: string): Promise<void> {
-  const response = await makeAuthenticatedRequest(`/api/v1/admin/kb/documents/${documentId}`, {
-    method: 'DELETE',
-  });
-
-  await handleAPIResponse(response, 'Failed to delete admin document');
+  return deleteDocument(documentId);
 }

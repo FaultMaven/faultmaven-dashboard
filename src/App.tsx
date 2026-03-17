@@ -2,7 +2,10 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import KBPage from './pages/KBPage';
-import AdminKBPage from './pages/AdminKBPage';
+import CaseListPage from './pages/CaseListPage';
+import CaseDetailPage from './pages/CaseDetailPage';
+import LLMConfigPage from './pages/LLMConfigPage';
+import UserManagementPage from './pages/UserManagementPage';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -18,10 +21,26 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAdmin) {
-    return <Navigate to="/kb" replace />;
+    return <Navigate to="/cases" replace />;
   }
 
   return <>{children}</>;
+}
+
+function LLMConfigRoute({ children }: { children: React.ReactNode }) {
+  const { deployment, role, loading, authState } = useAuth();
+
+  if (loading) return null;
+
+  if (!authState) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (deployment === 'local' || role === 'platform_admin') {
+    return <>{children}</>;
+  }
+
+  return <Navigate to="/cases" replace />;
 }
 
 export default function App() {
@@ -32,12 +51,28 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signin" element={<Navigate to="/login" replace />} />
-            <Route path="/" element={<Navigate to="/kb" replace />} />
+            <Route path="/" element={<Navigate to="/cases" replace />} />
             <Route
               path="/auth/authorize"
               element={
                 <ProtectedRoute>
                   <OAuthAuthorizePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cases"
+              element={
+                <ProtectedRoute>
+                  <CaseListPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/cases/:caseId"
+              element={
+                <ProtectedRoute>
+                  <CaseDetailPage />
                 </ProtectedRoute>
               }
             />
@@ -50,14 +85,22 @@ export default function App() {
               }
             />
             <Route
-              path="/admin/kb"
+              path="/settings/llm"
+              element={
+                <LLMConfigRoute>
+                  <LLMConfigPage />
+                </LLMConfigRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
               element={
                 <AdminProtectedRoute>
-                  <AdminKBPage />
+                  <UserManagementPage />
                 </AdminProtectedRoute>
               }
             />
-            <Route path="*" element={<Navigate to="/kb" replace />} />
+            <Route path="*" element={<Navigate to="/cases" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

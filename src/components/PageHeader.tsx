@@ -1,35 +1,32 @@
-interface NavButton {
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}
+import { Link, useLocation } from 'react-router-dom';
+import { useNavigationItems } from '../hooks/useNavigationItems';
 
 interface PageHeaderProps {
-  title: string;
-  navButtons: NavButton[];
   onLogout: () => void;
 }
 
-export function PageHeader({ title, navButtons, onLogout }: PageHeaderProps) {
+export function PageHeader({ onLogout }: PageHeaderProps) {
+  const location = useLocation();
+  const navItems = useNavigationItems(location.pathname);
+
   return (
     <header className="bg-fm-surface border-b border-fm-border px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <img src="/icon/square-transparent.svg" alt="FaultMaven" className="w-10 h-10 rounded-lg" />
-          <h1 className="text-xl font-bold text-fm-text-primary">{title}</h1>
+        <div className="flex items-center">
+          <img src="/icon/design-transparent.svg" alt="FaultMaven" className="h-10" />
         </div>
 
         <div className="flex items-center gap-4">
           <nav className="flex gap-2">
-            {navButtons.map((btn) => {
+            {navItems.map((item) => {
               const base = 'px-4 py-2 text-sm font-medium rounded-fm-btn transition-colors';
-              const cls = btn.active
+              const cls = item.active
                 ? `${base} text-white bg-fm-accent`
                 : `${base} text-fm-text-secondary border border-fm-border hover:bg-fm-elevated`;
               return (
-                <button key={btn.label} onClick={btn.onClick} className={cls} disabled={btn.active && !btn.onClick}>
-                  {btn.label}
-                </button>
+                <Link key={item.path} to={item.path} className={cls}>
+                  {item.label}
+                </Link>
               );
             })}
           </nav>

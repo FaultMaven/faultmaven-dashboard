@@ -12,7 +12,7 @@ interface DocumentCardProps {
   actionLabel?: string;
 }
 
-export function DocumentCard({ document, onDelete, actionLabel = 'Delete' }: DocumentCardProps) {
+export function DocumentCard({ document, onDelete, actionLabel = 'Archive' }: DocumentCardProps) {
   return (
     <div className="flex items-center justify-between p-4 border border-fm-border rounded-fm-card hover:bg-fm-elevated transition-colors">
       <div className="flex-1">
@@ -33,7 +33,7 @@ export function DocumentCard({ document, onDelete, actionLabel = 'Delete' }: Doc
       </div>
       <button
         onClick={() => onDelete(document.document_id)}
-        className="px-3 py-1 text-sm rounded-fm-btn text-fm-critical hover:bg-fm-critical-bg transition-colors"
+        className="px-3 py-1 text-sm rounded-fm-btn text-fm-warning hover:bg-fm-warning/10 transition-colors"
       >
         {actionLabel}
       </button>

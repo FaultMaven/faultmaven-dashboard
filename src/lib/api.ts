@@ -24,6 +24,66 @@ export type {
   UploadAdminDocumentParams,
 } from './knowledge';
 
+// Re-export cases module
+export {
+  listCases,
+  getCaseDetail,
+  searchCases,
+  annotateCase,
+  archiveCase,
+  getCaseMessages,
+  getCaseEvidence,
+  getCaseReports,
+  getCaseReportDownloadUrl,
+} from './cases';
+
+export type {
+  CaseSummary,
+  CaseDetail,
+  CaseListResponse,
+  CaseFilters,
+  CaseAnnotation,
+  CaseMessagesResponse,
+  CaseEvidenceResponse,
+  CaseEvidenceFile,
+  CaseReport,
+  CaseMessage,
+  InvestigationStage,
+} from './cases';
+
+// Re-export LLM configuration module
+export {
+  getLLMConfig,
+  updateLLMConfig,
+  testProviderConnection,
+  getEnvConfigStatus,
+} from './llm';
+
+export type {
+  LLMProvider,
+  LLMConfig,
+  LLMConfigUpdate,
+  ProviderConnectionTestResult,
+  EnvConfigStatus,
+  ProviderName,
+} from './llm';
+
+// Re-export user management module
+export {
+  listUsers,
+  inviteUser,
+  updateUserRole,
+  removeUser,
+} from './users';
+
+export type {
+  UserProfile,
+  UserListResponse,
+  UserInviteRequest,
+  UserRoleUpdate,
+  DashboardRoleValue,
+} from './users';
+
 // Re-export config for convenience
 import config from '../config';
 export { config };
