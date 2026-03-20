@@ -24,6 +24,7 @@ export interface CaseSummary {
   current_turn: number;
   milestones_completed: number;
   total_milestones: number;
+  is_archived: boolean;
   is_stuck: boolean;
   is_terminal: boolean;
 }

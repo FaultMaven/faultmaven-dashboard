@@ -23,8 +23,8 @@ export function EnvConfigStatusPanel({ status }: EnvConfigStatusPanelProps) {
     <div className="bg-fm-surface border border-fm-border rounded-fm-card p-4">
       <h3 className="text-sm font-semibold text-fm-text-primary mb-3">Environment Configuration</h3>
       <div>
+        <StatusRow label="Deployment" value={status.deployment === 'local' ? 'Local' : 'Cloud'} />
         <StatusRow label="Auth Mode" value={status.auth_mode} />
-        <StatusRow label="Environment" value={status.environment} />
         <StatusRow label="Database" value={status.db_backend} />
         <StatusRow label="Sessions" value={status.session_storage} />
         <StatusRow label="Vectors" value={status.vector_storage} />

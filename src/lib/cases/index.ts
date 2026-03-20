@@ -4,6 +4,7 @@ export {
   searchCases,
   annotateCase,
   archiveCase,
+  unarchiveCase,
   getCaseMessages,
   getCaseEvidence,
   getCaseReports,

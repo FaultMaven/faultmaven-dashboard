@@ -123,7 +123,7 @@ export default function CaseDetailPage() {
                 />
               </div>
             </div>
-            {!caseDetail.is_terminal && (
+            {caseDetail.is_terminal && !caseDetail.is_archived && (
               <button
                 onClick={() => setShowArchiveConfirm(true)}
                 disabled={archiving}
@@ -150,7 +150,7 @@ export default function CaseDetailPage() {
           <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
         </div>
 
-        {/* Annotation panel — read-only for archived (closed) cases */}
+        {/* Annotation panel — read-only for terminal cases */}
         <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
           <h3 className="text-base font-semibold text-fm-text-primary mb-3">Resolution Notes</h3>
           <textarea
@@ -183,7 +183,7 @@ export default function CaseDetailPage() {
       <ConfirmDialog
         isOpen={showArchiveConfirm}
         title="Archive Case"
-        message="Archive this case? It will be removed from the active list but all history is preserved."
+        message="Archive this case? It will be hidden from the default case list. You can view it again by checking 'Include archived'."
         confirmLabel="Archive"
         onConfirm={handleArchive}
         onCancel={() => setShowArchiveConfirm(false)}

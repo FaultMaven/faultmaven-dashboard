@@ -93,9 +93,8 @@ export default function CaseListPage() {
               </thead>
               <tbody className="divide-y divide-fm-border">
                 {cases.map((c) => {
-                  // Archive is only available for resolved cases (not yet closed)
-                  const canArchive = c.status === 'resolved';
-                  const isArchived = c.status === 'closed';
+                  // Archive available for terminal cases (resolved/closed) that aren't already archived
+                  const canArchive = c.is_terminal && !c.is_archived;
 
                   return (
                     <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
@@ -128,7 +127,7 @@ export default function CaseListPage() {
                             Archive
                           </button>
                         )}
-                        {isArchived && (
+                        {c.is_archived && (
                           <span className="text-xs text-fm-text-tertiary">Archived</span>
                         )}
                       </td>
@@ -151,7 +150,7 @@ export default function CaseListPage() {
       <ConfirmDialog
         isOpen={!!confirmArchiveId}
         title="Archive Case"
-        message="Archive this case? It will be moved to the archive and become read-only. All history is preserved."
+        message="Archive this case? It will be hidden from the default case list. You can view it again by checking 'Include archived'."
         confirmLabel="Archive"
         onConfirm={confirmArchive}
         onCancel={() => setConfirmArchiveId(null)}

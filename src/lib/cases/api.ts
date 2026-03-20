@@ -79,16 +79,24 @@ export async function annotateCase(
 }
 
 /**
- * Archive (soft-close) a case. Removes it from the active list but retains
- * full history. Non-destructive and reversible.
+ * Archive a terminal case. Hides it from the default list view.
+ * Non-destructive and reversible via unarchiveCase().
  */
-export async function archiveCase(caseId: string, reason = 'archived'): Promise<void> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/close`, {
+export async function archiveCase(caseId: string): Promise<void> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/archive`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ closure_reason: reason }),
   });
   await handleAPIResponse(response, 'Failed to archive case');
+}
+
+/**
+ * Unarchive a case. Restores it to the default list view.
+ */
+export async function unarchiveCase(caseId: string): Promise<void> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/unarchive`, {
+    method: 'POST',
+  });
+  await handleAPIResponse(response, 'Failed to unarchive case');
 }
 
 /**
