@@ -9,6 +9,14 @@ export {
   getCaseEvidence,
   getCaseReports,
   getCaseReportDownloadUrl,
+  generateCaseReport,
+  getReportRecommendations,
+  extractKnowledge,
+  getCaseSuggestion,
+  approveSuggestion,
+  rejectSuggestion,
+  updateSuggestion,
+  remediatePII,
 } from './api';
 
 export type {
@@ -23,4 +31,12 @@ export type {
   CaseReport,
   CaseMessage,
   InvestigationStage,
+  ReportType,
+  ReportGenerationRequest,
+  ReportGenerationResponse,
+  ReportRecommendation,
+  RunbookRecommendation,
+  SuggestionStatus,
+  PIIScanStatus,
+  KnowledgeSuggestion,
 } from '../../types/cases';

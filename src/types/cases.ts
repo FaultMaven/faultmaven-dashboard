@@ -95,3 +95,49 @@ export interface CaseReport {
   created_at: string;
   content: string;
 }
+
+// Report generation types
+export type ReportType = 'incident_report' | 'runbook' | 'post_mortem';
+
+export interface ReportGenerationRequest {
+  report_types: ReportType[];
+}
+
+export interface ReportGenerationResponse {
+  case_id: string;
+  reports: CaseReport[];
+  remaining_regenerations: number;
+}
+
+export interface ReportRecommendation {
+  case_id: string;
+  available_for_generation: ReportType[];
+  runbook_recommendation: RunbookRecommendation;
+}
+
+export interface RunbookRecommendation {
+  action: 'reuse' | 'review_or_generate' | 'generate';
+  existing_runbook?: CaseReport;
+  similarity_score?: number;
+  reason: string;
+}
+
+// Knowledge suggestion types
+export type SuggestionStatus = 'pending_review' | 'approved' | 'rejected' | 'draft';
+export type PIIScanStatus = 'not_scanned' | 'scanning' | 'clean' | 'pii_detected' | 'remediated' | 'scan_failed';
+
+export interface KnowledgeSuggestion {
+  suggestion_id: string;
+  case_id: string;
+  status: SuggestionStatus;
+  suggested_title: string;
+  suggested_content: string;
+  extracted_by: string;
+  extracted_at: string;
+  pii_scan_status: PIIScanStatus;
+  pii_remediated_by?: string;
+  pii_remediated_at?: string;
+  message_count: number;
+  evidence_count: number;
+  knowledge_item_id?: string;
+}

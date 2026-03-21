@@ -36,6 +36,14 @@ export {
   getCaseEvidence,
   getCaseReports,
   getCaseReportDownloadUrl,
+  generateCaseReport,
+  getReportRecommendations,
+  extractKnowledge,
+  getCaseSuggestion,
+  approveSuggestion,
+  rejectSuggestion,
+  updateSuggestion,
+  remediatePII,
 } from './cases';
 
 export type {
@@ -50,6 +58,14 @@ export type {
   CaseReport,
   CaseMessage,
   InvestigationStage,
+  ReportType,
+  ReportGenerationRequest,
+  ReportGenerationResponse,
+  ReportRecommendation,
+  RunbookRecommendation,
+  SuggestionStatus,
+  PIIScanStatus,
+  KnowledgeSuggestion,
 } from './cases';
 
 // Re-export LLM configuration module

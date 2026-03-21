@@ -1,21 +1,16 @@
 import { useState } from 'react';
-import { getCaseMessages, getCaseEvidence, getCaseReports, getCaseReportDownloadUrl } from '../lib/api';
-import type { CaseDetail, CaseMessage, CaseEvidenceFile, CaseReport } from '../types/cases';
-import config from '../config';
+import { useSearchParams } from 'react-router-dom';
+import { getCaseMessages, getCaseEvidence } from '../lib/api';
+import type { CaseDetail, CaseMessage, CaseEvidenceFile } from '../types/cases';
+import { ReportTab } from './ReportTab';
+import { KnowledgeTab } from './KnowledgeTab';
 
-type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report';
+type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'knowledge';
 
 interface CaseTabsProps {
   caseId: string;
   caseDetail: CaseDetail;
 }
-
-const TAB_LABELS: { id: Tab; label: string }[] = [
-  { id: 'transcript', label: 'Transcript' },
-  { id: 'evidence', label: 'Evidence' },
-  { id: 'hypotheses', label: 'Hypotheses' },
-  { id: 'report', label: 'Report' },
-];
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -124,59 +119,18 @@ function HypothesesTab({ caseDetail }: { caseDetail: CaseDetail }) {
   );
 }
 
-function ReportTab({ caseId }: { caseId: string }) {
-  const [reports, setReports] = useState<CaseReport[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    if (reports !== null) return;
-    setLoading(true);
-    try {
-      const res = await getCaseReports(caseId);
-      setReports(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load reports');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (reports === null && !loading && !error) {
-    load();
-    return <div className="text-fm-text-tertiary text-sm py-4">Loading reports...</div>;
-  }
-  if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading reports...</div>;
-  if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
-  if (!reports?.length) return <div className="text-fm-text-tertiary text-sm py-4">No reports generated yet.</div>;
-
-  return (
-    <div className="space-y-4 py-2">
-      {reports.map((report) => (
-        <div key={report.report_id} className="bg-fm-surface border border-fm-border rounded-fm-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-fm-text-primary capitalize">
-              {report.report_type.replace(/_/g, ' ')} — {new Date(report.created_at).toLocaleDateString()}
-            </p>
-            <a
-              href={`${config.apiUrl}${getCaseReportDownloadUrl(caseId, report.report_id)}`}
-              download
-              className="text-xs text-fm-accent hover:underline"
-            >
-              Download
-            </a>
-          </div>
-          <pre className="text-xs text-fm-text-secondary whitespace-pre-wrap font-mono overflow-auto max-h-64">
-            {report.content}
-          </pre>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('transcript');
+  const [searchParams] = useSearchParams();
+  const initialTab = (searchParams.get('tab') as Tab) || 'transcript';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  const tabLabels: { id: Tab; label: string }[] = [
+    { id: 'transcript', label: 'Transcript' },
+    { id: 'evidence', label: 'Evidence' },
+    { id: 'hypotheses', label: 'Hypotheses' },
+    { id: 'report', label: 'Report' },
+    ...(caseDetail.is_terminal ? [{ id: 'knowledge' as Tab, label: 'Knowledge' }] : []),
+  ];
 
   const tabBtnBase = 'px-4 py-2 text-sm font-medium border-b-2 transition-colors';
   const tabActive = 'border-fm-accent text-fm-accent';
@@ -185,7 +139,7 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   return (
     <div>
       <div className="flex border-b border-fm-border mb-4">
-        {TAB_LABELS.map(({ id, label }) => (
+        {tabLabels.map(({ id, label }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -199,7 +153,8 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
       {activeTab === 'transcript' && <TranscriptTab caseId={caseId} />}
       {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
       {activeTab === 'hypotheses' && <HypothesesTab caseDetail={caseDetail} />}
-      {activeTab === 'report' && <ReportTab caseId={caseId} />}
+      {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
+      {activeTab === 'knowledge' && <KnowledgeTab caseId={caseId} caseDetail={caseDetail} />}
     </div>
   );
 }

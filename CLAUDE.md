@@ -55,12 +55,30 @@ src/
 ├── pages/                    # Page components
 │   ├── LoginPage.tsx         # Authentication page
 │   ├── KBPage.tsx            # Personal KB management
-│   └── AdminKBPage.tsx       # Global KB management (system-wide)
-├── components/               # Reusable UI components (Header, UploadModal, ConfirmDialog, etc.)
+│   ├── AdminKBPage.tsx       # Global KB management (system-wide)
+│   ├── CaseListPage.tsx      # Paginated case list with filters
+│   ├── CaseDetailPage.tsx    # Case detail with tabs + annotation
+│   ├── UserManagementPage.tsx # Platform admin user management
+│   ├── LLMConfigPage.tsx     # LLM provider configuration
+│   └── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
+├── components/               # Reusable UI components
+│   ├── PageHeader.tsx        # Top navigation bar
+│   ├── CaseTabs.tsx          # Tab container (Transcript, Evidence, Hypotheses, Report, Knowledge)
+│   ├── ReportTab.tsx         # Report type cards, runbook recommendation, preview
+│   ├── KnowledgeTab.tsx      # Knowledge extraction and review workflow
+│   ├── CaseStatusBadge.tsx   # Status badge with phase colors
+│   ├── MilestoneProgress.tsx # Milestone progress indicator
+│   ├── ConfirmDialog.tsx     # Reusable confirmation modal
+│   ├── UploadModal.tsx       # File upload modal for KB
 ├── context/                  # AuthContext (global auth state)
 ├── hooks/                    # Custom hooks (useKBList for KB paging/search/delete)
 └── lib/                      # Core logic
-    ├── api.ts                # Unified API (auth + user/admin KB)
+    ├── api.ts                # Barrel re-exports from modular API clients
+    ├── auth/                 # Auth (AuthManager, login/logout, token storage)
+    ├── cases/                # Cases API (CRUD, reports, knowledge suggestions)
+    ├── knowledge/            # KB API (upload, list, delete, client utilities)
+    ├── llm/                  # LLM config API
+    ├── users/                # User management API
     ├── storage.ts            # LocalStorage adapter
     ├── config.ts             # Configuration
     └── utils/                # Helper utilities
@@ -78,12 +96,16 @@ src/
 
 ### API Integration
 
-The dashboard communicates with the FaultMaven backend through API calls:
+The dashboard communicates with the FaultMaven backend through modular API clients (`lib/cases/`, `lib/knowledge/`, etc.), barrel-exported via `lib/api.ts`:
 
 - **Authentication**: `devLogin()`, `logoutAuth()`, AuthContext powered
 - **Knowledge Base**: Upload, list (paginated), delete documents (user + admin scopes)
+- **Cases**: List, detail, annotate, archive, messages, evidence, reports
+- **Reports**: `generateCaseReport()`, `getReportRecommendations()`, `getCaseReports()`
+- **Knowledge Suggestions**: `extractKnowledge()`, `getCaseSuggestion()`, `approveSuggestion()`, `rejectSuggestion()`, `updateSuggestion()`, `remediatePII()`
 
 **API Endpoint Configuration:**
+
 - Self-hosted: `http://localhost:8090`
 - Enterprise: `https://api.faultmaven.ai`
 
@@ -92,13 +114,20 @@ The dashboard communicates with the FaultMaven backend through API calls:
 1. **Login**: User signs in; AuthContext stores token/state via storage adapter
 2. **Routing**: React Router manages navigation between pages
 3. **KB Management**: Upload, paginate, client-side search, delete documents
-4. **Protected Routes**: Admin routes require admin privileges
+4. **Case Management**: Browse cases, view detail with tabbed content, generate reports
+5. **Knowledge Extraction**: Extract reusable articles from resolved cases, PII review workflow
+6. **Protected Routes**: Admin routes require admin privileges
 
 ### Component Architecture
 
 - **LoginPage**: Authentication interface with FaultMaven branding
-- **KBPage**: User knowledge base management
+- **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
 - **AdminKBPage**: Organization KB management (admin only)
+- **CaseListPage**: Paginated case table with status/date/search filters
+- **CaseDetailPage**: Case header + tabbed content (Transcript, Evidence, Hypotheses, Report, Knowledge) + annotation panel
+- **ReportTab**: Report type cards (3 horizontal), runbook recommendation panel with similarity check, report preview with download/regenerate
+- **KnowledgeTab**: Extract trigger with source stats, article review (editable title/content, PII scan pipeline, approve/reject/edit workflow). Only shown for terminal cases.
+- **CaseTabs**: Tab container with URL query param support (`?tab=report`, `?tab=knowledge`) for cross-frontend linking from copilot
 - **Storage Adapter**: Browser extension API compatibility layer for web
 - **Error Handling**: Graceful error display and recovery
 

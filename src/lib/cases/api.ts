@@ -8,6 +8,10 @@ import type {
   CaseMessagesResponse,
   CaseEvidenceResponse,
   CaseReport,
+  ReportGenerationRequest,
+  ReportGenerationResponse,
+  ReportRecommendation,
+  KnowledgeSuggestion,
 } from '../../types/cases';
 
 const CASES_BASE = '/api/v1/cases';
@@ -131,4 +135,101 @@ export async function getCaseReports(caseId: string): Promise<CaseReport[]> {
  */
 export function getCaseReportDownloadUrl(caseId: string, reportId: string): string {
   return `${CASES_BASE}/${caseId}/reports/${reportId}/download`;
+}
+
+/**
+ * Generate reports for a case.
+ */
+export async function generateCaseReport(
+  caseId: string,
+  request: ReportGenerationRequest
+): Promise<ReportGenerationResponse> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/reports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  await handleAPIResponse(response, 'Failed to generate report');
+  return response.json();
+}
+
+/**
+ * Get report recommendations for a case.
+ */
+export async function getReportRecommendations(caseId: string): Promise<ReportRecommendation> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/report-recommendations`);
+  await handleAPIResponse(response, 'Failed to get report recommendations');
+  return response.json();
+}
+
+/**
+ * Extract knowledge suggestion from a case.
+ */
+export async function extractKnowledge(caseId: string): Promise<KnowledgeSuggestion> {
+  const response = await makeAuthenticatedRequest(`/api/v1/knowledge/suggestions/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ case_id: caseId }),
+  });
+  await handleAPIResponse(response, 'Failed to extract knowledge');
+  return response.json();
+}
+
+/**
+ * Get knowledge suggestion for a case.
+ */
+export async function getCaseSuggestion(caseId: string): Promise<KnowledgeSuggestion | null> {
+  const response = await makeAuthenticatedRequest(`/api/v1/knowledge/suggestions?case_id=${caseId}`);
+  await handleAPIResponse(response, 'Failed to get knowledge suggestion');
+  const data = await response.json();
+  return data.suggestions?.[0] ?? null;
+}
+
+/**
+ * Approve a knowledge suggestion.
+ */
+export async function approveSuggestion(suggestionId: string): Promise<void> {
+  const response = await makeAuthenticatedRequest(`/api/v1/knowledge/suggestions/${suggestionId}/approve`, {
+    method: 'POST',
+  });
+  await handleAPIResponse(response, 'Failed to approve suggestion');
+}
+
+/**
+ * Reject a knowledge suggestion.
+ */
+export async function rejectSuggestion(suggestionId: string, reason: string): Promise<void> {
+  const response = await makeAuthenticatedRequest(`/api/v1/knowledge/suggestions/${suggestionId}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  await handleAPIResponse(response, 'Failed to reject suggestion');
+}
+
+/**
+ * Update a knowledge suggestion (title/content).
+ */
+export async function updateSuggestion(
+  suggestionId: string,
+  updates: { suggested_title?: string; suggested_content?: string }
+): Promise<KnowledgeSuggestion> {
+  const response = await makeAuthenticatedRequest(`/api/v1/knowledge/suggestions/${suggestionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  await handleAPIResponse(response, 'Failed to update suggestion');
+  return response.json();
+}
+
+/**
+ * Remediate PII in a knowledge suggestion.
+ */
+export async function remediatePII(suggestionId: string): Promise<KnowledgeSuggestion> {
+  const response = await makeAuthenticatedRequest(`/api/v1/knowledge/suggestions/${suggestionId}/remediate-pii`, {
+    method: 'POST',
+  });
+  await handleAPIResponse(response, 'Failed to remediate PII');
+  return response.json();
 }
