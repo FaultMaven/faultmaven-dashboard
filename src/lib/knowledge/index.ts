@@ -20,6 +20,28 @@ export type {
   UploadAdminDocumentParams,
 } from './types';
 
+// Conversion functions
+export {
+  convertDocument,
+  listConversions,
+  getConversion,
+  updateDraft,
+  verifyDraft,
+  deleteDraft,
+} from './conversion';
+
+export type {
+  ConversionResponse,
+  ConversionDraft,
+  ConversionJobSummary,
+  VerifyResponse,
+  QualityScore,
+  ValidationResult,
+  AnalysisResult,
+  FailureModeAnalysis,
+  SourceFileInfo,
+} from './conversion';
+
 // Error classes
 export { APIError, NetworkError, handleAPIResponse } from './errors';
 

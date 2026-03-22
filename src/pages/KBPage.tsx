@@ -1,14 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { logoutAuth, uploadDocument, type KBDocument, type AdminKBDocument } from '../lib/api';
+import { convertDocument, updateDraft, verifyDraft, deleteDraft } from '../lib/knowledge/conversion';
+import type { ConversionResponse, ConversionDraft } from '../lib/knowledge/conversion';
 import { UploadZone } from '../components/UploadZone';
 import { UploadModal } from '../components/UploadModal';
 import { DocumentList } from '../components/DocumentList';
 import { PageHeader } from '../components/PageHeader';
 import { PaginationControls } from '../components/PaginationControls';
 import { KBTabs, type KBTier } from '../components/KBTabs';
+import { ConvertUpload } from '../components/ConvertUpload';
+import { ConversionResults } from '../components/ConversionResults';
+import { DraftEditor } from '../components/DraftEditor';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useKBList } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
-import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 
 const inputClass = 'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -22,13 +27,184 @@ type UploadFormState = {
 
 const emptyForm: UploadFormState = { title: '', document_type: 'playbook', tags: '', description: '' };
 
+// =============================================================================
+// Conversion Flow (self-contained state machine)
+// =============================================================================
+
+type ConversionView = 'upload' | 'results' | 'editor';
+
+interface ConversionFlowProps {
+  isAdmin: boolean;
+  isCloud: boolean;
+}
+
+function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
+  const [view, setView] = useState<ConversionView>('upload');
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const [conversion, setConversion] = useState<ConversionResponse | null>(null);
+  const [editingDraft, setEditingDraft] = useState<ConversionDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmVerify, setConfirmVerify] = useState<ConversionDraft | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
+
+  const handleConvert = async (file: File, scope: string, teamId?: string) => {
+    setConverting(true);
+    setConvertError(null);
+    try {
+      const result = await convertDocument(file, scope, teamId);
+      setConversion(result);
+      setView('results');
+    } catch (err: unknown) {
+      setConvertError(err instanceof Error ? err.message : 'Conversion failed');
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const handleEdit = (draft: ConversionDraft) => {
+    setEditingDraft(draft);
+    setView('editor');
+  };
+
+  const handleSaveDraft = async (content: string): Promise<ConversionDraft | null> => {
+    if (!conversion || !editingDraft) return null;
+    setSaving(true);
+    try {
+      const updated = await updateDraft(conversion.conversion_id, editingDraft.draft_id, content);
+      // Update the draft in the conversion results
+      setConversion((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          drafts: prev.drafts.map((d) => (d.draft_id === updated.draft_id ? updated : d)),
+        };
+      });
+      setEditingDraft(updated);
+      return updated;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleVerifyConfirmed = async () => {
+    if (!conversion || !confirmVerify) return;
+    try {
+      await verifyDraft(conversion.conversion_id, confirmVerify.draft_id);
+      // Update draft status in local state
+      setConversion((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          drafts: prev.drafts.map((d) =>
+            d.draft_id === confirmVerify.draft_id ? { ...d, status: 'verified' as const } : d,
+          ),
+        };
+      });
+    } catch (err: unknown) {
+      setConvertError(err instanceof Error ? err.message : 'Verification failed');
+    } finally {
+      setConfirmVerify(null);
+    }
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (!conversion || !confirmDelete) return;
+    try {
+      await deleteDraft(conversion.conversion_id, confirmDelete.draft_id);
+      setConversion((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          drafts: prev.drafts.filter((d) => d.draft_id !== confirmDelete.draft_id),
+        };
+      });
+    } catch (err: unknown) {
+      setConvertError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setConfirmDelete(null);
+    }
+  };
+
+  const handleBack = () => {
+    if (view === 'editor') {
+      setEditingDraft(null);
+      setView('results');
+    } else {
+      setConversion(null);
+      setConvertError(null);
+      setView('upload');
+    }
+  };
+
+  return (
+    <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
+      {view === 'upload' && (
+        <ConvertUpload
+          onConvert={handleConvert}
+          loading={converting}
+          error={convertError}
+          isAdmin={isAdmin}
+          isCloud={isCloud}
+        />
+      )}
+
+      {view === 'results' && conversion && (
+        <ConversionResults
+          conversion={conversion}
+          onEdit={handleEdit}
+          onVerify={(draft) => setConfirmVerify(draft)}
+          onDelete={(draft) => setConfirmDelete(draft)}
+          onBack={handleBack}
+        />
+      )}
+
+      {view === 'editor' && editingDraft && (
+        <DraftEditor
+          draft={editingDraft}
+          onSave={handleSaveDraft}
+          onVerify={() => setConfirmVerify(editingDraft)}
+          onCancel={handleBack}
+          saving={saving}
+        />
+      )}
+
+      {/* Verify confirmation */}
+      <ConfirmDialog
+        isOpen={!!confirmVerify}
+        title="Verify & Ingest Runbook"
+        message="This will set the runbook status to verified, set verified_by to your username, ingest it into the knowledge base, and make it searchable by the AI."
+        confirmLabel="Confirm"
+        onConfirm={handleVerifyConfirmed}
+        onCancel={() => setConfirmVerify(null)}
+      />
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title="Delete Draft"
+        message="Delete this draft? The runbook file will be removed. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setConfirmDelete(null)}
+      />
+    </div>
+  );
+}
+
+// =============================================================================
+// KB Tab Content (existing, with conversion flow added)
+// =============================================================================
+
 interface KBTabContentProps {
   scope: 'user' | 'admin';
   readOnly?: boolean;
   onUpload?: (params: { file: File } & UploadFormState) => Promise<void>;
+  isAdmin: boolean;
+  isCloud: boolean;
 }
 
-function KBTabContent({ scope, readOnly = false, onUpload }: KBTabContentProps) {
+function KBTabContent({ scope, readOnly = false, onUpload, isAdmin, isCloud }: KBTabContentProps) {
   const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, loadPage, deleteById } =
     useKBList(scope);
 
@@ -108,6 +284,11 @@ function KBTabContent({ scope, readOnly = false, onUpload }: KBTabContentProps) 
           <h3 className="text-lg font-semibold text-fm-text-primary mb-4">Upload Documents</h3>
           <UploadZone onFileSelected={handleFileSelect} />
         </div>
+      )}
+
+      {/* Document-to-Runbook Conversion */}
+      {!readOnly && (
+        <ConversionFlow isAdmin={isAdmin} isCloud={isCloud} />
       )}
 
       <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
@@ -209,6 +390,10 @@ function KBTabContent({ scope, readOnly = false, onUpload }: KBTabContentProps) 
   );
 }
 
+// =============================================================================
+// KBPage (main export)
+// =============================================================================
+
 export default function KBPage() {
   const { deployment, role, clearAuthState } = useAuth();
   const isAdmin = role === 'platform_admin';
@@ -261,7 +446,13 @@ export default function KBPage() {
         <KBTabs activeTab={activeTab} availableTabs={availableTabs} onChange={setActiveTab} />
 
         {activeTab === 'personal' && (
-          <KBTabContent scope="user" readOnly={!canUpload} onUpload={canUpload ? handleUpload : undefined} />
+          <KBTabContent
+            scope="user"
+            readOnly={!canUpload}
+            onUpload={canUpload ? handleUpload : undefined}
+            isAdmin={isAdmin}
+            isCloud={isCloud}
+          />
         )}
 
         {activeTab === 'team' && (
@@ -277,6 +468,8 @@ export default function KBPage() {
             scope="admin"
             readOnly={!isAdmin}
             onUpload={isAdmin ? handleUpload : undefined}
+            isAdmin={isAdmin}
+            isCloud={isCloud}
           />
         )}
       </main>

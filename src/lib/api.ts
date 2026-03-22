@@ -24,6 +24,25 @@ export type {
   UploadAdminDocumentParams,
 } from './knowledge';
 
+// Re-export conversion module
+export {
+  convertDocument,
+  listConversions,
+  getConversion,
+  updateDraft,
+  verifyDraft,
+  deleteDraft,
+} from './knowledge';
+
+export type {
+  ConversionResponse,
+  ConversionDraft,
+  ConversionJobSummary,
+  VerifyResponse,
+  QualityScore,
+  ValidationResult,
+} from './knowledge';
+
 // Re-export cases module
 export {
   listCases,
