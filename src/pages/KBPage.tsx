@@ -41,12 +41,7 @@ const emptyForm: UploadFormState = { title: '', document_type: 'playbook', tags:
 
 type ConversionView = 'menu' | 'upload' | 'results' | 'editor' | 'manual';
 
-interface ConversionFlowProps {
-  isAdmin: boolean;
-  isCloud: boolean;
-}
-
-function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
+function ConversionFlow() {
   const [view, setView] = useState<ConversionView>('menu');
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState<ConversionErrorInfo | null>(null);
@@ -210,8 +205,6 @@ function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
           onConvert={handleConvert}
           loading={converting}
           error={convertError}
-          isAdmin={isAdmin}
-          isCloud={isCloud}
         />
       )}
 
@@ -241,8 +234,6 @@ function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
           onCancel={handleBack}
           loading={manualLoading}
           error={manualError}
-          isAdmin={isAdmin}
-          isCloud={isCloud}
         />
       )}
 
@@ -277,11 +268,9 @@ interface KBTabContentProps {
   scope: 'user' | 'admin';
   readOnly?: boolean;
   onUpload?: (params: { file: File } & UploadFormState) => Promise<void>;
-  isAdmin: boolean;
-  isCloud: boolean;
 }
 
-function KBTabContent({ scope, readOnly = false, onUpload, isAdmin, isCloud }: KBTabContentProps) {
+function KBTabContent({ scope, readOnly = false, onUpload }: KBTabContentProps) {
   const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, loadPage, deleteById } =
     useKBList(scope);
 
@@ -365,7 +354,7 @@ function KBTabContent({ scope, readOnly = false, onUpload, isAdmin, isCloud }: K
 
       {/* Document-to-Runbook Conversion */}
       {!readOnly && (
-        <ConversionFlow isAdmin={isAdmin} isCloud={isCloud} />
+        <ConversionFlow />
       )}
 
       <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
@@ -527,8 +516,6 @@ export default function KBPage() {
             scope="user"
             readOnly={!canUpload}
             onUpload={canUpload ? handleUpload : undefined}
-            isAdmin={isAdmin}
-            isCloud={isCloud}
           />
         )}
 
@@ -545,8 +532,6 @@ export default function KBPage() {
             scope="admin"
             readOnly={!isAdmin}
             onUpload={isAdmin ? handleUpload : undefined}
-            isAdmin={isAdmin}
-            isCloud={isCloud}
           />
         )}
       </main>

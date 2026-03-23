@@ -5,8 +5,6 @@ interface CreateRunbookFormProps {
   onCancel: () => void;
   loading: boolean;
   error: string | null;
-  isAdmin: boolean;
-  isCloud: boolean;
 }
 
 export interface RunbookFormData {
@@ -51,7 +49,7 @@ const SECTION_PLACEHOLDERS: Record<string, string> = {
     '- Configuration change to prevent recurrence\n- Monitoring alert to add\n- Process change or documentation update',
 };
 
-export function CreateRunbookForm({ onSubmit, onCancel, loading, error, isAdmin, isCloud }: CreateRunbookFormProps) {
+export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: CreateRunbookFormProps) {
   const [form, setForm] = useState<RunbookFormData>({
     title: '',
     domain: 'application',
@@ -70,8 +68,6 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error, isAdmin,
   });
   const [symptomInput, setSymptomInput] = useState('');
   const [tagsInput, setTagsInput] = useState('');
-
-  const canCreateGlobal = !isCloud || isAdmin;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,11 +160,10 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error, isAdmin,
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Target KB</label>
+          <label className="block text-sm font-medium text-fm-text-secondary mb-1">KB Scope</label>
           <select value={form.scope} onChange={(e) => update('scope', e.target.value)} className={inputClass}>
             <option value="personal">Personal</option>
-            {isCloud && <option value="team">Team</option>}
-            {canCreateGlobal && <option value="global">Global</option>}
+            <option value="team">Team</option>
           </select>
         </div>
       </div>
