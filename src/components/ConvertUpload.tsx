@@ -4,11 +4,12 @@ import type { ConversionErrorInfo } from '../lib/knowledge/conversion';
 
 interface ConvertUploadProps {
   onConvert: (file: File, scope: string, teamId?: string) => Promise<void>;
+  onCancel: () => void;
   loading: boolean;
   error: ConversionErrorInfo | null;
 }
 
-export function ConvertUpload({ onConvert, loading, error }: ConvertUploadProps) {
+export function ConvertUpload({ onConvert, onCancel, loading, error }: ConvertUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [scope, setScope] = useState<string>('personal');
 
@@ -28,8 +29,16 @@ export function ConvertUpload({ onConvert, loading, error }: ConvertUploadProps)
   };
 
   return (
-    <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
-      <h3 className="text-lg font-semibold text-fm-text-primary mb-4">Convert Document to Runbook(s)</h3>
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-fm-text-primary">Convert Document to Runbook(s)</h3>
+        <button
+          onClick={onCancel}
+          className="text-sm text-fm-text-tertiary hover:text-fm-text-primary transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
 
       {!file ? (
         <UploadZone
@@ -107,7 +116,7 @@ export function ConvertUpload({ onConvert, loading, error }: ConvertUploadProps)
             </button>
             <button
               type="button"
-              onClick={handleReset}
+              onClick={onCancel}
               disabled={loading}
               className="px-4 py-2 text-sm font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors disabled:opacity-50"
             >

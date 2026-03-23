@@ -380,7 +380,7 @@ function OverlayPanel(props: OverlayPanelProps) {
   if (mode === 'convert') {
     return (
       <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
-        <ConvertUpload onConvert={props.onConvert} loading={props.converting} error={props.convertError} />
+        <ConvertUpload onConvert={props.onConvert} onCancel={props.onClose} loading={props.converting} error={props.convertError} />
       </div>
     );
   }
