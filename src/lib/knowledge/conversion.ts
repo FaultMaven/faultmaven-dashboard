@@ -98,6 +98,20 @@ export interface ConversionJobSummary {
   created_at: string;
 }
 
+export interface DraftSummary {
+  conversion_id: string;
+  draft_id: string;
+  runbook_id: string;
+  title: string;
+  scope: string;
+  status: 'draft' | 'verified';
+  validation_passed: boolean;
+  quality_score: number | null;
+  quality_details: QualityScore | null;
+  created_at: string;
+  verified_at: string | null;
+}
+
 // =============================================================================
 // Error Translation (error_code → user-friendly message + guidance)
 // =============================================================================
@@ -266,6 +280,16 @@ export async function listConversions(
   );
 
   await handleAPIResponse(response, 'Failed to list conversions');
+  return await response.json();
+}
+
+/**
+ * List all non-deleted drafts across all conversion jobs.
+ */
+export async function listAllDrafts(): Promise<DraftSummary[]> {
+  const response = await makeAuthenticatedRequest(`${CONVERT_BASE}/drafts`);
+
+  await handleAPIResponse(response, 'Failed to list drafts');
   return await response.json();
 }
 
