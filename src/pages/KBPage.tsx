@@ -6,9 +6,11 @@ import {
   verifyDraft,
   deleteDraft,
   createRunbookManually,
+  listConversions,
+  getConversion,
   ConversionAPIError,
 } from '../lib/knowledge/conversion';
-import type { ConversionResponse, ConversionDraft, ConversionErrorInfo } from '../lib/knowledge/conversion';
+import type { ConversionResponse, ConversionDraft, ConversionErrorInfo, ConversionJobSummary } from '../lib/knowledge/conversion';
 import { UploadZone } from '../components/UploadZone';
 import { UploadModal } from '../components/UploadModal';
 import { DocumentList } from '../components/DocumentList';
@@ -52,6 +54,37 @@ function ConversionFlow() {
   const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
   const [manualLoading, setManualLoading] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [recentJobs, setRecentJobs] = useState<ConversionJobSummary[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+
+  // Load recent draft jobs on mount and after creation
+  const loadRecentJobs = async () => {
+    setJobsLoading(true);
+    try {
+      const jobs = await listConversions(10, 0);
+      setRecentJobs(jobs);
+    } catch {
+      // Silently fail — draft list is supplementary
+    } finally {
+      setJobsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadRecentJobs();
+  }, []);
+
+  const openJob = async (conversionId: string) => {
+    try {
+      const result = await getConversion(conversionId);
+      if (result) {
+        setConversion(result);
+        setView('results');
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const handleConvert = async (file: File, scope: string, teamId?: string) => {
     setConverting(true);
@@ -60,6 +93,7 @@ function ConversionFlow() {
       const result = await convertDocument(file, scope, teamId);
       setConversion(result);
       setView('results');
+      loadRecentJobs();
     } catch (err: unknown) {
       if (err instanceof ConversionAPIError) {
         setConvertError(err.errorInfo);
@@ -162,8 +196,8 @@ function ConversionFlow() {
         warnings: [],
         created_at: new Date().toISOString(),
       });
-      setEditingDraft(result.draft);
-      setView('editor');
+      setView('results');
+      loadRecentJobs();
     } catch (err: unknown) {
       setManualError(err instanceof Error ? err.message : 'Failed to create runbook');
     } finally {
@@ -208,6 +242,44 @@ function ConversionFlow() {
               </p>
             </button>
           </div>
+
+          {/* Recent draft runbooks */}
+          {recentJobs.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-sm font-medium text-fm-text-secondary mb-3">Recent Drafts</h4>
+              <div className="space-y-2">
+                {recentJobs.map((job) => (
+                  <button
+                    key={job.conversion_id}
+                    onClick={() => openJob(job.conversion_id)}
+                    className="w-full flex items-center justify-between p-3 text-left border border-fm-border rounded-fm-input hover:border-fm-accent hover:bg-fm-surface-alt transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-fm-text-primary truncate">{job.source_filename}</p>
+                      <p className="text-xs text-fm-text-tertiary">
+                        {job.failure_modes_detected} failure mode{job.failure_modes_detected !== 1 ? 's' : ''} &middot; {job.scope}
+                      </p>
+                    </div>
+                    <div className="flex-shrink-0 flex items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-fm-chip ${
+                        job.status === 'completed' ? 'bg-fm-success-bg text-fm-success' :
+                        job.status === 'partial' ? 'bg-fm-warning-bg text-fm-warning' :
+                        'bg-fm-surface-alt text-fm-text-tertiary'
+                      }`}>
+                        {job.status}
+                      </span>
+                      <svg className="w-4 h-4 text-fm-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {jobsLoading && (
+            <p className="mt-4 text-xs text-fm-text-tertiary">Loading drafts...</p>
+          )}
         </div>
       )}
 
