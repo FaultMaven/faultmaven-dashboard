@@ -28,12 +28,16 @@ export {
   updateDraft,
   verifyDraft,
   deleteDraft,
+  translateConversionError,
+  createRunbookManually,
+  ConversionAPIError,
 } from './conversion';
 
 export type {
   ConversionResponse,
   ConversionDraft,
   ConversionJobSummary,
+  ConversionErrorInfo,
   VerifyResponse,
   QualityScore,
   ValidationResult,

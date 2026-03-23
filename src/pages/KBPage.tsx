@@ -1,7 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { logoutAuth, uploadDocument, type KBDocument, type AdminKBDocument } from '../lib/api';
-import { convertDocument, updateDraft, verifyDraft, deleteDraft } from '../lib/knowledge/conversion';
-import type { ConversionResponse, ConversionDraft } from '../lib/knowledge/conversion';
+import {
+  convertDocument,
+  updateDraft,
+  verifyDraft,
+  deleteDraft,
+  createRunbookManually,
+  ConversionAPIError,
+} from '../lib/knowledge/conversion';
+import type { ConversionResponse, ConversionDraft, ConversionErrorInfo } from '../lib/knowledge/conversion';
 import { UploadZone } from '../components/UploadZone';
 import { UploadModal } from '../components/UploadModal';
 import { DocumentList } from '../components/DocumentList';
@@ -12,6 +19,7 @@ import { ConvertUpload } from '../components/ConvertUpload';
 import { ConversionResults } from '../components/ConversionResults';
 import { DraftEditor } from '../components/DraftEditor';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { CreateRunbookForm, type RunbookFormData } from '../components/CreateRunbookForm';
 import { useKBList } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
@@ -31,7 +39,7 @@ const emptyForm: UploadFormState = { title: '', document_type: 'playbook', tags:
 // Conversion Flow (self-contained state machine)
 // =============================================================================
 
-type ConversionView = 'upload' | 'results' | 'editor';
+type ConversionView = 'menu' | 'upload' | 'results' | 'editor' | 'manual';
 
 interface ConversionFlowProps {
   isAdmin: boolean;
@@ -39,14 +47,16 @@ interface ConversionFlowProps {
 }
 
 function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
-  const [view, setView] = useState<ConversionView>('upload');
+  const [view, setView] = useState<ConversionView>('menu');
   const [converting, setConverting] = useState(false);
-  const [convertError, setConvertError] = useState<string | null>(null);
+  const [convertError, setConvertError] = useState<ConversionErrorInfo | null>(null);
   const [conversion, setConversion] = useState<ConversionResponse | null>(null);
   const [editingDraft, setEditingDraft] = useState<ConversionDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmVerify, setConfirmVerify] = useState<ConversionDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   const handleConvert = async (file: File, scope: string, teamId?: string) => {
     setConverting(true);
@@ -56,7 +66,15 @@ function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
       setConversion(result);
       setView('results');
     } catch (err: unknown) {
-      setConvertError(err instanceof Error ? err.message : 'Conversion failed');
+      if (err instanceof ConversionAPIError) {
+        setConvertError(err.errorInfo);
+      } else {
+        setConvertError({
+          title: 'Conversion failed',
+          message: err instanceof Error ? err.message : 'An unexpected error occurred.',
+          action: 'Try again with a different document.',
+        });
+      }
     } finally {
       setConverting(false);
     }
@@ -102,7 +120,11 @@ function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
         };
       });
     } catch (err: unknown) {
-      setConvertError(err instanceof Error ? err.message : 'Verification failed');
+      setConvertError({
+        title: 'Verification failed',
+        message: err instanceof Error ? err.message : 'Could not verify the draft.',
+        action: 'Try again or check the API logs.',
+      });
     } finally {
       setConfirmVerify(null);
     }
@@ -120,9 +142,26 @@ function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
         };
       });
     } catch (err: unknown) {
-      setConvertError(err instanceof Error ? err.message : 'Delete failed');
+      setConvertError({
+        title: 'Delete failed',
+        message: err instanceof Error ? err.message : 'Could not delete the draft.',
+        action: 'Try again.',
+      });
     } finally {
       setConfirmDelete(null);
+    }
+  };
+
+  const handleManualCreate = async (data: RunbookFormData) => {
+    setManualLoading(true);
+    setManualError(null);
+    try {
+      await createRunbookManually(data);
+      setView('menu');
+    } catch (err: unknown) {
+      setManualError(err instanceof Error ? err.message : 'Failed to create runbook');
+    } finally {
+      setManualLoading(false);
     }
   };
 
@@ -133,12 +172,39 @@ function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
     } else {
       setConversion(null);
       setConvertError(null);
-      setView('upload');
+      setManualError(null);
+      setView('menu');
     }
   };
 
   return (
     <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
+      {view === 'menu' && (
+        <div>
+          <h3 className="text-lg font-semibold text-fm-text-primary mb-4">Create Runbooks</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button
+              onClick={() => setView('upload')}
+              className="p-4 text-left border border-fm-border rounded-fm-card hover:border-fm-accent hover:bg-fm-surface-alt transition-colors"
+            >
+              <p className="font-medium text-fm-text-primary mb-1">Convert Document</p>
+              <p className="text-sm text-fm-text-secondary">
+                Upload a PDF, DOCX, or text file and let AI extract runbooks from it automatically.
+              </p>
+            </button>
+            <button
+              onClick={() => setView('manual')}
+              className="p-4 text-left border border-fm-border rounded-fm-card hover:border-fm-accent hover:bg-fm-surface-alt transition-colors"
+            >
+              <p className="font-medium text-fm-text-primary mb-1">Create Manually</p>
+              <p className="text-sm text-fm-text-secondary">
+                Write a runbook from scratch using the standard template with guided sections.
+              </p>
+            </button>
+          </div>
+        </div>
+      )}
+
       {view === 'upload' && (
         <ConvertUpload
           onConvert={handleConvert}
@@ -166,6 +232,17 @@ function ConversionFlow({ isAdmin, isCloud }: ConversionFlowProps) {
           onVerify={() => setConfirmVerify(editingDraft)}
           onCancel={handleBack}
           saving={saving}
+        />
+      )}
+
+      {view === 'manual' && (
+        <CreateRunbookForm
+          onSubmit={handleManualCreate}
+          onCancel={handleBack}
+          loading={manualLoading}
+          error={manualError}
+          isAdmin={isAdmin}
+          isCloud={isCloud}
         />
       )}
 

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { UploadZone } from './UploadZone';
+import type { ConversionErrorInfo } from '../lib/knowledge/conversion';
 
 interface ConvertUploadProps {
   onConvert: (file: File, scope: string, teamId?: string) => Promise<void>;
   loading: boolean;
-  error: string | null;
+  error: ConversionErrorInfo | null;
   isAdmin: boolean;
   isCloud: boolean;
 }
@@ -128,8 +129,10 @@ export function ConvertUpload({ onConvert, loading, error, isAdmin, isCloud }: C
           )}
 
           {error && (
-            <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
-              {error}
+            <div className="mb-4 text-sm bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
+              <p className="font-medium text-fm-critical">{error.title}</p>
+              <p className="text-fm-text-secondary mt-1">{error.message}</p>
+              <p className="text-fm-text-tertiary mt-1 text-xs">{error.action}</p>
             </div>
           )}
 
