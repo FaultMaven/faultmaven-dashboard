@@ -352,7 +352,7 @@ export async function createRunbookManually(data: {
   verification: string;
   prevention: string;
   team_id?: string;
-}): Promise<ConversionDraft> {
+}): Promise<{ conversion_id: string; draft: ConversionDraft }> {
   const response = await makeAuthenticatedRequest(
     `${CONVERT_BASE}/runbooks/create`,
     {

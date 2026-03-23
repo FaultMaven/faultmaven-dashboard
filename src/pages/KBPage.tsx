@@ -151,8 +151,19 @@ function ConversionFlow() {
     setManualLoading(true);
     setManualError(null);
     try {
-      await createRunbookManually(data);
-      setView('menu');
+      const result = await createRunbookManually(data);
+      // Build a minimal ConversionResponse so the editor/verify flow works
+      setConversion({
+        conversion_id: result.conversion_id,
+        status: 'completed',
+        source_file: { filename: 'manual-creation', size_bytes: 0, content_type: 'text/markdown', retained_path: '' },
+        analysis: { is_actionable: true, failure_modes: [], source_assessment: { content_type: 'manual', actionability_rating: 'high', missing_information: [] } },
+        drafts: [result.draft],
+        warnings: [],
+        created_at: new Date().toISOString(),
+      });
+      setEditingDraft(result.draft);
+      setView('editor');
     } catch (err: unknown) {
       setManualError(err instanceof Error ? err.message : 'Failed to create runbook');
     } finally {
