@@ -8,18 +8,14 @@ interface ConvertUploadProps {
   error: ConversionErrorInfo | null;
 }
 
-const inputClass =
-  'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
-
 export function ConvertUpload({ onConvert, loading, error }: ConvertUploadProps) {
   const [file, setFile] = useState<File | null>(null);
   const [scope, setScope] = useState<string>('personal');
-  const [teamId, setTeamId] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
-    await onConvert(file, scope, scope === 'team' ? teamId : undefined);
+    await onConvert(file, scope);
   };
 
   const handleFileSelect = (f: File) => {
@@ -29,7 +25,6 @@ export function ConvertUpload({ onConvert, loading, error }: ConvertUploadProps)
   const handleReset = () => {
     setFile(null);
     setScope('personal');
-    setTeamId('');
   };
 
   return (
@@ -80,33 +75,9 @@ export function ConvertUpload({ onConvert, loading, error }: ConvertUploadProps)
                 <span className="text-sm text-fm-text-primary">Personal</span>
               </label>
 
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="scope"
-                  value="team"
-                  checked={scope === 'team'}
-                  onChange={() => setScope('team')}
-                  className="accent-fm-accent"
-                />
-                <span className="text-sm text-fm-text-primary">Team</span>
-              </label>
             </div>
           </div>
 
-          {scope === 'team' && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-fm-text-secondary mb-1">Team ID</label>
-              <input
-                type="text"
-                value={teamId}
-                onChange={(e) => setTeamId(e.target.value)}
-                className={inputClass}
-                placeholder="Enter team ID"
-                required
-              />
-            </div>
-          )}
 
           {error && (
             <div className="mb-4 text-sm bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">

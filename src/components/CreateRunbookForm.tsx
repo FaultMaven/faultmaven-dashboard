@@ -163,7 +163,6 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
           <label className="block text-sm font-medium text-fm-text-secondary mb-1">KB Scope</label>
           <select value={form.scope} onChange={(e) => update('scope', e.target.value)} className={inputClass}>
             <option value="personal">Personal</option>
-            <option value="team">Team</option>
           </select>
         </div>
       </div>
