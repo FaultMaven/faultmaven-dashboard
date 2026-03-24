@@ -629,13 +629,18 @@ export default function KBPage() {
     }
   };
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const handleVerifyConfirmed = async () => {
     if (!conversion || !confirmVerify) return;
+    setActionError(null);
     try {
       await verifyDraft(conversion.conversion_id, confirmVerify.draft_id);
       setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map((d) => d.draft_id === confirmVerify.draft_id ? { ...d, status: 'verified' as const } : d) } : prev);
       loadDrafts();
-    } catch { /* ignore */ } finally {
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Verification failed');
+    } finally {
       setConfirmVerify(null);
     }
   };
@@ -750,6 +755,18 @@ export default function KBPage() {
               )}
             </div>
           </>
+        )}
+
+        {/* Action error banner */}
+        {actionError && (
+          <div className="fixed bottom-6 right-6 z-50 max-w-sm bg-fm-critical-bg border border-fm-critical-border rounded-fm-card p-4 shadow-fm-card flex items-start gap-3">
+            <p className="text-sm text-fm-critical flex-1">{actionError}</p>
+            <button onClick={() => setActionError(null)} className="text-fm-critical hover:brightness-75" aria-label="Dismiss">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         )}
 
         {/* Confirm dialogs */}
