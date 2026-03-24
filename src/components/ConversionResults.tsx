@@ -151,26 +151,34 @@ function DraftCard({ draft, onEdit, onVerify, onDelete }: DraftCardProps) {
 
       {/* Actions */}
       <div className="flex gap-2 mt-3 pt-3 border-t border-fm-border">
-        <button
-          onClick={onEdit}
-          className="px-3 py-1.5 text-xs font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors"
-        >
-          Edit
-        </button>
-        <button
-          onClick={onVerify}
-          disabled={!validation.passed}
-          className="px-3 py-1.5 text-xs font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          title={!validation.passed ? 'Fix validation errors before verifying' : 'Verify and ingest into knowledge base'}
-        >
-          Verify &amp; Ingest
-        </button>
-        <button
-          onClick={onDelete}
-          className="px-3 py-1.5 text-xs font-medium text-fm-critical border border-fm-critical-border rounded-fm-btn hover:bg-fm-critical-bg transition-colors"
-        >
-          Delete
-        </button>
+        {draft.status === 'verified' ? (
+          <span className="px-3 py-1.5 text-xs font-medium text-fm-success bg-fm-success-bg rounded-fm-btn">
+            Verified and ingested
+          </span>
+        ) : (
+          <>
+            <button
+              onClick={onEdit}
+              className="px-3 py-1.5 text-xs font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onVerify}
+              disabled={!validation.passed}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={!validation.passed ? 'Fix validation errors before verifying' : 'Verify and ingest into knowledge base'}
+            >
+              Verify &amp; Ingest
+            </button>
+            <button
+              onClick={onDelete}
+              className="px-3 py-1.5 text-xs font-medium text-fm-critical border border-fm-critical-border rounded-fm-btn hover:bg-fm-critical-bg transition-colors"
+            >
+              Delete
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
