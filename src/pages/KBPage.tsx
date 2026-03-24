@@ -365,7 +365,7 @@ function OverlayPanel(props: OverlayPanelProps) {
   // Upload file modal state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadForm, setUploadForm] = useState({ title: '', document_type: 'playbook', tags: '', description: '' });
+  const [uploadForm, setUploadForm] = useState({ title: '', document_type: 'runbook', tags: '', description: '' });
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -413,12 +413,22 @@ function OverlayPanel(props: OverlayPanelProps) {
           </div>
           <div>
             <label className="block text-sm font-medium text-fm-text-secondary mb-1">Document Type <span className="text-fm-critical">*</span></label>
-            <select required value={uploadForm.document_type} onChange={(e) => setUploadForm({ ...uploadForm, document_type: e.target.value })} className={inputClass}>
-              <option value="playbook">Playbook</option>
-              <option value="troubleshooting_guide">Troubleshooting Guide</option>
-              <option value="reference">Reference</option>
-              <option value="how_to">How-To</option>
-            </select>
+            <input
+              type="text"
+              list="document-types"
+              required
+              value={uploadForm.document_type}
+              onChange={(e) => setUploadForm({ ...uploadForm, document_type: e.target.value })}
+              className={inputClass}
+              placeholder="e.g. runbook, playbook, reference"
+            />
+            <datalist id="document-types">
+              <option value="runbook" />
+              <option value="playbook" />
+              <option value="troubleshooting_guide" />
+              <option value="reference" />
+              <option value="how_to" />
+            </datalist>
           </div>
           <div>
             <label className="block text-sm font-medium text-fm-text-secondary mb-1">Tags (comma-separated)</label>
