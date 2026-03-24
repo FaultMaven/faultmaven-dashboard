@@ -53,7 +53,7 @@ function NewDropdown({ onUpload, onConvert, onManual }: NewDropdownProps) {
   const [open, setOpen] = useState(false);
 
   const items = [
-    { label: 'Upload Document', description: 'Add an existing file to the KB', onClick: onUpload },
+    { label: 'Upload Runbook', description: 'Upload a validated runbook file directly', onClick: onUpload },
     { label: 'Convert to Runbook', description: 'AI extracts runbooks from a document', onClick: onConvert },
     { label: 'Write Runbook', description: 'Create from the standard template', onClick: onManual },
   ];
@@ -360,13 +360,13 @@ function OverlayPanel(props: OverlayPanelProps) {
     return (
       <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-fm-text-primary">Upload Document</h3>
+          <h3 className="text-lg font-semibold text-fm-text-primary">Upload Runbook</h3>
           <button onClick={props.onClose} className="text-fm-text-tertiary hover:text-fm-text-primary text-sm">Cancel</button>
         </div>
         <UploadZone onFileSelected={handleFileSelect} />
         <UploadModal
           isOpen={showUploadModal}
-          title="Upload Document"
+          title="Upload Runbook"
           fileName={selectedFile?.name}
           errorMessage={uploadError}
           loading={uploading}
