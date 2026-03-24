@@ -3,6 +3,7 @@ export interface DocumentCardData {
   title: string;
   document_type: string;
   tags: string[];
+  scope?: string;
   created_at: string;
 }
 
@@ -21,6 +22,15 @@ export function DocumentCard({ document, onDelete, actionLabel = 'Archive' }: Do
           <span className="text-fm-xs px-2 py-0.5 rounded-fm-chip bg-fm-accent-soft text-fm-accent">
             {document.document_type.replace('_', ' ')}
           </span>
+          {document.scope && (
+            <span className={`text-fm-xs px-2 py-0.5 rounded-fm-chip ${
+              document.scope === 'global' ? 'bg-fm-success-bg text-fm-success' :
+              document.scope === 'team' ? 'bg-fm-accent/10 text-fm-accent' :
+              'bg-fm-surface-alt text-fm-text-secondary'
+            }`}>
+              {document.scope}
+            </span>
+          )}
           {document.tags.length > 0 && (
             <span className="text-fm-xs text-fm-text-tertiary">
               {document.tags.join(', ')}

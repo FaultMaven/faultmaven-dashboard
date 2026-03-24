@@ -11,6 +11,9 @@ export interface KBDocument {
   content: string;
   document_type: string;
   tags: string[];
+  scope: string;
+  owner_id?: string;
+  team_id?: string;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;

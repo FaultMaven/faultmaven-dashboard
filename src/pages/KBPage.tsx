@@ -122,8 +122,17 @@ function DocumentsTab({ canUpload }: { canUpload: boolean }) {
   const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, loadPage, deleteById } =
     useKBList('user');
 
+  const [scopeFilter, setScopeFilter] = useState<string>('all');
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  // Client-side scope filter (backend already returns only accessible docs)
+  const scopedDocuments = scopeFilter === 'all'
+    ? filteredDocuments
+    : filteredDocuments.filter((d) => {
+        const doc = d as KBDocument;
+        return doc.scope === scopeFilter;
+      });
 
   const handleSearchChange = useMemo(
     () => debounce((value: string) => setSearch(value), 200),
@@ -145,15 +154,28 @@ function DocumentsTab({ canUpload }: { canUpload: boolean }) {
   return (
     <>
       <div className="flex items-center justify-between mb-4 gap-4">
-        <input
-          type="search"
-          defaultValue={search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          placeholder="Search documents..."
-          className={`max-w-md ${inputClass}`}
-          aria-label="Search documents"
-        />
-        <div className="text-sm text-fm-text-tertiary">{totalCount} documents</div>
+        <div className="flex items-center gap-3 flex-1">
+          <input
+            type="search"
+            defaultValue={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search documents..."
+            className={`max-w-md ${inputClass}`}
+            aria-label="Search documents"
+          />
+          <select
+            value={scopeFilter}
+            onChange={(e) => setScopeFilter(e.target.value)}
+            className={`w-32 ${inputClass}`}
+            aria-label="Filter by scope"
+          >
+            <option value="all">All scopes</option>
+            <option value="personal">Personal</option>
+            <option value="team">Team</option>
+            <option value="global">Global</option>
+          </select>
+        </div>
+        <div className="text-sm text-fm-text-tertiary">{scopedDocuments.length} documents</div>
       </div>
 
       {archiveError && (
@@ -163,9 +185,9 @@ function DocumentsTab({ canUpload }: { canUpload: boolean }) {
       )}
 
       <DocumentList
-        documents={filteredDocuments as (KBDocument | AdminKBDocument)[]}
+        documents={scopedDocuments as (KBDocument | AdminKBDocument)[]}
         loading={loading}
-        totalCount={totalCount}
+        totalCount={scopedDocuments.length}
         onDelete={canUpload ? (id) => setConfirmArchiveId(id) : () => {}}
         emptyMessage="No documents in your knowledge base yet."
       />
