@@ -216,11 +216,12 @@ interface DraftsTabProps {
   onOpen: (conversionId: string) => void;
   onRefresh: () => void;
   onScan: () => Promise<void>;
+  onDismissScan: () => void;
   scanning: boolean;
   scanResult: string | null;
 }
 
-function DraftsTab({ drafts, loading, onOpen, onScan, scanning, scanResult }: DraftsTabProps) {
+function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, scanResult }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
   const verifiedDrafts = drafts.filter((d) => d.status === 'verified');
 
@@ -247,13 +248,15 @@ function DraftsTab({ drafts, loading, onOpen, onScan, scanning, scanResult }: Dr
           {score}/{grade}
         </span>
         {!d.validation_passed && (
-          <span className="text-xs text-fm-critical">Needs fix</span>
+          <svg className="w-4 h-4 text-fm-critical flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Validation errors">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
         )}
-        <span className={`text-xs px-2 py-0.5 rounded-fm-chip ${
-          d.status === 'verified' ? 'bg-fm-success-bg text-fm-success' : 'bg-fm-warning-bg text-fm-warning'
-        }`}>
-          {d.status}
-        </span>
+        {d.status === 'verified' && (
+          <span className="text-xs px-2 py-0.5 rounded-fm-chip bg-fm-success-bg text-fm-success">
+            verified
+          </span>
+        )}
         <svg className="w-4 h-4 text-fm-text-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
@@ -282,8 +285,13 @@ function DraftsTab({ drafts, loading, onOpen, onScan, scanning, scanResult }: Dr
       </div>
 
       {scanResult && (
-        <div className="mb-4 text-sm text-fm-success bg-fm-success-bg border border-fm-success-border rounded-fm-btn p-3">
-          {scanResult}
+        <div className="mb-4 text-sm text-fm-success bg-fm-success-bg border border-fm-success-border rounded-fm-btn p-3 flex items-center justify-between">
+          <span>{scanResult}</span>
+          <button onClick={() => onDismissScan()} className="text-fm-success hover:brightness-75 ml-3" aria-label="Dismiss">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -735,6 +743,7 @@ export default function KBPage() {
                   onOpen={handleOpenDraft}
                   onRefresh={loadDrafts}
                   onScan={handleScan}
+                  onDismissScan={() => setScanResult(null)}
                   scanning={scanning}
                   scanResult={scanResult}
                 />
