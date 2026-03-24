@@ -31,6 +31,7 @@ export {
   translateConversionError,
   createRunbookManually,
   listAllDrafts,
+  scanForRunbooks,
   ConversionAPIError,
 } from './conversion';
 

@@ -293,6 +293,33 @@ export async function listAllDrafts(): Promise<DraftSummary[]> {
   return await response.json();
 }
 
+export interface ScanResult {
+  discovered: number;
+  skipped: number;
+  errors: string[];
+  drafts: Array<{
+    draft_id: string;
+    title: string;
+    runbook_id: string;
+    scope: string;
+    validation_passed: boolean;
+    quality_score: number;
+    file_path: string;
+  }>;
+}
+
+/**
+ * Scan data/knowledge/ for runbook files not tracked in the database.
+ */
+export async function scanForRunbooks(): Promise<ScanResult> {
+  const response = await makeAuthenticatedRequest(`${CONVERT_BASE}/scan`, {
+    method: 'POST',
+  });
+
+  await handleAPIResponse(response, 'Failed to scan for runbooks');
+  return await response.json();
+}
+
 /**
  * Get conversion job details with all drafts.
  */

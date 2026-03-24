@@ -8,6 +8,7 @@ import {
   createRunbookManually,
   listAllDrafts,
   getConversion,
+  scanForRunbooks,
   ConversionAPIError,
 } from '../lib/knowledge/conversion';
 import type {
@@ -214,26 +215,14 @@ interface DraftsTabProps {
   loading: boolean;
   onOpen: (conversionId: string) => void;
   onRefresh: () => void;
+  onScan: () => Promise<void>;
+  scanning: boolean;
+  scanResult: string | null;
 }
 
-function DraftsTab({ drafts, loading, onOpen }: DraftsTabProps) {
+function DraftsTab({ drafts, loading, onOpen, onScan, scanning, scanResult }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
   const verifiedDrafts = drafts.filter((d) => d.status === 'verified');
-
-  if (loading) {
-    return <p className="text-sm text-fm-text-tertiary py-8 text-center">Loading drafts...</p>;
-  }
-
-  if (drafts.length === 0) {
-    return (
-      <div className="py-12 text-center">
-        <p className="text-fm-text-secondary mb-1">No draft runbooks yet.</p>
-        <p className="text-sm text-fm-text-tertiary">
-          Use <strong>+ New</strong> to convert a document or write a runbook from scratch.
-        </p>
-      </div>
-    );
-  }
 
   const gradeColor: Record<string, string> = {
     A: 'text-fm-success', B: 'text-fm-success', C: 'text-fm-warning', D: 'text-fm-warning', F: 'text-fm-critical',
@@ -273,21 +262,58 @@ function DraftsTab({ drafts, loading, onOpen }: DraftsTabProps) {
   };
 
   return (
-    <div className="space-y-2">
-      {pendingDrafts.length > 0 && (
-        <div>
-          <p className="text-xs font-medium text-fm-text-tertiary uppercase tracking-wide mb-2">
-            Pending Review ({pendingDrafts.length})
-          </p>
-          <div className="space-y-2">{pendingDrafts.map(renderDraftRow)}</div>
+    <div>
+      {/* Scan bar */}
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-fm-text-tertiary">
+          {pendingDrafts.length} pending, {verifiedDrafts.length} verified
+        </p>
+        <button
+          onClick={onScan}
+          disabled={scanning}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors disabled:opacity-50"
+          title="Scan data/knowledge/ for runbook files not yet tracked"
+        >
+          <svg className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {scanning ? 'Scanning...' : 'Scan for runbooks'}
+        </button>
+      </div>
+
+      {scanResult && (
+        <div className="mb-4 text-sm text-fm-success bg-fm-success-bg border border-fm-success-border rounded-fm-btn p-3">
+          {scanResult}
         </div>
       )}
-      {verifiedDrafts.length > 0 && (
-        <div className={pendingDrafts.length > 0 ? 'mt-4' : ''}>
-          <p className="text-xs font-medium text-fm-text-tertiary uppercase tracking-wide mb-2">
-            Verified ({verifiedDrafts.length})
+
+      {loading ? (
+        <p className="text-sm text-fm-text-tertiary py-8 text-center">Loading drafts...</p>
+      ) : drafts.length === 0 ? (
+        <div className="py-12 text-center">
+          <p className="text-fm-text-secondary mb-1">No draft runbooks yet.</p>
+          <p className="text-sm text-fm-text-tertiary">
+            Use <strong>+ New</strong> to create runbooks, or <strong>Scan for runbooks</strong> to discover files in data/knowledge/.
           </p>
-          <div className="space-y-2">{verifiedDrafts.map(renderDraftRow)}</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {pendingDrafts.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-fm-text-tertiary uppercase tracking-wide mb-2">
+                Pending Review ({pendingDrafts.length})
+              </p>
+              <div className="space-y-2">{pendingDrafts.map(renderDraftRow)}</div>
+            </div>
+          )}
+          {verifiedDrafts.length > 0 && (
+            <div className={pendingDrafts.length > 0 ? 'mt-4' : ''}>
+              <p className="text-xs font-medium text-fm-text-tertiary uppercase tracking-wide mb-2">
+                Verified ({verifiedDrafts.length})
+              </p>
+              <div className="space-y-2">{verifiedDrafts.map(renderDraftRow)}</div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -472,6 +498,26 @@ export default function KBPage() {
   // Drafts
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
+
+  const handleScan = async () => {
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const result = await scanForRunbooks();
+      if (result.discovered > 0) {
+        setScanResult(`Discovered ${result.discovered} new runbook${result.discovered !== 1 ? 's' : ''} on disk.`);
+        loadDrafts();
+      } else {
+        setScanResult('No new runbook files found.');
+      }
+    } catch {
+      setScanResult('Scan failed. Check that data/knowledge/ exists.');
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const loadDrafts = useCallback(async () => {
     setDraftsLoading(true);
@@ -688,6 +734,9 @@ export default function KBPage() {
                   loading={draftsLoading}
                   onOpen={handleOpenDraft}
                   onRefresh={loadDrafts}
+                  onScan={handleScan}
+                  scanning={scanning}
+                  scanResult={scanResult}
                 />
               )}
             </div>
