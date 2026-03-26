@@ -77,7 +77,7 @@ describe('useCaseList', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
-      await result.current.archiveById('c1');
+      await result.current.archiveById('c1', 'archived');
     });
 
     expect(mockArchiveCase).toHaveBeenCalledWith('c1', 'archived');

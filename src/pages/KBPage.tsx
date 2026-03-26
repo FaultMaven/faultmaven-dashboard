@@ -122,6 +122,7 @@ function ScopeBadge({ scope }: { scope: string }) {
 function DocumentsTab({ canUpload }: { canUpload: boolean }) {
   const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, loadPage, deleteById } =
     useKBList('user');
+  const { deployment } = useAuth();
 
   const [scopeFilter, setScopeFilter] = useState<string>('all');
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
@@ -172,8 +173,12 @@ function DocumentsTab({ canUpload }: { canUpload: boolean }) {
           >
             <option value="all">All scopes</option>
             <option value="personal">Personal</option>
-            <option value="team">Team</option>
-            <option value="global">Global</option>
+            {deployment !== 'local' && (
+              <>
+                <option value="team">Team</option>
+                <option value="global">Global</option>
+              </>
+            )}
           </select>
         </div>
         <div className="text-sm text-fm-text-tertiary">{scopedDocuments.length} documents</div>

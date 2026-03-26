@@ -51,8 +51,8 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
   }, []);
 
   const archiveById = useCallback(
-    async (caseId: string) => {
-      await archiveCase(caseId);
+    async (caseId: string, reason?: string) => {
+      await archiveCase(caseId, reason);
       await loadPage(page);
     },
     [loadPage, page]

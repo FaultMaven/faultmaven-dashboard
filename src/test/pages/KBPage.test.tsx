@@ -45,7 +45,7 @@ describe('KBPage — tab visibility by deployment/role', () => {
     vi.clearAllMocks();
   });
 
-  it('local user sees no tab bar (single personal tab)', async () => {
+  it('local user does not see Team and Global options in scope filter', async () => {
     mockUseAuth.mockReturnValue({
       deployment: 'local',
       role: 'individual',
@@ -56,11 +56,11 @@ describe('KBPage — tab visibility by deployment/role', () => {
       renderPage();
     });
 
-    expect(screen.queryByRole('button', { name: /Team KB/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Global KB/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Team/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Global/i })).not.toBeInTheDocument();
   });
 
-  it('cloud standard_user sees Personal, Team, Global tabs', async () => {
+  it('cloud standard_user sees Personal, Team, Global options in scope filter', async () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
       role: 'standard_user',
@@ -71,9 +71,9 @@ describe('KBPage — tab visibility by deployment/role', () => {
       renderPage();
     });
 
-    expect(screen.getByRole('button', { name: /My Knowledge Base/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Team KB/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Global KB/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Personal/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Team/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Global/i })).toBeInTheDocument();
   });
 
   it('archive confirm dialog uses Archive wording (not Delete)', async () => {
