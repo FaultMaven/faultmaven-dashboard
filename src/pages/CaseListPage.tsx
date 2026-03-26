@@ -122,7 +122,7 @@ export default function CaseListPage() {
                         {canArchive && (
                           <button
                             onClick={() => setConfirmArchiveId(c.case_id)}
-                            className="text-xs text-fm-text-tertiary hover:text-fm-warning transition-colors"
+                            className="text-xs text-fm-warning/70 hover:text-fm-warning transition-colors"
                           >
                             Archive
                           </button>

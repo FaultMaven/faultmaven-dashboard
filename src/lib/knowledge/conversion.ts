@@ -54,12 +54,16 @@ export interface QualityScore {
   comprehensiveness: number;
 }
 
+export type SourceType = 'document' | 'case';
+
 export interface ConversionDraft {
   draft_id: string;
   runbook_id: string;
   title: string;
   scope: string;
   status: 'draft' | 'verified' | 'deleted';
+  source_type: SourceType;
+  case_id: string | null;
   validation: ValidationResult;
   quality_score: QualityScore;
   file_path: string;
@@ -105,6 +109,8 @@ export interface DraftSummary {
   title: string;
   scope: string;
   status: 'draft' | 'verified';
+  source_type: SourceType;
+  case_id: string | null;
   validation_passed: boolean;
   quality_score: number | null;
   quality_details: QualityScore | null;
@@ -414,5 +420,60 @@ export async function createRunbookManually(data: {
   );
 
   await handleAPIResponse(response, 'Failed to create runbook');
+  return await response.json();
+}
+
+/**
+ * Generate a runbook draft from a resolved case.
+ */
+export async function generateCaseRunbook(
+  caseId: string,
+  scope = 'global',
+  teamId?: string,
+): Promise<ConversionResponse> {
+  const body: Record<string, string> = { case_id: caseId, scope };
+  if (teamId) body.team_id = teamId;
+
+  const response = await makeAuthenticatedRequest(
+    `${CONVERT_BASE}/convert-from-case`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!response.ok) {
+    let errorBody: { detail?: string; error_code?: string } | null = null;
+    try {
+      errorBody = await response.json();
+    } catch {
+      // not JSON
+    }
+    const info = translateConversionError(errorBody, 'Case runbook generation failed');
+    throw new ConversionAPIError(
+      info.message,
+      response.status,
+      errorBody?.error_code || 'UNKNOWN',
+      info,
+    );
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get the conversion job and drafts for a specific case.
+ * Returns null if no conversion exists for this case.
+ */
+export async function getCaseRunbookDraft(
+  caseId: string,
+): Promise<ConversionResponse | null> {
+  const response = await makeAuthenticatedRequest(
+    `${CONVERT_BASE}/conversions/by-case/${caseId}`,
+  );
+
+  if (response.status === 404) return null;
+  await handleAPIResponse(response, 'Failed to get case runbook');
   return await response.json();
 }

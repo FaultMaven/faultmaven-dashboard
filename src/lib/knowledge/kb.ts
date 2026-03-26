@@ -60,6 +60,18 @@ export async function listDocuments(params?: {
 }
 
 /**
+ * Get a single document by ID (includes content).
+ */
+export async function getDocument(documentId: string): Promise<KBDocument> {
+  const response = await makeAuthenticatedRequest(`${KB_BASE}/${documentId}`, {
+    method: 'GET',
+  });
+
+  await handleAPIResponse(response, 'Failed to get document');
+  return await response.json();
+}
+
+/**
  * Delete (archive) a document from the knowledge base.
  * Requires admin privileges on the backend.
  */

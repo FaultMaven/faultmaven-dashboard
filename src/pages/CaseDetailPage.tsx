@@ -112,9 +112,14 @@ export default function CaseDetailPage() {
         <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h2 className="text-fm-heading font-bold text-fm-text-primary mb-2">
+              <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">
                 {caseDetail.title || 'Untitled Case'}
               </h2>
+              {caseDetail.description && (
+                <p className="text-sm text-fm-text-secondary mb-2 line-clamp-2">
+                  {caseDetail.description}
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-3">
                 <CaseStatusBadge status={caseDetail.status} />
                 <MilestoneProgress
@@ -150,34 +155,36 @@ export default function CaseDetailPage() {
           <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
         </div>
 
-        {/* Annotation panel — read-only for terminal cases */}
-        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
-          <h3 className="text-base font-semibold text-fm-text-primary mb-3">Resolution Notes</h3>
-          <textarea
-            value={annotation.resolution_notes ?? ''}
-            onChange={(e) => setAnnotation({ ...annotation, resolution_notes: e.target.value })}
-            className={`${inputClass} min-h-[100px] resize-y`}
-            placeholder="Add resolution notes, root cause findings, or follow-up actions..."
-            disabled={caseDetail.status === 'closed'}
-          />
-          {annotationError && (
-            <p className="text-fm-critical text-xs mt-2">{annotationError}</p>
-          )}
-          {caseDetail.status !== 'closed' && (
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                onClick={handleSaveAnnotation}
-                disabled={savingAnnotation}
-                className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
-              >
-                {savingAnnotation ? 'Saving...' : 'Save Notes'}
-              </button>
-              {annotationSaved && (
-                <span className="text-fm-success text-sm">Saved</span>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Resolution Notes — only for terminal cases */}
+        {caseDetail.is_terminal && (
+          <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
+            <h3 className="text-base font-semibold text-fm-text-primary mb-3">Resolution Notes</h3>
+            <textarea
+              value={annotation.resolution_notes ?? ''}
+              onChange={(e) => setAnnotation({ ...annotation, resolution_notes: e.target.value })}
+              className={`${inputClass} min-h-[100px] resize-y`}
+              placeholder="Add resolution notes, root cause findings, or follow-up actions..."
+              disabled={caseDetail.status === 'closed'}
+            />
+            {annotationError && (
+              <p className="text-fm-critical text-xs mt-2">{annotationError}</p>
+            )}
+            {caseDetail.status !== 'closed' && (
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={handleSaveAnnotation}
+                  disabled={savingAnnotation}
+                  className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
+                >
+                  {savingAnnotation ? 'Saving...' : 'Save Notes'}
+                </button>
+                {annotationSaved && (
+                  <span className="text-fm-success text-sm">Saved</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       <ConfirmDialog

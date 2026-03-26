@@ -122,6 +122,18 @@ export interface RunbookRecommendation {
   reason: string;
 }
 
+// Case issue (structured investigation outcome for Issue tab)
+export interface CaseIssue {
+  problem_statement: string;
+  root_cause: string | null;
+  solutions: Array<{ description: string; verified: boolean }>;
+  validated_hypotheses: string[];
+  refuted_hypotheses: string[];
+  milestones_completed: string[];
+  severity: string | null;
+  resolution_time: string | null;
+}
+
 // Knowledge suggestion types
 export type SuggestionStatus = 'pending_review' | 'approved' | 'rejected' | 'draft';
 export type PIIScanStatus = 'not_scanned' | 'scanning' | 'clean' | 'pii_detected' | 'remediated' | 'scan_failed';

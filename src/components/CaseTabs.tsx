@@ -4,8 +4,10 @@ import { getCaseMessages, getCaseEvidence } from '../lib/api';
 import type { CaseDetail, CaseMessage, CaseEvidenceFile } from '../types/cases';
 import { ReportTab } from './ReportTab';
 import { KnowledgeTab } from './KnowledgeTab';
+import { IssueTab } from './IssueTab';
+import { RunbookTab } from './RunbookTab';
 
-type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'knowledge';
+type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue' | 'runbook' | 'knowledge';
 
 interface CaseTabsProps {
   caseId: string;
@@ -129,6 +131,10 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
     { id: 'evidence', label: 'Evidence' },
     { id: 'hypotheses', label: 'Hypotheses' },
     { id: 'report', label: 'Report' },
+    ...(caseDetail.status === 'resolved' ? [
+      { id: 'issue' as Tab, label: 'Issue' },
+      { id: 'runbook' as Tab, label: 'Runbook' },
+    ] : []),
     ...(caseDetail.is_terminal ? [{ id: 'knowledge' as Tab, label: 'Knowledge' }] : []),
   ];
 
@@ -154,6 +160,8 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
       {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
       {activeTab === 'hypotheses' && <HypothesesTab caseDetail={caseDetail} />}
       {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
+      {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
+      {activeTab === 'runbook' && <RunbookTab caseId={caseId} caseDetail={caseDetail} />}
       {activeTab === 'knowledge' && <KnowledgeTab caseId={caseId} caseDetail={caseDetail} />}
     </div>
   );

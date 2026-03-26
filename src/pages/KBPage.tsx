@@ -223,7 +223,6 @@ interface DraftsTabProps {
 
 function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, scanResult }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
-  const verifiedDrafts = drafts.filter((d) => d.status === 'verified');
 
   const gradeColor: Record<string, string> = {
     A: 'text-fm-success', B: 'text-fm-success', C: 'text-fm-warning', D: 'text-fm-warning', F: 'text-fm-critical',
@@ -244,6 +243,15 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
           <p className="text-xs text-fm-text-tertiary">{d.runbook_id}</p>
         </div>
         <ScopeBadge scope={d.scope} />
+        {d.source_type === 'case' ? (
+          <span className="text-xs px-1.5 py-0.5 rounded-fm-chip bg-fm-accent/10 text-fm-accent border border-fm-accent/20">
+            case
+          </span>
+        ) : (
+          <span className="text-xs px-1.5 py-0.5 rounded-fm-chip bg-fm-elevated text-fm-text-tertiary border border-fm-border">
+            doc
+          </span>
+        )}
         <span className={`text-xs font-mono font-medium ${gradeColor[grade] || 'text-fm-text-tertiary'}`}>
           {score}/{grade}
         </span>
@@ -251,11 +259,6 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
           <svg className="w-4 h-4 text-fm-critical flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Validation errors">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>
-        )}
-        {d.status === 'verified' && (
-          <span className="text-xs px-2 py-0.5 rounded-fm-chip bg-fm-success-bg text-fm-success">
-            verified
-          </span>
         )}
         <svg className="w-4 h-4 text-fm-text-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -269,7 +272,7 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
       {/* Scan bar */}
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-fm-text-tertiary">
-          {pendingDrafts.length} pending, {verifiedDrafts.length} verified
+          {pendingDrafts.length} draft{pendingDrafts.length !== 1 ? 's' : ''} pending review
         </p>
         <button
           onClick={onScan}
@@ -304,24 +307,16 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
             Use <strong>+ New</strong> to create runbooks, or <strong>Scan for runbooks</strong> to discover files in data/knowledge/.
           </p>
         </div>
+      ) : pendingDrafts.length === 0 ? (
+        <div className="py-12 text-center">
+          <p className="text-fm-text-secondary mb-1">All drafts have been verified.</p>
+          <p className="text-sm text-fm-text-tertiary">
+            Verified runbooks appear in the <strong>Documents</strong> tab.
+          </p>
+        </div>
       ) : (
         <div className="space-y-2">
-          {pendingDrafts.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-fm-text-tertiary uppercase tracking-wide mb-2">
-                Pending Review ({pendingDrafts.length})
-              </p>
-              <div className="space-y-2">{pendingDrafts.map(renderDraftRow)}</div>
-            </div>
-          )}
-          {verifiedDrafts.length > 0 && (
-            <div className={pendingDrafts.length > 0 ? 'mt-4' : ''}>
-              <p className="text-xs font-medium text-fm-text-tertiary uppercase tracking-wide mb-2">
-                Verified ({verifiedDrafts.length})
-              </p>
-              <div className="space-y-2">{verifiedDrafts.map(renderDraftRow)}</div>
-            </div>
-          )}
+          {pendingDrafts.map(renderDraftRow)}
         </div>
       )}
     </div>

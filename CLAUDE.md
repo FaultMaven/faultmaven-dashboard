@@ -63,9 +63,13 @@ src/
 │   └── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
 ├── components/               # Reusable UI components
 │   ├── PageHeader.tsx        # Top navigation bar
-│   ├── CaseTabs.tsx          # Tab container (Transcript, Evidence, Hypotheses, Report, Knowledge)
+│   ├── CaseTabs.tsx          # Tab container (Transcript, Evidence, Hypotheses, Report, Issue, Runbook, Knowledge)
 │   ├── ReportTab.tsx         # Report type cards, runbook recommendation, preview
+│   ├── IssueTab.tsx          # Structured investigation outcome (resolved cases only)
+│   ├── RunbookTab.tsx        # Case-to-runbook draft generation, edit, verify (resolved cases only)
 │   ├── KnowledgeTab.tsx      # Knowledge extraction and review workflow
+│   ├── DocumentCard.tsx      # Expandable document card with content preview
+│   ├── DraftEditor.tsx       # Runbook draft editor with validation/quality display
 │   ├── CaseStatusBadge.tsx   # Status badge with phase colors
 │   ├── MilestoneProgress.tsx # Milestone progress indicator
 │   ├── ConfirmDialog.tsx     # Reusable confirmation modal
@@ -124,10 +128,13 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
 - **AdminKBPage**: Organization KB management (admin only)
 - **CaseListPage**: Paginated case table with status/date/search filters
-- **CaseDetailPage**: Case header + tabbed content (Transcript, Evidence, Hypotheses, Report, Knowledge) + annotation panel
+- **CaseDetailPage**: Case header (title + problem description) + tabbed content + resolution notes (terminal cases only)
 - **ReportTab**: Report type cards (3 horizontal), runbook recommendation panel with similarity check, report preview with download/regenerate
-- **KnowledgeTab**: Extract trigger with source stats, article review (editable title/content, PII scan pipeline, approve/reject/edit workflow). Only shown for terminal cases.
-- **CaseTabs**: Tab container with URL query param support (`?tab=report`, `?tab=knowledge`) for cross-frontend linking from copilot
+- **IssueTab**: Read-only structured view of investigation outcome (problem, milestones, root cause, solutions). Resolved cases only.
+- **RunbookTab**: Case-to-runbook draft generation via `POST /knowledge/convert-from-case`. Shows generate button, then embeds DraftEditor for edit/verify. Resolved cases only.
+- **KnowledgeTab**: Extract trigger with source stats, article review (editable title/content, PII scan pipeline, approve/reject/edit workflow). Terminal cases only.
+- **CaseTabs**: Tab container with URL query param support (`?tab=report`, `?tab=knowledge`, `?tab=issue`, `?tab=runbook`) for cross-frontend linking from copilot
+- **DocumentCard**: Expandable card — click to load and display full document content from ChromaDB
 - **Storage Adapter**: Browser extension API compatibility layer for web
 - **Error Handling**: Graceful error display and recovery
 
