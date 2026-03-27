@@ -14,14 +14,13 @@ interface RunbookTabProps {
   caseDetail: CaseDetail;
 }
 
-export function RunbookTab({ caseId, caseDetail }: RunbookTabProps) {
+export function RunbookTab({ caseId }: RunbookTabProps) {
   const [conversion, setConversion] = useState<ConversionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [verified, setVerified] = useState(false);
 
   useEffect(() => {
     loadExistingDraft();
@@ -33,9 +32,6 @@ export function RunbookTab({ caseId, caseDetail }: RunbookTabProps) {
     try {
       const result = await getCaseRunbookDraft(caseId);
       setConversion(result);
-      if (result?.drafts.some((d) => d.status === 'verified')) {
-        setVerified(true);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load runbook draft');
     } finally {
@@ -80,7 +76,6 @@ export function RunbookTab({ caseId, caseDetail }: RunbookTabProps) {
     setError(null);
     try {
       await verifyDraft(conversion.conversion_id, draft.draft_id);
-      setVerified(true);
       await loadExistingDraft();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');

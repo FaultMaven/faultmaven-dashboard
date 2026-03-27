@@ -80,7 +80,7 @@ describe('useCaseList', () => {
       await result.current.archiveById('c1', 'archived');
     });
 
-    expect(mockArchiveCase).toHaveBeenCalledWith('c1', 'archived');
+    expect(mockArchiveCase).toHaveBeenCalledWith('c1');
     expect(mockListCases).toHaveBeenCalledTimes(2); // initial + reload
   });
 
