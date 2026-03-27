@@ -689,7 +689,7 @@ export default function KBPage() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">Knowledge Base</h2>
-            <p className="text-fm-text-secondary">Manage runbooks, documentation, and troubleshooting guides.</p>
+            <p className="text-fm-text-secondary">Build and maintain your troubleshooting runbooks — the knowledge FaultMaven draws on during investigations.</p>
           </div>
           {canUpload && !overlayMode && (
             <NewDropdown
@@ -733,7 +733,7 @@ export default function KBPage() {
                     : 'text-fm-text-tertiary border-transparent hover:text-fm-text-primary'
                 }`}
               >
-                Documents
+                Runbooks
               </button>
               <button
                 onClick={() => setActiveTab('drafts')}

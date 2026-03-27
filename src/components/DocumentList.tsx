@@ -35,18 +35,13 @@ export function DocumentList({
           />
         </svg>
         <p className="text-fm-text-secondary font-medium mb-2">{emptyMessage}</p>
-        <p className="text-sm text-fm-text-tertiary">Upload your first document to get started</p>
+        <p className="text-sm text-fm-text-tertiary">Add your first runbook to get started</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-lg font-semibold text-fm-text-primary">
-          Documents {totalCount > 0 && `(${totalCount})`}
-        </h3>
-      </div>
       {documents.map((doc) => (
         <DocumentCard key={doc.document_id} document={doc} onDelete={onDelete} />
       ))}

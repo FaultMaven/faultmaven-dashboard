@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { getDocument } from '../lib/knowledge/kb';
 
 export interface DocumentCardData {
@@ -27,7 +30,6 @@ export function DocumentCard({ document, onDelete, actionLabel = 'Archive' }: Do
       setExpanded(false);
       return;
     }
-    // Load content on first expand if not already loaded
     if (!content) {
       setLoadingContent(true);
       try {
@@ -95,13 +97,28 @@ export function DocumentCard({ document, onDelete, actionLabel = 'Archive' }: Do
       </div>
 
       {expanded && (
-        <div className="border-t border-fm-border px-4 py-4">
+        <div className="border-t border-fm-border px-6 py-4">
           {loadingContent ? (
             <p className="text-sm text-fm-text-tertiary">Loading content...</p>
+          ) : content ? (
+            <div className="prose prose-sm prose-invert max-w-none max-h-[32rem] overflow-y-auto
+              prose-headings:text-fm-text-primary prose-headings:font-semibold
+              prose-h1:text-lg prose-h2:text-base prose-h3:text-sm
+              prose-p:text-fm-text-secondary prose-p:leading-relaxed
+              prose-li:text-fm-text-secondary
+              prose-strong:text-fm-text-primary
+              prose-code:text-fm-accent prose-code:bg-fm-surface-alt prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+              prose-pre:bg-fm-surface-alt prose-pre:border prose-pre:border-fm-border prose-pre:rounded-fm-input
+              prose-a:text-fm-accent prose-a:no-underline hover:prose-a:underline
+              prose-table:text-sm prose-th:text-fm-text-primary prose-td:text-fm-text-secondary
+              prose-hr:border-fm-border"
+            >
+              <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                {content}
+              </Markdown>
+            </div>
           ) : (
-            <pre className="text-xs text-fm-text-primary whitespace-pre-wrap font-mono max-h-96 overflow-y-auto bg-fm-surface-alt rounded-fm-input p-3">
-              {content || 'No content available.'}
-            </pre>
+            <p className="text-sm text-fm-text-tertiary">No content available.</p>
           )}
         </div>
       )}
