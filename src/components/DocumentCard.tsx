@@ -4,6 +4,11 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { getDocument } from '../lib/knowledge/kb';
 
+/** Strip YAML frontmatter (---...---) from markdown content before rendering. */
+function stripFrontmatter(md: string): string {
+  return md.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '');
+}
+
 export interface DocumentCardData {
   document_id: string;
   title: string;
@@ -107,14 +112,14 @@ export function DocumentCard({ document, onDelete, actionLabel = 'Archive' }: Do
               prose-p:text-fm-text-secondary prose-p:leading-relaxed
               prose-li:text-fm-text-secondary
               prose-strong:text-fm-text-primary
-              prose-code:text-fm-accent prose-code:bg-fm-surface-alt prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+              prose-code:text-fm-text-primary prose-code:bg-fm-elevated prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-normal
               prose-pre:bg-fm-surface-alt prose-pre:border prose-pre:border-fm-border prose-pre:rounded-fm-input
               prose-a:text-fm-accent prose-a:no-underline hover:prose-a:underline
               prose-table:text-sm prose-th:text-fm-text-primary prose-td:text-fm-text-secondary
               prose-hr:border-fm-border"
             >
               <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {content}
+                {stripFrontmatter(content)}
               </Markdown>
             </div>
           ) : (
