@@ -83,7 +83,9 @@ export function DocumentCard({ document, onDelete, onUpdated, actionLabel = 'Arc
       setEditing(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
-      onUpdated?.();
+      // Don't call onUpdated() here — it triggers a list re-fetch which
+      // remounts this component and loses the local content state.
+      // The list metadata (title, tags) didn't change, so no refresh needed.
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
