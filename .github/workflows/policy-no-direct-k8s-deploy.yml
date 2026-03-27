@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Block direct K8s deploy logic in service repo workflows
         run: |
@@ -22,7 +22,7 @@ jobs:
           PATTERN='(kubectl[[:space:]]|kustomize[[:space:]]|runs-on:[[:space:]]*\\[self-hosted|faultmaven-enterprise-infra)'
 
           # Exclude this policy file itself.
-          FILES=$(ls -1 ${WORKFLOW_DIR}/*.yml ${WORKFLOW_DIR}/*.yaml 2>/dev/null | grep -v "policy-no-direct-k8s-deploy")
+          FILES=$(find "${WORKFLOW_DIR}" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) ! -name 'policy-no-direct-k8s-deploy*' 2>/dev/null || true)
 
           MATCHED=false
           for f in $FILES; do
