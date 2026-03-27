@@ -200,6 +200,7 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
         loading={loading}
         totalCount={scopedDocuments.length}
         onDelete={canUpload ? (id) => setConfirmArchiveId(id) : () => {}}
+        onUpdated={() => loadPage(page)}
         emptyMessage="No documents in your knowledge base yet."
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />

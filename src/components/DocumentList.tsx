@@ -6,6 +6,7 @@ interface DocumentListProps {
   totalCount: number;
   emptyMessage?: string;
   onDelete: (id: string) => void;
+  onUpdated?: () => void;
 }
 
 export function DocumentList({
@@ -14,6 +15,7 @@ export function DocumentList({
   totalCount,
   emptyMessage = 'No documents yet',
   onDelete,
+  onUpdated,
 }: DocumentListProps) {
   if (loading) {
     return (
@@ -43,7 +45,7 @@ export function DocumentList({
   return (
     <div className="space-y-3">
       {documents.map((doc) => (
-        <DocumentCard key={doc.document_id} document={doc} onDelete={onDelete} />
+        <DocumentCard key={doc.document_id} document={doc} onDelete={onDelete} onUpdated={onUpdated} />
       ))}
     </div>
   );

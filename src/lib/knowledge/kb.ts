@@ -72,6 +72,24 @@ export async function getDocument(documentId: string): Promise<KBDocument> {
 }
 
 /**
+ * Update a document's content (and optionally metadata).
+ * Triggers re-embedding in ChromaDB so vectors match the new content.
+ */
+export async function updateDocument(
+  documentId: string,
+  updates: { content?: string; title?: string; tags?: string },
+): Promise<KBDocument> {
+  const response = await makeAuthenticatedRequest(`${KB_BASE}/${documentId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+
+  await handleAPIResponse(response, 'Failed to update document');
+  return await response.json();
+}
+
+/**
  * Delete (archive) a document from the knowledge base.
  * Requires admin privileges on the backend.
  */
