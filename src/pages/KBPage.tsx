@@ -248,13 +248,9 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
           <p className="text-xs text-fm-text-tertiary">{d.runbook_id}</p>
         </div>
         <ScopeBadge scope={d.scope} />
-        {d.source_type === 'case' ? (
+        {d.source_type === 'case' && (
           <span className="text-xs px-1.5 py-0.5 rounded-fm-chip bg-fm-accent/10 text-fm-accent border border-fm-accent/20">
-            case
-          </span>
-        ) : (
-          <span className="text-xs px-1.5 py-0.5 rounded-fm-chip bg-fm-elevated text-fm-text-tertiary border border-fm-border">
-            doc
+            from case
           </span>
         )}
         <span className={`text-xs font-mono font-medium ${gradeColor[grade] || 'text-fm-text-tertiary'}`}>
