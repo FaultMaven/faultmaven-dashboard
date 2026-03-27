@@ -12,7 +12,7 @@ interface DocumentListProps {
 export function DocumentList({
   documents,
   loading,
-  totalCount,
+  totalCount: _totalCount,
   emptyMessage = 'No documents yet',
   onDelete,
   onUpdated,
