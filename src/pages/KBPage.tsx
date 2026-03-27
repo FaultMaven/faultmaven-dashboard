@@ -119,9 +119,14 @@ function ScopeBadge({ scope }: { scope: string }) {
 // Documents Tab Content
 // =============================================================================
 
-function DocumentsTab({ canUpload }: { canUpload: boolean }) {
+function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKey: number }) {
   const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, loadPage, deleteById } =
     useKBList('user');
+
+  // Re-fetch documents when refreshKey changes (e.g., after draft verification)
+  useEffect(() => {
+    if (refreshKey > 0) loadPage(0);
+  }, [refreshKey, loadPage]);
   const { deployment } = useAuth();
 
   const [scopeFilter, setScopeFilter] = useState<string>('all');
@@ -496,6 +501,7 @@ export default function KBPage() {
   const canUpload = deployment === 'local' || isAdmin;
 
   const [activeTab, setActiveTab] = useState<KBTab>('documents');
+  const [docsRefreshKey, setDocsRefreshKey] = useState(0);
 
   // Overlay state (creation/editing flows)
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
@@ -644,6 +650,7 @@ export default function KBPage() {
       await verifyDraft(conversion.conversion_id, confirmVerify.draft_id);
       setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map((d) => d.draft_id === confirmVerify.draft_id ? { ...d, status: 'verified' as const } : d) } : prev);
       loadDrafts();
+      setDocsRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
@@ -746,7 +753,7 @@ export default function KBPage() {
             </div>
 
             <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
-              {activeTab === 'documents' && <DocumentsTab canUpload={canUpload} />}
+              {activeTab === 'documents' && <DocumentsTab canUpload={canUpload} refreshKey={docsRefreshKey} />}
               {activeTab === 'drafts' && (
                 <DraftsTab
                   drafts={drafts}
