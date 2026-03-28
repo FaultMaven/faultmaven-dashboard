@@ -26,7 +26,7 @@ interface DocumentCardProps {
   actionLabel?: string;
 }
 
-export function DocumentCard({ document, onDelete, onUpdated, actionLabel = 'Archive' }: DocumentCardProps) {
+export function DocumentCard({ document, onDelete, actionLabel = 'Archive' }: DocumentCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState<string | null>(document.content || null);
