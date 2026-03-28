@@ -109,7 +109,7 @@ export default function CaseDetailPage() {
         </Link>
 
         {/* Case header */}
-        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
+        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">
@@ -140,7 +140,7 @@ export default function CaseDetailPage() {
           </div>
 
           {/* Meta row */}
-          <div className="mt-4 flex flex-wrap gap-4 text-xs text-fm-text-tertiary">
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-fm-text-tertiary">
             {caseDetail.current_stage && (
               <span>Stage: <span className="text-fm-text-secondary capitalize">{caseDetail.current_stage.replace(/_/g, ' ')}</span></span>
             )}
@@ -151,13 +151,13 @@ export default function CaseDetailPage() {
         </div>
 
         {/* Tabs */}
-        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
+        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
           <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
         </div>
 
         {/* Resolution Notes — only for terminal cases */}
         {caseDetail.is_terminal && (
-          <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
+          <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5">
             <h3 className="text-base font-semibold text-fm-text-primary mb-3">Resolution Notes</h3>
             <textarea
               value={annotation.resolution_notes ?? ''}

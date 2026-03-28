@@ -138,13 +138,13 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
     ...(caseDetail.is_terminal ? [{ id: 'knowledge' as Tab, label: 'Knowledge' }] : []),
   ];
 
-  const tabBtnBase = 'px-4 py-2 text-sm font-medium border-b-2 transition-colors';
+  const tabBtnBase = 'px-3 py-1.5 text-sm font-medium border-b-2 transition-colors';
   const tabActive = 'border-fm-accent text-fm-accent';
   const tabInactive = 'border-transparent text-fm-text-secondary hover:text-fm-text-primary';
 
   return (
     <div>
-      <div className="flex border-b border-fm-border mb-4">
+      <div className="flex border-b border-fm-border mb-3">
         {tabLabels.map(({ id, label }) => (
           <button
             key={id}

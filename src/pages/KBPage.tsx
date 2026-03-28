@@ -152,7 +152,7 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
       setArchiveError(null);
       await deleteById(confirmArchiveId);
     } catch (error) {
-      setArchiveError(error instanceof Error ? error.message : 'Failed to archive document');
+      setArchiveError(error instanceof Error ? error.message : 'Failed to remove runbook');
     } finally {
       setConfirmArchiveId(null);
     }
@@ -166,9 +166,9 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
             type="search"
             defaultValue={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search documents..."
+            placeholder="Search runbooks..."
             className={`max-w-md ${inputClass}`}
-            aria-label="Search documents"
+            aria-label="Search runbooks"
           />
           <select
             value={scopeFilter}
@@ -186,7 +186,7 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
             )}
           </select>
         </div>
-        <div className="text-sm text-fm-text-tertiary">{scopedDocuments.length} documents</div>
+        <div className="text-xs text-fm-text-tertiary">{scopedDocuments.length} runbook{scopedDocuments.length !== 1 ? 's' : ''}</div>
       </div>
 
       {archiveError && (
@@ -201,15 +201,15 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
         totalCount={scopedDocuments.length}
         onDelete={canUpload ? (id) => setConfirmArchiveId(id) : () => {}}
         onUpdated={() => loadPage(page)}
-        emptyMessage="No documents in your knowledge base yet."
+        emptyMessage="No runbooks in your knowledge base yet."
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
       <ConfirmDialog
         isOpen={!!confirmArchiveId}
-        title="Archive Document"
-        message="Archive this document? It will be removed from search results but referenced in past cases."
-        confirmLabel="Archive"
+        title="Remove Runbook"
+        message="Remove this runbook from the knowledge base? It will no longer be available during investigations."
+        confirmLabel="Remove"
         onConfirm={confirmArchive}
         onCancel={() => setConfirmArchiveId(null)}
       />
@@ -247,7 +247,7 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
       <button
         key={d.draft_id}
         onClick={() => onOpen(d.conversion_id)}
-        className="w-full flex items-center gap-4 p-3 text-left border border-fm-border rounded-fm-input hover:border-fm-accent hover:bg-fm-surface-alt transition-colors"
+        className="w-full flex items-center gap-3 px-3 py-2.5 text-left border border-fm-border rounded-fm-input hover:border-fm-accent hover:bg-fm-surface-alt transition-colors"
       >
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-fm-text-primary truncate">{d.title}</p>
@@ -277,8 +277,8 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
   return (
     <div>
       {/* Scan bar */}
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-fm-text-tertiary">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-fm-text-tertiary">
           {pendingDrafts.length} draft{pendingDrafts.length !== 1 ? 's' : ''} pending review
         </p>
         <button
@@ -306,19 +306,19 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
       )}
 
       {loading ? (
-        <p className="text-sm text-fm-text-tertiary py-8 text-center">Loading drafts...</p>
+        <p className="text-xs text-fm-text-tertiary py-6 text-center">Loading drafts...</p>
       ) : drafts.length === 0 ? (
-        <div className="py-12 text-center">
+        <div className="py-10 text-center">
           <p className="text-fm-text-secondary mb-1">No draft runbooks yet.</p>
           <p className="text-sm text-fm-text-tertiary">
             Use <strong>+ New</strong> to create runbooks, or <strong>Scan for runbooks</strong> to discover files in data/knowledge/.
           </p>
         </div>
       ) : pendingDrafts.length === 0 ? (
-        <div className="py-12 text-center">
+        <div className="py-10 text-center">
           <p className="text-fm-text-secondary mb-1">All drafts have been verified.</p>
           <p className="text-sm text-fm-text-tertiary">
-            Verified runbooks appear in the <strong>Documents</strong> tab.
+            Verified runbooks appear in the <strong>Runbooks</strong> tab.
           </p>
         </div>
       ) : (
@@ -725,7 +725,7 @@ export default function KBPage() {
         {/* Tab bar */}
         {!overlayMode && (
           <>
-            <div className="flex gap-1 mb-6 border-b border-fm-border">
+            <div className="flex gap-1 mb-4 border-b border-fm-border">
               <button
                 onClick={() => setActiveTab('documents')}
                 className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
@@ -753,7 +753,7 @@ export default function KBPage() {
               </button>
             </div>
 
-            <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6">
+            <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5">
               {activeTab === 'documents' && <DocumentsTab canUpload={canUpload} refreshKey={docsRefreshKey} />}
               {activeTab === 'drafts' && (
                 <DraftsTab

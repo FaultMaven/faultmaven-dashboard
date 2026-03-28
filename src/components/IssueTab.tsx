@@ -21,10 +21,10 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
   const hasSolution = milestones.includes('solution_verified');
 
   return (
-    <div className="py-2 space-y-6">
+    <div className="py-1 space-y-4">
       {/* Problem Statement */}
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
           Problem Statement
         </h3>
         <p className="text-sm text-fm-text-primary">
@@ -34,7 +34,7 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
 
       {/* Resolution Timeline */}
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
           Resolution
         </h3>
         <div className="flex items-center gap-4 text-sm text-fm-text-secondary">
@@ -57,7 +57,7 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
 
       {/* Milestones */}
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
           Investigation Milestones
         </h3>
         {milestones.length === 0 ? (
@@ -81,7 +81,7 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
 
       {/* Key Findings */}
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
           Key Findings
         </h3>
         <div className="space-y-3 text-sm">
