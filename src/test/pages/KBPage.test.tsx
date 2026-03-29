@@ -45,7 +45,7 @@ describe('KBPage — tab visibility by deployment/role', () => {
     vi.clearAllMocks();
   });
 
-  it('local user does not see Team and Global options in scope filter', async () => {
+  it('local user sees all scope options (Global, Team, Personal)', async () => {
     mockUseAuth.mockReturnValue({
       deployment: 'local',
       role: 'individual',
@@ -56,11 +56,12 @@ describe('KBPage — tab visibility by deployment/role', () => {
       renderPage();
     });
 
-    expect(screen.queryByRole('option', { name: /Team/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /Global/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Global/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Team/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Personal/i })).toBeInTheDocument();
   });
 
-  it('cloud standard_user sees Personal, Team, Global options in scope filter', async () => {
+  it('cloud standard_user sees all scope options', async () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
       role: 'standard_user',
