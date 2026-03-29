@@ -47,6 +47,7 @@ export async function listDocuments(params?: {
   limit?: number;
   offset?: number;
   document_type?: string;
+  scope?: string;
 }): Promise<DocumentListResponse> {
   const queryString = params ? buildQueryParams(params as Record<string, string | number>) : '';
   const url = `${KB_BASE}${queryString ? `?${queryString}` : ''}`;
@@ -111,6 +112,7 @@ export async function listAdminDocuments(params?: {
   limit?: number;
   offset?: number;
   document_type?: string;
+  scope?: string;
 }): Promise<AdminDocumentListResponse> {
   return listDocuments(params) as Promise<AdminDocumentListResponse>;
 }

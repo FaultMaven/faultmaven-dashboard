@@ -120,26 +120,16 @@ function ScopeBadge({ scope }: { scope: string }) {
 // =============================================================================
 
 function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKey: number }) {
-  const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, loadPage, deleteById } =
+  const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
 
   // Re-fetch documents when refreshKey changes (e.g., after draft verification)
   useEffect(() => {
     if (refreshKey > 0) loadPage(0);
   }, [refreshKey, loadPage]);
-  const { deployment } = useAuth();
 
-  const [scopeFilter, setScopeFilter] = useState<string>('all');
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
-
-  // Client-side scope filter (backend already returns only accessible docs)
-  const scopedDocuments = scopeFilter === 'all'
-    ? filteredDocuments
-    : filteredDocuments.filter((d) => {
-        const doc = d as KBDocument;
-        return doc.scope === scopeFilter;
-      });
 
   const handleSearchChange = useMemo(
     () => debounce((value: string) => setSearch(value), 200),
@@ -172,21 +162,17 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
           />
           <select
             value={scopeFilter}
-            onChange={(e) => setScopeFilter(e.target.value)}
-            className={`w-32 ${inputClass}`}
+            onChange={(e) => setScopeFilter(e.target.value as 'all' | 'global' | 'team' | 'personal')}
+            className={`w-44 ${inputClass}`}
             aria-label="Filter by scope"
           >
-            <option value="all">All scopes</option>
-            <option value="personal">Personal</option>
-            {deployment !== 'local' && (
-              <>
-                <option value="team">Team</option>
-                <option value="global">Global</option>
-              </>
-            )}
+            <option value="all">All scopes ({scopeCounts.global + scopeCounts.team + scopeCounts.personal})</option>
+            <option value="global">Global ({scopeCounts.global})</option>
+            <option value="team">Team ({scopeCounts.team})</option>
+            <option value="personal">Personal ({scopeCounts.personal})</option>
           </select>
         </div>
-        <div className="text-xs text-fm-text-tertiary">{scopedDocuments.length} runbook{scopedDocuments.length !== 1 ? 's' : ''}</div>
+        <div className="text-xs text-fm-text-tertiary">{filteredDocuments.length} runbook{filteredDocuments.length !== 1 ? 's' : ''}</div>
       </div>
 
       {archiveError && (
@@ -196,9 +182,9 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
       )}
 
       <DocumentList
-        documents={scopedDocuments as (KBDocument | AdminKBDocument)[]}
+        documents={filteredDocuments as (KBDocument | AdminKBDocument)[]}
         loading={loading}
-        totalCount={scopedDocuments.length}
+        totalCount={filteredDocuments.length}
         onDelete={canUpload ? (id) => setConfirmArchiveId(id) : () => {}}
         onUpdated={() => loadPage(page)}
         emptyMessage="No runbooks in your knowledge base yet."

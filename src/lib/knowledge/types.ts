@@ -28,11 +28,18 @@ export type AdminKBDocument = KBDocument;
 /**
  * Response from document list endpoints
  */
+export interface ScopeCounts {
+  global: number;
+  team: number;
+  personal: number;
+}
+
 export interface DocumentListResponse {
   documents: KBDocument[];
   total_count: number;
   limit: number;
   offset: number;
+  scope_counts?: ScopeCounts;
 }
 
 /**
@@ -43,6 +50,7 @@ export interface AdminDocumentListResponse {
   total_count: number;
   limit: number;
   offset: number;
+  scope_counts?: ScopeCounts;
 }
 
 /**

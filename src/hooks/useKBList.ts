@@ -9,16 +9,26 @@ import {
 } from '../lib/api';
 
 export type KBScope = 'user' | 'admin';
+export type KnowledgeScope = 'all' | 'global' | 'team' | 'personal';
+
+export interface ScopeCounts {
+  global: number;
+  team: number;
+  personal: number;
+}
 
 export interface UseKBListResult<T extends KBDocument | AdminKBDocument> {
   documents: T[];
   filteredDocuments: T[];
   totalCount: number;
+  scopeCounts: ScopeCounts;
   loading: boolean;
   page: number;
   pageSize: number;
   search: string;
+  scopeFilter: KnowledgeScope;
   setSearch: (value: string) => void;
+  setScopeFilter: (value: KnowledgeScope) => void;
   loadPage: (page: number) => Promise<void>;
   deleteById: (id: string) => Promise<void>;
 }
@@ -26,29 +36,41 @@ export interface UseKBListResult<T extends KBDocument | AdminKBDocument> {
 export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocument | AdminKBDocument> {
   const [documents, setDocuments] = useState<(KBDocument | AdminKBDocument)[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [scopeCounts, setScopeCounts] = useState<ScopeCounts>({ global: 0, team: 0, personal: 0 });
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
+  const [scopeFilter, setScopeFilter] = useState<KnowledgeScope>('all');
 
   const loadPage = useCallback(
     async (nextPage: number) => {
       setLoading(true);
       try {
+        const params: { limit: number; offset: number; scope?: string } = {
+          limit: pageSize,
+          offset: nextPage * pageSize,
+        };
+        if (scopeFilter !== 'all') {
+          params.scope = scopeFilter;
+        }
+
+        let response;
         if (scope === 'admin') {
-          const response = await listAdminDocuments({ limit: pageSize, offset: nextPage * pageSize });
-          setDocuments(response.documents);
-          setTotalCount(response.total_count);
+          response = await listAdminDocuments(params);
         } else {
-          const response = await listUserDocuments({ limit: pageSize, offset: nextPage * pageSize });
-          setDocuments(response.documents);
-          setTotalCount(response.total_count);
+          response = await listUserDocuments(params);
+        }
+        setDocuments(response.documents);
+        setTotalCount(response.total_count);
+        if (response.scope_counts) {
+          setScopeCounts(response.scope_counts);
         }
         setPage(nextPage);
       } finally {
         setLoading(false);
       }
     },
-    [scope, pageSize]
+    [scope, scopeFilter, pageSize]
   );
 
   useEffect(() => {
@@ -80,22 +102,15 @@ export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocu
     documents,
     filteredDocuments,
     totalCount,
+    scopeCounts,
     loading,
     page,
     pageSize,
     search,
+    scopeFilter,
     setSearch,
+    setScopeFilter,
     loadPage,
     deleteById,
   };
 }
-
-
-
-
-
-
-
-
-
-
