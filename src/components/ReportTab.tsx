@@ -1,22 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  getCaseReports,
-  generateCaseReport,
-  getReportRecommendations,
-  getCaseReportDownloadUrl,
-} from '../lib/api';
-import type {
-  CaseReport,
-  CaseDetail,
-  ReportType,
-  ReportRecommendation,
-} from '../types/cases';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { getCaseReports, getCaseReportDownloadUrl } from '../lib/api';
+import type { CaseReport, CaseDetail, ReportType } from '../types/cases';
 import config from '../config';
 
-const REPORT_TYPE_META: Record<ReportType, { icon: string; label: string }> = {
-  incident_report: { icon: '\u{1F4CB}', label: 'Incident Report' },
-  post_mortem: { icon: '\u{1F4D8}', label: 'Post Mortem' },
-  runbook: { icon: '\u{1F501}', label: 'Runbook' },
+const REPORT_TYPE_META: Record<ReportType, { label: string }> = {
+  resolution_summary: { label: 'Resolution Summary' },
+  closure_summary: { label: 'Closure Summary' },
+  runbook: { label: 'Runbook' },
 };
 
 function relativeTime(dateStr: string): string {
@@ -37,49 +29,32 @@ interface ReportTabProps {
 
 export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
   const [reports, setReports] = useState<CaseReport[]>([]);
-  const [recommendation, setRecommendation] = useState<ReportRecommendation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState<ReportType | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<CaseReport | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
   const isTerminal = caseDetail.is_terminal;
-  const status = caseDetail.status;
 
   useEffect(() => {
     if (!isTerminal) return;
-    loadData();
+    loadReports();
   }, [caseId, isTerminal]);
 
-  async function loadData() {
+  async function loadReports() {
     setLoading(true);
     setError(null);
     try {
-      const [reportsData, recData] = await Promise.all([
-        getCaseReports(caseId),
-        getReportRecommendations(caseId).catch(() => null),
-      ]);
-      setReports(reportsData);
-      setRecommendation(recData);
+      const data = await getCaseReports(caseId);
+      setReports(data);
+      // Auto-select the first report if available
+      if (data.length > 0 && !selectedReport) {
+        setSelectedReport(data[0]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reports');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleGenerate(type: ReportType) {
-    setGenerating(type);
-    setGenerateError(null);
-    try {
-      await generateCaseReport(caseId, { report_types: [type] });
-      await loadData();
-    } catch (err) {
-      setGenerateError(err instanceof Error ? err.message : 'Failed to generate report');
-    } finally {
-      setGenerating(null);
     }
   }
 
@@ -93,7 +68,7 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
   if (!isTerminal) {
     return (
       <div className="text-fm-text-tertiary text-sm py-4">
-        Reports will be available after the case is resolved or closed.
+        Reports are auto-generated when the case is resolved or closed.
       </div>
     );
   }
@@ -106,183 +81,75 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
     return <div className="text-fm-critical text-sm py-4">{error}</div>;
   }
 
-  const availableTypes: ReportType[] =
-    status === 'resolved'
-      ? ['incident_report', 'post_mortem', 'runbook']
-      : ['incident_report'];
-
-  function getReportForType(type: ReportType): CaseReport | undefined {
-    return reports.find((r) => r.report_type === type);
+  if (reports.length === 0) {
+    return (
+      <div className="text-fm-text-tertiary text-sm py-4">
+        No reports were generated for this case. This can happen for trivial cases with minimal investigation data.
+      </div>
+    );
   }
 
-  const reportsOfType = (type: ReportType) =>
-    reports.filter((r) => r.report_type === type);
+  const proseClasses = `prose prose-sm prose-invert max-w-none max-h-[32rem] overflow-y-auto
+    prose-headings:text-fm-text-primary prose-headings:font-semibold
+    prose-h1:text-lg prose-h2:text-base prose-h3:text-sm
+    prose-p:text-fm-text-secondary prose-p:leading-relaxed
+    prose-li:text-fm-text-secondary
+    prose-strong:text-fm-text-primary
+    prose-code:text-fm-text-primary prose-code:bg-fm-elevated prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-normal
+    prose-pre:bg-fm-surface-alt prose-pre:border prose-pre:border-fm-border prose-pre:rounded-fm-input
+    prose-a:text-fm-accent prose-a:no-underline hover:prose-a:underline
+    prose-table:text-sm prose-th:text-fm-text-primary prose-td:text-fm-text-secondary
+    prose-hr:border-fm-border`;
 
   return (
-    <div className="py-2">
-      {/* Report Type Cards */}
-      <div className="flex gap-4">
-        {availableTypes.map((type) => {
-          const meta = REPORT_TYPE_META[type];
-          const existing = getReportForType(type);
-          const allOfType = reportsOfType(type);
-          const version = allOfType.length;
-          const isGenerating = generating === type;
-          const hasRunbookRec =
-            type === 'runbook' &&
-            recommendation?.runbook_recommendation?.action !== 'generate' &&
-            !existing;
-
-          return (
-            <div
-              key={type}
-              className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4 flex flex-col items-center text-center min-w-0 flex-1"
-            >
-              <span className="text-2xl mb-2">{meta.icon}</span>
-              <p className="text-sm font-medium text-fm-text-primary mb-2">{meta.label}</p>
-
-              {existing ? (
-                <>
-                  <p className="text-xs text-fm-success font-medium">Generated</p>
-                  <p className="text-xs text-fm-text-tertiary mt-0.5">
-                    v{version} &middot; {relativeTime(existing.created_at)}
-                  </p>
-                  <button
-                    onClick={() => handleView(existing)}
-                    className="mt-3 text-xs text-fm-accent hover:underline cursor-pointer"
-                  >
-                    View
-                  </button>
-                </>
-              ) : hasRunbookRec ? (
-                <>
-                  <p className="text-xs text-fm-info font-medium">Recommended</p>
-                  <button
-                    onClick={() =>
-                      previewRef.current?.scrollIntoView({ behavior: 'smooth' })
-                    }
-                    className="mt-3 text-xs text-fm-accent hover:underline cursor-pointer"
-                  >
-                    Review
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs text-fm-text-tertiary">Not yet</p>
-                  <button
-                    onClick={() => handleGenerate(type)}
-                    disabled={isGenerating}
-                    className={`mt-3 bg-fm-accent text-white rounded-fm-btn px-3 py-1.5 text-xs font-medium hover:brightness-110 transition-colors ${
-                      isGenerating ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {isGenerating ? 'Generating...' : 'Generate'}
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {generateError && (
-        <p className="text-fm-critical text-xs mt-2">{generateError}</p>
+    <div className="py-1">
+      {/* Report list */}
+      {reports.length > 1 && (
+        <div className="flex gap-2 mb-3">
+          {reports.map((report) => {
+            const meta = REPORT_TYPE_META[report.report_type as ReportType];
+            const isActive = selectedReport?.report_id === report.report_id;
+            return (
+              <button
+                key={report.report_id}
+                onClick={() => handleView(report)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-fm-btn border transition-colors ${
+                  isActive
+                    ? 'border-fm-accent text-fm-accent bg-fm-accent/10'
+                    : 'border-fm-border text-fm-text-secondary hover:text-fm-text-primary hover:bg-fm-elevated'
+                }`}
+              >
+                {meta?.label || report.report_type.replace(/_/g, ' ')}
+              </button>
+            );
+          })}
+        </div>
       )}
 
-      {/* Runbook Recommendation Panel */}
-      {recommendation &&
-        recommendation.runbook_recommendation.action !== 'generate' &&
-        recommendation.runbook_recommendation.existing_runbook && (
-          <div className="bg-fm-info/5 border border-fm-info/20 rounded-fm-card p-4 mt-4">
-            <div className="flex items-start gap-2">
-              <span className="text-fm-info font-bold text-sm">i</span>
-              <div className="flex-1">
-                <p className="text-sm text-fm-text-primary font-medium">
-                  Similar runbook found
-                  {recommendation.runbook_recommendation.similarity_score != null && (
-                    <span className="text-fm-text-tertiary font-normal">
-                      {' '}
-                      ({Math.round(recommendation.runbook_recommendation.similarity_score * 100)}%
-                      match)
-                    </span>
-                  )}
-                </p>
-                <p className="text-sm text-fm-text-secondary mt-1">
-                  &ldquo;
-                  {recommendation.runbook_recommendation.existing_runbook.report_type.replace(
-                    /_/g,
-                    ' '
-                  )}
-                  &rdquo;
-                </p>
-                <p className="text-xs text-fm-text-tertiary mt-0.5">
-                  {recommendation.runbook_recommendation.reason}
-                </p>
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() =>
-                      handleView(recommendation.runbook_recommendation.existing_runbook!)
-                    }
-                    className="bg-fm-accent text-white rounded-fm-btn px-3 py-1.5 text-xs font-medium hover:brightness-110 transition-colors"
-                  >
-                    Update Existing
-                  </button>
-                  <button
-                    onClick={() => handleGenerate('runbook')}
-                    disabled={generating === 'runbook'}
-                    className={`border border-fm-border text-fm-text-primary rounded-fm-btn px-3 py-1.5 text-xs font-medium hover:bg-fm-elevated transition-colors ${
-                      generating === 'runbook' ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {generating === 'runbook' ? 'Generating...' : 'Create New Runbook Anyway'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-      {/* Report Preview */}
+      {/* Report content */}
       {selectedReport && (
-        <div ref={previewRef} className="bg-fm-surface border border-fm-border rounded-fm-card p-6 mt-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-fm-text-primary">
-              Generated Report: {selectedReport.report_type.replace(/_/g, ' ')}
-            </p>
-            <button
-              onClick={() => setSelectedReport(null)}
-              className="text-xs text-fm-text-tertiary hover:text-fm-text-primary"
-            >
-              Close
-            </button>
-          </div>
-          <p className="text-xs text-fm-text-tertiary mb-3">
-            Generated {relativeTime(selectedReport.created_at)}
-          </p>
-
-          <div className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4 max-h-96 overflow-auto">
-            <pre className="whitespace-pre-wrap font-mono text-xs text-fm-text-secondary">
-              {selectedReport.content}
-            </pre>
-          </div>
-
-          <div className="flex gap-3 mt-4">
+        <div ref={previewRef}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-fm-text-tertiary">
+                Generated {relativeTime(selectedReport.created_at)}
+              </p>
+            </div>
             <a
               href={`${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`}
               download
-              className="border border-fm-border text-fm-text-primary rounded-fm-btn px-3 py-1.5 text-xs font-medium hover:bg-fm-elevated transition-colors inline-flex items-center gap-1"
+              className="text-xs text-fm-accent hover:underline"
             >
               Download
             </a>
-            <button
-              onClick={() => handleGenerate(selectedReport.report_type as ReportType)}
-              disabled={generating !== null}
-              className={`border border-fm-border text-fm-text-primary rounded-fm-btn px-3 py-1.5 text-xs font-medium hover:bg-fm-elevated transition-colors ${
-                generating !== null ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              {generating === selectedReport.report_type ? 'Regenerating...' : 'Regenerate'}
-            </button>
+          </div>
+
+          <div className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4">
+            <div className={proseClasses}>
+              <Markdown remarkPlugins={[remarkGfm]}>
+                {selectedReport.content}
+              </Markdown>
+            </div>
           </div>
         </div>
       )}

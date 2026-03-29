@@ -64,7 +64,7 @@ src/
 ├── components/               # Reusable UI components
 │   ├── PageHeader.tsx        # Top navigation bar
 │   ├── CaseTabs.tsx          # Tab container (Transcript, Evidence, Hypotheses, Report, Issue, Runbook, Knowledge)
-│   ├── ReportTab.tsx         # Report type cards, runbook recommendation, preview
+│   ├── ReportTab.tsx         # View-only display of auto-generated terminal summaries
 │   ├── IssueTab.tsx          # Structured investigation outcome (resolved cases only)
 │   ├── RunbookTab.tsx        # Case-to-runbook draft generation, edit, verify (resolved cases only)
 │   ├── KnowledgeTab.tsx      # Knowledge extraction and review workflow
@@ -129,7 +129,7 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **AdminKBPage**: Organization KB management (admin only)
 - **CaseListPage**: Paginated case table with status/date/search filters
 - **CaseDetailPage**: Case header (title + problem description) + tabbed content + resolution notes (terminal cases only)
-- **ReportTab**: Report type cards (3 horizontal), runbook recommendation panel with similarity check, report preview with download/regenerate
+- **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Read-only structured view of investigation outcome (problem, milestones, root cause, solutions). Resolved cases only.
 - **RunbookTab**: Case-to-runbook draft generation via `POST /knowledge/convert-from-case`. Shows generate button, then embeds DraftEditor for edit/verify. Resolved cases only.
 - **KnowledgeTab**: Extract trigger with source stats, article review (editable title/content, PII scan pipeline, approve/reject/edit workflow). Terminal cases only.

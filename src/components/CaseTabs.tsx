@@ -9,9 +9,20 @@ import { RunbookTab } from './RunbookTab';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue' | 'runbook' | 'knowledge';
 
+interface ResolutionNotesProps {
+  notes: string;
+  onChange: (notes: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  saved: boolean;
+  error: string | null;
+  disabled: boolean;
+}
+
 interface CaseTabsProps {
   caseId: string;
   caseDetail: CaseDetail;
+  resolutionNotes?: ResolutionNotesProps;
 }
 
 function formatBytes(bytes: number) {
@@ -121,7 +132,7 @@ function HypothesesTab({ caseDetail }: { caseDetail: CaseDetail }) {
   );
 }
 
-export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
+export function CaseTabs({ caseId, caseDetail, resolutionNotes }: CaseTabsProps) {
   const [searchParams] = useSearchParams();
   const initialTab = (searchParams.get('tab') as Tab) || 'transcript';
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
@@ -131,11 +142,11 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
     { id: 'evidence', label: 'Evidence' },
     { id: 'hypotheses', label: 'Hypotheses' },
     { id: 'report', label: 'Report' },
-    ...(caseDetail.status === 'resolved' ? [
+    ...(caseDetail.is_terminal ? [
       { id: 'issue' as Tab, label: 'Issue' },
-      { id: 'runbook' as Tab, label: 'Runbook' },
+      ...(caseDetail.status === 'resolved' ? [{ id: 'runbook' as Tab, label: 'Runbook' }] : []),
+      { id: 'knowledge' as Tab, label: 'Knowledge' },
     ] : []),
-    ...(caseDetail.is_terminal ? [{ id: 'knowledge' as Tab, label: 'Knowledge' }] : []),
   ];
 
   const tabBtnBase = 'px-3 py-1.5 text-sm font-medium border-b-2 transition-colors';
@@ -160,7 +171,7 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
       {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
       {activeTab === 'hypotheses' && <HypothesesTab caseDetail={caseDetail} />}
       {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
-      {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
+      {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} resolutionNotes={resolutionNotes} />}
       {activeTab === 'runbook' && <RunbookTab caseId={caseId} caseDetail={caseDetail} />}
       {activeTab === 'knowledge' && <KnowledgeTab caseId={caseId} caseDetail={caseDetail} />}
     </div>

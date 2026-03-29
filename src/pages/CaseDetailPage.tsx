@@ -96,9 +96,6 @@ export default function CaseDetailPage() {
     );
   }
 
-  const inputClass =
-    'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
-
   return (
     <div className="min-h-screen bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
@@ -123,8 +120,8 @@ export default function CaseDetailPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <CaseStatusBadge status={caseDetail.status} />
                 <MilestoneProgress
-                  completed={caseDetail.milestones_completed}
-                  total={caseDetail.total_milestones}
+                  completed={caseDetail.milestones_completed.length}
+                  total={caseDetail.milestones_completed.length + (caseDetail.pending_milestones?.length || 0)}
                 />
               </div>
             </div>
@@ -152,39 +149,21 @@ export default function CaseDetailPage() {
 
         {/* Tabs */}
         <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
-          <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
+          <CaseTabs
+            caseId={caseDetail.case_id}
+            caseDetail={caseDetail}
+            resolutionNotes={caseDetail.is_terminal ? {
+              notes: annotation.resolution_notes ?? '',
+              onChange: (notes) => setAnnotation({ ...annotation, resolution_notes: notes }),
+              onSave: handleSaveAnnotation,
+              saving: savingAnnotation,
+              saved: annotationSaved,
+              error: annotationError,
+              disabled: caseDetail.status === 'closed',
+            } : undefined}
+          />
         </div>
 
-        {/* Resolution Notes — only for terminal cases */}
-        {caseDetail.is_terminal && (
-          <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5">
-            <h3 className="text-base font-semibold text-fm-text-primary mb-3">Resolution Notes</h3>
-            <textarea
-              value={annotation.resolution_notes ?? ''}
-              onChange={(e) => setAnnotation({ ...annotation, resolution_notes: e.target.value })}
-              className={`${inputClass} min-h-[100px] resize-y`}
-              placeholder="Add resolution notes, root cause findings, or follow-up actions..."
-              disabled={caseDetail.status === 'closed'}
-            />
-            {annotationError && (
-              <p className="text-fm-critical text-xs mt-2">{annotationError}</p>
-            )}
-            {caseDetail.status !== 'closed' && (
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={handleSaveAnnotation}
-                  disabled={savingAnnotation}
-                  className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
-                >
-                  {savingAnnotation ? 'Saving...' : 'Save Notes'}
-                </button>
-                {annotationSaved && (
-                  <span className="text-fm-success text-sm">Saved</span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </main>
 
       <ConfirmDialog

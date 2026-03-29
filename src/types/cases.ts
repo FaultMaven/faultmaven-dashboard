@@ -29,10 +29,10 @@ export interface CaseSummary {
   is_terminal: boolean;
 }
 
-export interface CaseDetail extends CaseSummary {
+export interface CaseDetail extends Omit<CaseSummary, 'milestones_completed'> {
   turns_without_progress: number;
   current_stage: InvestigationStage | null;
-  milestones_completed_list: string[];
+  milestones_completed: string[];
   pending_milestones: string[];
   evidence_count: number;
   hypothesis_count: number;
@@ -97,7 +97,7 @@ export interface CaseReport {
 }
 
 // Report generation types
-export type ReportType = 'incident_report' | 'runbook' | 'post_mortem';
+export type ReportType = 'resolution_summary' | 'closure_summary' | 'runbook';
 
 export interface ReportGenerationRequest {
   report_types: ReportType[];
