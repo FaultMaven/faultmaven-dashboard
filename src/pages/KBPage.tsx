@@ -513,12 +513,15 @@ export default function KBPage() {
     setScanResult(null);
     try {
       const result = await scanForRunbooks();
+      loadDrafts();
+      const parts: string[] = [];
       if (result.discovered > 0) {
-        setScanResult(`Discovered ${result.discovered} new runbook${result.discovered !== 1 ? 's' : ''} on disk.`);
-        loadDrafts();
-      } else {
-        setScanResult('No new runbook files found.');
+        parts.push(`Discovered ${result.discovered} new runbook${result.discovered !== 1 ? 's' : ''}`);
       }
+      if (result.reverted > 0) {
+        parts.push(`Restored ${result.reverted} removed runbook${result.reverted !== 1 ? 's' : ''} as draft${result.reverted !== 1 ? 's' : ''}`);
+      }
+      setScanResult(parts.length > 0 ? parts.join('. ') + '.' : 'No new runbook files found.');
     } catch {
       setScanResult('Scan failed. Check that data/knowledge/ exists.');
     } finally {

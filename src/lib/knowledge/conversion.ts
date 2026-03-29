@@ -301,6 +301,7 @@ export async function listAllDrafts(): Promise<DraftSummary[]> {
 
 export interface ScanResult {
   discovered: number;
+  reverted: number;
   skipped: number;
   errors: string[];
   drafts: Array<{
