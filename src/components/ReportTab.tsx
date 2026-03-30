@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getCaseReports, getCaseReportDownloadUrl } from '../lib/api';
+import { makeAuthenticatedRequest } from '../lib/knowledge/client';
 import type { CaseReport, CaseDetail, ReportType } from '../types/cases';
 import config from '../config';
 
@@ -11,8 +12,11 @@ const REPORT_TYPE_META: Record<ReportType, { label: string }> = {
   runbook: { label: 'Runbook' },
 };
 
-function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+function relativeTime(dateStr: string | undefined): string {
+  if (!dateStr) return 'unknown';
+  const ts = new Date(dateStr).getTime();
+  if (isNaN(ts)) return 'unknown';
+  const diff = Date.now() - ts;
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
@@ -132,16 +136,25 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <p className="text-xs text-fm-text-tertiary">
-                Generated {relativeTime(selectedReport.created_at)}
+                Generated {relativeTime(selectedReport.generated_at)}
               </p>
             </div>
-            <a
-              href={`${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`}
-              download
-              className="text-xs text-fm-accent hover:underline"
+            <button
+              onClick={async () => {
+                const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
+                const res = await makeAuthenticatedRequest(url);
+                if (!res.ok) return;
+                const blob = await res.blob();
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `${selectedReport.report_type}_${caseId}.md`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+              }}
+              className="text-xs text-fm-accent hover:underline cursor-pointer"
             >
               Download
-            </a>
+            </button>
           </div>
 
           <div className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4">

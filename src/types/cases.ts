@@ -92,7 +92,7 @@ export interface CaseReport {
   report_id: string;
   case_id: string;
   report_type: string;
-  created_at: string;
+  generated_at: string;
   content: string;
 }
 
