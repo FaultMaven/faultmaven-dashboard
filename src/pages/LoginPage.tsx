@@ -7,7 +7,6 @@ const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border r
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -22,11 +21,6 @@ export default function LoginPage() {
 
     if (!username || username.trim().length < 3) {
       setError('Username must be at least 3 characters');
-      return;
-    }
-
-    if (!password || password.length < 3) {
-      setError('Password must be at least 3 characters');
       return;
     }
 
@@ -132,21 +126,6 @@ export default function LoginPage() {
               placeholder="Enter your username"
               disabled={loading}
               autoFocus
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-fm-text-secondary mb-2">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
-              placeholder="Enter your password"
-              disabled={loading}
             />
           </div>
 
