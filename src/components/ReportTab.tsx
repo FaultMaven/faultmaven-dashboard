@@ -159,7 +159,10 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
 
           <div className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4">
             <div className={proseClasses}>
-              <Markdown remarkPlugins={[remarkGfm]}>
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                components={{ a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" /> }}
+              >
                 {selectedReport.content}
               </Markdown>
             </div>

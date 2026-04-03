@@ -11,12 +11,6 @@ export {
   getCaseReportDownloadUrl,
   generateCaseReport,
   getReportRecommendations,
-  extractKnowledge,
-  getCaseSuggestion,
-  approveSuggestion,
-  rejectSuggestion,
-  updateSuggestion,
-  remediatePII,
 } from './api';
 
 export type {

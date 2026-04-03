@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { listCases, archiveCase } from '../lib/api';
+import { listCases, searchCases, archiveCase } from '../lib/api';
 import type { CaseSummary, CaseFilters } from '../types/cases';
 
 export interface UseCaseListResult {
@@ -28,10 +28,17 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
       setLoading(true);
       setError(null);
       try {
-        const response = await listCases(filters, nextPage, pageSize);
-        setCases(response.cases);
-        setTotalCount(response.total_count);
-        setPage(nextPage);
+        if (filters.search) {
+          const results = await searchCases(filters.search, nextPage, pageSize);
+          setCases(results);
+          setTotalCount(results.length);
+          setPage(nextPage);
+        } else {
+          const response = await listCases(filters, nextPage, pageSize);
+          setCases(response.cases);
+          setTotalCount(response.total_count);
+          setPage(nextPage);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load cases');
       } finally {

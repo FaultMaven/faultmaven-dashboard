@@ -129,7 +129,7 @@ export default function CaseDetailPage() {
               <button
                 onClick={() => setShowArchiveConfirm(true)}
                 disabled={archiving}
-                className="flex-shrink-0 px-4 py-2 text-sm font-medium text-fm-warning border border-fm-warning/40 rounded-fm-btn hover:bg-fm-warning/10 transition-colors disabled:opacity-50"
+                className="flex-shrink-0 px-3 py-1.5 text-xs text-fm-text-tertiary border border-fm-border rounded-fm-btn hover:text-fm-warning hover:border-fm-warning/40 hover:bg-fm-warning/10 transition-colors disabled:opacity-50"
               >
                 Archive
               </button>
@@ -137,13 +137,10 @@ export default function CaseDetailPage() {
           </div>
 
           {/* Meta row */}
-          <div className="mt-3 flex flex-wrap gap-3 text-xs text-fm-text-tertiary">
-            {caseDetail.current_stage && (
-              <span>Stage: <span className="text-fm-text-secondary capitalize">{caseDetail.current_stage.replace(/_/g, ' ')}</span></span>
-            )}
-            <span>Evidence: <span className="text-fm-text-secondary">{caseDetail.evidence_count}</span></span>
-            <span>Hypotheses: <span className="text-fm-text-secondary">{caseDetail.hypothesis_count}</span></span>
-            <span>Created: <span className="text-fm-text-secondary">{new Date(caseDetail.created_at).toLocaleDateString()}</span></span>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-fm-text-tertiary">
+            <span className="font-mono text-fm-text-tertiary select-all">{caseDetail.case_id}</span>
+            <span>&middot;</span>
+            <span>Created {new Date(caseDetail.created_at).toLocaleDateString()}</span>
           </div>
         </div>
 

@@ -63,11 +63,9 @@ src/
 │   └── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
 ├── components/               # Reusable UI components
 │   ├── PageHeader.tsx        # Top navigation bar
-│   ├── CaseTabs.tsx          # Tab container (Transcript, Evidence, Hypotheses, Report, Issue, Runbook, Knowledge)
+│   ├── CaseTabs.tsx          # Tab container (Transcript, Issue, Report, Hypotheses, Evidence) — all tabs shown for every case
 │   ├── ReportTab.tsx         # View-only display of auto-generated terminal summaries
-│   ├── IssueTab.tsx          # Structured investigation outcome (resolved cases only)
-│   ├── RunbookTab.tsx        # Case-to-runbook draft generation, edit, verify (resolved cases only)
-│   ├── KnowledgeTab.tsx      # Knowledge extraction and review workflow
+│   ├── IssueTab.tsx          # Structured investigation outcome with case metadata
 │   ├── DocumentCard.tsx      # Expandable document card with content preview
 │   ├── DraftEditor.tsx       # Runbook draft editor with validation/quality display
 │   ├── CaseStatusBadge.tsx   # Status badge with phase colors
@@ -104,9 +102,8 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 
 - **Authentication**: `devLogin()`, `logoutAuth()`, AuthContext powered
 - **Knowledge Base**: Upload, list (paginated), delete documents (user + admin scopes)
-- **Cases**: List, detail, annotate, archive, messages, evidence, reports
+- **Cases**: List, detail, search (title + case ID), annotate, archive, messages, evidence, reports
 - **Reports**: `generateCaseReport()`, `getReportRecommendations()`, `getCaseReports()`
-- **Knowledge Suggestions**: `extractKnowledge()`, `getCaseSuggestion()`, `approveSuggestion()`, `rejectSuggestion()`, `updateSuggestion()`, `remediatePII()`
 
 **API Endpoint Configuration:**
 
@@ -118,22 +115,19 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 1. **Login**: User signs in; AuthContext stores token/state via storage adapter
 2. **Routing**: React Router manages navigation between pages
 3. **KB Management**: Upload, paginate, client-side search, delete documents
-4. **Case Management**: Browse cases, view detail with tabbed content, generate reports
-5. **Knowledge Extraction**: Extract reusable articles from resolved cases, PII review workflow
-6. **Protected Routes**: Admin routes require admin privileges
+4. **Case Management**: Browse/search cases (by title or ID), view detail with tabbed content, generate reports
+5. **Protected Routes**: Admin routes require admin privileges
 
 ### Component Architecture
 
 - **LoginPage**: Authentication interface with FaultMaven branding
 - **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
 - **AdminKBPage**: Organization KB management (admin only)
-- **CaseListPage**: Paginated case table with status/date/search filters
-- **CaseDetailPage**: Case header (title + problem description) + tabbed content + resolution notes (terminal cases only)
+- **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`
+- **CaseDetailPage**: Case header (title, description, status badge, milestone progress, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
-- **IssueTab**: Read-only structured view of investigation outcome (problem, milestones, root cause, solutions). Resolved cases only.
-- **RunbookTab**: Case-to-runbook draft generation via `POST /knowledge/convert-from-case`. Shows generate button, then embeds DraftEditor for edit/verify. Resolved cases only.
-- **KnowledgeTab**: Extract trigger with source stats, article review (editable title/content, PII scan pipeline, approve/reject/edit workflow). Terminal cases only.
-- **CaseTabs**: Tab container with URL query param support (`?tab=report`, `?tab=knowledge`, `?tab=issue`, `?tab=runbook`) for cross-frontend linking from copilot
+- **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.
+- **CaseTabs**: 5 tabs shown for all cases: Transcript, Issue, Report, Hypotheses, Evidence. URL query param support (`?tab=report`, `?tab=issue`) for cross-frontend linking from copilot. All markdown content rendered via react-markdown with external links opening in new tabs.
 - **DocumentCard**: Expandable card — click to load and display full document content from ChromaDB
 - **Storage Adapter**: Browser extension API compatibility layer for web
 - **Error Handling**: Graceful error display and recovery

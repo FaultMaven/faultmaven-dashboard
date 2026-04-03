@@ -503,6 +503,11 @@ export default function KBPage() {
   const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
 
   // Drafts
+  const DRAFT_COUNT_KEY = 'faultmaven_draftCount';
+  const [cachedCount, setCachedCount] = useState(() => {
+    const stored = localStorage.getItem(DRAFT_COUNT_KEY);
+    return stored !== null ? parseInt(stored, 10) : 0;
+  });
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -534,6 +539,9 @@ export default function KBPage() {
     try {
       const result = await listAllDrafts();
       setDrafts(result);
+      const count = result.filter((d) => d.status === 'draft').length;
+      setCachedCount(count);
+      localStorage.setItem(DRAFT_COUNT_KEY, String(count));
     } catch {
       // silent
     } finally {
@@ -668,7 +676,8 @@ export default function KBPage() {
     }
   };
 
-  const draftCount = drafts.filter((d) => d.status === 'draft').length;
+  const liveDraftCount = drafts.filter((d) => d.status === 'draft').length;
+  const draftCount = drafts.length > 0 ? liveDraftCount : cachedCount;
 
   return (
     <div className="min-h-screen bg-fm-canvas">

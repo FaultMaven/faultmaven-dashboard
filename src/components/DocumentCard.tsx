@@ -213,7 +213,11 @@ export function DocumentCard({ document, onDelete }: DocumentCardProps) {
 
           ) : content ? (
             <div className={proseClasses}>
-              <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+                components={{ a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" /> }}
+              >
                 {stripFrontmatter(content)}
               </Markdown>
             </div>
