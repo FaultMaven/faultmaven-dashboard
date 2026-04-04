@@ -121,16 +121,16 @@ export function DraftEditor({ draft, onSave, onVerify, onCancel, saving }: Draft
         </button>
         {draft.status === 'verified' ? (
           <span className="px-4 py-2 text-sm font-medium text-fm-success bg-fm-success-bg rounded-fm-btn">
-            Verified and ingested
+            Activated
           </span>
         ) : (
           <button
             onClick={onVerify}
             disabled={!validation.passed || dirty}
             className="px-4 py-2 text-sm font-medium text-fm-accent border border-fm-accent rounded-fm-btn hover:bg-fm-accent/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            title={dirty ? 'Save changes before verifying' : !validation.passed ? 'Fix validation errors first' : 'Verify and ingest'}
+            title={dirty ? 'Save changes before activating' : !validation.passed ? 'Fix validation errors first' : 'Activate runbook'}
           >
-            Verify &amp; Ingest
+            Activate
           </button>
         )}
         <button

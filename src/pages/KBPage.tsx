@@ -4,6 +4,7 @@ import {
   convertDocument,
   updateDraft,
   verifyDraft,
+  verifyBatch,
   deleteDraft,
   createRunbookManually,
   listAllDrafts,
@@ -16,6 +17,8 @@ import type {
   ConversionDraft,
   ConversionErrorInfo,
   DraftSummary,
+  BatchVerifyResponse,
+  BatchVerifyItemResult,
 } from '../lib/knowledge/conversion';
 import { UploadZone } from '../components/UploadZone';
 import { UploadModal } from '../components/UploadModal';
@@ -119,7 +122,15 @@ function ScopeBadge({ scope }: { scope: string }) {
 // Documents Tab Content
 // =============================================================================
 
-function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKey: number }) {
+function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, userId: string | null): boolean {
+  const scope = doc.scope || 'global';
+  if (scope === 'global') return isAdmin;
+  if (scope === 'team') return isAdmin; // TODO: check team admin when team roles are implemented
+  if (scope === 'personal') return doc.owner_id === userId || doc.user_id === userId;
+  return false;
+}
+
+function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }: { canUpload: boolean; isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
 
@@ -128,13 +139,91 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
     if (refreshKey > 0) loadPage(0);
   }, [refreshKey, loadPage]);
 
+  // Report count to parent for Runbooks tab badge
+  useEffect(() => {
+    onCountChange(totalCount);
+  }, [totalCount, onCountChange]);
+
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+
+  // Domain/Service/Severity filters
+  const [domainFilter, setDomainFilter] = useState<string | null>(null);
+  const [serviceFilter, setServiceFilter] = useState<string | null>(null);
+  const [severityFilter, setSeverityFilter] = useState<string | null>(null);
 
   const handleSearchChange = useMemo(
     () => debounce((value: string) => setSearch(value), 200),
     [setSearch],
   );
+
+  // Derive filter options from loaded documents
+  const domains = useMemo(() =>
+    [...new Set(filteredDocuments.map((d) => (d as KBDocument).metadata?.domain as string).filter(Boolean))].sort(),
+    [filteredDocuments],
+  );
+  const services = useMemo(() =>
+    [...new Set(
+      filteredDocuments
+        .filter((d) => !domainFilter || (d as KBDocument).metadata?.domain === domainFilter)
+        .map((d) => (d as KBDocument).metadata?.service as string)
+        .filter(Boolean),
+    )].sort(),
+    [filteredDocuments, domainFilter],
+  );
+
+  // Apply metadata filters on top of text search + scope filter
+  const displayDocuments = useMemo(() => {
+    let docs = filteredDocuments;
+    if (domainFilter) {
+      docs = docs.filter((d) => (d as KBDocument).metadata?.domain === domainFilter);
+    }
+    if (serviceFilter) {
+      docs = docs.filter((d) => (d as KBDocument).metadata?.service === serviceFilter);
+    }
+    if (severityFilter) {
+      docs = docs.filter((d) => (d as KBDocument).metadata?.severity === severityFilter);
+    }
+    return docs;
+  }, [filteredDocuments, domainFilter, serviceFilter, severityFilter]);
+
+  // Clear service filter when domain changes
+  const handleDomainChange = (value: string | null) => {
+    setDomainFilter(value);
+    setServiceFilter(null);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = displayDocuments.length > 0 && displayDocuments.every((d) => selectedIds.has(d.document_id));
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(displayDocuments.map((d) => d.document_id)));
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    setBatchDeleting(true);
+    try {
+      for (const id of selectedIds) {
+        try { await deleteById(id); } catch { /* continue */ }
+      }
+      setSelectedIds(new Set());
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
 
   const confirmArchive = async () => {
     if (!confirmArchiveId) return;
@@ -150,30 +239,93 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4 gap-4">
-        <div className="flex items-center gap-3 flex-1">
-          <input
-            type="search"
-            defaultValue={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search runbooks..."
-            className={`max-w-md ${inputClass}`}
-            aria-label="Search runbooks"
-          />
-          <select
-            value={scopeFilter}
-            onChange={(e) => setScopeFilter(e.target.value as 'all' | 'global' | 'team' | 'personal')}
-            className={`w-44 ${inputClass}`}
-            aria-label="Filter by scope"
-          >
-            <option value="all">All scopes ({scopeCounts.global + scopeCounts.team + scopeCounts.personal})</option>
-            <option value="global">Global ({scopeCounts.global})</option>
-            <option value="team">Team ({scopeCounts.team})</option>
-            <option value="personal">Personal ({scopeCounts.personal})</option>
-          </select>
-        </div>
-        <div className="text-xs text-fm-text-tertiary">{filteredDocuments.length} runbook{filteredDocuments.length !== 1 ? 's' : ''}</div>
+      {/* Filters row */}
+      <div className="flex items-center gap-3 mb-4">
+        <input
+          type="search"
+          defaultValue={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          placeholder="Search by title..."
+          className={`flex-1 min-w-[160px] ${inputClass}`}
+          aria-label="Search runbooks"
+        />
+        <select
+          value={scopeFilter}
+          onChange={(e) => setScopeFilter(e.target.value as 'all' | 'global' | 'team' | 'personal')}
+          className={`w-40 ${inputClass}`}
+          aria-label="Filter by scope"
+        >
+          <option value="all">All scopes</option>
+          <option value="global">Global ({scopeCounts.global})</option>
+          <option value="team">Team ({scopeCounts.team})</option>
+          <option value="personal">Personal ({scopeCounts.personal})</option>
+        </select>
+        <select
+          value={domainFilter ?? ''}
+          onChange={(e) => handleDomainChange(e.target.value || null)}
+          className={`w-36 ${inputClass}`}
+          aria-label="Filter by domain"
+        >
+          <option value="">All domains</option>
+          {domains.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select
+          value={serviceFilter ?? ''}
+          onChange={(e) => setServiceFilter(e.target.value || null)}
+          className={`w-36 ${inputClass}`}
+          aria-label="Filter by service"
+        >
+          <option value="">All services</option>
+          {services.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select
+          value={severityFilter ?? ''}
+          onChange={(e) => setSeverityFilter(e.target.value || null)}
+          className={`w-32 ${inputClass}`}
+          aria-label="Filter by severity"
+        >
+          <option value="">All severities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <div className="text-xs text-fm-text-tertiary whitespace-nowrap">{displayDocuments.length} runbook{displayDocuments.length !== 1 ? 's' : ''}</div>
       </div>
+
+      {/* Select all + batch action toolbar */}
+      {canUpload && displayDocuments.length > 0 && (
+        <div className="flex items-center gap-3 mb-3">
+          <label className="flex items-center gap-2 text-xs text-fm-text-tertiary">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="w-4 h-4 rounded border-fm-border text-fm-accent focus:ring-fm-accent"
+            />
+            Select all
+          </label>
+          {selectedIds.size > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-fm-text-secondary">{selectedIds.size} selected</span>
+              <button
+                onClick={handleBatchDelete}
+                disabled={batchDeleting}
+                className="px-2.5 py-1 text-xs font-medium text-fm-critical border border-fm-critical/30 rounded-fm-btn hover:bg-fm-critical/10 transition-colors disabled:opacity-50"
+              >
+                {batchDeleting ? 'Removing...' : 'Remove'}
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="text-xs text-fm-text-tertiary hover:text-fm-text-primary"
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <span className="text-xs text-fm-text-tertiary">Select to remove</span>
+          )}
+        </div>
+      )}
 
       {archiveError && (
         <div className="mb-3 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
@@ -182,12 +334,16 @@ function DocumentsTab({ canUpload, refreshKey }: { canUpload: boolean; refreshKe
       )}
 
       <DocumentList
-        documents={filteredDocuments as (KBDocument | AdminKBDocument)[]}
+        documents={displayDocuments as (KBDocument | AdminKBDocument)[]}
         loading={loading}
-        totalCount={filteredDocuments.length}
-        onDelete={canUpload ? (id) => setConfirmArchiveId(id) : () => {}}
+        totalCount={displayDocuments.length}
+        onDelete={() => {}}
         onUpdated={() => loadPage(page)}
         emptyMessage="No runbooks in your knowledge base yet."
+        canEditFn={(doc) => canModifyDocument(doc as KBDocument, isAdmin, userId)}
+        canRemove={false}
+        selectedIds={canUpload ? selectedIds : undefined}
+        onToggleSelect={canUpload ? toggleSelect : undefined}
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
@@ -216,57 +372,135 @@ interface DraftsTabProps {
   onDismissScan: () => void;
   scanning: boolean;
   scanResult: string | null;
+  selectedDrafts: Array<{ conversion_id: string; draft_id: string }>;
+  onSelectionChange: (selected: Array<{ conversion_id: string; draft_id: string }>) => void;
+  onBatchVerify: () => void;
+  onBatchDelete: () => void;
+  batchActionInProgress: boolean;
 }
 
-function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, scanResult }: DraftsTabProps) {
+function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
 
   const gradeColor: Record<string, string> = {
     A: 'text-fm-success', B: 'text-fm-success', C: 'text-fm-warning', D: 'text-fm-warning', F: 'text-fm-critical',
   };
 
+  const isSelected = (d: DraftSummary) =>
+    selectedDrafts.some((s) => s.draft_id === d.draft_id);
+
+  const toggleSelection = (d: DraftSummary) => {
+    if (isSelected(d)) {
+      onSelectionChange(selectedDrafts.filter((s) => s.draft_id !== d.draft_id));
+    } else {
+      onSelectionChange([...selectedDrafts, { conversion_id: d.conversion_id, draft_id: d.draft_id }]);
+    }
+  };
+
+  const allSelected = pendingDrafts.length > 0 && pendingDrafts.every((d) => isSelected(d));
+  const toggleAll = () => {
+    if (allSelected) {
+      onSelectionChange([]);
+    } else {
+      onSelectionChange(pendingDrafts.map((d) => ({ conversion_id: d.conversion_id, draft_id: d.draft_id })));
+    }
+  };
+
   const renderDraftRow = (d: DraftSummary) => {
     const grade = d.quality_details?.grade || '?';
     const score = d.quality_score != null ? d.quality_score.toFixed(0) : '?';
+    const checked = isSelected(d);
 
     return (
-      <button
+      <div
         key={d.draft_id}
-        onClick={() => onOpen(d.conversion_id)}
-        className="w-full flex items-center gap-3 px-3 py-2.5 text-left border border-fm-border rounded-fm-input hover:border-fm-accent hover:bg-fm-surface-alt transition-colors"
+        className="flex items-center gap-3 px-3 py-2 border border-fm-border rounded-fm-input hover:border-fm-accent hover:bg-fm-surface-alt transition-colors"
       >
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-fm-text-primary truncate">{d.title}</p>
-          <p className="text-xs text-fm-text-tertiary">{d.runbook_id}</p>
-        </div>
-        <ScopeBadge scope={d.scope} />
-        {d.source_type === 'case' && (
-          <span className="text-xs px-1.5 py-0.5 rounded-fm-chip bg-fm-accent/10 text-fm-accent border border-fm-accent/20">
-            from case
-          </span>
-        )}
-        <span className={`text-xs font-mono font-medium ${gradeColor[grade] || 'text-fm-text-tertiary'}`}>
-          {score}/{grade}
-        </span>
-        {!d.validation_passed && (
-          <svg className="w-4 h-4 text-fm-critical flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Validation errors">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        <label className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => toggleSelection(d)}
+            className="w-4 h-4 rounded border-fm-border text-fm-accent focus:ring-fm-accent"
+          />
+        </label>
+        <button
+          onClick={() => onOpen(d.conversion_id)}
+          className="flex-1 flex items-center gap-2 text-left min-w-0"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-fm-text-primary truncate">{d.title}</p>
+              <ScopeBadge scope={d.scope} />
+              {d.source_type === 'case' && (
+                <span className="text-xs px-1.5 py-px rounded-fm-chip bg-fm-accent/10 text-fm-accent border border-fm-accent/20">
+                  from case
+                </span>
+              )}
+              <span className={`text-xs font-mono font-medium ${gradeColor[grade] || 'text-fm-text-tertiary'}`}>
+                {score}/{grade}
+              </span>
+              {!d.validation_passed && (
+                <svg className="w-3.5 h-3.5 text-fm-critical flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-label="Validation errors">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              )}
+            </div>
+          </div>
+          <svg className="w-3.5 h-3.5 text-fm-text-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-        )}
-        <svg className="w-4 h-4 text-fm-text-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
+        </button>
+      </div>
     );
   };
 
   return (
     <div>
-      {/* Scan bar */}
+      {/* Toolbar */}
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-fm-text-tertiary">
-          {pendingDrafts.length} draft{pendingDrafts.length !== 1 ? 's' : ''} pending review
-        </p>
+        <div className="flex items-center gap-3">
+          {pendingDrafts.length > 0 && (
+            <>
+              <label className="flex items-center gap-2 text-xs text-fm-text-tertiary">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  className="w-4 h-4 rounded border-fm-border text-fm-accent focus:ring-fm-accent"
+                />
+                Select all
+              </label>
+              {selectedDrafts.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-fm-text-secondary">{selectedDrafts.length} selected</span>
+                  <button
+                    onClick={onBatchVerify}
+                    disabled={batchActionInProgress}
+                    className="px-2.5 py-1 text-xs font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
+                  >
+                    Activate
+                  </button>
+                  <button
+                    onClick={onBatchDelete}
+                    disabled={batchActionInProgress}
+                    className="px-2.5 py-1 text-xs font-medium text-fm-critical border border-fm-critical/30 rounded-fm-btn hover:bg-fm-critical/10 transition-colors disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => onSelectionChange([])}
+                    className="text-xs text-fm-text-tertiary hover:text-fm-text-primary"
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs text-fm-text-tertiary">Select to activate or delete</span>
+              )}
+            </>
+          )}
+        </div>
         <button
           onClick={onScan}
           disabled={scanning}
@@ -308,7 +542,7 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {pendingDrafts.map(renderDraftRow)}
         </div>
       )}
@@ -483,7 +717,7 @@ function OverlayPanel(props: OverlayPanelProps) {
 // =============================================================================
 
 export default function KBPage() {
-  const { deployment, role, clearAuthState } = useAuth();
+  const { deployment, role, authState, clearAuthState } = useAuth();
   const isAdmin = role === 'platform_admin';
   const canUpload = deployment === 'local' || isAdmin;
 
@@ -512,6 +746,23 @@ export default function KBPage() {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
+  const [initialScanDone, setInitialScanDone] = useState(false);
+
+  // Multi-select state
+  const [selectedDrafts, setSelectedDrafts] = useState<Array<{ conversion_id: string; draft_id: string }>>([]);
+  const [batchActionInProgress, setBatchActionInProgress] = useState(false);
+
+  // Runbook count (lifted from DocumentsTab)
+  const [runbookCount, setRunbookCount] = useState(0);
+
+  // First-time ingestion banner
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{
+    running: boolean;
+    total: number;
+    completed: number;
+    result: BatchVerifyResponse | null;
+  } | null>(null);
 
   const handleScan = async () => {
     setScanning(true);
@@ -549,8 +800,22 @@ export default function KBPage() {
     }
   }, []);
 
+  // Scan on mount, then load drafts (discovers files seeded by startup)
   useEffect(() => {
-    loadDrafts();
+    let cancelled = false;
+    async function init() {
+      try {
+        await scanForRunbooks();
+      } catch {
+        // non-critical — proceed to load drafts anyway
+      }
+      if (!cancelled) {
+        setInitialScanDone(true);
+        loadDrafts();
+      }
+    }
+    init();
+    return () => { cancelled = true; };
   }, [loadDrafts]);
 
   // Handlers
@@ -667,6 +932,104 @@ export default function KBPage() {
     }
   };
 
+  // Batch verify with chunked progress — small batches to avoid timeouts
+  const BATCH_SIZE = 5;
+
+  const handleBatchVerify = async () => {
+    if (selectedDrafts.length === 0) return;
+    setBatchActionInProgress(true);
+    setBatchProgress({ running: true, total: selectedDrafts.length, completed: 0, result: null });
+
+    const allResults: BatchVerifyItemResult[] = [];
+    let verified = 0, failed = 0, skipped = 0;
+
+    for (let i = 0; i < selectedDrafts.length; i += BATCH_SIZE) {
+      const chunk = selectedDrafts.slice(i, i + BATCH_SIZE);
+      try {
+        const result = await verifyBatch(chunk);
+        allResults.push(...result.results);
+        verified += result.verified;
+        failed += result.failed;
+        skipped += result.skipped;
+      } catch {
+        failed += chunk.length;
+        for (const ref of chunk) {
+          allResults.push({ ...ref, status: 'failed', error: 'Request failed', knowledge_item_id: null });
+        }
+      }
+      setBatchProgress((prev) => prev ? { ...prev, completed: Math.min(i + chunk.length, selectedDrafts.length) } : prev);
+    }
+
+    setBatchProgress({
+      running: false,
+      total: selectedDrafts.length,
+      completed: selectedDrafts.length,
+      result: { total: selectedDrafts.length, verified, failed, skipped, results: allResults },
+    });
+    setSelectedDrafts([]);
+    loadDrafts();
+    setDocsRefreshKey((k) => k + 1);
+    setBatchActionInProgress(false);
+  };
+
+  const handleBatchDelete = async () => {
+    setBatchActionInProgress(true);
+    try {
+      for (const ref of selectedDrafts) {
+        try {
+          await deleteDraft(ref.conversion_id, ref.draft_id);
+        } catch { /* continue */ }
+      }
+      setSelectedDrafts([]);
+      loadDrafts();
+    } finally {
+      setBatchActionInProgress(false);
+    }
+  };
+
+  // First-time ingestion: ingest all pending drafts
+  const handleIngestAll = async () => {
+    const pending = drafts.filter((d) => d.status === 'draft');
+    const refs = pending.map((d) => ({ conversion_id: d.conversion_id, draft_id: d.draft_id }));
+    setSelectedDrafts(refs);
+
+    setBatchActionInProgress(true);
+    setBatchProgress({ running: true, total: refs.length, completed: 0, result: null });
+
+    const allResults: BatchVerifyItemResult[] = [];
+    let verified = 0, failed = 0, skipped = 0;
+
+    for (let i = 0; i < refs.length; i += BATCH_SIZE) {
+      const chunk = refs.slice(i, i + BATCH_SIZE);
+      try {
+        const result = await verifyBatch(chunk);
+        allResults.push(...result.results);
+        verified += result.verified;
+        failed += result.failed;
+        skipped += result.skipped;
+      } catch {
+        // Count chunk items as failed but continue with next chunk
+        failed += chunk.length;
+        for (const ref of chunk) {
+          allResults.push({ ...ref, status: 'failed', error: 'Request failed', knowledge_item_id: null });
+        }
+      }
+      setBatchProgress((prev) => prev ? { ...prev, completed: Math.min(i + chunk.length, refs.length) } : prev);
+    }
+
+    setBatchProgress({
+      running: false,
+      total: refs.length,
+      completed: refs.length,
+      result: { total: refs.length, verified, failed, skipped, results: allResults },
+    });
+    setSelectedDrafts([]);
+    loadDrafts();
+    setDocsRefreshKey((k) => k + 1);
+    setActiveTab('documents');
+    setBatchActionInProgress(false);
+  };
+
   const handleOverlayBack = () => {
     if (overlayMode === 'editor') {
       setEditingDraft(null);
@@ -678,6 +1041,8 @@ export default function KBPage() {
 
   const liveDraftCount = drafts.filter((d) => d.status === 'draft').length;
   const draftCount = drafts.length > 0 ? liveDraftCount : cachedCount;
+  const pendingCount = drafts.filter((d) => d.status === 'draft').length;
+  const showFirstTimeBanner = initialScanDone && pendingCount > 0 && runbookCount === 0 && !bannerDismissed;
 
   return (
     <div className="min-h-screen bg-fm-canvas">
@@ -698,6 +1063,61 @@ export default function KBPage() {
             />
           )}
         </div>
+
+        {/* First-time ingestion banner */}
+        {showFirstTimeBanner && (
+          <div className="mb-6 p-4 bg-fm-accent/5 border border-fm-accent/20 rounded-fm-card">
+            {!batchProgress?.running && !batchProgress?.result && (
+              <>
+                <p className="text-sm text-fm-text-primary font-medium mb-2">
+                  {pendingCount} runbook{pendingCount !== 1 ? 's' : ''} ready to ingest
+                </p>
+                <p className="text-xs text-fm-text-secondary mb-3">
+                  Built-in runbooks have been discovered. Ingest them to make them searchable during investigations.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleIngestAll}
+                    className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors"
+                  >
+                    Activate All
+                  </button>
+                  <button
+                    onClick={() => { setBannerDismissed(true); setActiveTab('drafts'); }}
+                    className="px-4 py-2 text-sm font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors"
+                  >
+                    Review First
+                  </button>
+                </div>
+              </>
+            )}
+
+            {batchProgress?.running && (
+              <div>
+                <p className="text-sm text-fm-text-primary font-medium mb-2">
+                  Ingesting runbooks...
+                </p>
+                <div className="w-full bg-fm-surface-alt rounded-full h-2 mb-2">
+                  <div
+                    className="bg-fm-accent h-2 rounded-full transition-all"
+                    style={{ width: `${(batchProgress.completed / batchProgress.total) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-fm-text-tertiary">
+                  {batchProgress.completed} of {batchProgress.total} complete
+                </p>
+              </div>
+            )}
+
+            {batchProgress?.result && (
+              <p className="text-sm text-fm-success font-medium">
+                Done. {batchProgress.result.verified} activated
+                {batchProgress.result.failed > 0 && `, ${batchProgress.result.failed} failed`}
+                {batchProgress.result.skipped > 0 && `, ${batchProgress.result.skipped} skipped`}.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Overlay panel (creation/editing) */}
         <OverlayPanel
@@ -726,13 +1146,18 @@ export default function KBPage() {
             <div className="flex gap-1 mb-4 border-b border-fm-border">
               <button
                 onClick={() => setActiveTab('documents')}
-                className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2 ${
                   activeTab === 'documents'
                     ? 'text-fm-accent border-fm-accent'
                     : 'text-fm-text-tertiary border-transparent hover:text-fm-text-primary'
                 }`}
               >
                 Runbooks
+                {runbookCount > 0 && (
+                  <span className="bg-fm-success/10 text-fm-success text-xs px-1.5 py-0.5 rounded-full font-mono">
+                    {runbookCount}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('drafts')}
@@ -752,7 +1177,9 @@ export default function KBPage() {
             </div>
 
             <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5">
-              {activeTab === 'documents' && <DocumentsTab canUpload={canUpload} refreshKey={docsRefreshKey} />}
+              <div className={activeTab === 'documents' ? '' : 'hidden'}>
+                <DocumentsTab canUpload={canUpload} isAdmin={isAdmin} userId={authState?.user?.user_id ?? null} refreshKey={docsRefreshKey} onCountChange={setRunbookCount} />
+              </div>
               {activeTab === 'drafts' && (
                 <DraftsTab
                   drafts={drafts}
@@ -763,6 +1190,11 @@ export default function KBPage() {
                   onDismissScan={() => setScanResult(null)}
                   scanning={scanning}
                   scanResult={scanResult}
+                  selectedDrafts={selectedDrafts}
+                  onSelectionChange={setSelectedDrafts}
+                  onBatchVerify={handleBatchVerify}
+                  onBatchDelete={handleBatchDelete}
+                  batchActionInProgress={batchActionInProgress}
                 />
               )}
             </div>
@@ -784,8 +1216,8 @@ export default function KBPage() {
         {/* Confirm dialogs */}
         <ConfirmDialog
           isOpen={!!confirmVerify}
-          title="Verify and Ingest Runbook"
-          message="This will set the runbook status to verified, set verified_by to your username, ingest it into the knowledge base, and make it searchable by the AI."
+          title="Activate Runbook"
+          message="This will activate the runbook, making it searchable by the AI during investigations."
           confirmLabel="Confirm"
           onConfirm={handleVerifyConfirmed}
           onCancel={() => setConfirmVerify(null)}

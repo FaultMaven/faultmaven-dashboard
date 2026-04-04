@@ -23,6 +23,7 @@ function formatBytes(bytes: number): string {
 
 export function ConversionResults({ conversion, onEdit, onVerify, onDelete, onBack }: ConversionResultsProps) {
   const { source_file, analysis, drafts, warnings, status } = conversion;
+  const isFileScan = analysis.source_assessment.content_type === 'file_scan';
 
   return (
     <div className="space-y-4">
@@ -38,15 +39,24 @@ export function ConversionResults({ conversion, onEdit, onVerify, onDelete, onBa
           </svg>
         </button>
         <div>
-          <h3 className="text-lg font-semibold text-fm-text-primary">
-            Conversion Complete: {drafts.length} runbook{drafts.length !== 1 ? 's' : ''} generated
-          </h3>
-          <p className="text-sm text-fm-text-secondary">
-            Source: {source_file.filename} ({formatBytes(source_file.size_bytes)})
-            {analysis.source_assessment.actionability_rating && (
-              <> &middot; {analysis.source_assessment.actionability_rating} actionability</>
-            )}
-          </p>
+          {isFileScan ? (
+            <h3 className="text-lg font-semibold text-fm-text-primary">
+              Runbook Draft
+            </h3>
+          ) : (
+            <>
+              <h3 className="text-lg font-semibold text-fm-text-primary">
+                Conversion Complete: {drafts.length} runbook{drafts.length !== 1 ? 's' : ''} generated
+              </h3>
+              <p className="text-sm text-fm-text-secondary">
+                Source: {source_file.filename} ({formatBytes(source_file.size_bytes)})
+                {analysis.source_assessment.actionability_rating &&
+                  analysis.source_assessment.actionability_rating !== 'unknown' && (
+                  <> &middot; {analysis.source_assessment.actionability_rating} actionability</>
+                )}
+              </p>
+            </>
+          )}
         </div>
       </div>
 
@@ -75,6 +85,7 @@ export function ConversionResults({ conversion, onEdit, onVerify, onDelete, onBa
             onEdit={() => onEdit(draft)}
             onVerify={() => onVerify(draft)}
             onDelete={() => onDelete(draft)}
+            isFileScan={isFileScan}
           />
         ))}
       </div>
@@ -92,9 +103,10 @@ interface DraftCardProps {
   onEdit: () => void;
   onVerify: () => void;
   onDelete: () => void;
+  isFileScan: boolean;
 }
 
-function DraftCard({ draft, onEdit, onVerify, onDelete }: DraftCardProps) {
+function DraftCard({ draft, onEdit, onVerify, onDelete: _onDelete, isFileScan }: DraftCardProps) {
   const { validation, quality_score, quality_warning } = draft;
   const color = gradeColor[quality_score.grade] || 'text-fm-text-secondary';
 
@@ -108,7 +120,6 @@ function DraftCard({ draft, onEdit, onVerify, onDelete }: DraftCardProps) {
               {quality_score.overall.toFixed(0)}/{quality_score.grade}
             </span>
           </div>
-          <p className="text-xs text-fm-text-tertiary font-mono mb-2">{draft.runbook_id}</p>
 
           {/* Validation status */}
           {validation.passed ? (
@@ -138,22 +149,24 @@ function DraftCard({ draft, onEdit, onVerify, onDelete }: DraftCardProps) {
           )}
         </div>
 
-        {/* Score breakdown (compact) */}
-        <div className="flex-shrink-0 text-right">
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-fm-text-tertiary">
-            <span>Complete</span><span className="font-mono">{quality_score.completeness.toFixed(0)}</span>
-            <span>Clarity</span><span className="font-mono">{quality_score.clarity.toFixed(0)}</span>
-            <span>Action</span><span className="font-mono">{quality_score.actionability.toFixed(0)}</span>
-            <span>Breadth</span><span className="font-mono">{quality_score.comprehensiveness.toFixed(0)}</span>
+        {/* Score breakdown — only for document conversions where quality review matters */}
+        {!isFileScan && (
+          <div className="flex-shrink-0 text-right">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-fm-text-tertiary">
+              <span>Complete</span><span className="font-mono">{quality_score.completeness.toFixed(0)}</span>
+              <span>Clarity</span><span className="font-mono">{quality_score.clarity.toFixed(0)}</span>
+              <span>Action</span><span className="font-mono">{quality_score.actionability.toFixed(0)}</span>
+              <span>Breadth</span><span className="font-mono">{quality_score.comprehensiveness.toFixed(0)}</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Actions */}
       <div className="flex gap-2 mt-3 pt-3 border-t border-fm-border">
         {draft.status === 'verified' ? (
           <span className="px-3 py-1.5 text-xs font-medium text-fm-success bg-fm-success-bg rounded-fm-btn">
-            Verified and ingested
+            Activated
           </span>
         ) : (
           <>
@@ -167,15 +180,9 @@ function DraftCard({ draft, onEdit, onVerify, onDelete }: DraftCardProps) {
               onClick={onVerify}
               disabled={!validation.passed}
               className="px-3 py-1.5 text-xs font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title={!validation.passed ? 'Fix validation errors before verifying' : 'Verify and ingest into knowledge base'}
+              title={!validation.passed ? 'Fix validation errors before activating' : 'Activate runbook into knowledge base'}
             >
-              Verify &amp; Ingest
-            </button>
-            <button
-              onClick={onDelete}
-              className="px-3 py-1.5 text-xs font-medium text-fm-critical border border-fm-critical-border rounded-fm-btn hover:bg-fm-critical-bg transition-colors"
-            >
-              Delete
+              Activate
             </button>
           </>
         )}

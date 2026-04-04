@@ -377,6 +377,45 @@ export async function verifyDraft(
 }
 
 /**
+ * Batch verify and ingest multiple drafts.
+ */
+export interface BatchDraftRef {
+  conversion_id: string;
+  draft_id: string;
+}
+
+export interface BatchVerifyItemResult {
+  conversion_id: string;
+  draft_id: string;
+  status: 'verified' | 'failed' | 'skipped';
+  error: string | null;
+  knowledge_item_id: string | null;
+}
+
+export interface BatchVerifyResponse {
+  total: number;
+  verified: number;
+  failed: number;
+  skipped: number;
+  results: BatchVerifyItemResult[];
+}
+
+export async function verifyBatch(
+  draftIds: BatchDraftRef[],
+): Promise<BatchVerifyResponse> {
+  const response = await makeAuthenticatedRequest(
+    `${CONVERT_BASE}/drafts/verify-batch`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft_ids: draftIds }),
+    },
+  );
+  await handleAPIResponse(response, 'Batch verification failed');
+  return await response.json();
+}
+
+/**
  * Delete a conversion draft.
  */
 export async function deleteDraft(
