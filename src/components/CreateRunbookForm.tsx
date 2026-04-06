@@ -42,7 +42,7 @@ const SECTION_PLACEHOLDERS: Record<string, string> = {
   mitigation:
     '**Risk**: What could go wrong with this mitigation\n```bash\nmitigation-command\n```\n**Verify**: How to confirm it worked\n**Duration**: How long the mitigation is safe',
   root_cause_resolution:
-    '**If** diagnostic step 1 shows X:\n```bash\npermanent-fix-command\n```\n\n**If** diagnostic step 2 shows Y:\n```bash\nalternative-fix\n```',
+    '**If** diagnostic step 1 shows X:\n```bash\nfix-command\n```\n\n**If** diagnostic step 2 shows Y:\n```bash\nalternative-fix\n```',
   verification:
     '- Specific metric or command to confirm the fix\n- Observation period (e.g., "monitor for 15 minutes")\n- What "back to normal" looks like',
   prevention:
