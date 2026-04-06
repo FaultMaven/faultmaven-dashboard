@@ -61,6 +61,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=branch
+            type=sha,prefix=sha-,format=short
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
@@ -80,3 +81,48 @@ jobs:
       - name: Image digest
         if: github.event_name != 'pull_request'
         run: echo "Published Docker images with digest ${{ steps.meta.outputs.digest }}"
+
+      # Checkout enterprise-infra repository to update image queue
+      - name: Checkout enterprise-infra
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v6
+        with:
+          repository: FaultMaven/faultmaven-enterprise-infra
+          ref: develop
+          token: ${{ secrets.PAT_CROSS_REPO_ACCESS }}  # Design docs call this INFRA_REPO_TOKEN
+          path: enterprise-infra
+
+      - name: Install yq
+        if: github.event_name != 'pull_request'
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Update image queue
+        if: github.event_name != 'pull_request'
+        run: |
+          cd enterprise-infra
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          QUEUE_FILE="available-images/staging/faultmaven-dashboard.yaml"
+          SHA_SHORT="${GITHUB_SHA:0:7}"
+          TAG="sha-${SHA_SHORT}"
+
+          echo "Updating $QUEUE_FILE with tag: $TAG"
+          yq -i ".tag = \"${TAG}\"" "$QUEUE_FILE"
+          yq -i ".updated_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" "$QUEUE_FILE"
+          yq -i ".commit_sha = \"${GITHUB_SHA}\"" "$QUEUE_FILE"
+
+          git add "$QUEUE_FILE"
+          if git diff --staged --quiet; then
+            echo "No changes to queue file"
+          else
+            git commit -m "chore(queue): update faultmaven-dashboard image to ${TAG}
+
+          Built from: ${{ github.repository }}@${GITHUB_SHA}
+          Triggered by: @${{ github.actor }}
+          Workflow: ${{ github.workflow }}"
+            git push origin develop
+            echo "✓ Updated dashboard image queue: ${TAG}"
+          fi
