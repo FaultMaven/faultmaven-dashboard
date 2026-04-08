@@ -122,6 +122,7 @@ export default function CaseDetailPage() {
                 <MilestoneProgress
                   completed={caseDetail.milestones_completed.length}
                   total={caseDetail.milestones_completed.length + (caseDetail.pending_milestones?.length || 0)}
+                  transparent={caseDetail.status === 'investigating' && caseDetail.turns_without_progress >= 5}
                 />
               </div>
             </div>
