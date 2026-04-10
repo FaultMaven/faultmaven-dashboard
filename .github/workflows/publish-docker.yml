@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -53,7 +53,7 @@ jobs:
       # Extract metadata for Docker tags and labels
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v5
         with:
           images: |
             ${{ env.REGISTRY_DOCKER }}/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
@@ -85,7 +85,7 @@ jobs:
       # Checkout enterprise-infra repository to update image queue
       - name: Checkout enterprise-infra
         if: github.event_name != 'pull_request'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: FaultMaven/faultmaven-enterprise-infra
           ref: main
