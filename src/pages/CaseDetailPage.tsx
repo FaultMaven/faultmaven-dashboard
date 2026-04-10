@@ -142,6 +142,8 @@ export default function CaseDetailPage() {
             <span className="font-mono text-fm-text-tertiary select-all">{caseDetail.case_id}</span>
             <span>&middot;</span>
             <span>Created {new Date(caseDetail.created_at).toLocaleDateString()}</span>
+            <span>&middot;</span>
+            <span>{caseDetail.current_turn} turn{caseDetail.current_turn !== 1 ? 's' : ''}</span>
           </div>
         </div>
 

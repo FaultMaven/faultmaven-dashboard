@@ -70,12 +70,22 @@ function TranscriptTab({ caseId }: { caseId: string }) {
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
   if (!messages?.length) return <div className="text-fm-text-tertiary text-sm py-4">No messages yet.</div>;
 
+  // Compute turn numbers: each user message starts a new turn, assistant response is part of the same turn
+  let turnCounter = 0;
+  const turnNumbers = messages.map((msg) => {
+    if (msg.role === 'user') turnCounter++;
+    return turnCounter;
+  });
+
   return (
     <div className="space-y-4 py-2">
-      {messages.map((msg) => (
+      {messages.map((msg, idx) => (
         <div key={msg.message_id} className={`flex gap-3 ${msg.role === 'assistant' ? 'flex-row-reverse' : ''}`}>
-          <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-fm-elevated text-fm-text-secondary">
-            {msg.role === 'user' ? 'U' : 'FM'}
+          <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-fm-elevated text-fm-text-secondary">
+              {msg.role === 'user' ? 'U' : 'FM'}
+            </div>
+            <span className="text-[10px] text-fm-text-tertiary font-medium">#{turnNumbers[idx]}</span>
           </div>
           <div
             className={`max-w-2xl px-4 py-2 rounded-fm-card text-sm ${
