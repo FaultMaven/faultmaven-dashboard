@@ -32,6 +32,11 @@ vi.mock('../../context/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+const mockUseAvailableScopes = vi.fn();
+vi.mock('../../hooks/useAvailableScopes', () => ({
+  useAvailableScopes: () => mockUseAvailableScopes(),
+}));
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -40,12 +45,19 @@ function renderPage() {
   );
 }
 
-describe('KBPage — tab visibility by deployment/role', () => {
+describe('KBPage — scope filter visibility by membership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: only the always-available scopes. Individual tests override.
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal', 'global'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
   });
 
-  it('local user sees all scope options (Global, Team, Personal)', async () => {
+  it('local user with no team membership hides Team option', async () => {
     mockUseAuth.mockReturnValue({
       deployment: 'local',
       role: 'individual',
@@ -57,15 +69,21 @@ describe('KBPage — tab visibility by deployment/role', () => {
     });
 
     expect(screen.getByRole('option', { name: /Global/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Team/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Personal/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Team/i })).not.toBeInTheDocument();
   });
 
-  it('cloud standard_user sees all scope options', async () => {
+  it('user with team membership sees Team option', async () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
       role: 'standard_user',
       clearAuthState: vi.fn(),
+    });
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal', 'team', 'organization', 'global'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
     });
 
     await act(async () => {
