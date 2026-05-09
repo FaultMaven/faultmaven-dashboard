@@ -25,6 +25,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      # Cross-repo queue update is soft-gated: it runs only when the PAT is
+      # configured. Without it, the image still publishes; the enterprise-infra
+      # queue update is just skipped.
+      HAS_INFRA_TOKEN: ${{ secrets.PAT_CROSS_REPO_ACCESS != '' }}
 
     steps:
       - name: Checkout repository
@@ -82,9 +87,15 @@ jobs:
         if: github.event_name != 'pull_request'
         run: echo "Published Docker images with digest ${{ steps.meta.outputs.digest }}"
 
+      - name: Note skipped queue update
+        if: github.event_name != 'pull_request' && env.HAS_INFRA_TOKEN != 'true'
+        run: |
+          echo "::warning::PAT_CROSS_REPO_ACCESS is not set — skipping enterprise-infra image queue update."
+          echo "Set the PAT_CROSS_REPO_ACCESS secret to enable automatic queue updates."
+
       # Checkout enterprise-infra repository to update image queue
       - name: Checkout enterprise-infra
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && env.HAS_INFRA_TOKEN == 'true'
         uses: actions/checkout@v4
         with:
           repository: FaultMaven/faultmaven-enterprise-infra
@@ -93,13 +104,13 @@ jobs:
           path: enterprise-infra
 
       - name: Install yq
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && env.HAS_INFRA_TOKEN == 'true'
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
       - name: Update image queue
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && env.HAS_INFRA_TOKEN == 'true'
         run: |
           cd enterprise-infra
           git config user.name "github-actions[bot]"
