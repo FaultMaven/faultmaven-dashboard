@@ -1,4 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useAvailableScopes } from '../hooks/useAvailableScopes';
+
+const SCOPE_LABELS: Record<string, string> = {
+  personal: 'Personal',
+  team: 'Team',
+  organization: 'Organization',
+  global: 'Global',
+};
 
 interface CreateRunbookFormProps {
   onSubmit: (data: RunbookFormData) => Promise<void>;
@@ -50,6 +58,7 @@ const SECTION_PLACEHOLDERS: Record<string, string> = {
 };
 
 export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: CreateRunbookFormProps) {
+  const { scopes: availableScopes } = useAvailableScopes();
   const [form, setForm] = useState<RunbookFormData>({
     title: '',
     domain: 'application',
@@ -68,6 +77,14 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
   });
   const [symptomInput, setSymptomInput] = useState('');
   const [tagsInput, setTagsInput] = useState('');
+
+  // If the picker re-fetches and the previously-selected scope is no longer
+  // available (e.g. user lost team membership), fall back to personal.
+  useEffect(() => {
+    if (!availableScopes.includes(form.scope as never)) {
+      setForm((prev) => ({ ...prev, scope: 'personal' }));
+    }
+  }, [availableScopes, form.scope]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,7 +179,9 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
         <div>
           <label className="block text-sm font-medium text-fm-text-secondary mb-1">KB Scope</label>
           <select value={form.scope} onChange={(e) => update('scope', e.target.value)} className={inputClass}>
-            <option value="personal">Personal</option>
+            {availableScopes.map((s) => (
+              <option key={s} value={s}>{SCOPE_LABELS[s] ?? s}</option>
+            ))}
           </select>
         </div>
       </div>

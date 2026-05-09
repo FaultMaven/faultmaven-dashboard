@@ -31,6 +31,7 @@ import { DraftEditor } from '../components/DraftEditor';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CreateRunbookForm, type RunbookFormData } from '../components/CreateRunbookForm';
 import { useKBList } from '../hooks/useKBList';
+import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
 
@@ -133,6 +134,7 @@ function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, 
 function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }: { canUpload: boolean; isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
+  const { scopes: availableScopes } = useAvailableScopes();
 
   // Re-fetch documents when refreshKey changes (e.g., after draft verification)
   useEffect(() => {
@@ -256,9 +258,15 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
           aria-label="Filter by scope"
         >
           <option value="all">All scopes</option>
-          <option value="global">Global ({scopeCounts.global})</option>
-          <option value="team">Team ({scopeCounts.team})</option>
-          <option value="personal">Personal ({scopeCounts.personal})</option>
+          {availableScopes.includes('global') && (
+            <option value="global">Global ({scopeCounts.global})</option>
+          )}
+          {availableScopes.includes('team') && (
+            <option value="team">Team ({scopeCounts.team})</option>
+          )}
+          {availableScopes.includes('personal') && (
+            <option value="personal">Personal ({scopeCounts.personal})</option>
+          )}
         </select>
         <select
           value={domainFilter ?? ''}

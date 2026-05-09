@@ -1,6 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UploadZone } from './UploadZone';
 import type { ConversionErrorInfo } from '../lib/knowledge/conversion';
+import { useAvailableScopes } from '../hooks/useAvailableScopes';
+
+const SCOPE_LABELS: Record<string, string> = {
+  personal: 'Personal',
+  team: 'Team',
+  organization: 'Organization',
+  global: 'Global',
+};
 
 interface ConvertUploadProps {
   onConvert: (file: File, scope: string, teamId?: string) => Promise<void>;
@@ -10,8 +18,15 @@ interface ConvertUploadProps {
 }
 
 export function ConvertUpload({ onConvert, onCancel, loading, error }: ConvertUploadProps) {
+  const { scopes: availableScopes } = useAvailableScopes();
   const [file, setFile] = useState<File | null>(null);
   const [scope, setScope] = useState<string>('personal');
+
+  useEffect(() => {
+    if (!availableScopes.includes(scope as never)) {
+      setScope('personal');
+    }
+  }, [availableScopes, scope]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,19 +86,20 @@ export function ConvertUpload({ onConvert, onCancel, loading, error }: ConvertUp
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-fm-text-secondary mb-2">KB Scope</label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="scope"
-                  value="personal"
-                  checked={scope === 'personal'}
-                  onChange={() => setScope('personal')}
-                  className="accent-fm-accent"
-                />
-                <span className="text-sm text-fm-text-primary">Personal</span>
-              </label>
-
+            <div className="flex gap-4 flex-wrap">
+              {availableScopes.map((s) => (
+                <label key={s} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="scope"
+                    value={s}
+                    checked={scope === s}
+                    onChange={() => setScope(s)}
+                    className="accent-fm-accent"
+                  />
+                  <span className="text-sm text-fm-text-primary">{SCOPE_LABELS[s] ?? s}</span>
+                </label>
+              ))}
             </div>
           </div>
 
