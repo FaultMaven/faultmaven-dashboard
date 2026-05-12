@@ -24,11 +24,10 @@ export interface RunbookFormData {
   scope: string;
   tags: string[];
   difficulty: string;
-  problem_definition: string;
+  symptom_recognition: string;
+  applicability: string;
   diagnostic_steps: string;
-  mitigation: string;
-  root_cause_resolution: string;
-  verification: string;
+  causes: string;
   prevention: string;
   team_id?: string;
 }
@@ -43,16 +42,14 @@ const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
 const DIFFICULTIES = ['beginner', 'intermediate', 'advanced', 'expert'];
 
 const SECTION_PLACEHOLDERS: Record<string, string> = {
-  problem_definition:
-    '- Exact alert names, error messages as they appear in logs\n- Metric patterns to look for\n- Example: FATAL: too many connections for role "app_user"',
+  symptom_recognition:
+    '- Exact alert names, error messages as they appear in logs\n- Metric patterns to look for\n- Example: FATAL: too many connections for role "app_user"\n- Dashboard panels or monitors that fire',
+  applicability:
+    '- Which environments or deployment configurations this applies to\n- Service versions affected\n- Prerequisites or conditions required\n- Example: Applies to PostgreSQL 14+ with PgBouncer connection pooling',
   diagnostic_steps:
     '### Step 1: Check current state\n```bash\nyour-command-here\n```\nWhat to look for in the output...\n\n### Step 2: Identify root cause\n```bash\nanother-command\n```',
-  mitigation:
-    '**Risk**: What could go wrong with this mitigation\n```bash\nmitigation-command\n```\n**Verify**: How to confirm it worked\n**Duration**: How long the mitigation is safe',
-  root_cause_resolution:
-    '**If** diagnostic step 1 shows X:\n```bash\nfix-command\n```\n\n**If** diagnostic step 2 shows Y:\n```bash\nalternative-fix\n```',
-  verification:
-    '- Specific metric or command to confirm the fix\n- Observation period (e.g., "monitor for 15 minutes")\n- What "back to normal" looks like',
+  causes:
+    '### Cause A: <Name>\n**Statement**: What is happening\n**Mechanism**: Why it happens\n**Indicator**: How to confirm this cause\n**Mitigation**: Immediate relief steps\n**Resolution**: Permanent fix\n**Verification**: How to confirm it worked\n\n### Cause Z: Unidentified [Default]\n**Statement**: Root cause not yet determined\n**Mechanism**: Unknown\n**Indicator**: None of the above causes match\n**Mitigation**: Escalate to on-call engineer\n**Resolution**: Investigate further\n**Verification**: Monitor after escalation',
   prevention:
     '- Configuration change to prevent recurrence\n- Monitoring alert to add\n- Process change or documentation update',
 };
@@ -68,11 +65,10 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
     scope: 'personal',
     tags: [],
     difficulty: 'intermediate',
-    problem_definition: '',
+    symptom_recognition: '',
+    applicability: '',
     diagnostic_steps: '',
-    mitigation: '',
-    root_cause_resolution: '',
-    verification: '',
+    causes: '',
     prevention: '',
   });
   const [symptomInput, setSymptomInput] = useState('');
@@ -217,11 +213,10 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
       {/* Runbook sections */}
       {(
         [
-          ['problem_definition', 'Problem Definition'],
+          ['symptom_recognition', 'Symptom Recognition'],
+          ['applicability', 'Applicability'],
           ['diagnostic_steps', 'Diagnostic Steps'],
-          ['mitigation', 'Mitigation'],
-          ['root_cause_resolution', 'Root Cause Resolution'],
-          ['verification', 'Verification'],
+          ['causes', 'Causes'],
           ['prevention', 'Prevention'],
         ] as [keyof RunbookFormData, string][]
       ).map(([field, label]) => (

@@ -442,11 +442,10 @@ export async function createRunbookManually(data: {
   scope: string;
   tags: string[];
   difficulty: string;
-  problem_definition: string;
+  symptom_recognition: string;
+  applicability: string;
   diagnostic_steps: string;
-  mitigation: string;
-  root_cause_resolution: string;
-  verification: string;
+  causes: string;
   prevention: string;
   team_id?: string;
 }): Promise<{ conversion_id: string; draft: ConversionDraft }> {
