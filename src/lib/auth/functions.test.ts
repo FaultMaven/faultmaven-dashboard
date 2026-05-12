@@ -208,7 +208,7 @@ describe('logoutAuth', () => {
     await logoutAuth();
 
     expect(mockGetAccessToken).toHaveBeenCalled();
-    expect(fetchSpy).toHaveBeenCalledWith('http://test-api.local/v1/auth/logout', {
+    expect(fetchSpy).toHaveBeenCalledWith('http://test-api.local/api/v1/auth/logout', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer test-token-123',

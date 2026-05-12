@@ -78,7 +78,7 @@ export async function logoutAuth(): Promise<void> {
   try {
     const token = await authManager.getAccessToken();
     if (token) {
-      await fetch(`${config.apiUrl}/v1/auth/logout`, {
+      await fetch(`${config.apiUrl}/api/v1/auth/logout`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
