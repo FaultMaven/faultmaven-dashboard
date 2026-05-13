@@ -7,6 +7,7 @@
 @import '@fontsource/dm-sans/700.css';
 @import '@fontsource/jetbrains-mono/400.css';
 
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -26,6 +27,9 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* Let prose-pre control the block background; only use hljs token colours */
+.hljs { background: transparent; }
 
 /* ADR-003: "Candidate" border utility — dashed border for unreviewed AI suggestions */
 .border-candidate {

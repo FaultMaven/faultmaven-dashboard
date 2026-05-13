@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { getCaseMessages, getCaseEvidence } from '../lib/api';
 import type { CaseDetail, CaseMessage, CaseEvidenceFile } from '../types/cases';
 import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
+import { prepareMarkdown } from '../lib/markdownUtils';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
@@ -95,9 +97,10 @@ function TranscriptTab({ caseId }: { caseId: string }) {
             <div className={transcriptProseClasses}>
               <Markdown
                 remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
                 components={{ a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" /> }}
               >
-                {msg.content}
+                {prepareMarkdown(msg.content)}
               </Markdown>
             </div>
           </div>

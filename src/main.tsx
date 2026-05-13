@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import 'highlight.js/styles/github-dark-dimmed.css';
 // Initialize storage adapter for web
 import './lib/storage';
 

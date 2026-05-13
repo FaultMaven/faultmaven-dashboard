@@ -10,6 +10,11 @@ module.exports = {
           css: {
             'code::before': { content: 'none' },
             'code::after': { content: 'none' },
+            'pre code': {
+              backgroundColor: 'transparent',
+              padding: 0,
+              borderRadius: 0,
+            },
           },
         },
       },

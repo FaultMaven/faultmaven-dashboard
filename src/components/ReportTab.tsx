@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import { prepareMarkdown } from '../lib/markdownUtils';
 import { getCaseReports, getCaseReportDownloadUrl } from '../lib/api';
 import { makeAuthenticatedRequest } from '../lib/knowledge/client';
 import type { CaseReport, CaseDetail, ReportType } from '../types/cases';
@@ -161,9 +163,10 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
             <div className={proseClasses}>
               <Markdown
                 remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
                 components={{ a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" /> }}
               >
-                {selectedReport.content}
+                {prepareMarkdown(selectedReport.content)}
               </Markdown>
             </div>
           </div>

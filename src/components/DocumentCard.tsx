@@ -3,11 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { getDocument, updateDocument } from '../lib/knowledge/kb';
-
-/** Strip YAML frontmatter (---...---) from markdown content before rendering. */
-function stripFrontmatter(md: string): string {
-  return md.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '');
-}
+import { prepareMarkdown } from '../lib/markdownUtils';
 
 export interface DocumentCardData {
   document_id: string;
@@ -228,7 +224,7 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
                 rehypePlugins={[rehypeHighlight]}
                 components={{ a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" /> }}
               >
-                {stripFrontmatter(content)}
+                {prepareMarkdown(content, { frontmatter: true })}
               </Markdown>
             </div>
 
