@@ -5,6 +5,15 @@ module.exports = {
   ],
   theme: {
     extend: {
+      typography: {
+        DEFAULT: {
+          css: {
+            'code::before': { content: 'none' },
+            'code::after': { content: 'none' },
+          },
+        },
+      },
+
       /*
        * =============================================
        *  FaultMaven Dashboard — Charcoal Theme Tokens
