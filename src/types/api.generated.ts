@@ -280,7 +280,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/dev-list-users": {
+    "/api/v1/auth/users": {
         parameters: {
             query?: never;
             header?: never;
@@ -288,15 +288,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Dev List Users
-         * @description Development endpoint to list all users.
-         *
-         *     Returns a list of all users in the system for development/debugging.
-         *     This endpoint is only available in development environments.
-         *
-         *     **Security**: Gated by require_development_environment dependency.
+         * List Users
+         * @description List all users. Admin only.
          */
-        get: operations["dev_list_users_api_v1_auth_dev_list_users_get"];
+        get: operations["list_users_api_v1_auth_users_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -305,7 +300,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/dev-delete-user/{username}": {
+    "/api/v1/auth/users/{username}": {
         parameters: {
             query?: never;
             header?: never;
@@ -316,15 +311,10 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Dev Delete User
-         * @description Development endpoint to delete a user by username.
-         *
-         *     Deletes (soft delete) a user by username for development/debugging.
-         *     This endpoint is only available in development environments.
-         *
-         *     **Security**: Gated by require_development_environment dependency.
+         * Delete User
+         * @description Delete a user by username. Admin only.
          */
-        delete: operations["dev_delete_user_api_v1_auth_dev_delete_user__username__delete"];
+        delete: operations["delete_user_api_v1_auth_users__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -381,6 +371,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/me/available-scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Available Scopes
+         * @description Return KB scopes the calling user can target when publishing.
+         *
+         *     Gated by the user's actual memberships, not AUTH_MODE — the picker
+         *     should omit any scope that would produce an unresolvable runbook
+         *     (e.g. TEAM when the user has no team membership).
+         *
+         *     Always returned: ``personal``, ``global`` (GLOBAL write is admin-gated
+         *     by the publish endpoint, not by this picker). ``team`` is added when
+         *     the user has any team membership; ``organization`` is added when the
+         *     user's org has 2+ members or the user is an org owner/admin.
+         */
+        get: operations["get_available_scopes_api_v1_auth_me_available_scopes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/health": {
         parameters: {
             query?: never;
@@ -404,7 +423,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/dev/revoke-all-tokens": {
+    "/api/v1/auth/users/{user_id}/revoke-tokens": {
         parameters: {
             query?: never;
             header?: never;
@@ -414,14 +433,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Dev Revoke All User Tokens
-         * @description Development endpoint: Revoke all tokens for current user.
-         *
-         *     This endpoint is only available in development environments.
-         *
-         *     **Security**: Gated by require_development_environment dependency.
+         * Revoke User Tokens
+         * @description Revoke all tokens for a user. Admin only.
          */
-        post: operations["dev_revoke_all_user_tokens_api_v1_auth_dev_revoke_all_tokens_post"];
+        post: operations["revoke_user_tokens_api_v1_auth_users__user_id__revoke_tokens_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -801,6 +816,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/evidence/{evidence_id}/classification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Reclassify Evidence
+         * @description Reclassify an existing evidence row under a user-specified data type.
+         *
+         *     Phase 1.5 — the escape hatch for "the classifier was confidently
+         *     wrong". Re-runs the preprocessing pipeline on the stored raw file
+         *     with ``user_override=data_type``, overwrites the evidence's
+         *     structural index, and appends to its extractor.attempts history.
+         *
+         *     Gated by ``FAULTMAVEN_RECLASSIFY_ENABLED``. Returns 404 when the
+         *     flag is off so the endpoint is invisible in production by default.
+         *
+         *     Error responses:
+         *
+         *     - ``404`` — feature disabled, case not found, or evidence not in case.
+         *     - ``409`` — evidence has no ``content_ref`` (can't re-extract).
+         *     - ``400`` — invalid ``data_type`` string, or missing ``data_type``.
+         */
+        patch: operations["reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch"];
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/data": {
         parameters: {
             query?: never;
@@ -910,7 +959,7 @@ export interface paths {
          *     Args:
          *         case_id: Case identifier
          *         include_history: If True, return all report versions; if False, only current
-         *         report_type: Optional filter by report type (incident_report, runbook, post_mortem)
+         *         report_type: Optional filter by report type (resolution_summary, closure_summary, runbook)
          *
          *     Returns:
          *         List of CaseReport objects
@@ -919,7 +968,10 @@ export interface paths {
         put?: never;
         /**
          * Generate Case Reports
-         * @description Generate case documentation reports.
+         * @description Regenerate reports for a terminal case.
+         *
+         *     Reports are auto-generated when a case reaches terminal state.
+         *     This endpoint allows regeneration if the original was missing or needs refresh.
          */
         post: operations["generate_case_reports_api_v1_cases__case_id__reports_post"];
         delete?: never;
@@ -990,10 +1042,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List uploaded files with evidence counts
-         * @description Get all uploaded files for a case with metadata and evidence linkage counts.
+         * List Uploaded Files
+         * @description List uploaded files for a case with pagination.
+         *
+         *     Returns:
+         *         Paginated list of file metadata with AI analysis status
          */
-        get: operations["list_uploaded_files_v2"];
+        get: operations["list_uploaded_files"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1013,7 +1068,27 @@ export interface paths {
          * Get uploaded file details with derived evidence
          * @description Retrieve detailed information about an uploaded file including all evidence derived from it and hypothesis linkage.
          */
-        get: operations["get_uploaded_file_details_v2"];
+        get: operations["get_uploaded_file_details"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all evidence for a case
+         * @description Retrieve all evidence records for a case, each with source-file reference and hypothesis linkage.
+         */
+        get: operations["list_case_evidence"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1439,188 +1514,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/evidence": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Evidence
-         * @description List evidence with optional filters.
-         *
-         *     Args:
-         *         case_id: Filter by case UUID
-         *         uploaded_by: Filter by uploader user ID
-         *         tags: Filter by tags (comma-separated)
-         *         filename_contains: Filter by filename substring
-         *         limit: Max results (default 50, max 200)
-         *         offset: Pagination offset
-         *         current_user: Authenticated user
-         *         service: Evidence service
-         *
-         *     Returns:
-         *         List of evidence records
-         */
-        get: operations["list_evidence_api_v1_evidence_get"];
-        put?: never;
-        /**
-         * Upload Evidence
-         * @description Upload evidence file.
-         *
-         *     Args:
-         *         file: Evidence file to upload
-         *         description: Optional description of the evidence
-         *         tags: Optional comma-separated tags
-         *         case_id: Optional case UUID to auto-link
-         *         current_user: Authenticated user
-         *         service: Evidence service
-         *
-         *     Returns:
-         *         Created evidence record
-         */
-        post: operations["upload_evidence_api_v1_evidence_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/evidence/case/{case_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Evidence For Case
-         * @description Get all evidence linked to a specific case.
-         *
-         *     Args:
-         *         case_id: Case UUID
-         *         current_user: Authenticated user
-         *         service: Evidence service
-         *
-         *     Returns:
-         *         List of evidence records for the case
-         */
-        get: operations["get_evidence_for_case_api_v1_evidence_case__case_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/evidence/{evidence_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Evidence
-         * @description Get evidence details by ID.
-         *
-         *     Args:
-         *         evidence_id: Evidence UUID
-         *         current_user: Authenticated user
-         *         service: Evidence service
-         *
-         *     Returns:
-         *         Evidence record
-         *
-         *     Raises:
-         *         HTTPException: 404 if evidence not found, 503 if service unavailable
-         */
-        get: operations["get_evidence_api_v1_evidence__evidence_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Evidence
-         * @description Delete evidence file and record.
-         *
-         *     Args:
-         *         evidence_id: Evidence UUID
-         *         current_user: Authenticated user
-         *         service: Evidence service
-         *
-         *     Raises:
-         *         HTTPException: 404 if evidence not found, 503 if service unavailable
-         */
-        delete: operations["delete_evidence_api_v1_evidence__evidence_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/evidence/{evidence_id}/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Download Evidence
-         * @description Download evidence file.
-         *
-         *     Args:
-         *         evidence_id: Evidence UUID
-         *         current_user: Authenticated user
-         *         service: Evidence service
-         *
-         *     Returns:
-         *         Redirect to download URL
-         *
-         *     Raises:
-         *         HTTPException: 404 if evidence not found, 503 if service unavailable
-         */
-        get: operations["download_evidence_api_v1_evidence__evidence_id__download_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/evidence/{evidence_id}/link": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Link Evidence To Case
-         * @description Link evidence to a case.
-         *
-         *     Args:
-         *         evidence_id: Evidence UUID
-         *         link_request: Case ID to link to
-         *         current_user: Authenticated user
-         *         service: Evidence service
-         *
-         *     Returns:
-         *         Updated evidence record
-         *
-         *     Raises:
-         *         HTTPException: 404 if evidence not found
-         */
-        post: operations["link_evidence_to_case_api_v1_evidence__evidence_id__link_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/knowledge/documents": {
         parameters: {
             query?: never;
@@ -1635,6 +1528,7 @@ export interface paths {
          *     Args:
          *         document_type: Filter by document type
          *         tags: Filter by tags (comma-separated)
+         *         scope: Filter by scope (global, team, personal)
          *         limit: Maximum number of documents to return
          *         offset: Number of documents to skip
          *
@@ -1731,32 +1625,6 @@ export interface paths {
          *         Document snippet with verification status for badge display
          */
         get: operations["get_document_snippet_api_v1_knowledge_documents__document_id__snippet_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/jobs/{job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Job Status
-         * @description Get the status of a knowledge base ingestion job
-         *
-         *     Args:
-         *         job_id: Job identifier
-         *
-         *     Returns:
-         *         Job status information
-         */
-        get: operations["get_job_status_api_v1_knowledge_jobs__job_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2102,6 +1970,236 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert Document
+         * @description Upload a document and convert it to one or more runbook drafts.
+         */
+        post: operations["convert_document_api_v1_knowledge_convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversions
+         * @description List the current user's conversion jobs.
+         */
+        get: operations["list_conversions_api_v1_knowledge_conversions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Drafts
+         * @description List all non-deleted drafts across all conversion jobs.
+         */
+        get: operations["list_all_drafts_api_v1_knowledge_drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan For Runbooks
+         * @description Scan data/knowledge/ for .md files not tracked in the database.
+         *
+         *     Discovers runbooks created by the KB Toolkit or placed on disk manually.
+         *     Creates draft records so they appear in the Drafts tab for review.
+         */
+        post: operations["scan_for_runbooks_api_v1_knowledge_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/{conversion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversion
+         * @description Get conversion job details with all drafts.
+         */
+        get: operations["get_conversion_api_v1_knowledge_conversions__conversion_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/{conversion_id}/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Draft
+         * @description Update draft content. Re-runs validation and quality scoring.
+         */
+        put: operations["update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put"];
+        post?: never;
+        /**
+         * Delete Draft
+         * @description Delete a conversion draft.
+         */
+        delete: operations["delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/drafts/verify-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Batch
+         * @description Activate multiple drafts sequentially (verify + ingest into KB).
+         */
+        post: operations["verify_batch_api_v1_knowledge_drafts_verify_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/{conversion_id}/drafts/{draft_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Draft
+         * @description Promote draft to verified status and trigger ingestion into ChromaDB.
+         */
+        post: operations["verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/runbooks/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Runbook Manually
+         * @description Create a runbook manually from template fields. Returns a draft for review.
+         */
+        post: operations["create_runbook_manually_api_v1_knowledge_runbooks_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/convert-from-case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert From Case
+         * @description Generate a runbook draft from a resolved case using the canonical template.
+         *
+         *     The generated runbook enters the same draft workflow as document-driven
+         *     conversions: edit → verify → ingest into KB.
+         */
+        post: operations["convert_from_case_api_v1_knowledge_convert_from_case_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/by-case/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversion By Case
+         * @description Get the conversion job and drafts for a specific case.
+         */
+        get: operations["get_conversion_by_case_api_v1_knowledge_conversions_by_case__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations": {
         parameters: {
             query?: never;
@@ -2126,7 +2224,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations/{org_id}": {
+    "/api/v1/organizations/{organization_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2137,21 +2235,21 @@ export interface paths {
          * Get Organization
          * @description Get organization details by ID. Requires organization membership.
          */
-        get: operations["get_organization_api_v1_organizations__org_id__get"];
+        get: operations["get_organization_api_v1_organizations__organization_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Organization
          * @description Soft delete an organization. Requires owner permission.
          */
-        delete: operations["delete_organization_api_v1_organizations__org_id__delete"];
+        delete: operations["delete_organization_api_v1_organizations__organization_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Organization
          * @description Update organization details. Requires owner permission.
          */
-        patch: operations["update_organization_api_v1_organizations__org_id__patch"];
+        patch: operations["update_organization_api_v1_organizations__organization_id__patch"];
         trace?: never;
     };
     "/api/v1/organizations/by-slug/{slug}": {
@@ -2174,7 +2272,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations/{org_id}/members": {
+    "/api/v1/organizations/{organization_id}/members": {
         parameters: {
             query?: never;
             header?: never;
@@ -2185,20 +2283,20 @@ export interface paths {
          * List Organization Members
          * @description List all members of an organization. Requires organization membership.
          */
-        get: operations["list_organization_members_api_v1_organizations__org_id__members_get"];
+        get: operations["list_organization_members_api_v1_organizations__organization_id__members_get"];
         put?: never;
         /**
          * Add Member
          * @description Add user to organization by email. Requires owner or admin permission.
          */
-        post: operations["add_member_api_v1_organizations__org_id__members_post"];
+        post: operations["add_member_api_v1_organizations__organization_id__members_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations/{org_id}/members/{user_id}": {
+    "/api/v1/organizations/{organization_id}/members/{user_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2212,17 +2310,17 @@ export interface paths {
          * Remove Member
          * @description Remove user from organization. Owner can remove anyone except self, admin can remove members only.
          */
-        delete: operations["remove_member_api_v1_organizations__org_id__members__user_id__delete"];
+        delete: operations["remove_member_api_v1_organizations__organization_id__members__user_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Member Role
          * @description Update user's role in organization. Requires owner permission.
          */
-        patch: operations["update_member_role_api_v1_organizations__org_id__members__user_id__patch"];
+        patch: operations["update_member_role_api_v1_organizations__organization_id__members__user_id__patch"];
         trace?: never;
     };
-    "/api/v1/organizations/{org_id}/settings": {
+    "/api/v1/organizations/{organization_id}/settings": {
         parameters: {
             query?: never;
             header?: never;
@@ -2233,7 +2331,7 @@ export interface paths {
          * Get Organization Settings
          * @description Get organization settings and plan limits. Requires organization membership.
          */
-        get: operations["get_organization_settings_api_v1_organizations__org_id__settings_get"];
+        get: operations["get_organization_settings_api_v1_organizations__organization_id__settings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2243,10 +2341,10 @@ export interface paths {
          * Update Organization Settings
          * @description Update organization settings. Requires owner permission.
          */
-        patch: operations["update_organization_settings_api_v1_organizations__org_id__settings_patch"];
+        patch: operations["update_organization_settings_api_v1_organizations__organization_id__settings_patch"];
         trace?: never;
     };
-    "/api/v1/organizations/{org_id}/permissions/check": {
+    "/api/v1/organizations/{organization_id}/permissions/check": {
         parameters: {
             query?: never;
             header?: never;
@@ -2259,7 +2357,7 @@ export interface paths {
          * Check Permission
          * @description Check if user has specific permission in organization.
          */
-        post: operations["check_permission_api_v1_organizations__org_id__permissions_check_post"];
+        post: operations["check_permission_api_v1_organizations__organization_id__permissions_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2818,7 +2916,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/teams/organization/{org_id}": {
+    "/api/v1/teams/organization/{organization_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2829,7 +2927,7 @@ export interface paths {
          * List Organization Teams
          * @description List all teams in an organization.
          */
-        get: operations["list_organization_teams_api_v1_teams_organization__org_id__get"];
+        get: operations["list_organization_teams_api_v1_teams_organization__organization_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2838,7 +2936,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/teams/user/{target_user_id}/organization/{org_id}": {
+    "/api/v1/teams/user/{target_user_id}/organization/{organization_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2849,7 +2947,7 @@ export interface paths {
          * List User Teams
          * @description List all teams a user belongs to in an organization.
          */
-        get: operations["list_user_teams_api_v1_teams_user__target_user_id__organization__org_id__get"];
+        get: operations["list_user_teams_api_v1_teams_user__target_user_id__organization__organization_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2914,6 +3012,376 @@ export interface paths {
          * @description Check if user is member of team.
          */
         get: operations["is_team_member_api_v1_teams__team_id__members__target_user_id__is_member_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Users
+         * @description List all users in organization (admin only).
+         *
+         *     Returns paginated list of users with filtering options.
+         *     Admin can only see users in their own organization.
+         *
+         *     Query Parameters:
+         *         is_active: Filter by active/inactive status
+         *         role: Filter by role (admin, member, viewer)
+         *         search: Search email or full_name (case-insensitive, partial match)
+         *         limit: Max results per page (default 50, max 100)
+         *         offset: Pagination offset
+         *
+         *     Returns:
+         *         AdminUserListResponse with users, total, limit, offset
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role
+         *         422 Unprocessable Entity: Invalid query parameters
+         */
+        get: operations["list_users_api_v1_admin_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Details
+         * @description Get detailed user information (admin only).
+         *
+         *     Returns complete user information including derived permissions.
+         *     Admin can only view users in their own organization.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to retrieve
+         *
+         *     Returns:
+         *         UserDetailResponse with full user details
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR user belongs to different organization
+         *         404 Not Found: User does not exist
+         */
+        get: operations["get_user_details_api_v1_admin_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deactivate User
+         * @description Deactivate user account (admin only).
+         *
+         *     Sets user is_active=False and revokes all JWT tokens.
+         *     Admin cannot deactivate themselves.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to deactivate
+         *
+         *     Returns:
+         *         UserStatusResponse confirming deactivation
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR trying to deactivate self
+         *         404 Not Found: User does not exist
+         *         409 Conflict: User already deactivated
+         */
+        post: operations["deactivate_user_api_v1_admin_users__user_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate User
+         * @description Activate user account (admin only).
+         *
+         *     Sets user is_active=True. User can log in after activation.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to activate
+         *
+         *     Returns:
+         *         UserStatusResponse confirming activation
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role
+         *         404 Not Found: User does not exist
+         *         409 Conflict: User already active
+         */
+        post: operations["activate_user_api_v1_admin_users__user_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Role
+         * @description Assign role to user (admin only).
+         *
+         *     Replaces existing roles with the new role. Revokes all JWT tokens.
+         *     Admin cannot modify their own roles.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to assign role to
+         *
+         *     Request Body:
+         *         role: Role to assign (admin, member, viewer)
+         *
+         *     Returns:
+         *         RoleAssignmentResponse confirming role assignment
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR trying to modify own roles
+         *         404 Not Found: User does not exist
+         *         409 Conflict: User already has this role
+         *         422 Unprocessable Entity: Invalid role
+         */
+        post: operations["assign_role_api_v1_admin_users__user_id__roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/roles/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Role
+         * @description Remove role from user (admin only).
+         *
+         *     Downgrades user to viewer (minimum privilege). Revokes all JWT tokens.
+         *     Admin cannot remove their own admin role.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to remove role from
+         *         role: Role to remove (admin, member)
+         *
+         *     Returns:
+         *         RoleAssignmentResponse confirming role removal
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR trying to remove own admin role
+         *         404 Not Found: User does not exist OR user doesn't have this role
+         *         422 Unprocessable Entity: Invalid role or attempting to remove viewer role
+         */
+        delete: operations["remove_role_api_v1_admin_users__user_id__roles__role__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/debug/llm-routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Routing Health
+         * @description Get LLM provider health and routing status (admin only).
+         *
+         *     Returns detailed health metrics for all LLM providers including:
+         *     - Current health status (HEALTHY, DEGRADED, UNHEALTHY, UNKNOWN)
+         *     - Consecutive failure counts
+         *     - Average latency
+         *     - Sticky routing status
+         *     - Last success/failure timestamps
+         *
+         *     Returns:
+         *         Dict with provider health summary and routing configuration
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role
+         *         503 Service Unavailable: LLM provider not configured
+         */
+        get: operations["get_llm_routing_health_api_v1_admin_debug_llm_routing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Config
+         * @description Get LLM provider configuration and status.
+         *
+         *     Returns the current primary provider, fallback chain, and per-provider
+         *     status including health, connectivity, and available models. API keys
+         *     are never exposed — only a boolean indicating whether one is configured.
+         *
+         *     Available to any authenticated user (local deployment) or admin (cloud).
+         *     Route-level access control is handled by the dashboard's LLMConfigRoute guard.
+         *
+         *     Returns:
+         *         LLMConfigResponse with provider details and fallback chain
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         503 Service Unavailable: LLM provider not initialized
+         */
+        get: operations["get_llm_config_api_v1_admin_llm_config_get"];
+        /**
+         * Update Llm Config
+         * @description Update LLM provider configuration.
+         *
+         *     Persists configuration changes to the database as overrides that take
+         *     precedence over environment variables. After saving, the settings
+         *     singleton and provider registry are reset so changes take effect
+         *     immediately without a restart.
+         *
+         *     Accepts partial updates — only provided fields are changed.
+         *
+         *     Returns:
+         *         LLMConfigUpdateResponse with list of updated keys
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: Local deployment (config is read-only)
+         *         422 Unprocessable Entity: Invalid provider name
+         *         503 Service Unavailable: LLM provider not initialized
+         */
+        put: operations["update_llm_config_api_v1_admin_llm_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/llm/config/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Llm Connection
+         * @description Test connectivity to a specific LLM provider.
+         *
+         *     Sends a minimal prompt to the specified provider to verify that:
+         *     1. The API key is valid
+         *     2. The provider endpoint is reachable
+         *     3. The configured model responds
+         *
+         *     This does NOT use the fallback chain — it tests the specific provider directly.
+         *
+         *     Returns:
+         *         LLMConnectionTestResponse with connectivity result and latency
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         422 Unprocessable Entity: Unknown provider name
+         *         503 Service Unavailable: LLM provider not initialized
+         */
+        post: operations["check_llm_connection_api_v1_admin_llm_config_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Env Config Status
+         * @description Get environment configuration status (read-only).
+         *
+         *     Returns the current deployment configuration including auth mode,
+         *     storage backends, and security settings. This is informational only —
+         *     configuration changes require editing environment variables and restarting.
+         *
+         *     Returns:
+         *         EnvConfigStatusResponse with current environment configuration
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         */
+        get: operations["get_env_config_status_api_v1_admin_config_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3345,6 +3813,52 @@ export interface components {
             compliance_confidence: number;
         };
         /**
+         * AdminUserListItem
+         * @description User list item for admin endpoints (with full info).
+         */
+        AdminUserListItem: {
+            /** User Id */
+            user_id: string;
+            /** Organization Id */
+            organization_id: string;
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /** Roles */
+            roles: string[];
+            /** Is Active */
+            is_active: boolean;
+            /** Is Verified */
+            is_verified: boolean;
+            /** Last Login At */
+            last_login_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * AdminUserListResponse
+         * @description Admin user list response with pagination.
+         */
+        AdminUserListResponse: {
+            /** Users */
+            users: components["schemas"]["AdminUserListItem"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
          * AgentExecutionRequest
          * @description Request model for executing an AI agent.
          *
@@ -3406,18 +3920,53 @@ export interface components {
         /**
          * AttachmentResult
          * @description Result of preprocessing a single attachment.
+         *
+         *     Post-010 strict evidence model: file uploads no longer create an
+         *     Evidence row at intake — they create an UploadedFile row.
+         *     ``file_id`` is the uploaded_files row identifier (frontend uses it
+         *     to reference the attachment; Evidence rows that later reference
+         *     this file via ``source_file_id`` are born during INVESTIGATING
+         *     when the LLM extracts claim-anchored slices).
          */
         AttachmentResult: {
-            /** Evidence Id */
-            evidence_id: string;
+            /**
+             * File Id
+             * @description UploadedFile row identifier for this attachment.
+             */
+            file_id: string;
             /** Filename */
             filename: string;
-            /** Data Type */
-            data_type: string;
             /** File Size */
             file_size: number;
             /** Processing Status */
             processing_status: string;
+            /**
+             * Uploaded At
+             * @description ISO 8601 timestamp of when the attachment was processed
+             * @default
+             */
+            uploaded_at: string;
+            /**
+             * Source Type
+             * @description Data-type classification from preprocessing: logs | metrics | configuration | code | text | image
+             */
+            source_type: string;
+            /**
+             * Upload Source
+             * @description Input origin: file_upload | paste | page_capture | screenshot | agent_generated
+             * @default file_upload
+             */
+            upload_source: string;
+            /**
+             * Duplicate Of
+             * @description If set, this attachment was a per-case content-hash duplicate of an earlier upload. No new UploadedFile was created; this field carries the existing file_id. Frontend should render a non-blocking toast.
+             */
+            duplicate_of?: string | null;
+            /**
+             * Duplicate Turn
+             * @description Turn number where the original was uploaded (for toast text).
+             */
+            duplicate_turn?: number | null;
         };
         /**
          * AuthConfigResponse
@@ -3527,10 +4076,42 @@ export interface components {
             /** @description Authenticated user profile */
             user: components["schemas"]["UserProfile"];
         };
+        /**
+         * AvailableScopesResponse
+         * @description Knowledge-base scopes the calling user may publish to.
+         */
+        AvailableScopesResponse: {
+            /** Scopes */
+            scopes: string[];
+        };
+        /** BatchDraftRef */
+        BatchDraftRef: {
+            /** Conversion Id */
+            conversion_id: string;
+            /** Draft Id */
+            draft_id: string;
+        };
+        /** BatchVerifyRequest */
+        BatchVerifyRequest: {
+            /** Draft Ids */
+            draft_ids: components["schemas"]["BatchDraftRef"][];
+        };
         /** Body_complete_session_api_v1_cases__case_id__sessions__session_id__complete_post */
         Body_complete_session_api_v1_cases__case_id__sessions__session_id__complete_post: {
             /** Findings Summary */
             findings_summary: string;
+        };
+        /** Body_convert_document_api_v1_knowledge_convert_post */
+        Body_convert_document_api_v1_knowledge_convert_post: {
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /** Scope */
+            scope: string;
+            /** Team Id */
+            team_id?: string | null;
         };
         /** Body_share_case_api_v1_cases__case_id__share_post */
         Body_share_case_api_v1_cases__case_id__share_post: {
@@ -3561,6 +4142,10 @@ export interface components {
             intent_type?: string | null;
             /** Intent Data */
             intent_data?: string | null;
+            /** Input Type */
+            input_type?: string | null;
+            /** Source Url */
+            source_url?: string | null;
         };
         /** Body_upload_document_api_v1_knowledge_documents_post */
         Body_upload_document_api_v1_knowledge_documents_post: {
@@ -3582,20 +4167,6 @@ export interface components {
             /** Description */
             description?: string | null;
         };
-        /** Body_upload_evidence_api_v1_evidence_post */
-        Body_upload_evidence_api_v1_evidence_post: {
-            /**
-             * File
-             * Format: binary
-             */
-            file: string;
-            /** Description */
-            description?: string | null;
-            /** Tags */
-            tags?: string | null;
-            /** Case Id */
-            case_id?: string | null;
-        };
         /**
          * Case
          * @description Root case entity.
@@ -3609,9 +4180,9 @@ export interface components {
             case_id?: string;
             /**
              * User Id
-             * @description User who created the case
+             * @description User who created the case. NULL after the originating user is deleted (FK SET NULL). Required to be non-empty at creation time; creation logic enforces this separately from Pydantic validation.
              */
-            user_id: string;
+            user_id?: string | null;
             /**
              * Organization Id
              * @description Organization this case belongs to
@@ -3638,15 +4209,15 @@ export interface components {
              */
             description: string;
             /**
-             * @description Current lifecycle status
+             * @description Current lifecycle status (phase or disposition)
              * @default inquiry
              */
             status: components["schemas"]["CaseStatus"];
             /**
-             * Status History
-             * @description Complete history of status changes
+             * Action History
+             * @description Complete history of case actions (phase transitions and dispositions)
              */
-            status_history?: components["schemas"]["CaseStatusTransition"][];
+            action_history?: components["schemas"]["CaseAction"][];
             /**
              * Closure Reason
              * @description Why case was closed: resolved | abandoned | escalated | inquiry_only | duplicate | other
@@ -3667,6 +4238,16 @@ export interface components {
              *             Cleared after transition executes or is cancelled.
              */
             pending_transition?: Record<string, never> | null;
+            /**
+             * Last Suggestions
+             * @description COOPERATIVE suggestions with intent metadata from the last agent turn. Used by the intent resolver to match typed responses against offered choices. Updated after each turn; only suggestions carrying intent metadata are stored.
+             */
+            last_suggestions?: Record<string, never>[] | null;
+            /**
+             * Kb Context
+             * @description Deterministic KB pre-fetch results injected at key transitions. Populated at INQUIRY→INVESTIGATING (symptom search) and when root_cause_identified completes (remediation search). Included in the LLM context as historical suggestions, not absolute truths.
+             */
+            kb_context?: Record<string, never>[] | null;
             /** @description Milestone-based progress tracking */
             progress?: components["schemas"]["InvestigationProgress"];
             /**
@@ -3768,6 +4349,11 @@ export interface components {
             working_conclusion?: components["schemas"]["WorkingConclusion"] | null;
             /** @description Final root cause determination */
             root_cause_conclusion?: components["schemas"]["RootCauseConclusion"] | null;
+            /**
+             * Investigation Journal
+             * @description Structured log of key findings, decisions, and context. Append-only. Always included in full in LLM context.
+             */
+            investigation_journal?: components["schemas"]["JournalEntry"][];
             /** @description Escalated to human expert */
             escalation_state?: components["schemas"]["EscalationState"] | null;
             /** @description Generated documentation and lessons learned */
@@ -3791,6 +4377,12 @@ export interface components {
              */
             last_activity_at?: string;
             /**
+             * Version
+             * @description Optimistic concurrency control token. Incremented on every successful aggregate save. Callers that read-modify-write a case must pass the loaded version back through save(case); `save` raises StaleCaseException on mismatch. Scoped single-row UPDATEs (update_evidence_vectorized, etc.) do NOT bump this field — they operate on child tables.
+             * @default 1
+             */
+            version: number;
+            /**
              * Resolved At
              * @description When case reached RESOLVED status
              */
@@ -3800,6 +4392,49 @@ export interface components {
              * @description When case reached terminal state (RESOLVED or CLOSED)
              */
             closed_at?: string | null;
+        };
+        /**
+         * CaseAction
+         * @description Record of one case action (phase transition or disposition change).
+         *     Provides audit trail for case lifecycle.
+         */
+        CaseAction: {
+            /** @description Status before the action */
+            from_status: components["schemas"]["CaseStatus"];
+            /** @description Status after the action */
+            to_status: components["schemas"]["CaseStatus"];
+            /**
+             * Triggered At
+             * Format: date-time
+             * @description When the action occurred
+             */
+            triggered_at?: string;
+            /**
+             * Triggered By
+             * @description Who triggered: user_id or 'system' for automatic actions
+             */
+            triggered_by: string;
+            /**
+             * Reason
+             * @description Human-readable reason for the action
+             */
+            reason: string;
+        };
+        /** CaseConversionAPIRequest */
+        CaseConversionAPIRequest: {
+            /**
+             * Case Id
+             * @description ID of the resolved case
+             */
+            case_id: string;
+            /**
+             * Scope
+             * @description KB scope: global, team, personal
+             * @default global
+             */
+            scope: string;
+            /** Team Id */
+            team_id?: string | null;
         };
         /**
          * CaseCreateRequest
@@ -3883,12 +4518,8 @@ export interface components {
             hypothesis_count: number;
             /** Solution Count */
             solution_count: number;
-            /** Is Stuck */
-            is_stuck: boolean;
             /** Is Terminal */
             is_terminal: boolean;
-            /** Degraded Mode Active */
-            degraded_mode_active: boolean;
             /** Escalated */
             escalated: boolean;
             /**
@@ -3896,6 +4527,18 @@ export interface components {
              * @description Allowed status transitions from current state for user-initiated changes
              */
             valid_next_states?: string[];
+        };
+        /**
+         * CaseEvidenceListResponse
+         * @description All evidence records for a case, each with source and hypothesis linkage.
+         */
+        CaseEvidenceListResponse: {
+            /** Case Id */
+            case_id: string;
+            /** Total Count */
+            total_count: number;
+            /** Evidence */
+            evidence: components["schemas"]["EvidenceDetailsResponse"][];
         };
         /**
          * CaseListResponse
@@ -4019,6 +4662,12 @@ export interface components {
              * @default false
              */
             linked_to_closure: boolean;
+            /**
+             * Auto Generated
+             * @description True for auto-generated terminal summaries, False for user-requested reports
+             * @default false
+             */
+            auto_generated: boolean;
             /** @description Runbook-specific metadata */
             metadata?: components["schemas"]["RunbookMetadata"] | null;
         };
@@ -4053,44 +4702,25 @@ export interface components {
         };
         /**
          * CaseStatus
-         * @description Case lifecycle status.
+         * @description Case lifecycle status — passive label describing a case's current condition.
          *
-         *     Lifecycle Flow:
-         *       INQUIRY -> INVESTIGATING -> RESOLVED (terminal)
-         *                                  -> CLOSED (terminal)
-         *                -> CLOSED (terminal)
+         *     Values fall into two categories:
+         *     - **Phases** (active work): INQUIRY, INVESTIGATING
+         *     - **Dispositions** (terminal resolution): RESOLVED, CLOSED
          *
-         *     Terminal States: RESOLVED, CLOSED (no further transitions)
+         *     Case Actions (phase transitions and dispositions):
+         *       INQUIRY → INVESTIGATING  (phase transition)
+         *       INQUIRY → CLOSED         (disposition)
+         *       INVESTIGATING → RESOLVED (disposition; includes the same-turn KB-resolution variant)
+         *       INVESTIGATING → CLOSED   (disposition)
+         *
+         *     v3: INQUIRY → RESOLVED edge removed. KB-driven cases collapse INVESTIGATING
+         *     to one or two turns via per-runbook Cause attribution rather than skipping
+         *     the phase. See docs/architecture/investigation-engine/investigation-lifecycle-logic.md
+         *     §1.2 INVESTIGATING → RESOLVED → KB-Resolution Path.
          * @enum {string}
          */
         CaseStatus: "inquiry" | "investigating" | "resolved" | "closed";
-        /**
-         * CaseStatusTransition
-         * @description Record of one status change.
-         *     Provides audit trail for case lifecycle.
-         */
-        CaseStatusTransition: {
-            /** @description Status before transition */
-            from_status: components["schemas"]["CaseStatus"];
-            /** @description Status after transition */
-            to_status: components["schemas"]["CaseStatus"];
-            /**
-             * Triggered At
-             * Format: date-time
-             * @description When transition occurred
-             */
-            triggered_at?: string;
-            /**
-             * Triggered By
-             * @description Who triggered: user_id or 'system' for automatic transitions
-             */
-            triggered_by: string;
-            /**
-             * Reason
-             * @description Human-readable reason for transition
-             */
-            reason: string;
-        };
         /**
          * CaseSummary
          * @description Minimal case information for list views.
@@ -4137,8 +4767,6 @@ export interface components {
              * @default 8
              */
             total_milestones: number;
-            /** Is Stuck */
-            is_stuck: boolean;
             /** Is Terminal */
             is_terminal: boolean;
             /**
@@ -4241,6 +4869,12 @@ export interface components {
              */
             updated_at: string;
             /**
+             * Uploaded Files Count
+             * @description Number of uploaded files
+             * @default 0
+             */
+            uploaded_files_count: number;
+            /**
              * Valid Next States
              * @description Allowed status transitions from current state for user-initiated changes
              */
@@ -4269,22 +4903,12 @@ export interface components {
              * @description What agent is currently doing
              */
             agent_status: string;
-            /**
-             * Is Stuck
-             * @description Whether investigation is stuck (no progress for 5+ turns)
-             * @default false
-             */
-            is_stuck: boolean;
-            /**
-             * Degraded Mode
-             * @description Deprecated: always False. DegradedMode has been removed.
-             * @default false
-             */
-            degraded_mode: boolean;
             /** @description Investigation strategy with approach and next steps */
             investigation_strategy?: components["schemas"]["InvestigationStrategyData"] | null;
             /** @description Problem verification details (urgency, severity, impact) */
             problem_verification?: components["schemas"]["ProblemVerificationData"] | null;
+            /** @description Progress transparency state. Present when investigation has stalled and agent is surfacing milestone dependencies. */
+            progress_transparency?: components["schemas"]["ProgressTransparencyInfo"] | null;
         };
         /**
          * CaseUIResponse_Resolved
@@ -4332,6 +4956,12 @@ export interface components {
              * @description When case was resolved
              */
             resolved_at: string;
+            /**
+             * Uploaded Files Count
+             * @description Number of uploaded files
+             * @default 0
+             */
+            uploaded_files_count: number;
             /**
              * Valid Next States
              * @description Allowed status transitions from current state for user-initiated changes
@@ -4469,13 +5099,9 @@ export interface components {
             collected_at_turn: number;
             /**
              * Source Type
-             * @description LOGS | METRICS | TRACES | etc.
+             * @description LOGS | METRICS | CONFIGURATION | CODE | TEXT | IMAGE
              */
             source_type: string;
-            /** Content Hash */
-            content_hash?: string | null;
-            /** Preprocessing Method */
-            preprocessing_method?: string | null;
             /** Primary Purpose */
             primary_purpose?: string | null;
             /** Related Hypothesis Ids */
@@ -4548,10 +5174,10 @@ export interface components {
         };
         /**
          * DocumentType
-         * @description Type of generated document
+         * @description Type of generated document.
          * @enum {string}
          */
-        DocumentType: "incident_report" | "post_mortem" | "runbook" | "chat_summary" | "timeline" | "evidence_bundle" | "other";
+        DocumentType: "runbook" | "chat_summary" | "timeline" | "evidence_bundle" | "other";
         /**
          * DocumentationData
          * @description Documentation generated when case closes.
@@ -4568,11 +5194,6 @@ export interface components {
              * @description Runbook entry created from this case
              */
             runbook_entry?: string | null;
-            /**
-             * Post Mortem Id
-             * @description Link to post-mortem doc if created
-             */
-            post_mortem_id?: string | null;
             /**
              * Lessons Learned
              * @description Key takeaways from investigation
@@ -4609,6 +5230,66 @@ export interface components {
              * @default agent
              */
             generated_by: string;
+        };
+        /** DraftUpdateRequest */
+        DraftUpdateRequest: {
+            /**
+             * Content
+             * @description Full runbook markdown content including frontmatter
+             */
+            content: string;
+        };
+        /**
+         * EnvConfigStatusResponse
+         * @description Read-only environment configuration status for dashboard display.
+         */
+        EnvConfigStatusResponse: {
+            /**
+             * Auth Mode
+             * @description 'local' or 'oauth'
+             */
+            auth_mode: string;
+            /**
+             * Deployment
+             * @description 'local' or 'cloud' — derived from auth_mode
+             */
+            deployment: string;
+            /**
+             * Db Backend
+             * @description 'sqlite' or 'postgresql'
+             */
+            db_backend: string;
+            /**
+             * Session Storage
+             * @description 'inmemory' or 'redis'
+             */
+            session_storage: string;
+            /**
+             * Vector Storage
+             * @description 'inmemory' or 'chromadb'
+             */
+            vector_storage: string;
+            /**
+             * Llm Provider
+             * @description Primary LLM provider name
+             */
+            llm_provider: string;
+            /** Pii Redaction Enabled */
+            pii_redaction_enabled: boolean;
+            /** Rate Limit Enabled */
+            rate_limit_enabled: boolean;
+            /**
+             * Features
+             * @description Optional features and their configuration status
+             */
+            features?: {
+                [key: string]: components["schemas"]["FeatureStatus"];
+            };
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
         };
         /**
          * EscalationState
@@ -4663,18 +5344,21 @@ export interface components {
         EscalationType: "expertise_required" | "permissions_required" | "no_progress" | "user_request" | "critical_severity" | "other";
         /**
          * Evidence
-         * @description Evidence collected during investigation.
-         *     Categorized by purpose to drive milestone advancement.
+         * @description A claim-anchored extract recorded during INVESTIGATING.
          *
-         *     NOTE: Evidence.category is SYSTEM-INFERRED, not LLM-specified!
-         *     System categorizes based on:
-         *     - Which milestones are incomplete (if symptom not verified -> SYMPTOM_EVIDENCE)
-         *     - Hypothesis evaluation results (if creates hypothesis_evidence links -> CAUSAL_EVIDENCE)
-         *     - Solution state (if solution proposed -> RESOLUTION_EVIDENCE)
+         *     Post-010 single creation path: every Evidence row originates as an
+         *     ``EvidenceToAdd`` entry the LLM declared on a specific turn. The LLM
+         *     chooses the ``category`` from the four claim-anchored values and the
+         *     ``source_type`` from ``EvidenceSourceType``. The system only infers
+         *     ``advances_milestones`` (Tier 2 inference via ``CATEGORY_MILESTONE_MAP``),
+         *     and only when the LLM has not already overridden it (Tier 3).
          *
-         *     LLM provides: summary, analysis
+         *     LLM declares: summary, extract (optional), category, source_type,
+         *         source_file_id (required unless source_type=USER_DESCRIPTION),
+         *         likelihood, optionally advances_milestones
          *     LLM evaluates: stance per hypothesis (creates hypothesis_evidence links)
-         *     System infers: category, advances_milestones
+         *     System fills: evidence_id, collected_at_turn, collected_by,
+         *         coverage timestamps (parsed from extract), advances_milestones (Tier 2)
          */
         Evidence: {
             /**
@@ -4682,7 +5366,7 @@ export interface components {
              * @description Unique evidence identifier
              */
             evidence_id?: string;
-            /** @description System-inferred category: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | RESOLUTION_EVIDENCE | OTHER */
+            /** @description Claim-anchored category declared by the LLM: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | MITIGATION_EVIDENCE | SOLUTION_EVIDENCE */
             category: components["schemas"]["EvidenceCategory"];
             /**
              * Primary Purpose
@@ -4691,81 +5375,53 @@ export interface components {
             primary_purpose: string;
             /**
              * Summary
-             * @description Brief summary of evidence content (<500 chars) for UI display and quick scanning
+             * @description Short label (≤500 chars) the LLM wrote when declaring this evidence via ``evidence_to_add``. ALWAYS present — use it for UI list views, headers, and quick scanning. The optional ``extract`` field carries the verbatim slice that supports the summary.
              */
             summary: string;
             /**
-             * Preprocessed Content
-             * @description Extracted relevant diagnostic information from preprocessing pipeline.
-             *
-             *             This is what the agent uses for hypothesis evaluation and evidence analysis.
-             *             Contains only the high-signal portions extracted from raw files.
-             *
-             *             Examples:
-             *             - Logs: Crime scene extraction (approx. 200 lines around errors)
-             *             - Metrics: Anomaly detection results with statistical analysis
-             *             - Config: Parsed configuration with secrets redacted
-             *             - Code: AST-extracted functions and classes
-             *             - Text: LLM-generated summary
-             *             - Images: Vision model description
-             *
-             *             Size: Typically 5 to 50 KB (compressed from larger raw files).
-             *             Compression ratios: 200:1 for logs, 167:1 for metrics, 50:1 for code.
-             *
-             *             This field is REQUIRED for all evidence. Raw files remain in S3 for audit/deep dive.
+             * Extract
+             * @description Optional verbatim quote that supports the ``summary``. The LLM populates this when grounding the finding in a specific system-output slice (a log line, a metric reading, a config snippet). Distinct from ``summary`` (short label) and from ``uploaded_files.storage_ref`` (file pointer). May be NULL when the summary is self-contained. File-level preprocessing artifacts (structural index, file summary) live on ``uploaded_files``, never here — this field is for claim-relevant quotes only.
              */
-            preprocessed_content: string;
-            /**
-             * Content Ref
-             * @description S3 URI to original raw file (1-10MB) for audit, compliance, and deep dive analysis. May be None for user-typed evidence.
-             */
-            content_ref?: string | null;
-            /**
-             * Content Size Bytes
-             * @description Size of original raw file in bytes
-             */
-            content_size_bytes: number;
-            /**
-             * Preprocessing Method
-             * @description Preprocessing method used to extract preprocessed_content from raw file.
-             *             Examples: crime_scene_extraction, anomaly_detection, parse_and_sanitize,
-             *             ast_extraction, vision_analysis, single_shot_summary, map_reduce_summary
-             */
-            preprocessing_method: string;
-            /**
-             * Compression Ratio
-             * @description Ratio of preprocessed to raw content size (e.g., 0.005 = 200:1 compression)
-             */
-            compression_ratio?: number | null;
+            extract?: string | null;
             /**
              * Analysis
              * @description Agent analysis of this evidence and its significance to the investigation
              */
             analysis?: string | null;
             /**
-             * Data Type
-             * @description Unified data type from preprocessing (logs, metrics, configuration, code, text, image). Maps to UnifiedDataType enum. None for legacy evidence.
+             * Processing Mode
+             * @description Processing mode: triage | directed_analysis | semantic_search
              */
-            data_type?: string | null;
-            /**
-             * Content Hash
-             * @description SHA-256 hash of raw file content for deduplication. Computed from raw bytes before any extraction. UNIQUE per (case_id, content_hash) — prevents duplicate uploads.
-             */
-            content_hash?: string | null;
-            /**
-             * Extraction Method
-             * @description Tier 1 extraction method used: structural_index, statistical_profile, parse_and_sanitize, ast_extraction, structure_extraction, metadata_extraction
-             */
-            extraction_method?: string | null;
+            processing_mode?: string | null;
             /** @description Type of evidence source */
             source_type: components["schemas"]["EvidenceSourceType"];
-            /** @description How evidence was provided: DOCUMENT, USER_TEXT, or SUBMITTED_DATA */
-            form: components["schemas"]["EvidenceForm"];
             /**
              * Source File Id
-             * @description ID of the UploadedFile this evidence was derived from (None if from user input)
+             * @description FK to the UploadedFile this extract came from. Required unless ``source_type=USER_DESCRIPTION`` (the narrow case where the LLM extracted a verbatim system-output quote from the user's short chat message — no file involved). Enforced by the ``evidence_source_invariant`` CHECK constraint at the DB level and by the ``_source_requires_file_unless_user_description`` validator at the Pydantic level.
              */
             source_file_id?: string | null;
+            /**
+             * Is Primary
+             * @description True for the principal evidence row in this case (the one that anchors the investigation summary). list_evidence_tool uses this for surface-level dashboards.
+             * @default false
+             */
+            is_primary: boolean;
+            /**
+             * Reliability Score
+             * @description LLM-assessed reliability of this evidence (0.0-1.0). NULL when the agent has not scored the evidence.
+             */
+            reliability_score?: number | null;
+            /**
+             * Tags
+             * @description Free-form tag list for evidence classification. Tag values must not contain commas (the SQLite serializer uses comma-separation; the comma-ban keeps round-trip lossless).
+             */
+            tags?: string[];
+            /**
+             * Vectorized
+             * @description Whether this evidence's structural index has been persisted into the case vector store. Set to True by the investigation engine after a successful vectorize_file run; persisted across turns so proactive and reactive vectorization paths skip already-indexed evidence instead of re-embedding on every turn.
+             * @default false
+             */
+            vectorized: boolean;
             /**
              * Advances Milestones
              * @description Which milestones this evidence helped complete
@@ -4787,75 +5443,36 @@ export interface components {
              * @description Turn number when evidence was collected
              */
             collected_at_turn: number;
-        };
-        /** EvidenceArtifact */
-        EvidenceArtifact: {
-            /** Evidence Id */
-            evidence_id: string;
-            /** Case Id */
-            case_id: string;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
-            /** Original Filename */
-            original_filename: string;
-            /** Stored Filename */
-            stored_filename: string;
-            /** File Path */
-            file_path: string;
-            evidence_type: components["schemas"]["EvidenceArtifactType"];
-            /** Mime Type */
-            mime_type: string;
-            /** File Size */
-            file_size: number;
-            /** @default local_filesystem */
-            storage_backend: components["schemas"]["StorageBackend"];
             /**
-             * Created At
-             * Format: date-time
+             * Metadata
+             * @description Structured diagnostic metadata from the preprocessing pipeline. Top-level keys are namespaced — see docs/architecture/data-and-storage/schemas/case-schema.md §4.3 'evidence.metadata JSON contract'. Canonical shape in faultmaven/core/preprocessing/evidence_metadata.py::EvidenceMetadata. Optional — chat-quoted Evidence rows have no preprocessing trace.
              */
-            created_at?: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at?: string;
-            /** Metadata */
             metadata?: Record<string, never> | null;
-            /** Description */
-            description?: string | null;
             /**
-             * Is Primary
-             * @default false
+             * Coverage Start Ts
+             * @description Earliest timestamp parsed from the evidence's content. None when the content has no parseable timestamps.
              */
-            is_primary: boolean;
-            /** Tags */
-            tags?: string[];
-            /** Linked Case Ids */
-            linked_case_ids?: string[];
+            coverage_start_ts?: string | null;
+            /**
+             * Coverage End Ts
+             * @description Latest timestamp parsed from the evidence's content. None when the content has no parseable timestamps.
+             */
+            coverage_end_ts?: string | null;
         };
-        /**
-         * EvidenceArtifactType
-         * @description Types of evidence artifacts.
-         *
-         *     Categorizes the kind of evidence artifact stored.
-         * @enum {string}
-         */
-        EvidenceArtifactType: "screenshot" | "log_file" | "network_trace" | "code_snippet" | "configuration" | "video_recording" | "har_file" | "crash_dump" | "heap_dump" | "thread_dump" | "metrics_export" | "other";
         /**
          * EvidenceCategory
          * @description Evidence classification by investigation purpose.
          *
-         *     Post-redesign (2026-02-11):
-         *     - UNCLASSIFIED removed (single-phase evidence creation)
-         *     - OTHER renamed to CONTEXTUAL_EVIDENCE (clearer purpose)
-         *     - REJECTED added (track rejected submissions for deduplication)
-         *
-         *     Evidence is created AFTER LLM evaluation with complete classification.
+         *     Four claim-attached categories. Every row is the LLM's deliberate
+         *     decision to record a specific extract as evidence for a specific
+         *     claim, created only during INVESTIGATING. Contextual data lives on
+         *     ``uploaded_files`` — no evidence row is needed until the agent
+         *     extracts a claim-relevant slice. Rejection is expressed as the
+         *     absence of an evidence row; hypothesis-level refutation lives on
+         *     ``hypothesis_evidence.stance``.
          * @enum {string}
          */
-        EvidenceCategory: "symptom_evidence" | "causal_evidence" | "mitigation_evidence" | "solution_evidence" | "solution_evidence" | "contextual_evidence" | "rejected";
+        EvidenceCategory: "symptom_evidence" | "causal_evidence" | "mitigation_evidence" | "solution_evidence";
         /**
          * EvidenceDetailsResponse
          * @description Detailed evidence information with source and hypothesis linkage.
@@ -4880,55 +5497,29 @@ export interface components {
             collected_at: string;
             /** Collected By */
             collected_by: string;
-            /** @description Source file this evidence was derived from (null if from user input) */
+            /** @description Source file this evidence was derived from. NULL only when the evidence is a verbatim quote extracted from the user's chat message (source_type=USER_DESCRIPTION). */
             source_file?: components["schemas"]["SourceFileReference"] | null;
             /** Related Hypotheses */
             related_hypotheses?: components["schemas"]["RelatedHypothesis"][];
-            /** Preprocessed Content */
-            preprocessed_content: string;
-            /** Content Size Bytes */
-            content_size_bytes: number;
+            /**
+             * Extract
+             * @description Optional verbatim quote backing the summary. NULL when the LLM omitted it (the summary is self-contained).
+             */
+            extract?: string | null;
             /** Analysis */
             analysis?: string | null;
-        };
-        /**
-         * EvidenceForm
-         * @description How evidence entered the system.
-         *
-         *     Form is determined by payload context:
-         *     - DOCUMENT: Turn had attachments (file upload or pasted data)
-         *     - USER_TEXT: Query-only turn, no attachments
-         *     - SUBMITTED_DATA: Evidence created by agent tools (search_file, deep_analyze_file)
-         * @enum {string}
-         */
-        EvidenceForm: "document" | "user_text" | "submitted_data";
-        /**
-         * EvidenceLinkRequest
-         * @description Request to link evidence to a case.
-         */
-        EvidenceLinkRequest: {
-            /**
-             * Case Id
-             * Format: uuid
-             */
-            case_id: string;
         };
         /**
          * EvidenceSourceType
          * @description Fundamental type of data source.
          *
-         *     Post-redesign (2026-02-14): Updated to align with data-classification-strategy.md (6 types).
-         *
-         *     Migration mapping:
-         *     - log_file, command_output, trace_data, api_response, other → LOGS
-         *     - metrics_data, monitoring_alert → METRICS
-         *     - config_file, database_query → CONFIGURATION
-         *     - code_review → CODE
-         *     - user_report → TEXT
-         *     - screenshot → IMAGE
+         *     Aligned with the data classifier (Tier 0); each value names what kind
+         *     of data the Evidence row's source is. ``USER_DESCRIPTION`` is the
+         *     chat-quote case where the source is a verbatim system-output quote
+         *     embedded in the user's message, not a file.
          * @enum {string}
          */
-        EvidenceSourceType: "logs" | "metrics" | "configuration" | "code" | "text" | "image";
+        EvidenceSourceType: "logs" | "metrics" | "configuration" | "code" | "text" | "image" | "user_description";
         /**
          * EvidenceStance
          * @description How evidence relates to a hypothesis.
@@ -4968,6 +5559,52 @@ export interface components {
              * @description Relevance to current investigation (0.0-1.0)
              */
             relevance_score: number;
+            /**
+             * Collected At Turn
+             * @description Turn number when evidence was collected
+             * @default 0
+             */
+            collected_at_turn: number;
+            /**
+             * Category
+             * @description Evidence purpose: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | RESOLUTION_EVIDENCE | OTHER
+             * @default OTHER
+             */
+            category: string;
+            /**
+             * Source Filename
+             * @description Original filename of the source file, if evidence originated from an attachment.
+             */
+            source_filename?: string | null;
+        };
+        /**
+         * FeatureStatus
+         * @description Status of an optional feature that depends on configuration.
+         */
+        FeatureStatus: {
+            /**
+             * Enabled
+             * @description Feature is active and usable
+             */
+            enabled: boolean;
+            /**
+             * Has Api Key
+             * @description Required API key is configured
+             * @default false
+             */
+            has_api_key: boolean;
+            /**
+             * Description
+             * @description Brief explanation of the feature
+             * @default
+             */
+            description: string;
+            /**
+             * Config Hint
+             * @description What the user needs to set to enable this feature
+             * @default
+             */
+            config_hint: string;
         };
         /**
          * GeneratedDocument
@@ -5053,19 +5690,18 @@ export interface components {
             initial_likelihood: number;
             /**
              * Evidence Links
-             * @description Maps evidence_id to relationship details.
+             * @description Relationship rows from the hypothesis_evidence junction table.
              *
              *             ONE evidence can:
-             *             - STRONGLY_SUPPORTS hypothesis A
+             *             - SUPPORTS hypothesis A
              *             - REFUTES hypothesis B
-             *             - Be IRRELEVANT to hypothesis C
+             *             - Be NEUTRAL to hypothesis C
              *
-             *             Backed by hypothesis_evidence junction table in database.
-             *             LLM evaluates each evidence against ALL active hypotheses after submission.
+             *             Each list entry binds (hypothesis_id, evidence_id, stance, reasoning,
+             *             stance_confidence). LLM evaluates each evidence against ALL active
+             *             hypotheses after submission.
              */
-            evidence_links?: {
-                [key: string]: components["schemas"]["HypothesisEvidenceLink"];
-            };
+            evidence_links?: components["schemas"]["HypothesisEvidenceLink"][];
             /**
              * Generated At Turn
              * @description Turn number when hypothesis was generated
@@ -5095,6 +5731,11 @@ export interface components {
              * @description Reason if hypothesis was retired
              */
             retirement_reason?: string | null;
+            /**
+             * Refutation Reason
+             * @description Evidence or reasoning that disproves the hypothesis. REQUIRED when status=REFUTED (enforced via model validator). Not used for other statuses. status=REFUTED and refutation_reason travel together — an update carrying one without the other is rejected at the orchestration layer.
+             */
+            refutation_reason?: string | null;
             /**
              * Rationale
              * @description Why this hypothesis was generated
@@ -5201,6 +5842,11 @@ export interface components {
              * @description Number of evidence items related to this hypothesis
              */
             evidence_count: number;
+            /**
+             * Refutation Reason
+             * @description Reason the hypothesis was refuted. Populated only when status=REFUTED; None otherwise. Mirrors the domain model's pair-integrity invariant.
+             */
+            refutation_reason?: string | null;
         };
         /**
          * ImpactData
@@ -5259,11 +5905,6 @@ export interface components {
              * @description When user confirmed the problem statement
              */
             problem_statement_confirmed_at?: string | null;
-            /**
-             * Quick Suggestions
-             * @description Quick fixes or guidance provided during inquiry
-             */
-            quick_suggestions?: string[];
             /**
              * Decided To Investigate
              * @description Whether user committed to formal investigation
@@ -5342,14 +5983,14 @@ export interface components {
         InvestigationMomentum: "high" | "moderate" | "low" | "blocked";
         /**
          * InvestigationPath
-         * @description Investigation routing strategy (3-stage workflow).
+         * @description Investigation routing strategy (2-stage model with mitigation detour).
          *
          *     IMPORTANT: Path is SYSTEM-DETERMINED from matrix (temporal_state x urgency_level).
          *     LLM provides inputs (temporal_state, urgency_level) during DIAGNOSIS.
          *     System calls determine_investigation_path() to select path deterministically.
          *
-         *     Two paths through the 3-stage model:
-         *     - MITIGATION_FIRST: DIAGNOSIS → MITIGATION → DIAGNOSIS → TREATMENT
+         *     Two paths through the 2-stage model:
+         *     - MITIGATION_FIRST: DIAGNOSIS → MITIGATION (detour) → DIAGNOSIS → TREATMENT
          *     - ROOT_CAUSE: DIAGNOSIS → TREATMENT
          * @enum {string}
          */
@@ -5397,24 +6038,6 @@ export interface components {
              */
             symptom_verified: boolean;
             /**
-             * Scope Assessed
-             * @description Scope determined: affected users/services/regions, blast radius
-             * @default false
-             */
-            scope_assessed: boolean;
-            /**
-             * Timeline Established
-             * @description Timeline determined: when problem started, when noticed, duration
-             * @default false
-             */
-            timeline_established: boolean;
-            /**
-             * Changes Identified
-             * @description Recent changes identified: deployments, configs, scaling events
-             * @default false
-             */
-            changes_identified: boolean;
-            /**
              * Root Cause Identified
              * @description Root cause determined (directly or via hypothesis validation)
              * @default false
@@ -5434,12 +6057,12 @@ export interface components {
             root_cause_likelihood: number;
             /**
              * Root Cause Method
-             * @description How root cause was identified: direct_analysis | hypothesis_validation | single_shot_validation | correlation | other
+             * @description How root cause was identified: direct_analysis | hypothesis_validation | single_shot_validation | correlation | user_provided | other
              */
             root_cause_method?: string | null;
             /**
              * Verification Completed At
-             * @description When all verification milestones (symptom, scope, timeline, changes) were completed
+             * @description When symptom verification milestone was completed
              */
             verification_completed_at?: string | null;
             /**
@@ -5464,7 +6087,7 @@ export interface components {
         InvestigationProgressSummary: {
             /**
              * Completed Indicators
-             * @description Completed progress indicators (e.g. symptom_verified, scope_assessed)
+             * @description Completed progress indicators (e.g. symptom_verified, root_cause_identified)
              */
             completed_indicators?: string[];
             /**
@@ -5495,21 +6118,25 @@ export interface components {
         };
         /**
          * InvestigationStage
-         * @description Investigation stage within INVESTIGATING status (3 stages).
-         *     Computed from stage-gate milestones.
+         * @description Investigation stage within the Investigating Phase.
          *
-         *     Stages:
-         *     - DIAGNOSIS: Understand, diagnose, propose actions
+         *     2-stage model with mitigation detour:
+         *     - DIAGNOSIS: Understand, diagnose, propose actions (core stage)
+         *     - TREATMENT: Verify permanent fix, resolve case (core stage)
          *     - MITIGATION: Apply and verify temporary fix (optional detour)
-         *     - TREATMENT: Verify permanent fix, resolve case
          *
-         *     Stage transitions are inference-based — user compliance with
-         *     proposed actions triggers transitions via compliance detection.
-         *     The stage determines which prompt template the LLM receives.
+         *     DIAGNOSIS and TREATMENT are the two core stages every investigation
+         *     passes through. MITIGATION is an optional detour that temporarily
+         *     narrows focus to "stop the bleeding" before returning to DIAGNOSIS.
+         *
+         *     Computed from stage-gate milestones. Stage transitions are
+         *     inference-based — user compliance with proposed actions triggers
+         *     transitions via compliance detection. The stage determines which
+         *     prompt template the LLM receives.
          *
          *     Investigation Paths:
          *     - ROOT_CAUSE: DIAGNOSIS → TREATMENT
-         *     - MITIGATION_FIRST: DIAGNOSIS → MITIGATION → DIAGNOSIS → TREATMENT
+         *     - MITIGATION_FIRST: DIAGNOSIS → MITIGATION (detour) → DIAGNOSIS → TREATMENT
          * @enum {string}
          */
         InvestigationStage: "diagnosis" | "mitigation" | "treatment";
@@ -5537,6 +6164,42 @@ export interface components {
             next_steps?: string[] | null;
         };
         /**
+         * JournalEntry
+         * @description A single entry in the investigation journal.
+         *
+         *     Captures a distilled insight, decision, or context that the agent
+         *     needs to remember across the entire investigation. Entries are
+         *     append-only and always included in the LLM context.
+         */
+        JournalEntry: {
+            /**
+             * Turn
+             * @description Turn number when this entry was created
+             */
+            turn: number;
+            /**
+             * Entry Type
+             * @description Type of journal entry
+             * @enum {string}
+             */
+            entry_type: "finding" | "decision" | "user_context" | "ruled_out" | "blocker" | "milestone";
+            /**
+             * Content
+             * @description The distilled insight (max 200 chars)
+             */
+            content: string;
+            /**
+             * Evidence Id
+             * @description Evidence ID this entry relates to, if any
+             */
+            evidence_id?: string | null;
+            /**
+             * Hypothesis Id
+             * @description Hypothesis ID this entry relates to, if any
+             */
+            hypothesis_id?: string | null;
+        };
+        /**
          * KnowledgeBaseDocument
          * @description Response model for knowledge base document operations.
          */
@@ -5560,6 +6223,15 @@ export interface components {
             tags?: string[];
             /** Source Url */
             source_url?: string | null;
+            /**
+             * Scope
+             * @default global
+             */
+            scope: string;
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Team Id */
+            team_id?: string | null;
             /** Created At */
             created_at: string;
             /** Updated At */
@@ -5612,6 +6284,177 @@ export interface components {
             user_confirmation: string;
             /** Resolution Turn */
             resolution_turn: number;
+        };
+        /**
+         * LLMConfigResponse
+         * @description LLM configuration and provider status response.
+         */
+        LLMConfigResponse: {
+            /**
+             * Deployment
+             * @description Deployment mode: 'local' or 'cloud'
+             */
+            deployment: string;
+            /**
+             * Config Readonly
+             * @description True in local mode (config managed via .env file)
+             */
+            config_readonly: boolean;
+            /** Primary Provider */
+            primary_provider: string;
+            /** Strict Mode */
+            strict_mode: boolean;
+            /** Fallback Chain */
+            fallback_chain: string[];
+            /** Providers */
+            providers: {
+                [key: string]: components["schemas"]["LLMProviderDetail"];
+            };
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+        };
+        /**
+         * LLMConfigUpdateRequest
+         * @description Request to update LLM configuration.
+         */
+        LLMConfigUpdateRequest: {
+            /**
+             * Primary Provider
+             * @description New primary provider name
+             */
+            primary_provider?: string | null;
+            /**
+             * Fallback Chain
+             * @description New fallback chain order
+             */
+            fallback_chain?: string[] | null;
+            /**
+             * Provider Name
+             * @description Provider to update API key or model for
+             */
+            provider_name?: string | null;
+            /**
+             * Api Key
+             * @description New API key value for the specified provider
+             */
+            api_key?: string | null;
+            /**
+             * Model
+             * @description Model to use for the specified provider (requires provider_name)
+             */
+            model?: string | null;
+        };
+        /**
+         * LLMConfigUpdateResponse
+         * @description Response after updating LLM configuration.
+         */
+        LLMConfigUpdateResponse: {
+            /**
+             * Updated Keys
+             * @description Config keys that were updated
+             */
+            updated_keys: string[];
+            /** Message */
+            message: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+        };
+        /**
+         * LLMConnectionTestRequest
+         * @description Request to test an LLM provider connection.
+         */
+        LLMConnectionTestRequest: {
+            /**
+             * Provider
+             * @description Provider name to test (e.g. 'anthropic', 'openai')
+             */
+            provider: string;
+        };
+        /**
+         * LLMConnectionTestResponse
+         * @description Result of an LLM provider connection test.
+         */
+        LLMConnectionTestResponse: {
+            /** Provider */
+            provider: string;
+            /** Connected */
+            connected: boolean;
+            /**
+             * Response Time Ms
+             * @default 0
+             */
+            response_time_ms: number;
+            /** Error Message */
+            error_message?: string | null;
+            /** Model Used */
+            model_used?: string | null;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+        };
+        /**
+         * LLMProviderDetail
+         * @description Individual LLM provider status for dashboard display.
+         */
+        LLMProviderDetail: {
+            /** Name */
+            name: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Enabled
+             * @description Provider is initialized and in the fallback chain
+             */
+            enabled: boolean;
+            /**
+             * Connected
+             * @description Provider responded to last health check
+             */
+            connected: boolean;
+            /**
+             * Has Api Key
+             * @description API key is configured (value never exposed)
+             */
+            has_api_key: boolean;
+            /**
+             * State
+             * @description Provider lifecycle state: not_configured, configured, or active
+             * @default not_configured
+             */
+            state: string;
+            /** Models */
+            models?: string[];
+            /**
+             * Selected Model
+             * @description Currently active model for this provider
+             */
+            selected_model?: string | null;
+            /**
+             * Available Models
+             * @description Models the user can choose from for this provider
+             */
+            available_models?: string[];
+            /** Error Message */
+            error_message?: string | null;
+            /**
+             * Health
+             * @description HEALTHY, DEGRADED, UNHEALTHY, or UNKNOWN
+             * @default unknown
+             */
+            health: string;
+            /**
+             * Avg Latency Ms
+             * @default 0
+             */
+            avg_latency_ms: number;
         };
         /**
          * LinkCaseRequest
@@ -5782,7 +6625,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "user" | "agent" | "assistant" | "system";
+            role: "user" | "assistant" | "system";
             /** Content */
             content: string;
             /**
@@ -6026,8 +6869,8 @@ export interface components {
             permission: string;
             /** User Id */
             user_id: string;
-            /** Org Id */
-            org_id: string;
+            /** Organization Id */
+            organization_id: string;
         };
         /**
          * PreliminaryUrgency
@@ -6173,6 +7016,17 @@ export interface components {
              */
             urgency_factors?: string[];
             /**
+             * Rca Infeasible
+             * @description Advisory signal: root cause analysis is infeasible for this problem. Set by the LLM during verification when the problem involves uncontrollable external dependencies, deprecated/EOL systems, or known intractable conditions where mitigation is the accepted strategy. Does NOT affect path selection — influences post-mitigation agent behavior only.
+             * @default false
+             */
+            rca_infeasible: boolean;
+            /**
+             * Rca Infeasible Rationale
+             * @description Why RCA is infeasible. Populated by the LLM when rca_infeasible=True. E.g., 'Black-box 3rd-party API with no internal telemetry'.
+             */
+            rca_infeasible_rationale?: string | null;
+            /**
              * Verified At
              * @description When verification was completed
              */
@@ -6208,6 +7062,39 @@ export interface components {
              * @description Human-readable user impact summary
              */
             user_impact?: string | null;
+        };
+        /**
+         * ProgressTransparencyInfo
+         * @description Progress transparency state for the current turn.
+         *
+         *     When active, the investigation has stalled (N investigative turns
+         *     without milestone progress) and the agent is surfacing what evidence
+         *     is needed to advance. The frontend should visually highlight the
+         *     pending milestone.
+         *
+         *     See: docs/architecture/investigation-engine/progress-transparency.md
+         */
+        ProgressTransparencyInfo: {
+            /**
+             * Active
+             * @description Whether transparent mode is active this turn
+             */
+            active: boolean;
+            /**
+             * Pending Milestone
+             * @description Milestone that progress is stalled on (e.g., 'root_cause_identified')
+             */
+            pending_milestone?: string | null;
+            /**
+             * Milestone Description
+             * @description Human-readable description of what the pending milestone requires
+             */
+            milestone_description?: string | null;
+            /**
+             * Repair Type
+             * @description Agent state repair pattern detected, if any: hypothesis_anchoring, hypothesis_deadlock, exhausted, fix_failure_cycle, action_loop
+             */
+            repair_type?: string | null;
         };
         /**
          * ProposedAction
@@ -6280,7 +7167,7 @@ export interface components {
         ReportAvailability: {
             /**
              * Report Type
-             * @description Type: incident_report | post_mortem | runbook | timeline
+             * @description Type: resolution_summary | closure_summary | runbook
              */
             report_type: string;
             /**
@@ -6393,7 +7280,7 @@ export interface components {
          * @description Type of case documentation report
          * @enum {string}
          */
-        ReportType: "incident_report" | "runbook" | "post_mortem";
+        ReportType: "resolution_summary" | "closure_summary" | "runbook";
         /**
          * ReportUpdateRequest
          * @description Request model for updating a report.
@@ -6465,6 +7352,34 @@ export interface components {
              * @description Key learnings from this investigation
              */
             key_insights?: string[];
+        };
+        /**
+         * RoleAssignmentRequest
+         * @description Role assignment request.
+         */
+        RoleAssignmentRequest: {
+            /**
+             * Role
+             * @description Role to assign (admin, member, or viewer)
+             */
+            role: string;
+        };
+        /**
+         * RoleAssignmentResponse
+         * @description Role assignment response.
+         */
+        RoleAssignmentResponse: {
+            /** User Id */
+            user_id: string;
+            /** Roles */
+            roles: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Message */
+            message: string;
         };
         /**
          * RootCauseConclusion
@@ -6542,6 +7457,43 @@ export interface components {
              * @description Severity: critical | high | medium | low
              */
             severity: string;
+        };
+        /** RunbookCreateRequest */
+        RunbookCreateRequest: {
+            /** Title */
+            title: string;
+            /** Domain */
+            domain: string;
+            /** Service */
+            service: string;
+            /** Symptom Class */
+            symptom_class: string[];
+            /** Severity */
+            severity: string;
+            /** Scope */
+            scope: string;
+            /** Tags */
+            tags?: string[];
+            /**
+             * Difficulty
+             * @default intermediate
+             */
+            difficulty: string;
+            /** Symptom Recognition */
+            symptom_recognition: string;
+            /** Applicability */
+            applicability: string;
+            /** Diagnostic Steps */
+            diagnostic_steps: string;
+            /**
+             * Causes
+             * @description Pre-formatted markdown with ### Cause N subsections. Each cause needs Statement, Mechanism, Indicator, Mitigation, Resolution, Verification sub-fields. Include ### Cause Z: Unidentified with [Default] indicator as fallback.
+             */
+            causes: string;
+            /** Prevention */
+            prevention: string;
+            /** Team Id */
+            team_id?: string | null;
         };
         /**
          * RunbookMetadata
@@ -6651,55 +7603,6 @@ export interface components {
             token_budget_limit?: number | null;
             /** Metadata */
             metadata?: Record<string, never> | null;
-        };
-        /**
-         * SessionResponse
-         * @description Response model for investigation session.
-         */
-        SessionResponse: {
-            /** Session Id */
-            session_id: string;
-            /** Case Id */
-            case_id: string;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
-            status: components["schemas"]["SessionStatus"];
-            /**
-             * Started At
-             * Format: date-time
-             */
-            started_at: string;
-            /** Ended At */
-            ended_at?: string | null;
-            /**
-             * Last Activity At
-             * Format: date-time
-             */
-            last_activity_at: string;
-            /** Total Duration Ms */
-            total_duration_ms?: number | null;
-            /** Session Goal */
-            session_goal?: string | null;
-            /** Findings Summary */
-            findings_summary?: string | null;
-            /** Total Token Usage */
-            total_token_usage: number;
-            /** Total Agent Executions */
-            total_agent_executions: number;
-            /** Token Budget Limit */
-            token_budget_limit?: number | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /**
          * SessionRestoreRequest
@@ -6921,16 +7824,8 @@ export interface components {
             uploaded_at_turn: number;
         };
         /**
-         * StorageBackend
-         * @description Storage backend types.
-         *
-         *     Defines where evidence files are stored.
-         * @enum {string}
-         */
-        StorageBackend: "local_filesystem" | "s3" | "azure_blob" | "gcs";
-        /**
          * SuggestedActionResponse
-         * @description A clickable follow-up action returned with agent responses.
+         * @description A follow-up suggestion returned with agent responses.
          */
         SuggestedActionResponse: {
             /** Label */
@@ -6939,6 +7834,14 @@ export interface components {
             type: string;
             /** Payload */
             payload: string;
+            /** Body */
+            body?: string | null;
+            /** Cooperative Action */
+            cooperative_action?: string | null;
+            /** Hints */
+            hints?: string[] | null;
+            /** Intent */
+            intent?: Record<string, never> | null;
         };
         /**
          * TeamCreateRequest
@@ -6946,10 +7849,10 @@ export interface components {
          */
         TeamCreateRequest: {
             /**
-             * Org Id
+             * Organization Id
              * @description Organization ID
              */
-            org_id: string;
+            organization_id: string;
             /**
              * Name
              * @description Team name
@@ -7002,14 +7905,12 @@ export interface components {
         TeamResponse: {
             /** Team Id */
             team_id: string;
-            /** Org Id */
-            org_id: string;
+            /** Organization Id */
+            organization_id: string;
             /** Name */
             name: string;
             /** Description */
             description: string | null;
-            /** Settings */
-            settings: Record<string, never>;
             /**
              * Created At
              * Format: date-time
@@ -7036,11 +7937,6 @@ export interface components {
              * @description Updated description
              */
             description?: string | null;
-            /**
-             * Settings
-             * @description Team settings
-             */
-            settings?: Record<string, never> | null;
         };
         /**
          * TemporalState
@@ -7156,11 +8052,6 @@ export interface components {
              * @description Did investigation advance this turn?
              */
             progress_made: boolean;
-            /**
-             * Actions Taken
-             * @description Agent actions: 'verified_symptom', 'requested_logs', 'generated_hypothesis', etc.
-             */
-            actions_taken?: string[];
             /** @description Turn outcome classification */
             outcome: components["schemas"]["TurnOutcome"];
             /**
@@ -7191,10 +8082,10 @@ export interface components {
              */
             next_steps?: string[];
             /**
-             * Stagnation Detected
-             * @description Stagnation type detected this turn: no_progress, hypothesis_anchoring, action_loop, hypothesis_deadlock
+             * Repair Pattern
+             * @description Agent state repair pattern detected this turn: hypothesis_anchoring, hypothesis_deadlock, exhausted, fix_failure_cycle, action_loop
              */
-            stagnation_detected?: string | null;
+            repair_pattern?: string | null;
             /**
              * Validation Repairs
              * @description State repairs made by StateValidator this turn (e.g., 'Fixed milestone ordering')
@@ -7215,31 +8106,33 @@ export interface components {
             case_status: components["schemas"]["CaseStatus"];
             /** Progress Made */
             progress_made: boolean;
-            /** Is Stuck */
-            is_stuck: boolean;
             /** Attachments Processed */
             attachments_processed?: components["schemas"]["AttachmentResult"][];
             /** Suggested Actions */
             suggested_actions?: components["schemas"]["SuggestedActionResponse"][];
+            /** @description Progress transparency state. Present when investigation has stalled and agent is surfacing milestone dependencies. */
+            progress_transparency?: components["schemas"]["ProgressTransparencyInfo"] | null;
         };
         /**
          * UploadedFile
-         * @description Raw file metadata for files uploaded to a case.
+         * @description File the user submitted to a case (upload, paste, page capture).
          *
-         *     Key Distinction:
-         *     - UploadedFile: Raw file metadata, exists in ANY case state (INQUIRY, INVESTIGATING, etc.)
-         *     - Evidence: Data classified by the LLM based on content. Created via evidence_to_add
-         *       when the LLM evaluates the submission.
+         *     Post-010 strict evidence model — two-table separation:
+         *     - **UploadedFile**: the file-of-record. Exists in any case state
+         *       (INQUIRY, INVESTIGATING, terminal). Carries the raw bytes (via
+         *       ``storage_ref``) and the preprocessing artifacts (``summary``,
+         *       ``structural_index``, ``data_type``, coverage timestamps) that
+         *       describe the file's content.
+         *     - **Evidence**: the claim-anchored extract-of-record. Created only
+         *       during INVESTIGATING when the LLM extracts a focused slice via
+         *       ``evidence_to_add`` to support a specific claim (symptom, cause,
+         *       mitigation, or solution).
          *
-         *     Evidence classification is content-based, not stage-based (see Section 5.2 of
-         *     evidence-driven-investigation-framework.md). The LLM evaluates the data and
-         *     classifies it by what it contains:
-         *     - Error logs → symptom_evidence (even during INQUIRY)
-         *     - Normal configs → contextual_evidence
-         *     - Post-fix metrics → solution_evidence
-         *
-         *     UploadedFile records exist independently of Evidence. Not all uploaded files
-         *     produce Evidence — the LLM decides what is relevant during its analysis.
+         *     Files are not evidence. An evidence row references its source file
+         *     via ``Evidence.source_file_id``; the file row holds the file-level
+         *     metadata so the evidence row can stay focused on the claim it
+         *     supports. Not all uploaded files produce evidence — the LLM
+         *     decides which slices, if any, are claim-relevant.
          */
         UploadedFile: {
             /**
@@ -7258,10 +8151,15 @@ export interface components {
              */
             size_bytes: number;
             /**
-             * Data Type
-             * @description Detected data type from preprocessing (log, metric, config, code, text, image, etc.)
+             * Content Type
+             * @description MIME type as reported on upload (e.g., text/plain, application/pdf).
              */
-            data_type: string;
+            content_type?: string | null;
+            /**
+             * Content Hash
+             * @description SHA-256 of the raw file content. Used for storage-backend dedup and integrity checks. NULL when the upload is still streaming or hashing was skipped.
+             */
+            content_hash?: string | null;
             /**
              * Uploaded At Turn
              * @description Turn number when file was uploaded
@@ -7274,21 +8172,46 @@ export interface components {
              */
             uploaded_at?: string;
             /**
-             * Source Type
-             * @description file_upload | paste | screenshot | page_injection | agent_generated
+             * Uploaded By
+             * @description User who uploaded the file. NULL for system-generated uploads or after the originating user is deleted (FK SET NULL).
+             */
+            uploaded_by?: string | null;
+            /**
+             * Upload Source
+             * @description Provenance of the upload: how the file got into the system. Values: file_upload, paste, screenshot, page_capture, agent_generated, conversion_source. Distinct from evidence.source_type, which classifies the data shape. page_capture is the marker the rerank-page-sections pass uses to detect Copilot extension page submissions; see context_builder.py.
              * @default file_upload
              */
-            source_type: string;
+            upload_source: string;
             /**
-             * Preprocessing Summary
-             * @description Brief summary from preprocessing pipeline (<500 chars)
+             * Storage Ref
+             * @description Opaque key passed to IFileStorageBackend.retrieve_file(). The backend interprets it (local FS path, S3 key, Azure blob name, etc.). May be None if processing pending.
              */
-            preprocessing_summary?: string | null;
+            storage_ref?: string | null;
             /**
-             * Content Ref
-             * @description Reference to stored file content (S3 URI or data_id). May be None if processing pending.
+             * Summary
+             * @description Preprocessing-generated short summary of the file. Used by the investigation agent to orient on file content without loading the whole file. May be None when preprocessing was skipped (e.g., KB-conversion source uploads).
              */
-            content_ref?: string | null;
+            summary?: string | null;
+            /**
+             * Structural Index
+             * @description Preprocessing-generated structural index of the file content (file_extract + search_map + file_meta). Read by the LLM in <evidence_collected> when the agent inspects the file. May be None when preprocessing was skipped.
+             */
+            structural_index?: string | null;
+            /**
+             * Data Type
+             * @description Preprocessor's data-type classification of the file's content (e.g., 'logs', 'metrics', 'configuration'). Distinct from evidence.source_type, which classifies an individual extract's source type.
+             */
+            data_type?: string | null;
+            /**
+             * Coverage Start Ts
+             * @description Earliest timestamp parsed from the file's content. None when the file has no parseable timestamps.
+             */
+            coverage_start_ts?: string | null;
+            /**
+             * Coverage End Ts
+             * @description Latest timestamp parsed from the file's content. None when the file has no parseable timestamps.
+             */
+            coverage_end_ts?: string | null;
         };
         /**
          * UploadedFileDetailsResponse
@@ -7303,6 +8226,16 @@ export interface components {
             size_bytes: number;
             /** Size Display */
             size_display: string;
+            /**
+             * Content Type
+             * @description MIME type as reported on upload
+             */
+            content_type?: string | null;
+            /**
+             * Content Hash
+             * @description SHA-256 of file contents (storage-backend dedup)
+             */
+            content_hash?: string | null;
             /** Uploaded At Turn */
             uploaded_at_turn: number;
             /**
@@ -7310,11 +8243,15 @@ export interface components {
              * Format: date-time
              */
             uploaded_at: string;
-            /** Source Type */
-            source_type: string;
-            /** Data Type */
-            data_type: string;
-            /** Summary */
+            /**
+             * Upload Source
+             * @description Provenance: file_upload | paste | screenshot | page_capture | agent_generated | conversion_source
+             */
+            upload_source: string;
+            /**
+             * Summary
+             * @description File-level preprocessing summary, set by the ingestion pipeline.
+             */
             summary?: string | null;
             /** Derived Evidence */
             derived_evidence?: components["schemas"]["DerivedEvidenceSummary"][];
@@ -7396,18 +8333,6 @@ export interface components {
             offset: number;
         };
         /**
-         * UploadedFilesListResponse
-         * @description List of uploaded files with evidence counts.
-         */
-        UploadedFilesListResponse: {
-            /** Case Id */
-            case_id: string;
-            /** Total Count */
-            total_count: number;
-            /** Files */
-            files: components["schemas"]["UploadedFileMetadata"][];
-        };
-        /**
          * UrgencyLevel
          * @description Urgency classification for path routing.
          *
@@ -7418,6 +8343,42 @@ export interface components {
          * @enum {string}
          */
         UrgencyLevel: "critical" | "high" | "medium" | "low" | "unknown";
+        /**
+         * UserDetailResponse
+         * @description Detailed user information (admin only).
+         */
+        UserDetailResponse: {
+            /** User Id */
+            user_id: string;
+            /** Organization Id */
+            organization_id: string;
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /** Roles */
+            roles: string[];
+            /** Permissions */
+            permissions: string[];
+            /** Is Active */
+            is_active: boolean;
+            /** Is Verified */
+            is_verified: boolean;
+            /** Last Login At */
+            last_login_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Metadata */
+            metadata?: Record<string, never>;
+        };
         /**
          * UserInfoResponse
          * @description Extended user information response
@@ -7550,6 +8511,23 @@ export interface components {
              */
             roles: string[];
         };
+        /**
+         * UserStatusResponse
+         * @description User activation/deactivation response.
+         */
+        UserStatusResponse: {
+            /** User Id */
+            user_id: string;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Message */
+            message: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -7646,6 +8624,55 @@ export interface components {
              * @description When this conclusion was last updated
              */
             last_updated: string;
+        };
+        /**
+         * SessionResponse
+         * @description Response model for investigation session.
+         */
+        faultmaven__api__models__SessionResponse: {
+            /** Session Id */
+            session_id: string;
+            /** Case Id */
+            case_id: string;
+            /** User Id */
+            user_id: string;
+            /** Organization Id */
+            organization_id: string;
+            status: components["schemas"]["SessionStatus"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Total Duration Ms */
+            total_duration_ms?: number | null;
+            /** Session Goal */
+            session_goal?: string | null;
+            /** Findings Summary */
+            findings_summary?: string | null;
+            /** Total Token Usage */
+            total_token_usage: number;
+            /** Total Agent Executions */
+            total_agent_executions: number;
+            /** Token Budget Limit */
+            token_budget_limit?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * SessionResponse
@@ -8023,10 +9050,12 @@ export interface operations {
             };
         };
     };
-    dev_list_users_api_v1_auth_dev_list_users_get: {
+    list_users_api_v1_auth_users_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8041,12 +9070,23 @@ export interface operations {
                     "application/json": Record<string, never>;
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    dev_delete_user_api_v1_auth_dev_delete_user__username__delete: {
+    delete_user_api_v1_auth_users__username__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 username: string;
             };
@@ -8136,6 +9176,37 @@ export interface operations {
             };
         };
     };
+    get_available_scopes_api_v1_auth_me_available_scopes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableScopesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     auth_health_check_api_v1_auth_health_get: {
         parameters: {
             query?: never;
@@ -8156,13 +9227,15 @@ export interface operations {
             };
         };
     };
-    dev_revoke_all_user_tokens_api_v1_auth_dev_revoke_all_tokens_post: {
+    revoke_user_tokens_api_v1_auth_users__user_id__revoke_tokens_post: {
         parameters: {
             query?: never;
             header?: {
                 Authorization?: string | null;
             };
-            path?: never;
+            path: {
+                user_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -8780,6 +9853,44 @@ export interface operations {
             };
         };
     };
+    reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_case_data_api_v1_cases__case_id__data_get: {
         parameters: {
             query?: {
@@ -9096,14 +10207,22 @@ export interface operations {
             };
         };
     };
-    list_uploaded_files_v2: {
+    list_uploaded_files: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum number of files to return */
+                limit?: number;
+                /** @description Number of files to skip (for pagination) */
+                offset?: number;
+                /** @description Sort field: uploaded_at_turn | filename | size */
+                sort_by?: string;
+                /** @description Sort direction: asc | desc */
+                sort_order?: string;
+            };
             header?: {
                 Authorization?: string | null;
             };
             path: {
-                /** @description Case ID */
                 case_id: string;
             };
             cookie?: never;
@@ -9116,7 +10235,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UploadedFilesListResponse"];
+                    "application/json": components["schemas"]["UploadedFilesList"];
                 };
             };
             /** @description Validation Error */
@@ -9130,7 +10249,7 @@ export interface operations {
             };
         };
     };
-    get_uploaded_file_details_v2: {
+    get_uploaded_file_details: {
         parameters: {
             query?: never;
             header?: {
@@ -9153,6 +10272,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadedFileDetailsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_case_evidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseEvidenceListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9405,7 +10558,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"][];
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -9442,7 +10595,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9475,7 +10628,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"] | null;
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"] | null;
                 };
             };
             /** @description Validation Error */
@@ -9509,7 +10662,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9547,7 +10700,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9581,7 +10734,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9615,7 +10768,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9653,233 +10806,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_evidence_api_v1_evidence_get: {
-        parameters: {
-            query?: {
-                case_id?: string | null;
-                uploaded_by?: string | null;
-                tags?: string | null;
-                filename_contains?: string | null;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceArtifact"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_evidence_api_v1_evidence_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_evidence_api_v1_evidence_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceArtifact"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_evidence_for_case_api_v1_evidence_case__case_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceArtifact"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_evidence_api_v1_evidence__evidence_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                evidence_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceArtifact"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_evidence_api_v1_evidence__evidence_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                evidence_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    download_evidence_api_v1_evidence__evidence_id__download_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                evidence_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    link_evidence_to_case_api_v1_evidence__evidence_id__link_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                evidence_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EvidenceLinkRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceArtifact"];
+                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9898,10 +10825,13 @@ export interface operations {
             query?: {
                 document_type?: string | null;
                 tags?: string | null;
+                scope?: string | null;
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10101,41 +11031,12 @@ export interface operations {
             };
         };
     };
-    get_job_status_api_v1_knowledge_jobs__job_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     search_documents_api_v1_knowledge_search_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10168,7 +11069,9 @@ export interface operations {
     fulltext_search_documents_api_v1_knowledge_documents_search_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10525,6 +11428,412 @@ export interface operations {
             };
         };
     };
+    convert_document_api_v1_knowledge_convert_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_convert_document_api_v1_knowledge_convert_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversions_api_v1_knowledge_conversions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_drafts_api_v1_knowledge_drafts_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_for_runbooks_api_v1_knowledge_scan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversion_api_v1_knowledge_conversions__conversion_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_batch_api_v1_knowledge_drafts_verify_batch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_runbook_manually_api_v1_knowledge_runbooks_create_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunbookCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_from_case_api_v1_knowledge_convert_from_case_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseConversionAPIRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversion_by_case_api_v1_knowledge_conversions_by_case__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_user_organizations_api_v1_organizations_get: {
         parameters: {
             query?: {
@@ -10596,7 +11905,7 @@ export interface operations {
             };
         };
     };
-    get_organization_api_v1_organizations__org_id__get: {
+    get_organization_api_v1_organizations__organization_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -10604,7 +11913,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -10630,7 +11939,7 @@ export interface operations {
             };
         };
     };
-    delete_organization_api_v1_organizations__org_id__delete: {
+    delete_organization_api_v1_organizations__organization_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -10638,7 +11947,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -10664,7 +11973,7 @@ export interface operations {
             };
         };
     };
-    update_organization_api_v1_organizations__org_id__patch: {
+    update_organization_api_v1_organizations__organization_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -10672,7 +11981,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -10736,7 +12045,7 @@ export interface operations {
             };
         };
     };
-    list_organization_members_api_v1_organizations__org_id__members_get: {
+    list_organization_members_api_v1_organizations__organization_id__members_get: {
         parameters: {
             query?: {
                 /** @description Filter by role: owner, admin, member */
@@ -10751,7 +12060,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -10777,7 +12086,7 @@ export interface operations {
             };
         };
     };
-    add_member_api_v1_organizations__org_id__members_post: {
+    add_member_api_v1_organizations__organization_id__members_post: {
         parameters: {
             query?: never;
             header?: {
@@ -10785,7 +12094,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -10815,7 +12124,7 @@ export interface operations {
             };
         };
     };
-    remove_member_api_v1_organizations__org_id__members__user_id__delete: {
+    remove_member_api_v1_organizations__organization_id__members__user_id__delete: {
         parameters: {
             query?: never;
             header?: {
@@ -10823,7 +12132,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
                 /** @description User ID to remove */
                 user_id: string;
             };
@@ -10851,7 +12160,7 @@ export interface operations {
             };
         };
     };
-    update_member_role_api_v1_organizations__org_id__members__user_id__patch: {
+    update_member_role_api_v1_organizations__organization_id__members__user_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -10859,7 +12168,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
                 /** @description User ID */
                 user_id: string;
             };
@@ -10891,7 +12200,7 @@ export interface operations {
             };
         };
     };
-    get_organization_settings_api_v1_organizations__org_id__settings_get: {
+    get_organization_settings_api_v1_organizations__organization_id__settings_get: {
         parameters: {
             query?: never;
             header?: {
@@ -10899,7 +12208,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -10925,7 +12234,7 @@ export interface operations {
             };
         };
     };
-    update_organization_settings_api_v1_organizations__org_id__settings_patch: {
+    update_organization_settings_api_v1_organizations__organization_id__settings_patch: {
         parameters: {
             query?: never;
             header?: {
@@ -10933,7 +12242,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -10963,7 +12272,7 @@ export interface operations {
             };
         };
     };
-    check_permission_api_v1_organizations__org_id__permissions_check_post: {
+    check_permission_api_v1_organizations__organization_id__permissions_check_post: {
         parameters: {
             query?: never;
             header?: {
@@ -10971,7 +12280,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -11902,7 +13211,7 @@ export interface operations {
             };
         };
     };
-    list_organization_teams_api_v1_teams_organization__org_id__get: {
+    list_organization_teams_api_v1_teams_organization__organization_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -11910,7 +13219,7 @@ export interface operations {
             };
             path: {
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -11936,7 +13245,7 @@ export interface operations {
             };
         };
     };
-    list_user_teams_api_v1_teams_user__target_user_id__organization__org_id__get: {
+    list_user_teams_api_v1_teams_user__target_user_id__organization__organization_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -11946,7 +13255,7 @@ export interface operations {
                 /** @description User ID */
                 target_user_id: string;
                 /** @description Organization ID */
-                org_id: string;
+                organization_id: string;
             };
             cookie?: never;
         };
@@ -12103,6 +13412,387 @@ export interface operations {
                     "application/json": {
                         [key: string]: boolean;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_admin_users_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by active/inactive status */
+                is_active?: boolean | null;
+                /** @description Filter by role (admin, member, viewer) */
+                role?: string | null;
+                /** @description Search email or full_name (case-insensitive) */
+                search?: string | null;
+                /** @description Max results per page */
+                limit?: number;
+                /** @description Pagination offset */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_details_api_v1_admin_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to retrieve */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_user_api_v1_admin_users__user_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to deactivate */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_user_api_v1_admin_users__user_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to activate */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_role_api_v1_admin_users__user_id__roles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to assign role to */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_role_api_v1_admin_users__user_id__roles__role__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to remove role from */
+                user_id: string;
+                /** @description Role to remove (admin, member) */
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_routing_health_api_v1_admin_debug_llm_routing_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_config_api_v1_admin_llm_config_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_llm_config_api_v1_admin_llm_config_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConfigUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_llm_connection_api_v1_admin_llm_config_test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMConnectionTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConnectionTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_env_config_status_api_v1_admin_config_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvConfigStatusResponse"];
                 };
             };
             /** @description Validation Error */
