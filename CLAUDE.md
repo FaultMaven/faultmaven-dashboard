@@ -102,7 +102,7 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 
 - **Authentication**: `devLogin()`, `logoutAuth()`, AuthContext powered
 - **Knowledge Base**: Upload, list (paginated), delete documents (user + admin scopes)
-- **Cases**: List, detail, search (title + case ID), annotate, archive, messages, evidence, reports
+- **Cases**: List, detail, search (title + case ID), annotate, archive, messages, evidence list/detail (`GET /cases/{id}/evidence`, `GET /cases/{id}/evidence/{evidence_id}`), uploaded files list/detail, phase-adaptive UI snapshot (`GET /cases/{id}/ui`), reports
 - **Reports**: `generateCaseReport()`, `getReportRecommendations()`, `getCaseReports()`
 
 **API Endpoint Configuration:**
@@ -127,6 +127,9 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **CaseDetailPage**: Case header (title, description, status badge, milestone progress, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.
+- **TranscriptTab**: Single-column conversation view (no chat-style left/right bubbles). Each message has a role-coloured left-border accent (`fm-accent` for FaultMaven, `fm-border` for You) and an inline `You · Turn N` / `FaultMaven · Turn N` header. Turns are separated by a horizontal rule for scanability.
+- **HypothesesTab**: Renders `active_hypotheses` from `GET /cases/{id}/ui` for INVESTIGATING cases — status symbol (✓ validated / ✗ refuted / ● active / ◌ inconclusive / ○ captured-or-retired), likelihood %, evidence count, and statement. For terminal cases the `/ui` endpoint does not surface hypothesis details; falls back to a count-only note.
+- **EvidenceTab**: Evidence-first list backed by `GET /cases/{id}/evidence` (returns full `EvidenceDetails[]` in one round-trip). Each row shows category badge · summary · source filename · turn · linked-hypothesis count. Click to expand: verbatim `extract` (monospace), optional analysis, related hypotheses with stance badges (SUPPORTS / REFUTES / NEUTRAL). Footer toggle switches to a secondary file-view (uses `GET /cases/{id}/uploaded-files` + per-file detail) for the "did my upload get processed?" use case.
 - **CaseTabs**: 5 tabs shown for all cases: Transcript, Issue, Report, Hypotheses, Evidence. URL query param support (`?tab=report`, `?tab=issue`) for cross-frontend linking from copilot. All markdown content rendered via react-markdown with external links opening in new tabs.
 - **DocumentCard**: Expandable card — click to load and display full document content from ChromaDB
 - **Storage Adapter**: Browser extension API compatibility layer for web

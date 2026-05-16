@@ -75,17 +75,109 @@ export interface CaseMessagesResponse {
   total_count: number;
 }
 
-export interface CaseEvidenceFile {
-  data_id: string;
+export interface UploadedFile {
+  file_id: string;
   filename: string;
-  file_type: string;
-  file_size: number;
+  size_bytes: number;
+  size_display: string;
+  uploaded_at_turn: number;
   uploaded_at: string;
+  source_type: string;
+  analysis_status: string;
+  summary?: string | null;
 }
 
-export interface CaseEvidenceResponse {
-  files: CaseEvidenceFile[];
+export interface UploadedFilesResponse {
+  case_id: string;
   total_count: number;
+  files: UploadedFile[];
+}
+
+export interface DerivedEvidence {
+  evidence_id: string;
+  summary: string;
+  category: string;
+  collected_at_turn: number;
+  source_type: string;
+  primary_purpose?: string | null;
+  related_hypothesis_ids?: string[];
+}
+
+export interface UploadedFileDetails {
+  file_id: string;
+  filename: string;
+  size_bytes: number;
+  size_display: string;
+  uploaded_at_turn: number;
+  uploaded_at: string;
+  source_type: string;
+  data_type: string;
+  summary?: string | null;
+  evidence_count: number;
+  derived_evidence?: DerivedEvidence[];
+}
+
+export type HypothesisStatus =
+  | 'captured'
+  | 'active'
+  | 'validated'
+  | 'refuted'
+  | 'inconclusive'
+  | 'retired';
+
+export interface HypothesisSummary {
+  hypothesis_id: string;
+  text: string;
+  likelihood: number;
+  status: HypothesisStatus;
+  evidence_count: number;
+}
+
+export type CaseUIStatus = 'inquiry' | 'investigating' | 'resolved' | 'closed';
+
+export interface CaseUIResponse {
+  case_id: string;
+  status: CaseUIStatus;
+  title: string;
+  current_turn: number;
+  active_hypotheses?: HypothesisSummary[];
+  agent_status?: string;
+}
+
+export interface SourceFileReference {
+  file_id: string;
+  filename: string;
+  uploaded_at_turn: number;
+}
+
+export interface RelatedHypothesis {
+  hypothesis_id: string;
+  statement: string;
+  /** SUPPORTS | REFUTES | NEUTRAL */
+  stance: string;
+}
+
+export interface EvidenceDetails {
+  evidence_id: string;
+  case_id: string;
+  summary: string;
+  /** SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | MITIGATION_EVIDENCE | SOLUTION_EVIDENCE */
+  category: string;
+  primary_purpose: string;
+  collected_at_turn: number;
+  collected_at: string;
+  collected_by: string;
+  source_file?: SourceFileReference | null;
+  related_hypotheses?: RelatedHypothesis[];
+  /** Verbatim quote from the source — present when the LLM grounded the summary in a specific slice. */
+  extract?: string | null;
+  analysis?: string | null;
+}
+
+export interface CaseEvidenceListResponse {
+  case_id: string;
+  total_count: number;
+  evidence: EvidenceDetails[];
 }
 
 export interface CaseReport {
