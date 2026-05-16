@@ -7,11 +7,15 @@ import type {
   CaseFilters,
   CaseAnnotation,
   CaseMessagesResponse,
-  CaseEvidenceResponse,
   CaseReport,
+  CaseUIResponse,
+  CaseEvidenceListResponse,
+  EvidenceDetails,
   ReportGenerationRequest,
   ReportGenerationResponse,
   ReportRecommendation,
+  UploadedFilesResponse,
+  UploadedFileDetails,
 } from '../../types/cases';
 
 const CASES_BASE = '/api/v1/cases';
@@ -114,11 +118,59 @@ export async function getCaseMessages(caseId: string): Promise<CaseMessagesRespo
 }
 
 /**
- * Get evidence files uploaded to a case.
+ * Get uploaded files for a case with evidence linkage counts.
  */
-export async function getCaseEvidence(caseId: string): Promise<CaseEvidenceResponse> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/data`);
-  await handleAPIResponse(response, 'Failed to get case evidence');
+export async function getUploadedFiles(caseId: string): Promise<UploadedFilesResponse> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/uploaded-files`);
+  await handleAPIResponse(response, 'Failed to get uploaded files');
+  return response.json();
+}
+
+/**
+ * Get a single uploaded file's details, including derived evidence and hypothesis linkage.
+ */
+export async function getUploadedFileDetails(
+  caseId: string,
+  fileId: string
+): Promise<UploadedFileDetails> {
+  const response = await makeAuthenticatedRequest(
+    `${CASES_BASE}/${caseId}/uploaded-files/${fileId}`
+  );
+  await handleAPIResponse(response, 'Failed to get uploaded file details');
+  return response.json();
+}
+
+/**
+ * Get all evidence records for a case in a single round-trip, each with
+ * source-file reference, related hypotheses, and the verbatim extract.
+ */
+export async function getCaseEvidenceList(caseId: string): Promise<CaseEvidenceListResponse> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/evidence`);
+  await handleAPIResponse(response, 'Failed to list case evidence');
+  return response.json();
+}
+
+/**
+ * Get a single evidence record with full detail (extract + hypothesis stances).
+ */
+export async function getEvidenceDetails(
+  caseId: string,
+  evidenceId: string
+): Promise<EvidenceDetails> {
+  const response = await makeAuthenticatedRequest(
+    `${CASES_BASE}/${caseId}/evidence/${evidenceId}`
+  );
+  await handleAPIResponse(response, 'Failed to get evidence details');
+  return response.json();
+}
+
+/**
+ * Get the phase-adaptive case UI snapshot (inquiry / investigating / resolved).
+ * Used to surface investigation-time data such as active hypotheses.
+ */
+export async function getCaseUI(caseId: string): Promise<CaseUIResponse> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/ui`);
+  await handleAPIResponse(response, 'Failed to get case UI snapshot');
   return response.json();
 }
 
