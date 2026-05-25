@@ -36,6 +36,7 @@ interface ReportTabProps {
 export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
   const [reports, setReports] = useState<CaseReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<CaseReport | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -44,23 +45,49 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
 
   useEffect(() => {
     if (!isTerminal) return;
-    loadReports();
+    loadReports({ initial: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId, isTerminal]);
 
-  async function loadReports() {
-    setLoading(true);
+  async function loadReports(opts: { initial?: boolean } = {}) {
+    if (opts.initial) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
     try {
       const data = await getCaseReports(caseId);
       setReports(data);
-      // Auto-select the first report if available
-      if (data.length > 0 && !selectedReport) {
-        setSelectedReport(data[0]);
+      // Reconcile selection across refreshes. After a regeneration, the
+      // server returns the new is_current=1 row(s); the previously
+      // selected row is now is_current=0 and no longer in the response.
+      // Keep the user on the same report_type (the one they were
+      // viewing) when possible, otherwise default to the first row.
+      if (data.length > 0) {
+        const stillPresent = selectedReport
+          ? data.find((r) => r.report_id === selectedReport.report_id)
+          : null;
+        if (stillPresent) {
+          // Same row still current; no change.
+        } else if (selectedReport) {
+          // Selection's report_id is gone (regenerated). Pick the new
+          // current row of the same report_type if one exists.
+          const sameType = data.find(
+            (r) => r.report_type === selectedReport.report_type,
+          );
+          setSelectedReport(sameType ?? data[0]);
+        } else {
+          setSelectedReport(data[0]);
+        }
+      } else {
+        setSelectedReport(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reports');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -141,22 +168,33 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
                 Generated {relativeTime(selectedReport.generated_at)}
               </p>
             </div>
-            <button
-              onClick={async () => {
-                const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
-                const res = await makeAuthenticatedRequest(url);
-                if (!res.ok) return;
-                const blob = await res.blob();
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `${selectedReport.report_type}_${caseId}.md`;
-                a.click();
-                URL.revokeObjectURL(a.href);
-              }}
-              className="text-xs text-fm-accent hover:underline cursor-pointer"
-            >
-              Download
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => loadReports()}
+                disabled={refreshing}
+                aria-label="Refresh report"
+                title="Re-fetch the latest report (e.g. after regenerating from the Copilot)"
+                className="text-xs text-fm-accent hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button
+                onClick={async () => {
+                  const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
+                  const res = await makeAuthenticatedRequest(url);
+                  if (!res.ok) return;
+                  const blob = await res.blob();
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `${selectedReport.report_type}_${caseId}.md`;
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                }}
+                className="text-xs text-fm-accent hover:underline cursor-pointer"
+              >
+                Download
+              </button>
+            </div>
           </div>
 
           <div className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4">
