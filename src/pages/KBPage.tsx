@@ -890,15 +890,14 @@ export default function KBPage() {
     }
   }, []);
 
-  // Scan on mount, then load drafts (discovers files seeded by startup)
+  // Load drafts on mount. Auto-scan was removed — KB ingestion is now
+  // owned by the server-side startup bootstrap (faultmaven/bootstrap/kb_init.py).
+  // The page-mount scan used to mutate data (downgrade verified→draft on every
+  // visit), which corrupted live KB state. Users who want to re-scan
+  // manually can use the explicit "Scan for runbooks" button.
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      try {
-        await scanForRunbooks();
-      } catch {
-        // non-critical — proceed to load drafts anyway
-      }
       if (!cancelled) {
         setInitialScanDone(true);
         loadDrafts();
