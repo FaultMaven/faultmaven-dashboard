@@ -52,6 +52,7 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
   const [summaries, setSummaries] = useState<CaseReport[]>([]);
   const [runbookCount, setRunbookCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<CaseReport | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -60,11 +61,16 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
 
   useEffect(() => {
     if (!isTerminal) return;
-    loadReports();
+    loadReports({ initial: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId, isTerminal]);
 
-  async function loadReports() {
-    setLoading(true);
+  async function loadReports(opts: { initial?: boolean } = {}) {
+    if (opts.initial) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
     try {
       const data = await getCaseReports(caseId);
@@ -72,15 +78,35 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
       const runbookRows = data.filter((r) => r.report_type === 'runbook');
       setSummaries(summaryRows);
       setRunbookCount(runbookRows.length);
-      // Auto-select the first summary if available. Runbooks never get
-      // selected here — they don't render in this tab.
-      if (summaryRows.length > 0 && !selectedReport) {
+      // Reconcile selection across refreshes. After a regeneration the
+      // server returns the new is_current=1 row(s); the previously
+      // selected row is now is_current=0 and no longer in the response.
+      // Selection only operates over `summaryRows` because runbooks
+      // don't render in this tab — they get the banner instead.
+      if (summaryRows.length === 0) {
+        setSelectedReport(null);
+      } else if (!selectedReport) {
+        // Initial load — pick the first summary.
         setSelectedReport(summaryRows[0]);
+      } else {
+        const stillPresent = summaryRows.find(
+          (r) => r.report_id === selectedReport.report_id,
+        );
+        if (!stillPresent) {
+          // Previously-selected row is gone (regenerated). Pick the new
+          // current row of the same report_type if one exists, else the
+          // first summary.
+          const sameType = summaryRows.find(
+            (r) => r.report_type === selectedReport.report_type,
+          );
+          setSelectedReport(sameType ?? summaryRows[0]);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reports');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -201,22 +227,33 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
                 Generated {relativeTime(selectedReport.generated_at)}
               </p>
             </div>
-            <button
-              onClick={async () => {
-                const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
-                const res = await makeAuthenticatedRequest(url);
-                if (!res.ok) return;
-                const blob = await res.blob();
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `${selectedReport.report_type}_${caseId}.md`;
-                a.click();
-                URL.revokeObjectURL(a.href);
-              }}
-              className="text-xs text-fm-accent hover:underline cursor-pointer"
-            >
-              Download
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => loadReports()}
+                disabled={refreshing}
+                aria-label="Refresh report"
+                title="Re-fetch the latest report (e.g. after regenerating from the Copilot)"
+                className="text-xs text-fm-accent hover:underline cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button
+                onClick={async () => {
+                  const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
+                  const res = await makeAuthenticatedRequest(url);
+                  if (!res.ok) return;
+                  const blob = await res.blob();
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `${selectedReport.report_type}_${caseId}.md`;
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                }}
+                className="text-xs text-fm-accent hover:underline cursor-pointer"
+              >
+                Download
+              </button>
+            </div>
           </div>
 
           <div className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4">
