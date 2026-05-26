@@ -836,7 +836,7 @@ export default function KBPage() {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
-  const [initialScanDone, setInitialScanDone] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   // Multi-select state
   const [selectedDrafts, setSelectedDrafts] = useState<Array<{ conversion_id: string; draft_id: string }>>([]);
@@ -863,9 +863,6 @@ export default function KBPage() {
       const parts: string[] = [];
       if (result.discovered > 0) {
         parts.push(`Discovered ${result.discovered} new runbook${result.discovered !== 1 ? 's' : ''}`);
-      }
-      if (result.reverted > 0) {
-        parts.push(`Restored ${result.reverted} removed runbook${result.reverted !== 1 ? 's' : ''} as draft${result.reverted !== 1 ? 's' : ''}`);
       }
       setScanResult(parts.length > 0 ? parts.join('. ') + '.' : 'No new runbook files found.');
     } catch {
@@ -896,15 +893,8 @@ export default function KBPage() {
   // visit), which corrupted live KB state. Users who want to re-scan
   // manually can use the explicit "Scan for runbooks" button.
   useEffect(() => {
-    let cancelled = false;
-    async function init() {
-      if (!cancelled) {
-        setInitialScanDone(true);
-        loadDrafts();
-      }
-    }
-    init();
-    return () => { cancelled = true; };
+    setInitialLoadDone(true);
+    loadDrafts();
   }, [loadDrafts]);
 
   // Handlers
@@ -1131,7 +1121,7 @@ export default function KBPage() {
   const liveDraftCount = drafts.filter((d) => d.status === 'draft').length;
   const draftCount = drafts.length > 0 ? liveDraftCount : cachedCount;
   const pendingCount = drafts.filter((d) => d.status === 'draft').length;
-  const showFirstTimeBanner = initialScanDone && pendingCount > 0 && runbookCount === 0 && !bannerDismissed;
+  const showFirstTimeBanner = initialLoadDone && pendingCount > 0 && runbookCount === 0 && !bannerDismissed;
 
   return (
     <div className="min-h-screen bg-fm-canvas">
