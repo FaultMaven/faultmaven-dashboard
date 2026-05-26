@@ -1,18 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { prepareMarkdown } from '../lib/markdownUtils';
 import { getCaseReports, getCaseReportDownloadUrl } from '../lib/api';
 import { makeAuthenticatedRequest } from '../lib/knowledge/client';
-import type { CaseReport, CaseDetail, ReportType } from '../types/cases';
+import type { CaseReport, CaseDetail } from '../types/cases';
 import config from '../config';
 
-const REPORT_TYPE_META: Record<ReportType, { label: string }> = {
+// Labels for the summary tabs displayed inside the Report tab. Runbooks
+// are intentionally excluded — they're a knowledge artifact derived FROM
+// the case, not a report ABOUT the case, and their authoritative home is
+// the KB Drafts editor. The Report tab surfaces a banner with a link to
+// KB Drafts instead of duplicating runbook content here.
+const SUMMARY_TYPE_META: Record<'resolution_summary' | 'closure_summary', { label: string }> = {
   resolution_summary: { label: 'Resolution Summary' },
   closure_summary: { label: 'Closure Summary' },
-  runbook: { label: 'Runbook' },
 };
+
+function isSummary(report: CaseReport): boolean {
+  return (
+    report.report_type === 'resolution_summary' ||
+    report.report_type === 'closure_summary'
+  );
+}
 
 function relativeTime(dateStr: string | undefined): string {
   if (!dateStr) return 'unknown';
@@ -34,7 +46,11 @@ interface ReportTabProps {
 }
 
 export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
-  const [reports, setReports] = useState<CaseReport[]>([]);
+  // Summary rows only (resolution_summary | closure_summary). Runbooks
+  // are tracked separately and surfaced via the KB-link banner instead
+  // of being rendered as a tab here.
+  const [summaries, setSummaries] = useState<CaseReport[]>([]);
+  const [runbookCount, setRunbookCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,30 +74,33 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
     setError(null);
     try {
       const data = await getCaseReports(caseId);
-      setReports(data);
-      // Reconcile selection across refreshes. After a regeneration, the
+      const summaryRows = data.filter(isSummary);
+      const runbookRows = data.filter((r) => r.report_type === 'runbook');
+      setSummaries(summaryRows);
+      setRunbookCount(runbookRows.length);
+      // Reconcile selection across refreshes. After a regeneration the
       // server returns the new is_current=1 row(s); the previously
       // selected row is now is_current=0 and no longer in the response.
-      // Keep the user on the same report_type (the one they were
-      // viewing) when possible, otherwise default to the first row.
-      if (data.length > 0) {
-        const stillPresent = selectedReport
-          ? data.find((r) => r.report_id === selectedReport.report_id)
-          : null;
-        if (stillPresent) {
-          // Same row still current; no change.
-        } else if (selectedReport) {
-          // Selection's report_id is gone (regenerated). Pick the new
-          // current row of the same report_type if one exists.
-          const sameType = data.find(
+      // Selection only operates over `summaryRows` because runbooks
+      // don't render in this tab — they get the banner instead.
+      if (summaryRows.length === 0) {
+        setSelectedReport(null);
+      } else if (!selectedReport) {
+        // Initial load — pick the first summary.
+        setSelectedReport(summaryRows[0]);
+      } else {
+        const stillPresent = summaryRows.find(
+          (r) => r.report_id === selectedReport.report_id,
+        );
+        if (!stillPresent) {
+          // Previously-selected row is gone (regenerated). Pick the new
+          // current row of the same report_type if one exists, else the
+          // first summary.
+          const sameType = summaryRows.find(
             (r) => r.report_type === selectedReport.report_type,
           );
-          setSelectedReport(sameType ?? data[0]);
-        } else {
-          setSelectedReport(data[0]);
+          setSelectedReport(sameType ?? summaryRows[0]);
         }
-      } else {
-        setSelectedReport(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reports');
@@ -97,6 +116,29 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
       previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   }
+
+  // Deep-link target for the runbook banner. ``case=<id>`` lets the KB
+  // page filter the Drafts list to runbooks generated from this case
+  // (other drafts come from document conversion or manual creation, so
+  // the filter narrows what's relevant).
+  const runbookBanner = runbookCount > 0 && (
+    <div className="mb-3 flex items-center justify-between gap-3 px-3 py-2 rounded-fm-input border border-fm-border bg-fm-surface-alt">
+      <div className="flex items-center gap-2 text-sm text-fm-text-secondary">
+        <span aria-hidden="true">📘</span>
+        <span>
+          {runbookCount === 1
+            ? 'A runbook draft was generated from this case.'
+            : `${runbookCount} runbook drafts were generated from this case.`}
+        </span>
+      </div>
+      <Link
+        to={`/kb?tab=drafts&case=${encodeURIComponent(caseId)}`}
+        className="text-xs text-fm-accent hover:underline whitespace-nowrap"
+      >
+        Open in KB →
+      </Link>
+    </div>
+  );
 
   if (!isTerminal) {
     return (
@@ -114,7 +156,15 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
     return <div className="text-fm-critical text-sm py-4">{error}</div>;
   }
 
-  if (reports.length === 0) {
+  // Empty state handling:
+  //   - No summary AND no runbook → "no reports generated" (trivial case)
+  //   - No summary BUT a runbook exists → show the banner only; do not
+  //     emit a misleading "no reports" message, because something WAS
+  //     generated (it just doesn't live in this tab).
+  if (summaries.length === 0) {
+    if (runbookCount > 0) {
+      return <div className="py-1">{runbookBanner}</div>;
+    }
     return (
       <div className="text-fm-text-tertiary text-sm py-4">
         No reports were generated for this case. This can happen for trivial cases with minimal investigation data.
@@ -136,11 +186,20 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
 
   return (
     <div className="py-1">
-      {/* Report list */}
-      {reports.length > 1 && (
+      {runbookBanner}
+
+      {/* Summary tabs — only shown when more than one summary exists.
+          In practice a case has at most one summary (resolution OR
+          closure, not both), so this branch rarely fires; the guard
+          stays for safety against legacy / odd cases. */}
+      {summaries.length > 1 && (
         <div className="flex gap-2 mb-3">
-          {reports.map((report) => {
-            const meta = REPORT_TYPE_META[report.report_type as ReportType];
+          {summaries.map((report) => {
+            const meta =
+              report.report_type === 'resolution_summary' ||
+              report.report_type === 'closure_summary'
+                ? SUMMARY_TYPE_META[report.report_type]
+                : undefined;
             const isActive = selectedReport?.report_id === report.report_id;
             return (
               <button

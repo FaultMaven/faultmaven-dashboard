@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { logoutAuth, uploadDocument, type KBDocument, type AdminKBDocument } from '../lib/api';
 import {
   convertDocument,
@@ -373,6 +374,10 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
 
 interface DraftsTabProps {
   drafts: DraftSummary[];
+  /** Active case-id filter (e.g. from deep-link), or null. */
+  caseFilter: string | null;
+  /** Clear the case filter (drops the URL ``case`` param). */
+  onClearCaseFilter: () => void;
   loading: boolean;
   onOpen: (conversionId: string) => void;
   onRefresh: () => void;
@@ -387,7 +392,7 @@ interface DraftsTabProps {
   batchActionInProgress: boolean;
 }
 
-function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
+function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
 
   const gradeColor: Record<string, string> = {
@@ -533,8 +538,45 @@ function DraftsTab({ drafts, loading, onOpen, onScan, onDismissScan, scanning, s
         </div>
       )}
 
+      {/* Active case filter chip — set when the user landed here via a
+          deep-link from a case's Report tab (``?case=<id>``). Clicking
+          the × clears the filter and shows the full drafts list. */}
+      {caseFilter && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-fm-text-secondary">
+          <span>Filtered by case</span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-fm-accent/10 text-fm-accent border border-fm-accent/20 font-mono">
+            {caseFilter}
+            <button
+              onClick={onClearCaseFilter}
+              className="hover:brightness-110"
+              aria-label="Clear case filter"
+              title="Show all drafts"
+            >
+              ×
+            </button>
+          </span>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-xs text-fm-text-tertiary py-6 text-center">Loading drafts...</p>
+      ) : drafts.length === 0 && caseFilter ? (
+        // Filter is active but yielded no rows — be specific about why
+        // and offer a way back to the full list rather than nudging the
+        // user toward "+ New" or "Scan", which aren't what they came for.
+        <div className="py-10 text-center">
+          <p className="text-fm-text-secondary mb-1">No drafts found for this case.</p>
+          <p className="text-sm text-fm-text-tertiary">
+            The draft may have been verified or deleted.{' '}
+            <button
+              onClick={onClearCaseFilter}
+              className="text-fm-accent hover:underline"
+            >
+              Show all drafts
+            </button>
+            .
+          </p>
+        </div>
       ) : drafts.length === 0 ? (
         <div className="py-10 text-center">
           <p className="text-fm-text-secondary mb-1">No draft runbooks yet.</p>
@@ -729,7 +771,47 @@ export default function KBPage() {
   const isAdmin = role === 'platform_admin';
   const canUpload = deployment === 'local' || isAdmin;
 
-  const [activeTab, setActiveTab] = useState<KBTab>('documents');
+  // Tab + draft-case-filter are URL-driven so other pages can deep-link
+  // here. The ReportTab in case-detail links to ``/kb?tab=drafts&case=<id>``
+  // when a runbook draft was generated for that case — landing the user
+  // on the Drafts tab filtered to that case's runbook(s).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab: KBTab =
+    searchParams.get('tab') === 'drafts' ? 'drafts' : 'documents';
+  const caseFilter = searchParams.get('case');
+
+  const setActiveTab = useCallback(
+    (tab: KBTab) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (tab === 'drafts') {
+            next.set('tab', 'drafts');
+          } else {
+            next.delete('tab');
+            // Case filter is meaningful only for the Drafts tab; clear
+            // it when leaving so it doesn't surprise the user on return.
+            next.delete('case');
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const clearCaseFilter = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('case');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
   const [docsRefreshKey, setDocsRefreshKey] = useState(0);
 
   // Overlay state (creation/editing flows)
@@ -754,7 +836,7 @@ export default function KBPage() {
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
-  const [initialScanDone, setInitialScanDone] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   // Multi-select state
   const [selectedDrafts, setSelectedDrafts] = useState<Array<{ conversion_id: string; draft_id: string }>>([]);
@@ -782,9 +864,6 @@ export default function KBPage() {
       if (result.discovered > 0) {
         parts.push(`Discovered ${result.discovered} new runbook${result.discovered !== 1 ? 's' : ''}`);
       }
-      if (result.reverted > 0) {
-        parts.push(`Restored ${result.reverted} removed runbook${result.reverted !== 1 ? 's' : ''} as draft${result.reverted !== 1 ? 's' : ''}`);
-      }
       setScanResult(parts.length > 0 ? parts.join('. ') + '.' : 'No new runbook files found.');
     } catch {
       setScanResult('Scan failed. Check that data/knowledge/ exists.');
@@ -808,22 +887,14 @@ export default function KBPage() {
     }
   }, []);
 
-  // Scan on mount, then load drafts (discovers files seeded by startup)
+  // Load drafts on mount. Auto-scan was removed — KB ingestion is now
+  // owned by the server-side startup bootstrap (faultmaven/bootstrap/kb_init.py).
+  // The page-mount scan used to mutate data (downgrade verified→draft on every
+  // visit), which corrupted live KB state. Users who want to re-scan
+  // manually can use the explicit "Scan for runbooks" button.
   useEffect(() => {
-    let cancelled = false;
-    async function init() {
-      try {
-        await scanForRunbooks();
-      } catch {
-        // non-critical — proceed to load drafts anyway
-      }
-      if (!cancelled) {
-        setInitialScanDone(true);
-        loadDrafts();
-      }
-    }
-    init();
-    return () => { cancelled = true; };
+    setInitialLoadDone(true);
+    loadDrafts();
   }, [loadDrafts]);
 
   // Handlers
@@ -1050,7 +1121,7 @@ export default function KBPage() {
   const liveDraftCount = drafts.filter((d) => d.status === 'draft').length;
   const draftCount = drafts.length > 0 ? liveDraftCount : cachedCount;
   const pendingCount = drafts.filter((d) => d.status === 'draft').length;
-  const showFirstTimeBanner = initialScanDone && pendingCount > 0 && runbookCount === 0 && !bannerDismissed;
+  const showFirstTimeBanner = initialLoadDone && pendingCount > 0 && runbookCount === 0 && !bannerDismissed;
 
   return (
     <div className="min-h-screen bg-fm-canvas">
@@ -1190,7 +1261,13 @@ export default function KBPage() {
               </div>
               {activeTab === 'drafts' && (
                 <DraftsTab
-                  drafts={drafts}
+                  drafts={
+                    caseFilter
+                      ? drafts.filter((d) => d.case_id === caseFilter)
+                      : drafts
+                  }
+                  caseFilter={caseFilter}
+                  onClearCaseFilter={clearCaseFilter}
                   loading={draftsLoading}
                   onOpen={handleOpenDraft}
                   onRefresh={loadDrafts}
