@@ -43,7 +43,7 @@ const sampleCase = {
   case_id: 'case-1',
   title: 'Database Outage',
   description: 'Primary DB is unresponsive',
-  status: 'investigating' as const,
+  state: 'investigating' as const,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   last_activity_at: '2024-01-02T00:00:00Z',
@@ -111,7 +111,7 @@ describe('CaseListPage', () => {
   });
 
   it('shows Archive button only for resolved cases', async () => {
-    const resolvedCase = { ...sampleCase, status: 'resolved' as const, is_terminal: true };
+    const resolvedCase = { ...sampleCase, state: 'resolved' as const, is_terminal: true };
     mockListCases.mockResolvedValue({
       cases: [resolvedCase],
       total_count: 1,
@@ -130,7 +130,7 @@ describe('CaseListPage', () => {
   });
 
   it('opens confirm dialog when Archive is clicked', async () => {
-    const resolvedCase = { ...sampleCase, status: 'resolved' as const, is_terminal: true };
+    const resolvedCase = { ...sampleCase, state: 'resolved' as const, is_terminal: true };
     mockListCases.mockResolvedValue({
       cases: [resolvedCase],
       total_count: 1,
@@ -151,7 +151,7 @@ describe('CaseListPage', () => {
   });
 
   it('calls archiveCase when confirm dialog is confirmed', async () => {
-    const resolvedCase = { ...sampleCase, status: 'resolved' as const, is_terminal: true };
+    const resolvedCase = { ...sampleCase, state: 'resolved' as const, is_terminal: true };
     mockListCases.mockResolvedValue({
       cases: [resolvedCase],
       total_count: 1,

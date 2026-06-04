@@ -1,10 +1,10 @@
-import type { CaseStatus } from '../types/cases';
+import type { CaseState } from '../types/cases';
 
-interface CaseStatusBadgeProps {
-  status: CaseStatus;
+interface CaseStateBadgeProps {
+  state: CaseState;
 }
 
-const statusConfig: Record<CaseStatus, { label: string; className: string }> = {
+const stateConfig: Record<CaseState, { label: string; className: string }> = {
   inquiry: {
     label: 'Inquiry',
     className: 'bg-fm-accent/10 text-fm-accent border border-fm-accent/30',
@@ -23,9 +23,9 @@ const statusConfig: Record<CaseStatus, { label: string; className: string }> = {
   },
 };
 
-export function CaseStatusBadge({ status }: CaseStatusBadgeProps) {
-  const config = statusConfig[status] ?? {
-    label: status,
+export function CaseStateBadge({ state }: CaseStateBadgeProps) {
+  const config = stateConfig[state] ?? {
+    label: state,
     className: 'bg-fm-elevated text-fm-text-secondary border border-fm-border',
   };
 

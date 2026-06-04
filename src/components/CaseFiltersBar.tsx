@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import type { CaseFilters } from '../types/cases';
-import type { CaseStatus } from '../types/cases';
+import type { CaseState } from '../types/cases';
 import { debounce } from '../utils/debounce';
 
 interface CaseFiltersBarProps {
@@ -8,7 +8,7 @@ interface CaseFiltersBarProps {
   onChange: (filters: CaseFilters) => void;
 }
 
-const STATUS_OPTIONS: { value: CaseStatus | ''; label: string }[] = [
+const STATE_OPTIONS: { value: CaseState | ''; label: string }[] = [
   { value: '', label: 'All' },
   { value: 'inquiry', label: 'Inquiry' },
   { value: 'investigating', label: 'Investigating' },
@@ -35,8 +35,8 @@ export function CaseFiltersBar({ filters, onChange }: CaseFiltersBarProps) {
 
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const handleStatusClick = (value: CaseStatus | '') => {
-    onChange({ ...filters, status: value || undefined });
+  const handleStateClick = (value: CaseState | '') => {
+    onChange({ ...filters, state: value || undefined });
   };
 
   const handleDateFrom = (value: string) => {
@@ -50,12 +50,12 @@ export function CaseFiltersBar({ filters, onChange }: CaseFiltersBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4">
       <div className="flex gap-1.5">
-        {STATUS_OPTIONS.map(({ value, label }) => {
-          const isActive = (filters.status ?? '') === value;
+        {STATE_OPTIONS.map(({ value, label }) => {
+          const isActive = (filters.state ?? '') === value;
           return (
             <button
               key={value}
-              onClick={() => handleStatusClick(value)}
+              onClick={() => handleStateClick(value)}
               className={`${chipBase} ${isActive ? chipActive : chipInactive}`}
             >
               {label}

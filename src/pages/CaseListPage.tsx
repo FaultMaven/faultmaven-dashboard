@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
-import { CaseStatusBadge } from '../components/CaseStatusBadge';
+import { CaseStateBadge } from '../components/CaseStateBadge';
 import { MilestoneProgress } from '../components/MilestoneProgress';
 import { CaseFiltersBar } from '../components/CaseFiltersBar';
 import { PaginationControls } from '../components/PaginationControls';
@@ -110,7 +110,7 @@ export default function CaseListPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <CaseStatusBadge status={c.status} />
+                        <CaseStateBadge state={c.state} />
                       </td>
                       <td className="px-4 py-3">
                         <MilestoneProgress completed={c.milestones_completed} total={c.total_milestones} />
