@@ -22,8 +22,11 @@ RUN pnpm build
 # Stage 2: Production
 FROM nginx:alpine
 
-# Update Alpine packages to fix security vulnerabilities
-RUN apk update && apk upgrade --no-cache
+# Update Alpine packages to fix security vulnerabilities.
+# The explicit libxml2 floor pulls the CVE-2026-6732 fix (2.13.9-r1) and
+# changes this layer's cache key so `apk upgrade` re-runs against the current
+# package index instead of serving a stale cached layer.
+RUN apk update && apk upgrade --no-cache && apk add --no-cache "libxml2>=2.13.9-r1"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
