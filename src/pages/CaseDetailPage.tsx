@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
-import { CaseStatusBadge } from '../components/CaseStatusBadge';
+import { CaseStateBadge } from '../components/CaseStateBadge';
 import { MilestoneProgress } from '../components/MilestoneProgress';
 import { CaseTabs } from '../components/CaseTabs';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -118,11 +118,11 @@ export default function CaseDetailPage() {
                 </p>
               )}
               <div className="flex flex-wrap items-center gap-3">
-                <CaseStatusBadge status={caseDetail.status} />
+                <CaseStateBadge state={caseDetail.state} />
                 <MilestoneProgress
                   completed={caseDetail.milestones_completed.length}
                   total={caseDetail.milestones_completed.length + (caseDetail.pending_milestones?.length || 0)}
-                  transparent={caseDetail.status === 'investigating' && caseDetail.turns_without_progress >= 5}
+                  transparent={caseDetail.state === 'investigating' && caseDetail.turns_without_progress >= 5}
                 />
               </div>
             </div>
@@ -159,7 +159,7 @@ export default function CaseDetailPage() {
               saving: savingAnnotation,
               saved: annotationSaved,
               error: annotationError,
-              disabled: caseDetail.status === 'closed',
+              disabled: caseDetail.state === 'closed',
             } : undefined}
           />
         </div>

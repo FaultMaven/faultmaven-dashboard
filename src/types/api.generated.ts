@@ -617,10 +617,12 @@ export interface paths {
          *
          *     **Returns:**
          *     - 200: TitleResponse with X-Correlation-ID header
-         *     - 422: ErrorResponse with code INSUFFICIENT_CONTEXT and X-Correlation-ID header
-         *
-         *     **Description:** Returns 422 when insufficient meaningful context; clients SHOULD keep
-         *     existing title unchanged and may retry later.
+         *     - 422: ValidationException body — see ``api/exception_handlers.py``
+         *       and ``docs/architecture/specifications/exception-contract.md``.
+         *       Raised when there is insufficient meaningful context to generate
+         *       a title (pre-LLM length gate, or LLM + fallback both fail).
+         *       Clients SHOULD keep the existing title unchanged and may retry
+         *       later.
          */
         post: operations["generate_case_title_api_v1_cases__case_id__title_post"];
         delete?: never;
@@ -841,11 +843,15 @@ export interface paths {
          *     Gated by ``FAULTMAVEN_RECLASSIFY_ENABLED``. Returns 404 when the
          *     flag is off so the endpoint is invisible in production by default.
          *
-         *     Error responses:
+         *     Error responses (dispatched by ``api/exception_handlers.py``):
          *
-         *     - ``404`` — feature disabled, case not found, or evidence not in case.
-         *     - ``409`` — evidence has no ``content_ref`` (can't re-extract).
-         *     - ``400`` — invalid ``data_type`` string, or missing ``data_type``.
+         *     - ``404`` — feature disabled, case not found, or evidence not in case
+         *       (``NotFoundError``).
+         *     - ``409`` — evidence has no backing file (``ConflictError`` with
+         *       ``conflict_reason="no_backing_file"``).
+         *     - ``403`` — caller does not own the case (``AuthorizationError``).
+         *     - ``422`` — invalid or missing ``data_type`` (``ValidationException``).
+         *     - ``500`` — storage/preprocessing failure (``ServiceException``).
          */
         patch: operations["reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch"];
         trace?: never;
@@ -956,13 +962,21 @@ export interface paths {
          * Get Case Reports
          * @description Retrieve generated reports for a case.
          *
+         *     Composite response: includes both the SQL-persisted ``reports`` rows
+         *     (resolution_summary / closure_summary) and a projected view of any
+         *     conversion drafts linked to this case (returned as synthetic
+         *     ``report_type=runbook`` entries). The case Report tab uses the
+         *     runbook entries to drive the KB-link banner; the underlying runbook
+         *     content lives in ``conversion_drafts`` (the KB Drafts editor), not
+         *     ``reports``.
+         *
          *     Args:
          *         case_id: Case identifier
          *         include_history: If True, return all report versions; if False, only current
          *         report_type: Optional filter by report type (resolution_summary, closure_summary, runbook)
          *
          *     Returns:
-         *         List of CaseReport objects
+         *         List of CaseReport objects (summaries plus any case-linked runbook drafts)
          */
         get: operations["get_case_reports_api_v1_cases__case_id__reports_get"];
         put?: never;
@@ -2129,6 +2143,12 @@ export interface paths {
         /**
          * Verify Draft
          * @description Promote draft to verified status and trigger ingestion into ChromaDB.
+         *
+         *     Service-layer typed exceptions (NotFoundError, ConflictError,
+         *     ValidationException) propagate to the global handlers in
+         *     api/exception_handlers.py for canonical translation to 404 / 409 /
+         *     422 respectively. The route no longer catches ValueError; see
+         *     docs/architecture/specifications/exception-contract.md.
          */
         post: operations["verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post"];
         delete?: never;
@@ -4022,7 +4042,7 @@ export interface components {
          * AuthSessionStatus
          * @description Defines the status of authentication sessions (not investigation sessions).
          *
-         *     For investigation session status, see faultmaven.models.investigation_session.SessionStatus
+         *     For investigation session status, see faultmaven.models.investigation_session.SessionState
          * @enum {string}
          */
         AuthSessionStatus: "active" | "expired" | "terminated";
@@ -4212,7 +4232,7 @@ export interface components {
              * @description Current lifecycle status (phase or disposition)
              * @default inquiry
              */
-            status: components["schemas"]["CaseStatus"];
+            state: components["schemas"]["CaseState"];
             /**
              * Action History
              * @description Complete history of case actions (phase transitions and dispositions)
@@ -4224,11 +4244,18 @@ export interface components {
              */
             closure_reason?: string | null;
             /**
+             * Disposition Eligibility
+             * @description Per-disposition eligibility view for the case-action dropdown. Denormalized read view maintained at the single chokepoint ``CaseRepository.save()`` via ``derive_disposition_eligibility``. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of ``ready`` / ``needs_info`` / ``not_eligible``. Frontend uses this to gate Resolve/Close affordances on the current case content, not just the structural action graph. Always populated for persisted cases; may be None on in-memory Case objects before the first save.
+             */
+            disposition_eligibility?: {
+                [key: string]: string;
+            } | null;
+            /**
              * Pending Transition
              * @description Pending status transition awaiting user confirmation (User-Agent Handshake pattern).
              *
              *             Used for terminal transitions that require explicit user confirmation:
-             *             - to_status: Target status (str)
+             *             - to_state: Target status (str)
              *             - reason: Why transition is being proposed (str)
              *             - summary: Agent's explanation to user (str)
              *             - evidence_ids: Supporting evidence (List[str])
@@ -4324,6 +4351,11 @@ export interface components {
              */
             evidence?: components["schemas"]["Evidence"][];
             /**
+             * Evidence Needs
+             * @description Demand-side pool: verification requirements the investigation has identified. Created by the LLM at problem-statement confirmation (symptom needs) and at hypothesis creation (causal needs). See evidence-needs-design.md.
+             */
+            evidence_needs?: components["schemas"]["EvidenceNeed"][];
+            /**
              * Hypotheses
              * @description Generated hypotheses (key = hypothesis_id)
              */
@@ -4400,9 +4432,9 @@ export interface components {
          */
         CaseAction: {
             /** @description Status before the action */
-            from_status: components["schemas"]["CaseStatus"];
+            from_state: components["schemas"]["CaseState"];
             /** @description Status after the action */
-            to_status: components["schemas"]["CaseStatus"];
+            to_state: components["schemas"]["CaseState"];
             /**
              * Triggered At
              * Format: date-time
@@ -4477,7 +4509,7 @@ export interface components {
             title: string;
             /** Description */
             description: string;
-            status: components["schemas"]["CaseStatus"];
+            state: components["schemas"]["CaseState"];
             /**
              * Created At
              * Format: date-time
@@ -4692,7 +4724,7 @@ export interface components {
              */
             organization_id?: string | null;
             /** @description Filter by status */
-            status?: components["schemas"]["CaseStatus"] | null;
+            state?: components["schemas"]["CaseState"] | null;
             /**
              * Limit
              * @description Maximum results
@@ -4701,7 +4733,7 @@ export interface components {
             limit: number;
         };
         /**
-         * CaseStatus
+         * CaseState
          * @description Case lifecycle status — passive label describing a case's current condition.
          *
          *     Values fall into two categories:
@@ -4720,7 +4752,7 @@ export interface components {
          *     §1.2 INVESTIGATING → RESOLVED → KB-Resolution Path.
          * @enum {string}
          */
-        CaseStatus: "inquiry" | "investigating" | "resolved" | "closed";
+        CaseState: "inquiry" | "investigating" | "resolved" | "closed";
         /**
          * CaseSummary
          * @description Minimal case information for list views.
@@ -4732,7 +4764,7 @@ export interface components {
             title: string;
             /** Description */
             description: string;
-            status: components["schemas"]["CaseStatus"];
+            state: components["schemas"]["CaseState"];
             /**
              * Created At
              * Format: date-time
@@ -4792,7 +4824,7 @@ export interface components {
              * @description Always 'inquiry' for this response type (enum property replaced by openapi-typescript)
              * @enum {string}
              */
-            status: "inquiry";
+            state: "inquiry";
             /**
              * Title
              * @description Case title
@@ -4825,6 +4857,21 @@ export interface components {
              * @description Allowed status transitions from current state for user-initiated changes
              */
             valid_next_states?: string[];
+            /**
+             * Disposition Eligibility
+             * @description Per-disposition eligibility for UI affordance gating. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
+             *     - ``ready`` — disposition is appropriate; render the affordance enabled with the default 'click to confirm' UX.
+             *     - ``needs_info`` — disposition is allowed but the case is partial; user must ADD information (root cause / solution) before transitioning. UX: prompt the user for the missing data. Currently only the Resolve side surfaces this.
+             *     - ``suggests_alternative`` — disposition is allowed but the system recommends the OTHER disposition for this case. UX: warn and offer the alternative; if the user confirms anyway, proceed. Distinct from ``needs_info`` — no data is missing; the user is asked to RE-DIRECT, not to add. Currently only the Close side surfaces this (when the case has root cause + solution → resolving preserves attribution).
+             *     - ``not_eligible`` — disposition is not available; hide the affordance entirely.
+             *
+             *     Different from ``valid_next_states`` — that field is the structural action graph (which edges exist), this field is the content-readiness layer on top.
+             */
+            disposition_eligibility?: {
+                [key: string]: string;
+            } | null;
+            /** @description Investigation path commitment. Post-INV-19 redesign Gate 2 fires inside INVESTIGATING after ``symptom_verified=True``, so INQUIRY-stage cases ALWAYS have ``path_selection=None`` — the field is never written during INQUIRY. Existence of this field IS the Gate 2 commit; the recommendation that powers the Gate 2 chip is computed on-demand by the engine and rendered into the affordance pair, never stored on the case. */
+            path_selection?: components["schemas"]["PathSelection"] | null;
             /** @description Nested inquiry phase data */
             inquiry: components["schemas"]["InquiryResponseData"];
         };
@@ -4845,7 +4892,7 @@ export interface components {
              * @description Always 'investigating' for this response type (enum property replaced by openapi-typescript)
              * @enum {string}
              */
-            status: "investigating";
+            state: "investigating";
             /**
              * Title
              * @description Case title
@@ -4879,6 +4926,26 @@ export interface components {
              * @description Allowed status transitions from current state for user-initiated changes
              */
             valid_next_states?: string[];
+            /**
+             * Disposition Eligibility
+             * @description Per-disposition eligibility for UI affordance gating. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
+             *     - ``ready`` — disposition is appropriate; render the affordance enabled with the default 'click to confirm' UX.
+             *     - ``needs_info`` — disposition is allowed but the case is partial; user must ADD information (root cause / solution) before transitioning. UX: prompt the user for the missing data. Currently only the Resolve side surfaces this.
+             *     - ``suggests_alternative`` — disposition is allowed but the system recommends the OTHER disposition for this case. UX: warn and offer the alternative; if the user confirms anyway, proceed. Distinct from ``needs_info`` — no data is missing; the user is asked to RE-DIRECT, not to add. Currently only the Close side surfaces this (when the case has root cause + solution → resolving preserves attribution).
+             *     - ``not_eligible`` — disposition is not available; hide the affordance entirely.
+             *
+             *     Different from ``valid_next_states`` — that field is the structural action graph (which edges exist), this field is the content-readiness layer on top.
+             */
+            disposition_eligibility?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Problem Statement
+             * @description Confirmed problem statement carried over from INQUIRY (sourced from case.description).
+             */
+            problem_statement?: string | null;
+            /** @description Investigation path commitment + Gate-3 state. Post-INV-19 redesign Gate 2 fires INSIDE INVESTIGATING after ``symptom_verified=True``, so this field is ``None`` during the pre-path window (INVESTIGATING + symptom_verified=False, and the brief INVESTIGATING + symptom_verified=True window before the user clicks a Gate 2 button). Existence of this field IS the commit signal. mitigation_completed_at_turn is set after mitigation_verified; rca_after_mitigation_confirmed drives Gate 3 prompts on the mitigation-first path. */
+            path_selection?: components["schemas"]["PathSelection"] | null;
             /** @description Agent's current understanding of the problem */
             working_conclusion?: components["schemas"]["WorkingConclusionSummary"] | null;
             /** @description Milestone-based progress tracking */
@@ -4903,8 +4970,6 @@ export interface components {
              * @description What agent is currently doing
              */
             agent_status: string;
-            /** @description Investigation strategy with approach and next steps */
-            investigation_strategy?: components["schemas"]["InvestigationStrategyData"] | null;
             /** @description Problem verification details (urgency, severity, impact) */
             problem_verification?: components["schemas"]["ProblemVerificationData"] | null;
             /** @description Progress transparency state. Present when investigation has stalled and agent is surfacing milestone dependencies. */
@@ -4927,7 +4992,7 @@ export interface components {
              * @description Case terminal status: 'resolved' (with solution) or 'closed' (without investigation) (enum property replaced by openapi-typescript)
              * @enum {string}
              */
-            status: "resolved" | "closed";
+            state: "resolved" | "closed";
             /**
              * Title
              * @description Case title
@@ -4967,6 +5032,26 @@ export interface components {
              * @description Allowed status transitions from current state for user-initiated changes
              */
             valid_next_states?: string[];
+            /**
+             * Disposition Eligibility
+             * @description Per-disposition eligibility for UI affordance gating. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
+             *     - ``ready`` — disposition is appropriate; render the affordance enabled with the default 'click to confirm' UX.
+             *     - ``needs_info`` — disposition is allowed but the case is partial; user must ADD information (root cause / solution) before transitioning. UX: prompt the user for the missing data. Currently only the Resolve side surfaces this.
+             *     - ``suggests_alternative`` — disposition is allowed but the system recommends the OTHER disposition for this case. UX: warn and offer the alternative; if the user confirms anyway, proceed. Distinct from ``needs_info`` — no data is missing; the user is asked to RE-DIRECT, not to add. Currently only the Close side surfaces this (when the case has root cause + solution → resolving preserves attribution).
+             *     - ``not_eligible`` — disposition is not available; hide the affordance entirely.
+             *
+             *     Different from ``valid_next_states`` — that field is the structural action graph (which edges exist), this field is the content-readiness layer on top.
+             */
+            disposition_eligibility?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Problem Statement
+             * @description Confirmed problem statement carried over from INQUIRY (sourced from case.description).
+             */
+            problem_statement?: string | null;
+            /** @description Investigation path that was followed. Lets the terminal UI display 'Mitigation-first' or 'Root-cause' retrospectively, and exposes mitigation_completed_at_turn for resolved cases that detoured through MITIGATION. */
+            path_selection?: components["schemas"]["PathSelection"] | null;
             /** @description What caused the problem */
             root_cause: components["schemas"]["RootCauseSummary"];
             /** @description Solution that fixed the problem */
@@ -4997,7 +5082,7 @@ export interface components {
              */
             description?: string | null;
             /** @description Updated status (admin only) */
-            status?: components["schemas"]["CaseStatus"] | null;
+            state?: components["schemas"]["CaseState"] | null;
         };
         /**
          * Change
@@ -5463,16 +5548,21 @@ export interface components {
          * EvidenceCategory
          * @description Evidence classification by investigation purpose.
          *
-         *     Four claim-attached categories. Every row is the LLM's deliberate
-         *     decision to record a specific extract as evidence for a specific
-         *     claim, created only during INVESTIGATING. Contextual data lives on
-         *     ``uploaded_files`` — no evidence row is needed until the agent
-         *     extracts a claim-relevant slice. Rejection is expressed as the
+         *     Six claim-attached categories: the presence/absence verification
+         *     quartet (``symptom_evidence``, ``causal_evidence``,
+         *     ``symptom_absence_evidence``, ``causal_absence_evidence``) plus two
+         *     legacy stage-completion categories (``mitigation_evidence``,
+         *     ``solution_evidence``) retained from the post-010 model and slated
+         *     for removal once prompts stop emitting them. Every row is the LLM's
+         *     deliberate decision to record a specific extract as evidence for a
+         *     specific claim, created only during INVESTIGATING. Contextual data
+         *     lives on ``uploaded_files`` — no evidence row is needed until the
+         *     agent extracts a claim-relevant slice. Rejection is expressed as the
          *     absence of an evidence row; hypothesis-level refutation lives on
          *     ``hypothesis_evidence.stance``.
          * @enum {string}
          */
-        EvidenceCategory: "symptom_evidence" | "causal_evidence" | "mitigation_evidence" | "solution_evidence";
+        EvidenceCategory: "symptom_evidence" | "causal_evidence" | "mitigation_evidence" | "solution_evidence" | "symptom_absence_evidence" | "causal_absence_evidence";
         /**
          * EvidenceDetailsResponse
          * @description Detailed evidence information with source and hypothesis linkage.
@@ -5508,6 +5598,96 @@ export interface components {
             extract?: string | null;
             /** Analysis */
             analysis?: string | null;
+        };
+        /**
+         * EvidenceNeed
+         * @description A verification requirement on a case.
+         *
+         *     Each need represents "data that would advance the investigation."
+         *     Needs live in a flat pool on the case — not anchored to specific
+         *     hypotheses. ``motivating_hypothesis_ids`` records *why* the need
+         *     exists (which hypotheses motivated creating it) for context and
+         *     for the engine's retirement-supersession rule, but is not a hard
+         *     ownership association.
+         *
+         *     Lifecycle (see evidence-needs-design.md §7):
+         *
+         *     - Created by the LLM via ``EvidenceNeedUpdate`` emissions at
+         *       problem-statement confirmation (symptom needs) and at hypothesis
+         *       creation (causal needs).
+         *     - Updated by the LLM as evidence arrives (status, fulfilling
+         *       evidence linkage, motivating hypothesis IDs).
+         *     - Auto-superseded by the engine on hypothesis retirement when the
+         *       motivating list becomes empty AND purpose is CAUSAL_VERIFICATION
+         *       AND status is not FULFILLED. Symptom needs (empty motivating
+         *       list by design) are exempt — they're motivated by the problem
+         *       statement, not by a hypothesis.
+         */
+        EvidenceNeed: {
+            /**
+             * Need Id
+             * @description Unique evidence-need identifier
+             */
+            need_id?: string;
+            /**
+             * Case Id
+             * @description Case this need belongs to
+             */
+            case_id: string;
+            /** @description Why this need exists: symptom_verification (motivated by the problem statement) or causal_verification (motivated by one or more hypotheses). */
+            purpose: components["schemas"]["NeedPurpose"];
+            /**
+             * Request Text
+             * @description What data would fulfill this need, in a form suitable for surfacing to the user as an EVIDENCE-type suggestion. Example: 'kubectl get pods -n production showing current restart counts'.
+             */
+            request_text: string;
+            /**
+             * Rationale
+             * @description Why this data would advance the investigation. Used in the LLM's <evidence_needs> context block to remind the LLM why the need was created. Example: 'confirms whether the pod-level OOMKill pattern is still active after the memory-limit increase'.
+             */
+            rationale: string;
+            /**
+             * @description LLM hint for surfacing-order on the suggestion side.
+             * @default medium
+             */
+            priority: components["schemas"]["NeedPriority"];
+            /**
+             * @description Lifecycle state — see NeedState.
+             * @default pending
+             */
+            state: components["schemas"]["NeedState"];
+            /**
+             * Motivating Hypothesis Ids
+             * @description Hypothesis IDs that motivated this need's existence. Empty list means the need is motivated by the problem statement (symptom needs). Engine appends/removes IDs as hypotheses share needs (cross-hypothesis evaluation per evidence-needs-design.md §5.2) and as hypotheses are retired (engine auto-supersession rule).
+             */
+            motivating_hypothesis_ids?: string[];
+            /**
+             * Fulfilling Evidence Ids
+             * @description Evidence rows that fulfill this need. Multiple entries may accumulate across stages: presence evidence collected during DIAGNOSIS plus absence evidence collected during MITIGATION/TREATMENT. The list is append-only in practice — the need's status stays FULFILLED once fulfilled even when post-fix absence evidence is added.
+             */
+            fulfilling_evidence_ids?: string[];
+            /**
+             * Superseded Reason
+             * @description Human-readable explanation when state=SUPERSEDED. Set by engine auto-supersession ('all motivating hypotheses retired') or by LLM emission ('superseded by refined problem statement'). Required when state=SUPERSEDED, must be None otherwise.
+             */
+            superseded_reason?: string | null;
+            /**
+             * Created At Turn
+             * @description Turn number when the need was created.
+             */
+            created_at_turn: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Wall-clock creation time.
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Wall-clock last-update time.
+             */
+            updated_at?: string;
         };
         /**
          * EvidenceSourceType
@@ -5675,7 +5855,7 @@ export interface components {
              * @description Current hypothesis status
              * @default captured
              */
-            status: components["schemas"]["HypothesisStatus"];
+            state: components["schemas"]["HypothesisState"];
             /**
              * Likelihood
              * @description Estimated likelihood this hypothesis is correct (0.0-1.0)
@@ -5733,7 +5913,7 @@ export interface components {
             retirement_reason?: string | null;
             /**
              * Refutation Reason
-             * @description Evidence or reasoning that disproves the hypothesis. REQUIRED when status=REFUTED (enforced via model validator). Not used for other statuses. status=REFUTED and refutation_reason travel together — an update carrying one without the other is rejected at the orchestration layer.
+             * @description Evidence or reasoning that disproves the hypothesis. REQUIRED when state=REFUTED (enforced via model validator). Not used for other statuses. state=REFUTED and refutation_reason travel together — an update carrying one without the other is rejected at the orchestration layer.
              */
             refutation_reason?: string | null;
             /**
@@ -5810,11 +5990,11 @@ export interface components {
          */
         HypothesisGenerationMode: "opportunistic" | "systematic" | "forced_alternative";
         /**
-         * HypothesisStatus
+         * HypothesisState
          * @description Hypothesis lifecycle status
          * @enum {string}
          */
-        HypothesisStatus: "captured" | "active" | "validated" | "refuted" | "inconclusive" | "retired";
+        HypothesisState: "captured" | "active" | "validated" | "refuted" | "inconclusive" | "retired";
         /**
          * HypothesisSummary
          * @description Summary of a hypothesis for INVESTIGATING phase UI.
@@ -5836,7 +6016,7 @@ export interface components {
              */
             likelihood: number;
             /** @description Status: CAPTURED | ACTIVE | VALIDATED | REFUTED | INCONCLUSIVE | RETIRED */
-            status: components["schemas"]["HypothesisStatus"];
+            state: components["schemas"]["HypothesisState"];
             /**
              * Evidence Count
              * @description Number of evidence items related to this hypothesis
@@ -5905,6 +6085,11 @@ export interface components {
              * @description When user confirmed the problem statement
              */
             problem_statement_confirmed_at?: string | null;
+            /**
+             * Handshake Deferred At Turn
+             * @description Turn number on which the same-turn-confirmation guard fired. When current_turn == this+1, context_builder injects HANDSHAKE_DEFERRED (re-present + ask) instead of NOT_YET_CONFIRMED, and the engine deterministically emits confirmation suggestions. Self-clears by becoming stale on subsequent turns.
+             */
+            handshake_deferred_at_turn?: number | null;
             /**
              * Decided To Investigate
              * @description Whether user committed to formal investigation
@@ -5985,16 +6170,22 @@ export interface components {
          * InvestigationPath
          * @description Investigation routing strategy (2-stage model with mitigation detour).
          *
-         *     IMPORTANT: Path is SYSTEM-DETERMINED from matrix (temporal_state x urgency_level).
-         *     LLM provides inputs (temporal_state, urgency_level) during DIAGNOSIS.
-         *     System calls determine_investigation_path() to select path deterministically.
-         *
-         *     Two paths through the 2-stage model:
-         *     - MITIGATION_FIRST: DIAGNOSIS → MITIGATION (detour) → DIAGNOSIS → TREATMENT
-         *     - ROOT_CAUSE: DIAGNOSIS → TREATMENT
+         *     Path is SYSTEM-RECOMMENDED from the (temporal_state x urgency_level) matrix
+         *     and USER-CONFIRMED via Gate 2. The LLM provides inputs (temporal_state,
+         *     urgency_level) during inquiry; the router in investigation_router.py
+         *     produces a deterministic recommendation from those user-stated inputs;
+         *     the user accepts or overrides via a COOPERATIVE suggestion (Gate 2).
+         *     Post-INV-19 redesign, Gate 2 fires inside INVESTIGATING after the agent
+         *     sets ``symptom_verified=True``, so the user's accept/override decision
+         *     happens with the agent's symptom-validation work visible in the
+         *     transcript. The recommendation algorithm itself is unchanged — it
+         *     still reads ``case.inquiry.preliminary_urgency``; what the timing
+         *     move changed is the *override context the user sees*. Making the
+         *     recommendation evidence-derived is deferred follow-up. LLM does NOT
+         *     choose the path directly.
          * @enum {string}
          */
-        InvestigationPath: "mitigation_first" | "root_cause" | "user_choice";
+        InvestigationPath: "mitigation_first" | "root_cause";
         /**
          * InvestigationProgress
          * @description Evidence-driven progress tracking with two distinct milestone types:
@@ -6147,22 +6338,6 @@ export interface components {
          * @enum {string}
          */
         InvestigationStrategy: "active_incident" | "post_mortem";
-        /**
-         * InvestigationStrategyData
-         * @description Investigation strategy details for INVESTIGATING phase.
-         */
-        InvestigationStrategyData: {
-            /**
-             * Approach
-             * @description Investigation approach description (e.g., 'Speed priority - rapid mitigation')
-             */
-            approach?: string | null;
-            /**
-             * Next Steps
-             * @description Recommended next steps in investigation
-             */
-            next_steps?: string[] | null;
-        };
         /**
          * JournalEntry
          * @description A single entry in the investigation journal.
@@ -6677,6 +6852,50 @@ export interface components {
             message_parsing_errors: number;
         };
         /**
+         * NeedPriority
+         * @description Priority hint for surfacing needs as EVIDENCE-type suggestions.
+         *
+         *     High-priority unfulfilled needs are surfaced first; medium and low
+         *     are deferred until higher priorities are addressed. Priority is an
+         *     LLM hint, not a hard ordering.
+         * @enum {string}
+         */
+        NeedPriority: "high" | "medium" | "low";
+        /**
+         * NeedPurpose
+         * @description Why this need was created — maps to evidence categories.
+         *
+         *     A symptom_verification need produces SYMPTOM_EVIDENCE (presence)
+         *     initially and SYMPTOM_ABSENCE_EVIDENCE (absence) on re-check after
+         *     mitigation/solution. A causal_verification need produces
+         *     CAUSAL_EVIDENCE (presence) initially and CAUSAL_ABSENCE_EVIDENCE
+         *     (absence) on re-check after solution.
+         *
+         *     The same need produces multiple evidence rows of different
+         *     categories across the case's lifetime; the need's status stays
+         *     FULFILLED once fulfilled — re-check evidence is appended via
+         *     ``fulfilling_evidence_ids``, it does not reset the status.
+         * @enum {string}
+         */
+        NeedPurpose: "symptom_verification" | "causal_verification";
+        /**
+         * NeedState
+         * @description Lifecycle states of an evidence need.
+         *
+         *     PENDING        — Need identified, no evidence yet.
+         *     PARTIALLY_MET  — Some evidence collected but insufficient.
+         *     FULFILLED      — Sufficient evidence collected (terminal-positive).
+         *     SUPERSEDED     — No longer relevant (terminal-negative). Either all
+         *                      motivating hypotheses retired (engine rule) or LLM
+         *                      judged irrelevant (LLM update emission).
+         *
+         *     FULFILLED and SUPERSEDED are terminal — a need cannot resurrect from
+         *     SUPERSEDED. If the LLM later concludes the underlying data is
+         *     relevant again, it must create a new need.
+         * @enum {string}
+         */
+        NeedState: "pending" | "partially_met" | "fulfilled" | "superseded";
+        /**
          * OAuthConfigResponse
          * @description OAuth configuration for cloud mode.
          */
@@ -6842,6 +7061,22 @@ export interface components {
              * @default system
              */
             selected_by: string;
+            /**
+             * Rca After Mitigation Confirmed
+             * @description User has confirmed continuing to RCA after mitigation verified (Gate 3). Mitigation-first path only.
+             * @default false
+             */
+            rca_after_mitigation_confirmed: boolean;
+            /**
+             * Rca After Mitigation Confirmed At Turn
+             * @description Turn number when the user confirmed post-mitigation RCA.
+             */
+            rca_after_mitigation_confirmed_at_turn?: number | null;
+            /**
+             * Mitigation Completed At Turn
+             * @description Turn at which mitigation_verified first became True. Boundary for the pre-mitigation evidence window used by the context builder on post-mitigation RCA runs.
+             */
+            mitigation_completed_at_turn?: number | null;
             /** @description Temporal state used in decision */
             temporal_state?: components["schemas"]["TemporalState"] | null;
             /** @description Urgency level used in decision */
@@ -7139,11 +7374,16 @@ export interface components {
              */
             proposed_in_turn: number;
             /**
-             * Status
+             * State
              * @description pending | accepted | rejected | superseded
              * @default pending
              */
-            status: string;
+            state: string;
+            /**
+             * Downgrade Reason
+             * @description If the engine downgraded action_type from the LLM's intent (e.g. MITIGATION → DIAGNOSTIC because no SYMPTOM_EVIDENCE existed yet), this carries the explanation. Rendered to the LLM via context_builder on the next turn so the agent can recover (gather the missing evidence and re-propose). None when no downgrade occurred.
+             */
+            downgrade_reason?: string | null;
         };
         /**
          * RelatedHypothesis
@@ -7605,6 +7845,55 @@ export interface components {
             metadata?: Record<string, never> | null;
         };
         /**
+         * SessionResponse
+         * @description Response model for investigation session.
+         */
+        SessionResponse: {
+            /** Session Id */
+            session_id: string;
+            /** Case Id */
+            case_id: string;
+            /** User Id */
+            user_id: string;
+            /** Organization Id */
+            organization_id: string;
+            state: components["schemas"]["SessionState"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Total Duration Ms */
+            total_duration_ms?: number | null;
+            /** Session Goal */
+            session_goal?: string | null;
+            /** Findings Summary */
+            findings_summary?: string | null;
+            /** Total Token Usage */
+            total_token_usage: number;
+            /** Total Agent Executions */
+            total_agent_executions: number;
+            /** Token Budget Limit */
+            token_budget_limit?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
          * SessionRestoreRequest
          * @description Request model for session restoration.
          */
@@ -7623,13 +7912,13 @@ export interface components {
             type: string | null;
         };
         /**
-         * SessionStatus
+         * SessionState
          * @description Investigation session status.
          *
          *     Tracks the lifecycle of an investigation session from active to completion.
          * @enum {string}
          */
-        SessionStatus: "active" | "paused" | "completed" | "abandoned";
+        SessionState: "active" | "paused" | "completed" | "abandoned";
         /**
          * SessionUpdateRequest
          * @description Request model for updating session.
@@ -7842,6 +8131,8 @@ export interface components {
             hints?: string[] | null;
             /** Intent */
             intent?: Record<string, never> | null;
+            /** Evidence Need Id */
+            evidence_need_id?: string | null;
         };
         /**
          * TeamCreateRequest
@@ -8002,6 +8293,16 @@ export interface components {
          *     NOTE: Outcomes are LLM-observable only (what happened this turn).
          *     Workflow control uses direct metrics (turns_without_progress).
          *     Outcomes are for analytics and prompt context, not control flow.
+         *
+         *     Each member carries an LLM-facing ``description`` accessible at
+         *     runtime via ``TurnOutcome.MEMBER.description``. The prompt block in
+         *     ``SCHEMA_INSTRUCTIONS`` is auto-generated from these descriptions so
+         *     there is no second source of truth to drift against — adding a value
+         *     here automatically extends the prompt.
+         *
+         *     Maintainer-only notes (implementation details that should NOT reach
+         *     the LLM) live as ``#`` comments next to the value, not in the
+         *     description string.
          * @enum {string}
          */
         TurnOutcome: "milestone_completed" | "data_provided" | "data_requested" | "data_not_provided" | "hypothesis_tested" | "case_resolved" | "conversation" | "other";
@@ -8103,7 +8404,7 @@ export interface components {
             turn_number: number;
             /** Milestones Completed */
             milestones_completed: string[];
-            case_status: components["schemas"]["CaseStatus"];
+            case_state: components["schemas"]["CaseState"];
             /** Progress Made */
             progress_made: boolean;
             /** Attachments Processed */
@@ -8336,10 +8637,13 @@ export interface components {
          * UrgencyLevel
          * @description Urgency classification for path routing.
          *
-         *     Used with TemporalState to determine investigation path:
-         *     - ONGOING + HIGH/CRITICAL -> MITIGATION
-         *     - HISTORICAL + LOW/MEDIUM -> ROOT_CAUSE
-         *     - Other combinations -> USER_CHOICE
+         *     Used with TemporalState to recommend an investigation path:
+         *     - ONGOING + HIGH/CRITICAL -> MITIGATION_FIRST
+         *     - All other matched combinations -> ROOT_CAUSE
+         *     - Missing temporal or UNKNOWN urgency -> ROOT_CAUSE (with auto_selected=False)
+         *
+         *     The recommendation is surfaced through Gate 2 for user confirmation
+         *     before INQUIRY -> INVESTIGATING.
          * @enum {string}
          */
         UrgencyLevel: "critical" | "high" | "medium" | "low" | "unknown";
@@ -8624,55 +8928,6 @@ export interface components {
              * @description When this conclusion was last updated
              */
             last_updated: string;
-        };
-        /**
-         * SessionResponse
-         * @description Response model for investigation session.
-         */
-        faultmaven__api__models__SessionResponse: {
-            /** Session Id */
-            session_id: string;
-            /** Case Id */
-            case_id: string;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
-            status: components["schemas"]["SessionStatus"];
-            /**
-             * Started At
-             * Format: date-time
-             */
-            started_at: string;
-            /** Ended At */
-            ended_at?: string | null;
-            /**
-             * Last Activity At
-             * Format: date-time
-             */
-            last_activity_at: string;
-            /** Total Duration Ms */
-            total_duration_ms?: number | null;
-            /** Session Goal */
-            session_goal?: string | null;
-            /** Findings Summary */
-            findings_summary?: string | null;
-            /** Total Token Usage */
-            total_token_usage: number;
-            /** Total Agent Executions */
-            total_agent_executions: number;
-            /** Token Budget Limit */
-            token_budget_limit?: number | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /**
          * SessionResponse
@@ -9438,8 +9693,8 @@ export interface operations {
     list_cases_api_v1_cases_get: {
         parameters: {
             query?: {
-                /** @description Filter by status */
-                status?: components["schemas"]["CaseStatus"] | null;
+                /** @description Filter by state */
+                state?: components["schemas"]["CaseState"] | null;
                 /** @description Items per page */
                 limit?: number;
                 /** @description Number of items to skip */
@@ -10538,7 +10793,7 @@ export interface operations {
     list_sessions_api_v1_cases__case_id__sessions_get: {
         parameters: {
             query?: {
-                status?: components["schemas"]["SessionStatus"] | null;
+                state?: components["schemas"]["SessionState"] | null;
                 limit?: number;
                 offset?: number;
             };
@@ -10558,7 +10813,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"][];
+                    "application/json": components["schemas"]["SessionResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -10595,7 +10850,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10628,7 +10883,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"] | null;
+                    "application/json": components["schemas"]["SessionResponse"] | null;
                 };
             };
             /** @description Validation Error */
@@ -10662,7 +10917,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10700,7 +10955,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10734,7 +10989,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10768,7 +11023,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10806,7 +11061,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["faultmaven__api__models__SessionResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
             /** @description Validation Error */

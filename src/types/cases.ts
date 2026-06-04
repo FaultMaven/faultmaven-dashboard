@@ -1,6 +1,6 @@
-import type { CaseStatus } from './case';
+import type { CaseState } from './case';
 
-export type { CaseStatus };
+export type { CaseState };
 
 export type InvestigationStage =
   | 'symptom_verification'
@@ -12,7 +12,7 @@ export interface CaseSummary {
   case_id: string;
   title: string;
   description: string;
-  status: CaseStatus;
+  state: CaseState;
   created_at: string;
   updated_at: string;
   last_activity_at: string;
@@ -50,7 +50,7 @@ export interface CaseListResponse {
 }
 
 export interface CaseFilters {
-  status?: CaseStatus;
+  state?: CaseState;
   date_from?: string;
   date_to?: string;
   search?: string;
@@ -137,7 +137,7 @@ export type CaseUIStatus = 'inquiry' | 'investigating' | 'resolved' | 'closed';
 
 export interface CaseUIResponse {
   case_id: string;
-  status: CaseUIStatus;
+  state: CaseUIStatus;
   title: string;
   current_turn: number;
   active_hypotheses?: HypothesisSummary[];

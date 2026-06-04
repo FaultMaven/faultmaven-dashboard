@@ -31,7 +31,7 @@ export async function listCases(
   const params: Record<string, string | number | undefined> = {
     page,
     page_size: pageSize,
-    ...(filters.status && { status: filters.status }),
+    ...(filters.state && { state: filters.state }),
     ...(filters.date_from && { date_from: filters.date_from }),
     ...(filters.date_to && { date_to: filters.date_to }),
     ...(filters.include_archived && { include_archived: 'true' }),

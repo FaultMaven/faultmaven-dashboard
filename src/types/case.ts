@@ -9,7 +9,7 @@ import { components } from './api.generated';
 
 // ==================== Type Aliases from API Contract ====================
 
-export type CaseStatus = 'inquiry' | 'investigating' | 'resolved' | 'closed';
+export type CaseState = 'inquiry' | 'investigating' | 'resolved' | 'closed';
 
 // Inquiry Phase Types
 export type CaseUIResponse_Inquiry = components['schemas']['CaseUIResponse_Inquiry'];
@@ -20,7 +20,7 @@ export type CaseUIResponse_Investigating = components['schemas']['CaseUIResponse
 export type InvestigationProgress = components['schemas']['InvestigationProgressSummary'];
 export type ProblemVerification = components['schemas']['ProblemVerificationData'];
 export type WorkingConclusion = components['schemas']['WorkingConclusionSummary'];
-export type InvestigationStrategy = components['schemas']['InvestigationStrategyData'];
+export type InvestigationStrategy = components['schemas']['InvestigationStrategy'];
 
 // Resolved Phase Types
 export type CaseUIResponse_Resolved = components['schemas']['CaseUIResponse_Resolved'];
@@ -48,17 +48,17 @@ export type RelatedHypothesis = components['schemas']['RelatedHypothesis'];
 export function isCaseInquiry(
   caseData: CaseUIResponse
 ): caseData is CaseUIResponse_Inquiry {
-  return caseData.status === 'inquiry';
+  return caseData.state === 'inquiry';
 }
 
 export function isCaseInvestigating(
   caseData: CaseUIResponse
 ): caseData is CaseUIResponse_Investigating {
-  return caseData.status === 'investigating';
+  return caseData.state === 'investigating';
 }
 
 export function isCaseResolved(
   caseData: CaseUIResponse
 ): caseData is CaseUIResponse_Resolved {
-  return caseData.status === 'resolved';
+  return caseData.state === 'resolved';
 }

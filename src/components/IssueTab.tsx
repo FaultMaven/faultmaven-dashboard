@@ -51,7 +51,7 @@ export function IssueTab({ caseDetail, resolutionNotes }: IssueTabProps) {
         <div className="flex items-center gap-4 text-sm text-fm-text-secondary">
           <div>
             <span className="text-fm-text-tertiary">Status: </span>
-            <span className="text-fm-success font-medium capitalize">{caseDetail.status}</span>
+            <span className="text-fm-success font-medium capitalize">{caseDetail.state}</span>
           </div>
           {caseDetail.resolved_at && (
             <div>
