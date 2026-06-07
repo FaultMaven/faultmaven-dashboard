@@ -515,16 +515,31 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
 
 export function CaseTabs({ caseId, caseDetail, resolutionNotes }: CaseTabsProps) {
   const [searchParams] = useSearchParams();
-  const initialTab = (searchParams.get('tab') as Tab) || 'transcript';
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
-  const tabLabels: { id: Tab; label: string }[] = [
+  // Hypotheses are only formed when the root cause isn't immediately obvious,
+  // so many cases have none. Show the tab only when the case actually produced
+  // hypotheses — the count spans the full lifecycle, so terminal cases that
+  // deliberated keep the tab as a record. A permanently-empty tab would just
+  // train users to ignore it.
+  const showHypotheses = caseDetail.hypothesis_count > 0;
+
+  const allTabs: { id: Tab; label: string }[] = [
     { id: 'transcript', label: 'Transcript' },
     { id: 'issue', label: 'Issue' },
     { id: 'report', label: 'Report' },
     { id: 'hypotheses', label: 'Hypotheses' },
     { id: 'evidence', label: 'Evidence' },
   ];
+  const tabLabels = allTabs.filter((t) => t.id !== 'hypotheses' || showHypotheses);
+
+  // Resolve the initial tab against what's actually visible — a deep link to
+  // ?tab=hypotheses on a case without the tab (or any unknown value) falls back
+  // to Transcript rather than rendering a blank panel.
+  const requestedTab = searchParams.get('tab') as Tab | null;
+  const initialTab: Tab = tabLabels.some((t) => t.id === requestedTab)
+    ? (requestedTab as Tab)
+    : 'transcript';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   const tabBtnBase = 'px-3 py-1.5 text-sm font-medium border-b-2 transition-colors';
   const tabActive = 'border-fm-accent text-fm-accent';
