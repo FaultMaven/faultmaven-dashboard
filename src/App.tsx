@@ -10,22 +10,7 @@ import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
-
-function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { authState, loading, isAdmin } = useAuth();
-
-  if (loading) return null;
-
-  if (!authState) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!isAdmin) {
-    return <Navigate to="/cases" replace />;
-  }
-
-  return <>{children}</>;
-}
+import { AdminProtectedRoute } from './components/AdminProtectedRoute';
 
 function LLMConfigRoute({ children }: { children: React.ReactNode }) {
   const { deployment, role, loading, authState } = useAuth();

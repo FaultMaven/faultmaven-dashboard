@@ -1,4 +1,5 @@
 import { useAuth } from '../context/AuthContext';
+import { canManageUsers } from '../lib/access';
 
 export interface NavItem {
   label: string;
@@ -24,8 +25,8 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     items.push({ label: 'LLM Settings', path: '/settings/llm' });
   }
 
-  // Users: visible to cloud Platform Admins only
-  if (deployment === 'cloud' && role === 'platform_admin') {
+  // Users (org/team management): cloud-only — see canManageUsers (ADR-006).
+  if (canManageUsers(deployment, role)) {
     items.push({ label: 'Users', path: '/admin/users' });
   }
 
