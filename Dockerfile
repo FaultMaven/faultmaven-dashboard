@@ -23,10 +23,13 @@ RUN pnpm build
 FROM nginx:alpine
 
 # Update Alpine packages to fix security vulnerabilities.
-# The explicit libxml2 floor pulls the CVE-2026-6732 fix (2.13.9-r1) and
-# changes this layer's cache key so `apk upgrade` re-runs against the current
-# package index instead of serving a stale cached layer.
-RUN apk update && apk upgrade --no-cache && apk add --no-cache "libxml2>=2.13.9-r1"
+# The explicit version floors pull the fixes AND change this layer's cache key
+# so `apk upgrade` re-runs against the current package index instead of serving
+# a stale cached layer:
+#   - libxml2>=2.13.9-r1  → CVE-2026-6732
+#   - libcrypto3/libssl3>=3.5.7-r0 → CVE-2026-45447 (openssl PKCS7_verify UAF)
+RUN apk update && apk upgrade --no-cache \
+    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.7-r0" "libssl3>=3.5.7-r0"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
