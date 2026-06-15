@@ -146,7 +146,7 @@ src/
 
 We welcome contributions to the FaultMaven Dashboard! Whether it's improving the knowledge base UI, adding new visualizations, or enhancing the user experience, your help makes FaultMaven better for everyone.
 
-**Note:** This repository contains only the web dashboard UI. For backend features (AI agent, knowledge base, microservices), see the main [FaultMaven repository](https://github.com/FaultMaven/faultmaven).
+**Note:** This repository contains only the web dashboard UI. For backend features (AI agent, knowledge base, investigation engine), see the main [FaultMaven repository](https://github.com/FaultMaven/faultmaven).
 
 **Getting Started:**
 - Check out [`good-first-issue`](https://github.com/search?q=org%3AFaultMaven+label%3A%22good+first+issue%22+state%3Aopen+repo%3Afaultmaven-dashboard) tags for beginner-friendly tasks
