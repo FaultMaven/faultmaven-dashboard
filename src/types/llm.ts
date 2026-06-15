@@ -33,6 +33,13 @@ export interface LLMConfig {
   strict_mode: boolean;
   fallback_chain: ProviderName[];
   providers: Record<string, LLMProvider>;
+  /**
+   * Provenance per overridable setting key (e.g. `anthropic_model`,
+   * `gemini_api_key`, `primary_provider`): 'admin-override' (set via the
+   * dashboard, stored in the DB) or 'env-default' (.env / seed). Always
+   * 'env-default' in standalone. Empty if the backend predates this field.
+   */
+  config_sources?: Record<string, string>;
 }
 
 export interface LLMConfigUpdate {
