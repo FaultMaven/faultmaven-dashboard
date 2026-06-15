@@ -165,6 +165,7 @@ export default function LLMConfigPage() {
                     provider={provider}
                     readonly={readonly}
                     onUpdated={loadConfig}
+                    modelSource={config.config_sources?.[`${provider.name}_model`]}
                   />
                 ))}
               </div>

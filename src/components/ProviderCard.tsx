@@ -6,6 +6,8 @@ interface ProviderCardProps {
   provider: LLMProvider;
   readonly: boolean;
   onUpdated: () => void;
+  /** Provenance of this provider's model setting: 'admin-override' | 'env-default'. */
+  modelSource?: string;
 }
 
 const STATE_BADGE: Record<string, { label: string; className: string }> = {
@@ -14,7 +16,7 @@ const STATE_BADGE: Record<string, { label: string; className: string }> = {
   not_configured: { label: 'Not configured', className: 'bg-fm-surface-alt text-fm-text-tertiary border-fm-border' },
 };
 
-export function ProviderCard({ provider, readonly, onUpdated }: ProviderCardProps) {
+export function ProviderCard({ provider, readonly, onUpdated, modelSource }: ProviderCardProps) {
   const [showKeyForm, setShowKeyForm] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
@@ -231,6 +233,22 @@ export function ProviderCard({ provider, readonly, onUpdated }: ProviderCardProp
             {savingModel && <span className="text-xs text-fm-text-tertiary">Saving...</span>}
             {modelSaved && <span className="text-xs text-fm-success">Saved</span>}
           </>
+        )}
+        {modelSource && (
+          <span
+            className={`px-1.5 py-0.5 text-[10px] font-medium rounded border flex-shrink-0 ${
+              modelSource === 'admin-override'
+                ? 'bg-fm-accent/10 text-fm-accent border-fm-accent/30'
+                : 'bg-fm-surface-alt text-fm-text-tertiary border-fm-border'
+            }`}
+            title={
+              modelSource === 'admin-override'
+                ? 'Set via the dashboard (overrides .env)'
+                : 'From .env / seed default'
+            }
+          >
+            {modelSource === 'admin-override' ? 'admin override' : 'from .env'}
+          </span>
         )}
       </div>
 
