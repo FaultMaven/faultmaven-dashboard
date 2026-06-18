@@ -27,7 +27,7 @@ export interface LLMProvider {
 }
 
 export interface LLMConfig {
-  deployment: 'local' | 'cloud';
+  deployment: 'standalone' | 'cloud';
   config_readonly: boolean;
   primary_provider: ProviderName;
   strict_mode: boolean;
@@ -67,7 +67,7 @@ export interface FeatureStatus {
 
 export interface EnvConfigStatus {
   auth_mode: 'local' | 'oauth';
-  deployment: 'local' | 'cloud';
+  deployment: 'standalone' | 'cloud';
   db_backend: 'sqlite' | 'postgresql';
   session_storage: 'inmemory' | 'redis';
   vector_storage: 'inmemory' | 'chromadb';

@@ -4,13 +4,13 @@ import { authManager, AuthState } from '../lib/api';
 import config from '../config';
 
 // Deployment type: derived from the backend auth mode
-export type Deployment = 'local' | 'cloud';
+export type Deployment = 'standalone' | 'cloud';
 
 // Dashboard role: derived from the JWT roles array and deployment
 export type DashboardRole = 'individual' | 'standard_user' | 'platform_admin';
 
 function deriveRole(deployment: Deployment, roles: string[]): DashboardRole {
-  if (deployment === 'local') return 'individual';
+  if (deployment === 'standalone') return 'individual';
   if (roles.includes('admin')) return 'platform_admin';
   return 'standard_user';
 }
@@ -44,15 +44,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthStateInternal(state);
 
       // Detect deployment from backend auth config (public endpoint, no auth needed)
-      let dep: Deployment = 'local';
+      let dep: Deployment = 'standalone';
       try {
         const res = await fetch(`${config.apiUrl}/api/v1/auth/config`);
         if (res.ok) {
           const authConfig: { auth_mode?: string } = await res.json();
-          dep = authConfig.auth_mode === 'oauth' ? 'cloud' : 'local';
+          dep = authConfig.auth_mode === 'oauth' ? 'cloud' : 'standalone';
         }
       } catch {
-        // Network error or backend unavailable — default to local
+        // Network error or backend unavailable — default to standalone
       }
       setDeployment(dep);
 

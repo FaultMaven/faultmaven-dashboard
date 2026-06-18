@@ -21,7 +21,7 @@ function LLMConfigRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (deployment === 'local' || role === 'platform_admin') {
+  if (deployment === 'standalone' || role === 'platform_admin') {
     return <>{children}</>;
   }
 

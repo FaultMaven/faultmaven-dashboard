@@ -16,8 +16,8 @@ describe('useNavigationItems', () => {
     vi.clearAllMocks();
   });
 
-  it('local user sees Cases, Knowledge Base, LLM Settings — no Users', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'local', role: 'individual' });
+  it('standalone user sees Cases, Knowledge Base, LLM Settings — no Users', () => {
+    mockUseAuth.mockReturnValue({ deployment: 'standalone', role: 'individual' });
 
     const { result } = renderHook(() => useNavigationItems('/cases'));
     const labels = result.current.map((i) => i.label);
@@ -53,7 +53,7 @@ describe('useNavigationItems', () => {
   });
 
   it('marks item active when currentPath matches exactly', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'local', role: 'individual' });
+    mockUseAuth.mockReturnValue({ deployment: 'standalone', role: 'individual' });
 
     const { result } = renderHook(() => useNavigationItems('/cases'));
     const casesItem = result.current.find((i) => i.path === '/cases');
@@ -62,7 +62,7 @@ describe('useNavigationItems', () => {
   });
 
   it('marks item active when currentPath is a sub-path', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'local', role: 'individual' });
+    mockUseAuth.mockReturnValue({ deployment: 'standalone', role: 'individual' });
 
     const { result } = renderHook(() => useNavigationItems('/cases/abc-123'));
     const casesItem = result.current.find((i) => i.path === '/cases');
@@ -73,7 +73,7 @@ describe('useNavigationItems', () => {
   });
 
   it('no item is active when path does not match any nav item', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'local', role: 'individual' });
+    mockUseAuth.mockReturnValue({ deployment: 'standalone', role: 'individual' });
 
     const { result } = renderHook(() => useNavigationItems('/login'));
     const anyActive = result.current.some((i) => i.active);

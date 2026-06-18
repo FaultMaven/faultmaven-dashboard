@@ -14,7 +14,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { deployment, setAuthState } = useAuth();
 
-  const isLocal = deployment !== 'cloud';
+  const isStandalone = deployment !== 'cloud';
   const isExtensionLogin = new URLSearchParams(location.search).get('source') === 'extension';
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -26,7 +26,7 @@ export default function LoginPage() {
       return;
     }
 
-    if (!isLocal && (!password || password.length < 3)) {
+    if (!isStandalone && (!password || password.length < 3)) {
       setError('Password must be at least 3 characters');
       return;
     }
@@ -138,7 +138,7 @@ export default function LoginPage() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-fm-text-secondary mb-2">
-              Password{isLocal && <span className="text-fm-text-tertiary font-normal ml-1">(optional)</span>}
+              Password{isStandalone && <span className="text-fm-text-tertiary font-normal ml-1">(optional)</span>}
             </label>
             <input
               type="password"
