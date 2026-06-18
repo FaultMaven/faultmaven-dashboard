@@ -20,8 +20,8 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     { label: 'Knowledge Base', path: '/kb' },
   ];
 
-  // LLM Settings: visible to all local users and cloud Platform Admins
-  if (deployment === 'local' || role === 'platform_admin') {
+  // LLM Settings: visible to all standalone users and cloud Platform Admins
+  if (deployment === 'standalone' || role === 'platform_admin') {
     items.push({ label: 'LLM Settings', path: '/settings/llm' });
   }
 

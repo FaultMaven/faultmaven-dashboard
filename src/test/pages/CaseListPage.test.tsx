@@ -19,7 +19,7 @@ vi.mock('../../lib/api', () => ({
 
 vi.mock('../../context/AuthContext', () => ({
   useAuth: vi.fn().mockReturnValue({
-    deployment: 'local',
+    deployment: 'standalone',
     role: 'individual',
     clearAuthState: vi.fn(),
     isAuthenticated: true,

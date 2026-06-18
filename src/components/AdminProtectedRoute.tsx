@@ -16,7 +16,7 @@ interface AdminProtectedRouteProps {
  * must be unreachable there even by typing the URL — not merely hidden from the
  * nav. Both this guard and the navigation hook delegate to `canManageUsers`, so
  * they can never drift (the drift that previously let a standalone admin reach
- * /admin/users directly, since the local operator carries the `admin` role).
+ * /admin/users directly, since the standalone operator carries the `admin` role).
  */
 export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
   const { authState, loading, deployment, role } = useAuth();

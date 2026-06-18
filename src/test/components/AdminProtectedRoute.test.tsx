@@ -45,7 +45,7 @@ describe('AdminProtectedRoute', () => {
   it('redirects a standalone operator to /cases (the direct-URL gap)', () => {
     // Local operator is authenticated and carries the admin role, yet must NOT
     // reach user management — this is the case the old isAdmin-only guard let through.
-    renderAt({ authState: AUTHED, loading: false, deployment: 'local', role: 'individual' });
+    renderAt({ authState: AUTHED, loading: false, deployment: 'standalone', role: 'individual' });
     expect(screen.queryByText('USER MANAGEMENT')).not.toBeInTheDocument();
     expect(screen.getByText('CASES')).toBeInTheDocument();
   });

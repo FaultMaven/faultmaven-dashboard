@@ -57,9 +57,9 @@ describe('KBPage — scope filter visibility by membership', () => {
     });
   });
 
-  it('local user with no team membership hides Team option', async () => {
+  it('standalone user with no team membership hides Team option', async () => {
     mockUseAuth.mockReturnValue({
-      deployment: 'local',
+      deployment: 'standalone',
       role: 'individual',
       clearAuthState: vi.fn(),
     });
@@ -97,7 +97,7 @@ describe('KBPage — scope filter visibility by membership', () => {
 
   it('archive confirm dialog uses Archive wording (not Delete)', async () => {
     mockUseAuth.mockReturnValue({
-      deployment: 'local',
+      deployment: 'standalone',
       role: 'individual',
       clearAuthState: vi.fn(),
     });

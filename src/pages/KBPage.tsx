@@ -769,7 +769,7 @@ function OverlayPanel(props: OverlayPanelProps) {
 export default function KBPage() {
   const { deployment, role, authState, clearAuthState } = useAuth();
   const isAdmin = role === 'platform_admin';
-  const canUpload = deployment === 'local' || isAdmin;
+  const canUpload = deployment === 'standalone' || isAdmin;
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link
   // here. The ReportTab in case-detail links to ``/kb?tab=drafts&case=<id>``
