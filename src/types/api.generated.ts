@@ -382,14 +382,11 @@ export interface paths {
          * Get Available Scopes
          * @description Return KB scopes the calling user can target when publishing.
          *
-         *     Gated by the user's actual memberships, not AUTH_MODE — the picker
-         *     should omit any scope that would produce an unresolvable runbook
-         *     (e.g. TEAM when the user has no team membership).
-         *
-         *     Always returned: ``personal``, ``global`` (GLOBAL write is admin-gated
-         *     by the publish endpoint, not by this picker). ``team`` is added when
-         *     the user has any team membership; ``organization`` is added when the
-         *     user's org has 2+ members or the user is an org owner/admin.
+         *     Community Edition is single-tenant (one implicit operator, no teams,
+         *     no multi-member orgs), so only ``personal`` and ``global`` are
+         *     publishable here. The ``team`` / ``organization`` scopes are a cloud
+         *     collaboration feature — their gating lives with the org/team management
+         *     surface in faultmaven-cloud (ADR-006), not in the CE core.
          */
         get: operations["get_available_scopes_api_v1_auth_me_available_scopes_get"];
         put?: never;
@@ -506,7 +503,7 @@ export interface paths {
          * Update Case
          * @description Update case details
          *
-         *     Updates case metadata such as title, description, status, priority, and tags.
+         *     Updates case metadata such as title, description, state, priority, and tags.
          *     Requires edit permissions on the case.
          */
         put: operations["update_case_api_v1_cases__case_id__put"];
@@ -2220,170 +2217,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List User Organizations
-         * @description List all organizations the authenticated user belongs to.
-         */
-        get: operations["list_user_organizations_api_v1_organizations_get"];
-        put?: never;
-        /**
-         * Create Organization
-         * @description Create a new organization. The creator becomes the organization owner.
-         */
-        post: operations["create_organization_api_v1_organizations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organizations/{organization_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Organization
-         * @description Get organization details by ID. Requires organization membership.
-         */
-        get: operations["get_organization_api_v1_organizations__organization_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Organization
-         * @description Soft delete an organization. Requires owner permission.
-         */
-        delete: operations["delete_organization_api_v1_organizations__organization_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update Organization
-         * @description Update organization details. Requires owner permission.
-         */
-        patch: operations["update_organization_api_v1_organizations__organization_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/organizations/by-slug/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Organization by Slug
-         * @description Get organization details by slug. Requires organization membership.
-         */
-        get: operations["get_organization_by_slug_api_v1_organizations_by_slug__slug__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organizations/{organization_id}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Organization Members
-         * @description List all members of an organization. Requires organization membership.
-         */
-        get: operations["list_organization_members_api_v1_organizations__organization_id__members_get"];
-        put?: never;
-        /**
-         * Add Member
-         * @description Add user to organization by email. Requires owner or admin permission.
-         */
-        post: operations["add_member_api_v1_organizations__organization_id__members_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organizations/{organization_id}/members/{user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Member
-         * @description Remove user from organization. Owner can remove anyone except self, admin can remove members only.
-         */
-        delete: operations["remove_member_api_v1_organizations__organization_id__members__user_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update Member Role
-         * @description Update user's role in organization. Requires owner permission.
-         */
-        patch: operations["update_member_role_api_v1_organizations__organization_id__members__user_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/organizations/{organization_id}/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Organization Settings
-         * @description Get organization settings and plan limits. Requires organization membership.
-         */
-        get: operations["get_organization_settings_api_v1_organizations__organization_id__settings_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update Organization Settings
-         * @description Update organization settings. Requires owner permission.
-         */
-        patch: operations["update_organization_settings_api_v1_organizations__organization_id__settings_patch"];
-        trace?: never;
-    };
-    "/api/v1/organizations/{organization_id}/permissions/check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check Permission
-         * @description Check if user has specific permission in organization.
-         */
-        post: operations["check_permission_api_v1_organizations__organization_id__permissions_check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/reports/generate": {
         parameters: {
             query?: never;
@@ -2888,158 +2721,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/teams": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Team
-         * @description Create a new team within an organization. The creator becomes the team lead.
-         */
-        post: operations["create_team_api_v1_teams_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/teams/{team_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Team
-         * @description Get team details by ID.
-         */
-        get: operations["get_team_api_v1_teams__team_id__get"];
-        /**
-         * Update Team
-         * @description Update team details. Requires 'teams.write' permission.
-         */
-        put: operations["update_team_api_v1_teams__team_id__put"];
-        post?: never;
-        /**
-         * Delete Team
-         * @description Soft delete a team. Requires 'teams.manage' permission.
-         */
-        delete: operations["delete_team_api_v1_teams__team_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/teams/organization/{organization_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Organization Teams
-         * @description List all teams in an organization.
-         */
-        get: operations["list_organization_teams_api_v1_teams_organization__organization_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/teams/user/{target_user_id}/organization/{organization_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List User Teams
-         * @description List all teams a user belongs to in an organization.
-         */
-        get: operations["list_user_teams_api_v1_teams_user__target_user_id__organization__organization_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/teams/{team_id}/members": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Team Members
-         * @description List all members of a team.
-         */
-        get: operations["list_team_members_api_v1_teams__team_id__members_get"];
-        put?: never;
-        /**
-         * Add Team Member
-         * @description Add user to team. Requires 'teams.write' permission.
-         */
-        post: operations["add_team_member_api_v1_teams__team_id__members_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/teams/{team_id}/members/{target_user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Team Member
-         * @description Remove user from team. Requires 'teams.write' permission.
-         */
-        delete: operations["remove_team_member_api_v1_teams__team_id__members__target_user_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/teams/{team_id}/members/{target_user_id}/is-member": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check Team Membership
-         * @description Check if user is member of team.
-         */
-        get: operations["is_team_member_api_v1_teams__team_id__members__target_user_id__is_member_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -3306,7 +2987,7 @@ export interface paths {
          *     status including health, connectivity, and available models. API keys
          *     are never exposed — only a boolean indicating whether one is configured.
          *
-         *     Available to any authenticated user (local deployment) or admin (cloud).
+         *     Available to any authenticated user (standalone deployment) or admin (cloud).
          *     Route-level access control is handled by the dashboard's LLMConfigRoute guard.
          *
          *     Returns:
@@ -3333,7 +3014,7 @@ export interface paths {
          *
          *     Raises:
          *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: Local deployment (config is read-only)
+         *         403 Forbidden: Standalone deployment (config is read-only)
          *         422 Unprocessable Entity: Invalid provider name
          *         503 Service Unavailable: LLM provider not initialized
          */
@@ -4267,7 +3948,7 @@ export interface components {
             pending_transition?: Record<string, never> | null;
             /**
              * Last Suggestions
-             * @description COOPERATIVE suggestions with intent metadata from the last agent turn. Used by the intent resolver to match typed responses against offered choices. Updated after each turn; only suggestions carrying intent metadata are stored.
+             * @description DECIDE suggestions with intent metadata from the last agent turn. Used by the intent resolver to match typed responses against offered choices. Updated after each turn; only suggestions carrying intent metadata are stored.
              */
             last_suggestions?: Record<string, never>[] | null;
             /**
@@ -4322,8 +4003,6 @@ export interface components {
              * @default 0
              */
             message_count: number;
-            /** @description Selected investigation path (MITIGATION vs ROOT_CAUSE) */
-            path_selection?: components["schemas"]["PathSelection"] | null;
             /**
              * @description Investigation approach: ACTIVE_INCIDENT (speed) vs POST_MORTEM (thoroughness)
              * @default post_mortem
@@ -4870,8 +4549,6 @@ export interface components {
             disposition_eligibility?: {
                 [key: string]: string;
             } | null;
-            /** @description Investigation path commitment. Post-INV-19 redesign Gate 2 fires inside INVESTIGATING after ``symptom_verified=True``, so INQUIRY-stage cases ALWAYS have ``path_selection=None`` — the field is never written during INQUIRY. Existence of this field IS the Gate 2 commit; the recommendation that powers the Gate 2 chip is computed on-demand by the engine and rendered into the affordance pair, never stored on the case. */
-            path_selection?: components["schemas"]["PathSelection"] | null;
             /** @description Nested inquiry phase data */
             inquiry: components["schemas"]["InquiryResponseData"];
         };
@@ -4944,8 +4621,6 @@ export interface components {
              * @description Confirmed problem statement carried over from INQUIRY (sourced from case.description).
              */
             problem_statement?: string | null;
-            /** @description Investigation path commitment + Gate-3 state. Post-INV-19 redesign Gate 2 fires INSIDE INVESTIGATING after ``symptom_verified=True``, so this field is ``None`` during the pre-path window (INVESTIGATING + symptom_verified=False, and the brief INVESTIGATING + symptom_verified=True window before the user clicks a Gate 2 button). Existence of this field IS the commit signal. mitigation_completed_at_turn is set after mitigation_verified; rca_after_mitigation_confirmed drives Gate 3 prompts on the mitigation-first path. */
-            path_selection?: components["schemas"]["PathSelection"] | null;
             /** @description Agent's current understanding of the problem */
             working_conclusion?: components["schemas"]["WorkingConclusionSummary"] | null;
             /** @description Milestone-based progress tracking */
@@ -5050,8 +4725,6 @@ export interface components {
              * @description Confirmed problem statement carried over from INQUIRY (sourced from case.description).
              */
             problem_statement?: string | null;
-            /** @description Investigation path that was followed. Lets the terminal UI display 'Mitigation-first' or 'Root-cause' retrospectively, and exposes mitigation_completed_at_turn for resolved cases that detoured through MITIGATION. */
-            path_selection?: components["schemas"]["PathSelection"] | null;
             /** @description What caused the problem */
             root_cause: components["schemas"]["RootCauseSummary"];
             /** @description Solution that fixed the problem */
@@ -5084,6 +4757,18 @@ export interface components {
             /** @description Updated state (admin only) */
             state?: components["schemas"]["CaseState"] | null;
         };
+        /**
+         * CauseState
+         * @description Engine-derived knowledge state of the root cause (assessment variable).
+         *
+         *     Recomputed every turn from the LLM's grounded cause-identification signal
+         *     plus the active-hypothesis count (see investigation-flow-redesign.md R1).
+         *     NEVER path-stripped — recording a cause the engine legitimately knows is a
+         *     truth signal, not an earned process milestone. Drives whether the diagnostic
+         *     machinery (hypothesis formulation + evidence-needs) runs this turn.
+         * @enum {string}
+         */
+        CauseState: "unknown" | "candidates" | "identified";
         /**
          * Change
          * @description Recent change that may be relevant to the problem.
@@ -5155,18 +4840,6 @@ export interface components {
             evidence?: string | null;
         };
         /**
-         * DeleteResponse
-         * @description Generic delete response
-         */
-        DeleteResponse: {
-            /** Message */
-            message: string;
-            /** Organization Id */
-            organization_id?: string | null;
-            /** User Id */
-            user_id?: string | null;
-        };
-        /**
          * DerivedEvidenceSummary
          * @description Summary of evidence derived from an uploaded file.
          */
@@ -5177,7 +4850,7 @@ export interface components {
             summary: string;
             /**
              * Category
-             * @description SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | RESOLUTION_EVIDENCE | OTHER
+             * @description SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE | OTHER
              */
             category: string;
             /** Collected At Turn */
@@ -5336,7 +5009,7 @@ export interface components {
             auth_mode: string;
             /**
              * Deployment
-             * @description 'local' or 'cloud' — derived from auth_mode
+             * @description 'standalone' or 'cloud' — from DEPLOYMENT_MODE (ADR-004)
              */
             deployment: string;
             /**
@@ -5451,7 +5124,7 @@ export interface components {
              * @description Unique evidence identifier
              */
             evidence_id?: string;
-            /** @description Claim-anchored category declared by the LLM: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | MITIGATION_EVIDENCE | SOLUTION_EVIDENCE */
+            /** @description Claim-anchored category declared by the LLM (verification quartet): SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE */
             category: components["schemas"]["EvidenceCategory"];
             /**
              * Primary Purpose
@@ -5548,21 +5221,28 @@ export interface components {
          * EvidenceCategory
          * @description Evidence classification by investigation purpose.
          *
-         *     Six claim-attached categories: the presence/absence verification
-         *     quartet (``symptom_evidence``, ``causal_evidence``,
-         *     ``symptom_absence_evidence``, ``causal_absence_evidence``) plus two
-         *     legacy stage-completion categories (``mitigation_evidence``,
-         *     ``solution_evidence``) retained from the post-010 model and slated
-         *     for removal once prompts stop emitting them. Every row is the LLM's
-         *     deliberate decision to record a specific extract as evidence for a
-         *     specific claim, created only during INVESTIGATING. Contextual data
-         *     lives on ``uploaded_files`` — no evidence row is needed until the
-         *     agent extracts a claim-relevant slice. Rejection is expressed as the
-         *     absence of an evidence row; hypothesis-level refutation lives on
-         *     ``hypothesis_evidence.stance``.
+         *     Four claim-attached categories forming the presence/absence
+         *     verification quartet: ``symptom_evidence`` (symptom present),
+         *     ``causal_evidence`` (cause present), ``symptom_absence_evidence``
+         *     (symptom gone after a fix), ``causal_absence_evidence`` (cause gone
+         *     after a fix). Every row is the LLM's deliberate decision to record a
+         *     specific extract as evidence for a specific claim, created only during
+         *     INVESTIGATING. Contextual data lives on ``uploaded_files`` — no
+         *     evidence row is needed until the agent extracts a claim-relevant
+         *     slice. Rejection is expressed as the absence of an evidence row;
+         *     hypothesis-level refutation lives on ``hypothesis_evidence.stance``.
+         *
+         *     The verification gates (``mitigation_verified`` / ``solution_verified``)
+         *     are NOT driven by an evidence category — they are set by the LLM via the
+         *     User-Agent Handshake / compliance detection. The absence rows are the
+         *     durable audit trail that the readiness checks consult
+         *     (``assess_resolution_readiness`` via ``_has_causal_absence``) to decide
+         *     RESOLVED vs CLOSED. (The pre-migration ``mitigation_evidence`` /
+         *     ``solution_evidence`` stage-completion categories were removed in the
+         *     GAP-5 legacy→absence migration.)
          * @enum {string}
          */
-        EvidenceCategory: "symptom_evidence" | "causal_evidence" | "mitigation_evidence" | "solution_evidence" | "symptom_absence_evidence" | "causal_absence_evidence";
+        EvidenceCategory: "symptom_evidence" | "causal_evidence" | "symptom_absence_evidence" | "causal_absence_evidence";
         /**
          * EvidenceDetailsResponse
          * @description Detailed evidence information with source and hypothesis linkage.
@@ -5619,7 +5299,7 @@ export interface components {
          *       evidence linkage, motivating hypothesis IDs).
          *     - Auto-superseded by the engine on hypothesis retirement when the
          *       motivating list becomes empty AND purpose is CAUSAL_VERIFICATION
-         *       AND status is not FULFILLED. Symptom needs (empty motivating
+         *       AND state is not FULFILLED. Symptom needs (empty motivating
          *       list by design) are exempt — they're motivated by the problem
          *       statement, not by a hypothesis.
          */
@@ -5747,7 +5427,7 @@ export interface components {
             collected_at_turn: number;
             /**
              * Category
-             * @description Evidence purpose: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | RESOLUTION_EVIDENCE | OTHER
+             * @description Evidence purpose: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE | OTHER
              * @default OTHER
              */
             category: string;
@@ -6167,26 +5847,6 @@ export interface components {
          */
         InvestigationMomentum: "high" | "moderate" | "low" | "blocked";
         /**
-         * InvestigationPath
-         * @description Investigation routing strategy (2-stage model with mitigation detour).
-         *
-         *     Path is SYSTEM-RECOMMENDED from the (temporal_state x urgency_level) matrix
-         *     and USER-CONFIRMED via Gate 2. The LLM provides inputs (temporal_state,
-         *     urgency_level) during inquiry; the router in investigation_router.py
-         *     produces a deterministic recommendation from those user-stated inputs;
-         *     the user accepts or overrides via a COOPERATIVE suggestion (Gate 2).
-         *     Post-INV-19 redesign, Gate 2 fires inside INVESTIGATING after the agent
-         *     sets ``symptom_verified=True``, so the user's accept/override decision
-         *     happens with the agent's symptom-validation work visible in the
-         *     transcript. The recommendation algorithm itself is unchanged — it
-         *     still reads ``case.inquiry.preliminary_urgency``; what the timing
-         *     move changed is the *override context the user sees*. Making the
-         *     recommendation evidence-derived is deferred follow-up. LLM does NOT
-         *     choose the path directly.
-         * @enum {string}
-         */
-        InvestigationPath: "mitigation_first" | "root_cause";
-        /**
          * InvestigationProgress
          * @description Evidence-driven progress tracking with two distinct milestone types:
          *
@@ -6198,18 +5858,8 @@ export interface components {
          *        Set by LLM in structured output. Do NOT drive stage transitions.
          */
         InvestigationProgress: {
-            /**
-             * Mitigation Accepted
-             * @description User complied with proposed temp fix (inferred from submission). Triggers DIAGNOSIS → MITIGATION transition.
-             * @default false
-             */
-            mitigation_accepted: boolean;
-            /**
-             * Mitigation Verified
-             * @description User confirmed mitigation worked. Triggers MITIGATION → DIAGNOSIS return for RCA.
-             * @default false
-             */
-            mitigation_verified: boolean;
+            /** @description Mitigation insert record (redesign R2). Materialized by the engine from the LLM's mitigation accept/verify gate signals plus the workaround ProposedAction. Replaces the legacy path-coupled mitigation gates. */
+            mitigation?: components["schemas"]["MitigationRecord"] | null;
             /**
              * Solution Accepted
              * @description User complied with proposed solution (inferred from submission). Triggers DIAGNOSIS → TREATMENT transition.
@@ -6229,17 +5879,26 @@ export interface components {
              */
             symptom_verified: boolean;
             /**
-             * Root Cause Identified
-             * @description Root cause determined (directly or via hypothesis validation)
-             * @default false
-             */
-            root_cause_identified: boolean;
-            /**
              * Solution Proposed
              * @description Set programmatically when ProposedAction with action_type=SOLUTION is created. Not directly set by LLM.
              * @default false
              */
             solution_proposed: boolean;
+            /**
+             * @description Engine-derived knowledge state of the root cause (UNKNOWN | CANDIDATES | IDENTIFIED). Replaces the boolean root_cause_identified. IDENTIFIED is the grounded cause-known signal; CANDIDATES is derived from >=2 ACTIVE hypotheses. Drives whether the diagnostic machinery runs. Recomputed each turn by the engine; never path-stripped.
+             * @default unknown
+             */
+            cause_state: components["schemas"]["CauseState"];
+            /**
+             * @description Knowledge state of the fix (UNKNOWN | SELECTED). CANDIDATES (multi-solution deliberation) is reserved for a follow-on and not produced this round.
+             * @default unknown
+             */
+            solution_state: components["schemas"]["SolutionState"];
+            /**
+             * @description Whether the SELECTED solution can be applied this session (NOW | DEFERRED). DEFERRED routes to CLOSE-with-documented-solution.
+             * @default now
+             */
+            solution_feasible: components["schemas"]["SolutionFeasible"];
             /**
              * Root Cause Likelihood
              * @description Likelihood in root cause identification (0.0 = unknown, 1.0 = certain)
@@ -6360,23 +6019,17 @@ export interface components {
          * InvestigationStage
          * @description Investigation stage within the Investigating Phase.
          *
-         *     2-stage model with mitigation detour:
-         *     - DIAGNOSIS: Understand, diagnose, propose actions (core stage)
-         *     - TREATMENT: Verify permanent fix, resolve case (core stage)
-         *     - MITIGATION: Apply and verify temporary fix (optional detour)
+         *     These three stages are pure DERIVED DISPLAY labels in the unified
+         *     opportunistic flow. They are re-derived from the action-compliance
+         *     gates (see ``InvestigationProgress.current_stage``); they do NOT drive
+         *     prompt dispatch and there is NO path fork or prospective routing.
          *
-         *     DIAGNOSIS and TREATMENT are the two core stages every investigation
-         *     passes through. MITIGATION is an optional detour that temporarily
-         *     narrows focus to "stop the bleeding" before returning to DIAGNOSIS.
+         *     - DIAGNOSIS → "Investigating" (default view)
+         *     - MITIGATION → "Mitigating" (an optional inserted sub-activity)
+         *     - TREATMENT → "Resolving"
          *
-         *     Computed from stage-gate milestones. Stage transitions are
-         *     inference-based — user compliance with proposed actions triggers
-         *     transitions via compliance detection. The stage determines which
-         *     prompt template the LLM receives.
-         *
-         *     Investigation Paths:
-         *     - ROOT_CAUSE: DIAGNOSIS → TREATMENT
-         *     - MITIGATION_FIRST: DIAGNOSIS → MITIGATION (detour) → DIAGNOSIS → TREATMENT
+         *     MITIGATION is not a separate path — it is an optional "stop the
+         *     bleeding" insert that surfaces while the investigation continues.
          * @enum {string}
          */
         InvestigationStage: "diagnosis" | "mitigation" | "treatment";
@@ -6516,12 +6169,12 @@ export interface components {
         LLMConfigResponse: {
             /**
              * Deployment
-             * @description Deployment mode: 'local' or 'cloud'
+             * @description Deployment mode: 'standalone' or 'cloud'
              */
             deployment: string;
             /**
              * Config Readonly
-             * @description True in local mode (config managed via .env file)
+             * @description True in standalone mode (config managed via .env file)
              */
             config_readonly: boolean;
             /** Primary Provider */
@@ -6533,6 +6186,13 @@ export interface components {
             /** Providers */
             providers: {
                 [key: string]: components["schemas"]["LLMProviderDetail"];
+            };
+            /**
+             * Config Sources
+             * @description Provenance per overridable setting key: 'admin-override' (set via the dashboard, stored in the DB) or 'env-default' (.env / seed). Always 'env-default' in standalone (no DB overrides).
+             */
+            config_sources?: {
+                [key: string]: string;
             };
             /**
              * Timestamp
@@ -6726,112 +6386,6 @@ export interface components {
             revoked_tokens: number;
         };
         /**
-         * MemberAddRequest
-         * @description Request to add member to organization
-         */
-        MemberAddRequest: {
-            /**
-             * Email
-             * @description Email of user to invite
-             */
-            email: string;
-            /**
-             * Role
-             * @description Role to assign (member, admin)
-             * @default member
-             */
-            role: string | null;
-        };
-        /**
-         * MemberAddResponse
-         * @description Response for adding a member
-         */
-        MemberAddResponse: {
-            /** User Id */
-            user_id: string;
-            /** Email */
-            email: string;
-            /** Full Name */
-            full_name: string;
-            /** Role */
-            role: string;
-            /**
-             * Joined At
-             * Format: date-time
-             */
-            joined_at: string;
-            /** Invitation Sent */
-            invitation_sent: boolean;
-        };
-        /**
-         * MemberListResponse
-         * @description Response for listing organization members
-         */
-        MemberListResponse: {
-            /** Members */
-            members: components["schemas"]["MemberResponse"][];
-            /** Total */
-            total: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-        };
-        /**
-         * MemberResponse
-         * @description Organization member response
-         */
-        MemberResponse: {
-            /** User Id */
-            user_id: string;
-            /** Email */
-            email: string;
-            /** Full Name */
-            full_name: string;
-            /** Role */
-            role: string;
-            /**
-             * Joined At
-             * Format: date-time
-             */
-            joined_at: string;
-        };
-        /**
-         * MemberRoleUpdateRequest
-         * @description Request to update member role
-         */
-        MemberRoleUpdateRequest: {
-            /**
-             * Role
-             * @description New role to assign (member, admin)
-             */
-            role: string;
-        };
-        /**
-         * MemberRoleUpdateResponse
-         * @description Response for updating member role
-         */
-        MemberRoleUpdateResponse: {
-            /** User Id */
-            user_id: string;
-            /** Email */
-            email: string;
-            /** Full Name */
-            full_name: string;
-            /** Role */
-            role: string;
-            /**
-             * Joined At
-             * Format: date-time
-             */
-            joined_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
          * Message
          * @description Message model for conversation endpoints.
          *
@@ -6901,6 +6455,45 @@ export interface components {
             message_parsing_errors: number;
         };
         /**
+         * MitigationRecord
+         * @description A single forward-only mitigation (the inserted "stop the bleeding" move).
+         *
+         *     Replaces the legacy path-coupled mitigation gates
+         *     (redesign R2). The engine materializes this record from the LLM's accept/verify
+         *     gate signals plus the workaround ProposedAction:
+         *     - ``proposed_at_turn`` is set when a ``solution_type=workaround`` action is created.
+         *     - ``accepted`` / ``verified`` mirror the LLM gate signals (compliance detection).
+         *     - ``completed_at_turn`` is set the turn ``verified`` flips True (the boundary for
+         *       up-weighting pre-mitigation evidence in any later RCA).
+         *
+         *     Single record per investigation for now (redesign §3.2.1); the flow stays open
+         *     to user-led action so a non-mitigating insert is never a dead-end.
+         */
+        MitigationRecord: {
+            /**
+             * Proposed At Turn
+             * @description Turn a workaround mitigation was first proposed
+             */
+            proposed_at_turn?: number | null;
+            /**
+             * Accepted
+             * @description User complied with the proposed mitigation
+             * @default false
+             */
+            accepted: boolean;
+            /**
+             * Verified
+             * @description User confirmed the mitigation stabilized the situation
+             * @default false
+             */
+            verified: boolean;
+            /**
+             * Completed At Turn
+             * @description Turn `verified` flipped True (Gate-3-equivalent boundary)
+             */
+            completed_at_turn?: number | null;
+        };
+        /**
          * NeedPriority
          * @description Priority hint for surfacing needs as EVIDENCE-type suggestions.
          *
@@ -6957,204 +6550,6 @@ export interface components {
             client_id: string;
             /** Scopes */
             scopes: string[];
-        };
-        /**
-         * OrganizationCreateRequest
-         * @description Request to create a new organization
-         */
-        OrganizationCreateRequest: {
-            /**
-             * Name
-             * @description Organization name
-             */
-            name: string;
-            /**
-             * Slug
-             * @description URL-friendly identifier
-             */
-            slug: string;
-            /**
-             * Description
-             * @description Organization description
-             */
-            description?: string | null;
-            /**
-             * Plan Tier
-             * @description Subscription plan tier
-             * @default free
-             */
-            plan_tier: string | null;
-        };
-        /**
-         * OrganizationListItem
-         * @description Organization list item with user role
-         */
-        OrganizationListItem: {
-            /** Organization Id */
-            organization_id: string;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Plan Tier */
-            plan_tier: string;
-            /** Role */
-            role: string;
-            /**
-             * Member Since
-             * Format: date-time
-             */
-            member_since: string;
-        };
-        /**
-         * OrganizationListResponse
-         * @description Response for listing user's organizations
-         */
-        OrganizationListResponse: {
-            /** Organizations */
-            organizations: components["schemas"]["OrganizationListItem"][];
-            /** Total */
-            total: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-        };
-        /**
-         * OrganizationResponse
-         * @description Organization details response
-         */
-        OrganizationResponse: {
-            /** Organization Id */
-            organization_id: string;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Description */
-            description: string | null;
-            /** Plan Tier */
-            plan_tier: string;
-            /** Max Members */
-            max_members: number;
-            /**
-             * Current Member Count
-             * @default 0
-             */
-            current_member_count: number;
-            /** Owner User Id */
-            owner_user_id?: string | null;
-            /** Settings */
-            settings?: Record<string, never>;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
-         * OrganizationUpdateRequest
-         * @description Request to update organization details
-         */
-        OrganizationUpdateRequest: {
-            /**
-             * Name
-             * @description Updated organization name
-             */
-            name?: string | null;
-            /**
-             * Description
-             * @description Updated description
-             */
-            description?: string | null;
-        };
-        /**
-         * PathSelection
-         * @description Path selection details.
-         *     Records how investigation path was chosen.
-         *
-         *     IMPORTANT: Path is SYSTEM-DETERMINED from matrix (temporal_state x urgency_level).
-         *     LLM provides inputs (temporal_state, urgency_level) during verification.
-         *     System calls determine_investigation_path() to select path deterministically.
-         *     LLM does NOT choose the path directly!
-         */
-        PathSelection: {
-            /** @description Selected investigation path (system-determined from matrix) */
-            path: components["schemas"]["InvestigationPath"];
-            /**
-             * Auto Selected
-             * @description True if system auto-selected, False if user chose
-             */
-            auto_selected: boolean;
-            /**
-             * Rationale
-             * @description Why this path was selected
-             */
-            rationale: string;
-            /** @description Alternative path user could have chosen (if auto-selected) */
-            alternate_path?: components["schemas"]["InvestigationPath"] | null;
-            /**
-             * Selected At
-             * Format: date-time
-             * @description When path was selected
-             */
-            selected_at?: string;
-            /**
-             * Selected By
-             * @description Who selected: 'system' for auto, or user_id for manual
-             * @default system
-             */
-            selected_by: string;
-            /**
-             * Rca After Mitigation Confirmed
-             * @description User has confirmed continuing to RCA after mitigation verified (Gate 3). Mitigation-first path only.
-             * @default false
-             */
-            rca_after_mitigation_confirmed: boolean;
-            /**
-             * Rca After Mitigation Confirmed At Turn
-             * @description Turn number when the user confirmed post-mitigation RCA.
-             */
-            rca_after_mitigation_confirmed_at_turn?: number | null;
-            /**
-             * Mitigation Completed At Turn
-             * @description Turn at which mitigation_verified first became True. Boundary for the pre-mitigation evidence window used by the context builder on post-mitigation RCA runs.
-             */
-            mitigation_completed_at_turn?: number | null;
-            /** @description Temporal state used in decision */
-            temporal_state?: components["schemas"]["TemporalState"] | null;
-            /** @description Urgency level used in decision */
-            urgency_level?: components["schemas"]["UrgencyLevel"] | null;
-        };
-        /**
-         * PermissionCheckRequest
-         * @description Request to check user permission
-         */
-        PermissionCheckRequest: {
-            /**
-             * Permission
-             * @description Permission to check (e.g., 'cases.write')
-             */
-            permission: string;
-        };
-        /**
-         * PermissionCheckResponse
-         * @description Permission check result
-         */
-        PermissionCheckResponse: {
-            /** Has Permission */
-            has_permission: boolean;
-            /** Permission */
-            permission: string;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
         };
         /**
          * PreliminaryUrgency
@@ -7301,7 +6696,7 @@ export interface components {
             urgency_factors?: string[];
             /**
              * Rca Infeasible
-             * @description Advisory signal: root cause analysis is infeasible for this problem. Set by the LLM during verification when the problem involves uncontrollable external dependencies, deprecated/EOL systems, or known intractable conditions where mitigation is the accepted strategy. Does NOT affect path selection — influences post-mitigation agent behavior only.
+             * @description Advisory signal: root cause analysis is infeasible for this problem. Set by the LLM during verification when the problem involves uncontrollable external dependencies, deprecated/EOL systems, or known intractable conditions where mitigation is the accepted strategy. Influences post-mitigation agent behavior only.
              * @default false
              */
             rca_infeasible: boolean;
@@ -7961,62 +7356,6 @@ export interface components {
             metadata?: Record<string, never> | null;
         };
         /**
-         * SettingsResponse
-         * @description Organization settings response
-         */
-        SettingsResponse: {
-            /** Organization Id */
-            organization_id: string;
-            /** Plan Tier */
-            plan_tier: string;
-            /** Max Members */
-            max_members: number;
-            /**
-             * Current Member Count
-             * @default 0
-             */
-            current_member_count: number;
-            /** Max Cases Per Month */
-            max_cases_per_month?: number | null;
-            /** Max Storage Gb */
-            max_storage_gb: number;
-            /** Features */
-            features: {
-                [key: string]: boolean;
-            };
-            /** Settings */
-            settings: Record<string, never>;
-        };
-        /**
-         * SettingsUpdateRequest
-         * @description Request to update organization settings
-         */
-        SettingsUpdateRequest: {
-            /** Allow Public Cases */
-            allow_public_cases?: boolean | null;
-            /** Require 2Fa */
-            require_2fa?: boolean | null;
-            /** Session Timeout Minutes */
-            session_timeout_minutes?: number | null;
-            /** Default Case Priority */
-            default_case_priority?: string | null;
-        };
-        /**
-         * SettingsUpdateResponse
-         * @description Response for updating organization settings
-         */
-        SettingsUpdateResponse: {
-            /** Organization Id */
-            organization_id: string;
-            /** Settings */
-            settings: Record<string, never>;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
          * Solution
          * @description Proposed or applied solution/mitigation.
          */
@@ -8102,6 +7441,24 @@ export interface components {
             effectiveness?: number | null;
         };
         /**
+         * SolutionFeasible
+         * @description Whether the SELECTED solution can be applied within this session.
+         *
+         *     LLM-settable. DEFERRED routes to CLOSE-with-documented-solution (redesign §6 Q2).
+         * @enum {string}
+         */
+        SolutionFeasible: "now" | "deferred";
+        /**
+         * SolutionState
+         * @description Engine-derived knowledge state of the fix (assessment variable).
+         *
+         *     UNKNOWN | SELECTED only this round. CANDIDATES (multi-solution deliberation,
+         *     redesign §6) is reserved for the follow-on that reuses the hypothesis machinery
+         *     and is intentionally not produced yet.
+         * @enum {string}
+         */
+        SolutionState: "unknown" | "candidates" | "selected";
+        /**
          * SolutionSummary
          * @description Solution information for RESOLVED phase.
          */
@@ -8151,11 +7508,9 @@ export interface components {
             /** Type */
             type: string;
             /** Payload */
-            payload: string;
+            payload?: string | null;
             /** Body */
             body?: string | null;
-            /** Cooperative Action */
-            cooperative_action?: string | null;
             /** Hints */
             hints?: string[] | null;
             /** Intent */
@@ -8164,104 +7519,9 @@ export interface components {
             evidence_need_id?: string | null;
         };
         /**
-         * TeamCreateRequest
-         * @description Request to create a new team
-         */
-        TeamCreateRequest: {
-            /**
-             * Organization Id
-             * @description Organization ID
-             */
-            organization_id: string;
-            /**
-             * Name
-             * @description Team name
-             */
-            name: string;
-            /**
-             * Description
-             * @description Team description
-             */
-            description?: string | null;
-        };
-        /**
-         * TeamMemberAddRequest
-         * @description Request to add member to team
-         */
-        TeamMemberAddRequest: {
-            /**
-             * User Id
-             * @description User ID to add
-             */
-            user_id: string;
-            /**
-             * Team Role
-             * @description Team role ('lead' or 'member')
-             * @default member
-             */
-            team_role: string | null;
-        };
-        /**
-         * TeamMemberResponse
-         * @description Team member response
-         */
-        TeamMemberResponse: {
-            /** User Id */
-            user_id: string;
-            /** Team Id */
-            team_id: string;
-            /** Team Role */
-            team_role: string | null;
-            /**
-             * Joined At
-             * Format: date-time
-             */
-            joined_at: string;
-        };
-        /**
-         * TeamResponse
-         * @description Team details response
-         */
-        TeamResponse: {
-            /** Team Id */
-            team_id: string;
-            /** Organization Id */
-            organization_id: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
-         * TeamUpdateRequest
-         * @description Request to update team details
-         */
-        TeamUpdateRequest: {
-            /**
-             * Name
-             * @description Updated team name
-             */
-            name?: string | null;
-            /**
-             * Description
-             * @description Updated description
-             */
-            description?: string | null;
-        };
-        /**
          * TemporalState
          * @description Problem temporal classification.
-         *     Used for investigation path routing.
+         *     Context signal only — does not drive a path fork.
          * @enum {string}
          */
         TemporalState: "ongoing" | "historical";
@@ -8664,15 +7924,11 @@ export interface components {
         };
         /**
          * UrgencyLevel
-         * @description Urgency classification for path routing.
+         * @description Urgency classification.
          *
-         *     Used with TemporalState to recommend an investigation path:
-         *     - ONGOING + HIGH/CRITICAL -> MITIGATION_FIRST
-         *     - All other matched combinations -> ROOT_CAUSE
-         *     - Missing temporal or UNKNOWN urgency -> ROOT_CAUSE (with auto_selected=False)
-         *
-         *     The recommendation is surfaced through Gate 2 for user confirmation
-         *     before INQUIRY -> INVESTIGATING.
+         *     Context signal used (with TemporalState) to inform how the agent
+         *     prioritizes mitigation vs. root-cause work within the unified
+         *     opportunistic flow. It does not select a path — there is no path fork.
          * @enum {string}
          */
         UrgencyLevel: "critical" | "high" | "medium" | "low" | "unknown";
@@ -12089,482 +11345,6 @@ export interface operations {
             };
         };
     };
-    list_user_organizations_api_v1_organizations_get: {
-        parameters: {
-            query?: {
-                /** @description Maximum results */
-                limit?: number;
-                /** @description Pagination offset */
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_organization_api_v1_organizations_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OrganizationCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_organization_api_v1_organizations__organization_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_organization_api_v1_organizations__organization_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeleteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_organization_api_v1_organizations__organization_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OrganizationUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_organization_by_slug_api_v1_organizations_by_slug__slug__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization slug */
-                slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OrganizationResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_organization_members_api_v1_organizations__organization_id__members_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by role: owner, admin, member */
-                role?: string | null;
-                /** @description Maximum results */
-                limit?: number;
-                /** @description Pagination offset */
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemberListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    add_member_api_v1_organizations__organization_id__members_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MemberAddRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemberAddResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_member_api_v1_organizations__organization_id__members__user_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-                /** @description User ID to remove */
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeleteResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_member_role_api_v1_organizations__organization_id__members__user_id__patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-                /** @description User ID */
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MemberRoleUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemberRoleUpdateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_organization_settings_api_v1_organizations__organization_id__settings_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SettingsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_organization_settings_api_v1_organizations__organization_id__settings_patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SettingsUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SettingsUpdateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    check_permission_api_v1_organizations__organization_id__permissions_check_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PermissionCheckRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PermissionCheckResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     generate_report_api_v1_reports_generate_post: {
         parameters: {
             query: {
@@ -13314,359 +12094,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_team_api_v1_teams_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TeamCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_team_api_v1_teams__team_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Team ID */
-                team_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_team_api_v1_teams__team_id__put: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Team ID */
-                team_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TeamUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_team_api_v1_teams__team_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Team ID */
-                team_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_organization_teams_api_v1_teams_organization__organization_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_user_teams_api_v1_teams_user__target_user_id__organization__organization_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description User ID */
-                target_user_id: string;
-                /** @description Organization ID */
-                organization_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_team_members_api_v1_teams__team_id__members_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Team ID */
-                team_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamMemberResponse"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    add_team_member_api_v1_teams__team_id__members_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Team ID */
-                team_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TeamMemberAddRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamMemberResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_team_member_api_v1_teams__team_id__members__target_user_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Team ID */
-                team_id: string;
-                /** @description User ID to remove */
-                target_user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    is_team_member_api_v1_teams__team_id__members__target_user_id__is_member_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Team ID */
-                team_id: string;
-                /** @description User ID */
-                target_user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
                 };
             };
             /** @description Validation Error */
