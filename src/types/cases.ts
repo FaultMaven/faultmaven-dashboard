@@ -73,6 +73,7 @@ export interface CaseMessage {
 export interface CaseMessagesResponse {
   messages: CaseMessage[];
   total_count: number;
+  retrieved_count?: number;
 }
 
 export interface UploadedFile {
