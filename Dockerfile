@@ -28,8 +28,9 @@ FROM nginx:alpine
 # a stale cached layer:
 #   - libxml2>=2.13.9-r1  → CVE-2026-6732
 #   - libcrypto3/libssl3>=3.5.7-r0 → CVE-2026-45447 (openssl PKCS7_verify UAF)
+#   - libexpat>=2.8.1-r0  → CVE-2026-45186 (expat DoS via crafted XML)
 RUN apk update && apk upgrade --no-cache \
-    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.7-r0" "libssl3>=3.5.7-r0"
+    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.7-r0" "libssl3>=3.5.7-r0" "libexpat>=2.8.1-r0"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
