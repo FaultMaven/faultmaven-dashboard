@@ -5,28 +5,41 @@
 
 set -e
 
-# API_URL is set ONLY when explicitly provided (split-host deployments where the
-# API lives on a different host than the dashboard). When unset we inject an empty
-# value so the app falls back to same-host detection in src/config.ts — i.e. the
-# backend is assumed to be on the host that served the dashboard (port 8090).
-# This avoids hardcoding a loopback default (localhost/127.0.0.1), which breaks
-# when the dashboard is reached over a LAN IP such as http://192.168.0.200:3333.
-API_URL="${VITE_API_URL:-}"
-
+# The dashboard reads window.ENV.API_URL (see src/config.ts). The KEY's presence
+# is meaningful, so we only emit it when VITE_API_URL is explicitly set:
+#
+#   - VITE_API_URL unset      → window.ENV = {} (no key). The app uses same-host
+#                               detection: API on the host that served the
+#                               dashboard at :8090. The self-hosted default; works
+#                               for localhost AND LAN IPs with zero config.
+#   - VITE_API_URL=""         → window.ENV = { API_URL: "" }. Same-origin model:
+#                               the app makes relative /api/v1/... calls, for cloud
+#                               deployments where /api/* is reverse-proxied to the
+#                               backend behind the same hostname.
+#   - VITE_API_URL=https://…  → window.ENV = { API_URL: "https://…" }. Absolute
+#                               origin for split-host deployments.
+#
+# Note: API_URL must be an origin (scheme://host[:port]) or ""; never a path like
+# "/api" — the app already appends "/api/v1/...", so a path prefix would double it.
 echo "Injecting runtime configuration..."
-if [ -n "${API_URL}" ]; then
-  echo "  API_URL: ${API_URL} (explicit override)"
-else
-  echo "  API_URL: (unset — using same-host detection)"
-fi
-
-# Create runtime config JavaScript file
-cat > /usr/share/nginx/html/config.js <<EOF
+if [ -n "${VITE_API_URL+x}" ]; then
+  # SET (possibly empty) — emit the key verbatim.
+  echo "  API_URL: \"${VITE_API_URL}\" (explicit)"
+  cat > /usr/share/nginx/html/config.js <<EOF
 // Runtime configuration injected at container startup
 // DO NOT EDIT - This file is auto-generated
 window.ENV = {
-  API_URL: "${API_URL}"
+  API_URL: "${VITE_API_URL}"
 };
 EOF
+else
+  # UNSET — omit the key so the app falls back to same-host detection.
+  echo "  API_URL: (unset — using same-host detection)"
+  cat > /usr/share/nginx/html/config.js <<EOF
+// Runtime configuration injected at container startup
+// DO NOT EDIT - This file is auto-generated
+window.ENV = {};
+EOF
+fi
 
 echo "Configuration injected successfully"

@@ -43,18 +43,34 @@ interface Config {
 const runtimeEnv = (globalThis as { ENV?: { API_URL?: string } }).ENV;
 
 /**
- * Dynamically determine API URL based on current hostname
+ * Resolve the backend API base URL. The dashboard appends `/api/v1/...` to this
+ * value, so it must be an origin (scheme://host[:port]) or an empty string —
+ * never a path prefix like "/api".
  *
- * Same-host addressing: the backend API is assumed to run on the SAME host that
- * served the dashboard, on port 8090. This works for localhost, 127.0.0.1, and
- * LAN IPs / hostnames (e.g. a self-hosted box at 192.168.0.200), so the copilot's
- * "Open Dashboard" link to http://192.168.0.200:3333 signs in against
- * http://192.168.0.200:8090. Override with VITE_API_URL / window.ENV.API_URL when
- * the API lives on a different host.
+ * Resolution order:
+ *  1. Runtime injection (window.ENV.API_URL, written by inject-config.sh). An
+ *     EXPLICITLY-SET value wins, INCLUDING the empty string: "" means "same
+ *     origin" (relative `/api/v1/...`), used by the cloud reverse-proxy model
+ *     where the dashboard and API share an origin and `/api/*` is proxied to the
+ *     backend. A non-empty value is an absolute origin for split-host setups.
+ *  2. Build-time VITE_API_URL (rarely used; the shipped image bakes nothing).
+ *  3. Same-host detection: the API is assumed to be on the host that served the
+ *     dashboard, at port 8090. Covers localhost, 127.0.0.1, and LAN IPs /
+ *     hostnames (e.g. a self-hosted box at 192.168.0.200), so the copilot's
+ *     "Open Dashboard" link to http://192.168.0.200:3333 signs in against
+ *     http://192.168.0.200:8090 with zero per-host config.
+ *
+ * Note on (1): an UNSET API_URL (key absent — the self-hosted default) falls
+ * through to same-host detection; only an explicitly-set key (even "") is
+ * authoritative. This is why the check is key-presence, not truthiness.
  */
 function getApiUrl(): string {
-  // Priority 1: Runtime config (Docker/K8s injection)
-  if (runtimeEnv?.API_URL) {
+  // Priority 1: Runtime injection — honour an explicitly-set key (even empty).
+  if (
+    runtimeEnv &&
+    Object.prototype.hasOwnProperty.call(runtimeEnv, 'API_URL') &&
+    typeof runtimeEnv.API_URL === 'string'
+  ) {
     return runtimeEnv.API_URL;
   }
 
