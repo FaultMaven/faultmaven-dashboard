@@ -11,8 +11,8 @@ interface AdminProtectedRouteProps {
  * AdminProtectedRoute Component
  *
  * Guards the user-management route (/admin/users). User management
- * (invite / roles / members) is a cloud-only collaboration feature: per
- * ADR-006 the standalone Community Edition is single-operator, so this route
+ * (invite / roles / members) is a cloud-only collaboration feature: the
+ * standalone (self-hosted) deployment is single-operator, so this route
  * must be unreachable there even by typing the URL — not merely hidden from the
  * nav. Both this guard and the navigation hook delegate to `canManageUsers`, so
  * they can never drift (the drift that previously let a standalone admin reach
