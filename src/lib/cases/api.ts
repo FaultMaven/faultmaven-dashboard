@@ -6,6 +6,7 @@ import type {
   CaseListResponse,
   CaseFilters,
   CaseAnnotation,
+  CaseMessage,
   CaseMessagesResponse,
   CaseReport,
   CaseUIResponse,
@@ -109,12 +110,38 @@ export async function unarchiveCase(caseId: string): Promise<void> {
 }
 
 /**
- * Get conversation messages for a case.
+ * Get the full conversation transcript for a case.
+ *
+ * The backend `/messages` endpoint paginates and caps each request at
+ * `limit<=100`, so a single call only ever returns the first page (default 50).
+ * For a long investigation that silently truncated the transcript. This pages
+ * through every chunk (oldest-first) and returns the complete, ordered set.
  */
 export async function getCaseMessages(caseId: string): Promise<CaseMessagesResponse> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/messages`);
-  await handleAPIResponse(response, 'Failed to get case messages');
-  return response.json();
+  const pageSize = 100; // backend per-request cap (le=100)
+  const messages: CaseMessage[] = [];
+  let totalCount = 0;
+
+  for (let offset = 0; ; offset += pageSize) {
+    const queryString = buildQueryParams({ limit: pageSize, offset });
+    const response = await makeAuthenticatedRequest(
+      `${CASES_BASE}/${caseId}/messages?${queryString}`
+    );
+    await handleAPIResponse(response, 'Failed to get case messages');
+    const page: CaseMessagesResponse = await response.json();
+
+    messages.push(...page.messages);
+    totalCount = page.total_count;
+
+    // Stop on the last page (fewer rows than requested) or once we've collected
+    // the advertised total. The short-page guard also prevents an infinite loop
+    // if total_count is ever stale/larger than the real message count.
+    if (page.messages.length < pageSize || messages.length >= totalCount) {
+      break;
+    }
+  }
+
+  return { messages, total_count: totalCount, retrieved_count: messages.length };
 }
 
 /**
