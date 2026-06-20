@@ -16,6 +16,7 @@ vi.mock('../auth', () => ({
   authManager: {
     getAccessToken: vi.fn(),
     getAuthState: vi.fn(),
+    refreshTokens: vi.fn(),
   },
   AuthenticationError: class AuthenticationError extends Error {
     constructor(message: string) {
@@ -31,6 +32,7 @@ import { authManager } from '../auth';
 // Get mocked functions
 const mockGetAccessToken = authManager.getAccessToken as ReturnType<typeof vi.fn>;
 const mockGetAuthState = authManager.getAuthState as ReturnType<typeof vi.fn>;
+const mockRefreshTokens = authManager.refreshTokens as ReturnType<typeof vi.fn>;
 
 describe('makeAuthenticatedRequest', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
@@ -302,6 +304,68 @@ describe('makeAuthenticatedRequest', () => {
     const result = await makeAuthenticatedRequest('/api/test');
 
     expect(result).toBe(mockResponse);
+  });
+
+  it('refreshes and retries once on a 401, returning the retried response', async () => {
+    const mockAuthState: AuthState = {
+      access_token: 'stale-token',
+      token_type: 'bearer',
+      expires_at: Date.now() + 3600000,
+      user: {
+        user_id: 'user-123',
+        username: 'testuser',
+        email: 'test@example.com',
+        display_name: 'Test User',
+        is_dev_user: false,
+        is_active: true,
+        roles: [],
+      },
+    };
+
+    mockGetAccessToken.mockResolvedValueOnce('stale-token');
+    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    const unauthorized = { ok: false, status: 401 };
+    const retried = { ok: true, status: 200 };
+    fetchSpy.mockResolvedValueOnce(unauthorized).mockResolvedValueOnce(retried);
+    mockRefreshTokens.mockResolvedValueOnce('fresh-token');
+
+    const result = await makeAuthenticatedRequest('/api/test');
+
+    expect(mockRefreshTokens).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // Retry carries the refreshed bearer token.
+    const retryHeaders = fetchSpy.mock.calls[1][1].headers as Headers;
+    expect(retryHeaders.get('Authorization')).toBe('Bearer fresh-token');
+    expect(result).toBe(retried);
+  });
+
+  it('returns the original 401 when refresh is not possible', async () => {
+    const mockAuthState: AuthState = {
+      access_token: 'stale-token',
+      token_type: 'bearer',
+      expires_at: Date.now() + 3600000,
+      user: {
+        user_id: 'user-123',
+        username: 'testuser',
+        email: 'test@example.com',
+        display_name: 'Test User',
+        is_dev_user: false,
+        is_active: true,
+        roles: [],
+      },
+    };
+
+    mockGetAccessToken.mockResolvedValueOnce('stale-token');
+    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    const unauthorized = { ok: false, status: 401 };
+    fetchSpy.mockResolvedValueOnce(unauthorized);
+    mockRefreshTokens.mockResolvedValueOnce(null);
+
+    const result = await makeAuthenticatedRequest('/api/test');
+
+    expect(mockRefreshTokens).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // no retry
+    expect(result).toBe(unauthorized);
   });
 });
 

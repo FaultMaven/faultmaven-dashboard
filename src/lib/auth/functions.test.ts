@@ -1,7 +1,6 @@
 // Auth functions tests
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import type { AuthState } from './types';
 
 
 // Mock config - must be hoisted before imports
@@ -11,14 +10,18 @@ vi.mock('../../config', () => ({
   },
 }));
 
-// Mock AuthManager - must be hoisted before imports
-vi.mock('./AuthManager', () => ({
-  authManager: {
-    saveAuthState: vi.fn().mockResolvedValue(undefined),
-    getAccessToken: vi.fn().mockResolvedValue('test-token'),
-    clearAuthState: vi.fn().mockResolvedValue(undefined),
-  },
-}));
+// Mock AuthManager's singleton but keep the real (pure) deriveExpiresAt helper.
+vi.mock('./AuthManager', async () => {
+  const actual = await vi.importActual<typeof import('./AuthManager')>('./AuthManager');
+  return {
+    ...actual,
+    authManager: {
+      saveAuthState: vi.fn().mockResolvedValue(undefined),
+      getAccessToken: vi.fn().mockResolvedValue('test-token'),
+      clearAuthState: vi.fn().mockResolvedValue(undefined),
+    },
+  };
+});
 
 import { devLogin, logoutAuth } from './functions';
 import { AuthenticationError } from './types';
@@ -42,11 +45,16 @@ describe('devLogin', () => {
     vi.restoreAllMocks();
   });
 
-  it('should successfully login with valid username', async () => {
-    const mockAuthState: AuthState = {
+  it('should successfully login and derive expires_at + keep refresh_token', async () => {
+    // The backend returns expires_in (seconds) and a refresh_token — NOT an
+    // absolute expires_at. devLogin must derive expires_at so the AuthManager
+    // expiry guard works and silent refresh is possible.
+    const backendResponse = {
       access_token: 'test-token-123',
       token_type: 'bearer',
-      expires_at: Date.now() + 3600000,
+      expires_in: 3600,
+      refresh_token: 'refresh-xyz',
+      session_id: 'sess-1',
       user: {
         user_id: 'user-123',
         username: 'testuser',
@@ -60,9 +68,10 @@ describe('devLogin', () => {
 
     fetchSpy.mockResolvedValueOnce({
       ok: true,
-      json: async () => mockAuthState,
+      json: async () => backendResponse,
     });
 
+    const before = Date.now();
     const result = await devLogin('testuser');
 
     expect(fetchSpy).toHaveBeenCalledWith('http://test-api.local/api/v1/auth/dev-login', {
@@ -73,8 +82,25 @@ describe('devLogin', () => {
       body: JSON.stringify({ username: 'testuser' }),
     });
 
-    expect(mockSaveAuthState).toHaveBeenCalledWith(mockAuthState);
-    expect(result).toEqual(mockAuthState);
+    // Derived absolute expiry ~1h out; refresh token preserved.
+    expect(result.access_token).toBe('test-token-123');
+    expect(result.refresh_token).toBe('refresh-xyz');
+    expect(result.expires_at).toBeGreaterThanOrEqual(before + 3600 * 1000);
+    expect(result.expires_at).toBeLessThanOrEqual(Date.now() + 3600 * 1000);
+    // The persisted state is exactly what was returned.
+    expect(mockSaveAuthState).toHaveBeenCalledWith(result);
+  });
+
+  it('should throw when a 2xx login omits a usable token/expiry', async () => {
+    // Contract violation: 200 OK but no access_token / expires_in. Must fail
+    // loudly rather than persist an instantly-stale session.
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { user_id: 'u1' } }),
+    });
+
+    await expect(devLogin('testuser')).rejects.toThrow(AuthenticationError);
+    expect(mockSaveAuthState).not.toHaveBeenCalled();
   });
 
   it('should throw AuthenticationError on login failure', async () => {
@@ -117,10 +143,11 @@ describe('devLogin', () => {
   });
 
   it('should handle empty username', async () => {
-    const mockAuthState: AuthState = {
+    const backendResponse = {
       access_token: 'token',
       token_type: 'bearer',
-      expires_at: Date.now() + 3600000,
+      expires_in: 3600,
+      refresh_token: 'refresh-empty',
       user: {
         user_id: 'user-123',
         username: 'testuser',
@@ -134,7 +161,7 @@ describe('devLogin', () => {
 
     fetchSpy.mockResolvedValueOnce({
       ok: true,
-      json: async () => mockAuthState,
+      json: async () => backendResponse,
     });
 
     const result = await devLogin('');
@@ -147,14 +174,16 @@ describe('devLogin', () => {
       body: JSON.stringify({ username: '' }),
     });
 
-    expect(result).toEqual(mockAuthState);
+    expect(result.access_token).toBe('token');
+    expect(result.expires_at).toBeGreaterThan(Date.now());
   });
 
   it('should handle username with special characters', async () => {
-    const mockAuthState: AuthState = {
+    const backendResponse = {
       access_token: 'token',
       token_type: 'bearer',
-      expires_at: Date.now() + 3600000,
+      expires_in: 3600,
+      refresh_token: 'refresh-special',
       user: {
         user_id: 'user-123',
         username: 'user+test',
@@ -168,7 +197,7 @@ describe('devLogin', () => {
 
     fetchSpy.mockResolvedValueOnce({
       ok: true,
-      json: async () => mockAuthState,
+      json: async () => backendResponse,
     });
 
     await devLogin('user+test@example.com');

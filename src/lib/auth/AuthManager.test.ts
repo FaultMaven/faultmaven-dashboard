@@ -3,6 +3,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { AuthState } from './types';
 
+// Mock config so AuthManager.refreshTokens hits a deterministic apiUrl.
+vi.mock('../../config', () => ({
+  default: { apiUrl: 'http://test-api.local' },
+}));
+
 // Create mock browser object
 const mockBrowser = {
   storage: {
@@ -18,7 +23,7 @@ const mockBrowser = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).window = { browser: mockBrowser };
 
-import { AuthManager } from './AuthManager';
+import { AuthManager, deriveExpiresAt } from './AuthManager';
 
 // Get mocked functions for assertions
 const mockSet = mockBrowser.storage.local.set;
@@ -197,6 +202,151 @@ describe('AuthManager', () => {
       const token = await authManager.getAccessToken();
 
       expect(token).toBeNull();
+    });
+  });
+
+  describe('refreshTokens / silent renewal', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      fetchSpy = vi.fn();
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    });
+
+    const withRefresh = (overrides: Partial<AuthState> = {}): AuthState => ({
+      ...mockAuthState,
+      refresh_token: 'refresh-abc',
+      ...overrides,
+    });
+
+    it('refreshes an expired token when a refresh token is present', async () => {
+      const expired = withRefresh({ expires_at: Date.now() - 1000 });
+      mockGet.mockResolvedValue({ authState: expired });
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          access_token: 'new-access',
+          refresh_token: 'new-refresh',
+          expires_in: 3600,
+        }),
+      });
+
+      const token = await authManager.getAccessToken();
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'http://test-api.local/api/v1/auth/refresh',
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(token).toBe('new-access');
+      // New tokens + recomputed expiry are persisted.
+      const saved = mockSet.mock.calls.at(-1)?.[0].authState as AuthState;
+      expect(saved.access_token).toBe('new-access');
+      expect(saved.refresh_token).toBe('new-refresh');
+      expect(saved.expires_at).toBeGreaterThan(Date.now());
+    });
+
+    it('clears auth state when the refresh token is rejected (401)', async () => {
+      const expired = withRefresh({ expires_at: Date.now() - 1000 });
+      mockGet.mockResolvedValue({ authState: expired });
+      fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
+
+      const token = await authManager.getAccessToken();
+
+      expect(token).toBeNull();
+      expect(mockRemove).toHaveBeenCalledWith(['authState']);
+    });
+
+    it('does NOT clear auth state on a network error (session may still be valid)', async () => {
+      const expired = withRefresh({ expires_at: Date.now() - 1000 });
+      mockGet.mockResolvedValue({ authState: expired });
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      fetchSpy.mockRejectedValueOnce(new TypeError('network down'));
+
+      const token = await authManager.getAccessToken();
+
+      expect(token).toBeNull();
+      expect(mockRemove).not.toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('proactively refreshes within the expiry skew window', async () => {
+      // Token expires in 10s — inside the 30s skew, so it should refresh now.
+      const nearExpiry = withRefresh({ expires_at: Date.now() + 10_000 });
+      mockGet.mockResolvedValue({ authState: nearExpiry });
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          access_token: 'renewed',
+          refresh_token: 'renewed-refresh',
+          expires_in: 3600,
+        }),
+      });
+
+      const token = await authManager.getAccessToken();
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(token).toBe('renewed');
+    });
+
+    it('dedupes concurrent refreshes into a single network call', async () => {
+      const expired = withRefresh({ expires_at: Date.now() - 1000 });
+      mockGet.mockResolvedValue({ authState: expired });
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          access_token: 'shared',
+          refresh_token: 'shared-refresh',
+          expires_in: 3600,
+        }),
+      });
+
+      const [a, b, c] = await Promise.all([
+        authManager.refreshTokens(),
+        authManager.refreshTokens(),
+        authManager.refreshTokens(),
+      ]);
+
+      expect(a).toBe('shared');
+      expect(b).toBe('shared');
+      expect(c).toBe('shared');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears state (does not loop) when refresh returns a malformed expires_in', async () => {
+      const expired = withRefresh({ expires_at: Date.now() - 1000 });
+      mockGet.mockResolvedValue({ authState: expired });
+      // 200 OK but no usable expires_in — must NOT store a NaN-expiry token
+      // and re-enter refresh forever.
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        json: async () => ({ access_token: 'x', refresh_token: 'y' }),
+      });
+
+      const token = await authManager.getAccessToken();
+
+      expect(token).toBeNull();
+      expect(mockRemove).toHaveBeenCalledWith(['authState']);
+      expect(fetchSpy).toHaveBeenCalledTimes(1); // one attempt, no loop
+    });
+  });
+
+  describe('deriveExpiresAt', () => {
+    it('converts a positive expires_in (seconds) to an absolute epoch-ms expiry', () => {
+      const before = Date.now();
+      const at = deriveExpiresAt(3600);
+      expect(at).not.toBeNull();
+      expect(at!).toBeGreaterThanOrEqual(before + 3600 * 1000);
+      expect(at!).toBeLessThanOrEqual(Date.now() + 3600 * 1000);
+    });
+
+    it('returns null for missing / non-numeric / non-positive / non-finite input', () => {
+      expect(deriveExpiresAt(undefined)).toBeNull();
+      expect(deriveExpiresAt(null)).toBeNull();
+      expect(deriveExpiresAt('3600')).toBeNull();
+      expect(deriveExpiresAt(0)).toBeNull();
+      expect(deriveExpiresAt(-100)).toBeNull();
+      expect(deriveExpiresAt(NaN)).toBeNull();
+      expect(deriveExpiresAt(Infinity)).toBeNull();
     });
   });
 
