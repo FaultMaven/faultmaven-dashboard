@@ -6,7 +6,12 @@
 export interface AuthState {
   access_token: string;
   token_type: 'bearer';
+  /** Absolute expiry of access_token, epoch ms. Derived from the backend's
+   *  expires_in (seconds) at login/refresh time. */
   expires_at: number;
+  /** Long-lived refresh token used to silently mint a new access token.
+   *  Optional: absent for older stored sessions. */
+  refresh_token?: string;
   user: {
     user_id: string;
     username: string;

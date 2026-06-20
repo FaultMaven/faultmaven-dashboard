@@ -1,7 +1,7 @@
 // Authentication API functions
 
 import config from '../../config';
-import { authManager } from './AuthManager';
+import { authManager, deriveExpiresAt } from './AuthManager';
 import { AuthenticationError, type AuthState } from './types';
 
 export type PublishableScope = 'personal' | 'team' | 'organization' | 'global';
@@ -57,7 +57,21 @@ export async function devLogin(username: string): Promise<AuthState> {
       throw new AuthenticationError('Login failed');
     }
 
-    const authState = await response.json();
+    // The backend returns expires_in (seconds) + refresh_token; derive the
+    // absolute expires_at (epoch ms) that AuthManager checks. Previously the raw
+    // response was stored verbatim, leaving expires_at undefined so the expiry
+    // guard never fired (and there was no refresh_token to renew with).
+    const body = await response.json();
+    const expiresAt = deriveExpiresAt(body.expires_in);
+    if (!body.access_token || expiresAt === null) {
+      // A 2xx login that omits a usable token/expiry is a contract violation;
+      // fail loudly instead of storing an instantly-stale session.
+      throw new AuthenticationError('Login response missing a valid token');
+    }
+    const authState: AuthState = {
+      ...body,
+      expires_at: expiresAt,
+    };
     await authManager.saveAuthState(authState);
     return authState;
   } catch (error) {

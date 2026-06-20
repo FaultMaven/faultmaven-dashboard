@@ -37,10 +37,23 @@ export async function makeAuthenticatedRequest(
 
   const fullUrl = url.startsWith('http') ? url : `${config.apiUrl}${url}`;
 
-  return fetch(fullUrl, {
+  const response = await fetch(fullUrl, {
     ...options,
     headers,
   });
+
+  // Reactive refresh: the proactive skew in getAccessToken covers the common
+  // case, but a 401 can still happen (clock skew, server-side revocation). Try
+  // a single silent refresh + retry before surfacing the failure.
+  if (response.status === 401) {
+    const newToken = await authManager.refreshTokens();
+    if (newToken) {
+      headers.set('Authorization', `Bearer ${newToken}`);
+      return fetch(fullUrl, { ...options, headers });
+    }
+  }
+
+  return response;
 }
 
 /**
