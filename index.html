@@ -5,6 +5,10 @@
     <link rel="icon" type="image/svg+xml" href="/icon/square-dark.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FaultMaven Dashboard</title>
+    <!-- Runtime config (window.ENV). Classic script: runs before the deferred app
+         module, so src/config.ts sees window.ENV. Overwritten at container startup
+         by inject-config.sh; ships as an empty stub for dev/static builds. -->
+    <script src="/config.js"></script>
   </head>
   <body>
     <div id="root"></div>
