@@ -28,10 +28,12 @@ interface Config {
  * Configuration Sources (in priority order):
  * 1. Runtime (Docker/K8s): window.ENV.API_URL - injected at container startup
  * 2. Build-time: VITE_API_URL - for production/staging builds
- * 3. Dynamic (Development): Auto-detect based on window.location.hostname
- *    - LOCALHOST ONLY: Supports localhost and 127.0.0.1
- *    - For remote servers, use SSH tunnel: ssh -L 3333:localhost:3333 -L 8090:localhost:8090 user@server
- *    - Backend API runs on same host at port 8090
+ * 3. Dynamic (Development / self-hosted): Auto-detect based on window.location.hostname
+ *    - Uses the SAME host that served the dashboard (localhost, 127.0.0.1, or a
+ *      LAN IP / hostname such as 192.168.0.200), with the backend on port 8090.
+ *    - Keeps the API on the machine the user actually reached the dashboard at, so
+ *      opening http://192.168.0.200:3333 targets http://192.168.0.200:8090
+ *      (NOT 127.0.0.1, which would point at the user's own machine).
  *
  * Other Environment Variables (set before build):
  * - VITE_DATA_MODE_LINES: Lines threshold for data mode (default: 100)
@@ -43,10 +45,12 @@ const runtimeEnv = (globalThis as { ENV?: { API_URL?: string } }).ENV;
 /**
  * Dynamically determine API URL based on current hostname
  *
- * LOCALHOST ONLY DEPLOYMENT:
- * - Supports localhost and 127.0.0.1 only
- * - For remote servers, use SSH tunnel to keep localhost addressing
- * - Example: ssh -L 3333:localhost:3333 -L 8090:localhost:8090 user@server
+ * Same-host addressing: the backend API is assumed to run on the SAME host that
+ * served the dashboard, on port 8090. This works for localhost, 127.0.0.1, and
+ * LAN IPs / hostnames (e.g. a self-hosted box at 192.168.0.200), so the copilot's
+ * "Open Dashboard" link to http://192.168.0.200:3333 signs in against
+ * http://192.168.0.200:8090. Override with VITE_API_URL / window.ENV.API_URL when
+ * the API lives on a different host.
  */
 function getApiUrl(): string {
   // Priority 1: Runtime config (Docker/K8s injection)
@@ -59,23 +63,13 @@ function getApiUrl(): string {
     return import.meta.env.VITE_API_URL;
   }
 
-  // Priority 3: Dynamic detection for localhost development
-  if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname;
-
-    // LOCALHOST ONLY: Support localhost and 127.0.0.1
-    const isLocalhost =
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1';
-
-    if (isLocalhost) {
-      // Backend API is on same host at port 8090
-      return `${protocol}//${hostname}:8090`;
-    }
+  // Priority 3: Same-host detection — backend on the host that served the dashboard
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:8090`;
   }
 
-  // Fallback: Default local development URL
+  // Fallback (non-browser context, e.g. tests/SSR): default local development URL
   return "http://127.0.0.1:8090";
 }
 
