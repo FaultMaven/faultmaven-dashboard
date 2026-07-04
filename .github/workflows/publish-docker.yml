@@ -77,11 +77,23 @@ jobs:
         if: github.event_name != 'pull_request'
         run: echo "Published Docker images with digest ${{ steps.meta.outputs.digest }}"
 
-      - name: Note skipped queue update
-        if: github.event_name != 'pull_request' && env.HAS_INFRA_TOKEN != 'true'
+      # On the canonical repo a missing PAT means the release pipeline is broken:
+      # the image publishes but the enterprise-infra queue never advances, so
+      # promote-images can't pick up the new tag. Silently going green on this
+      # (only a warning) stranded the dashboard on a stale pin for months. Fail
+      # loudly here. Forks (no PAT expected) keep the soft warning below.
+      - name: Require infra queue update on canonical repo
+        if: github.event_name != 'pull_request' && env.HAS_INFRA_TOKEN != 'true' && github.repository == 'FaultMaven/faultmaven-dashboard'
         run: |
-          echo "::warning::PAT_CROSS_REPO_ACCESS is not set — skipping enterprise-infra image queue update."
-          echo "Set the PAT_CROSS_REPO_ACCESS secret to enable automatic queue updates."
+          echo "::error::PAT_CROSS_REPO_ACCESS is not set — the enterprise-infra image queue was NOT updated."
+          echo "The image published to GHCR, but promote-images cannot advance the dashboard pin without a queue entry."
+          echo "Set the PAT_CROSS_REPO_ACCESS secret (contents:write on faultmaven-enterprise-infra) to restore the release pipeline."
+          exit 1
+
+      - name: Note skipped queue update (fork / no infra token)
+        if: github.event_name != 'pull_request' && env.HAS_INFRA_TOKEN != 'true' && github.repository != 'FaultMaven/faultmaven-dashboard'
+        run: |
+          echo "::warning::PAT_CROSS_REPO_ACCESS is not set — skipping enterprise-infra image queue update (expected on forks)."
 
       # Checkout enterprise-infra repository to update image queue
       - name: Checkout enterprise-infra
