@@ -49,7 +49,7 @@ const SECTION_PLACEHOLDERS: Record<string, string> = {
   diagnostic_steps:
     '### Step 1: Check current state\n```bash\nyour-command-here\n```\nWhat to look for in the output...\n\n### Step 2: Identify root cause\n```bash\nanother-command\n```',
   causes:
-    '### Cause A: <Name>\n**Statement**: What is happening\n**Mechanism**: Why it happens\n**Indicator**: How to confirm this cause\n**Mitigation**: Immediate relief steps\n**Resolution**: Permanent fix\n**Verification**: How to confirm it worked\n\n### Cause Z: Unidentified [Default]\n**Statement**: Root cause not yet determined\n**Mechanism**: Unknown\n**Indicator**: None of the above causes match\n**Mitigation**: Escalate to on-call engineer\n**Resolution**: Investigate further\n**Verification**: Monitor after escalation',
+    '### Cause A: <Name>\n**Statement:** The single root cause (one sentence)\n**Chain:**\n- root: the root cause\n- s1: the intermediate effect\n- D: the observed problem (Symptom)\n**Indicators:**\n- root: [Step 1] observable that confirms the root\n- s1: [Step 2] observable that confirms s1\n**Interventions:**\n- **remediation** (root): the permanent fix\n\n  ```bash\n  your-fix-command\n  ```\n\n  **Verification:** how to confirm it worked\n\n### Cause Z: Unidentified\n**Statement:** None of the documented causes match the evidence\n**Indicators:**\n- [Default]\n**Interventions:**\n- **mitigation** (D): capture full diagnostics and escalate to an SME\n  **Risk:** diagnostic only. **Duration:** until SME review. **Verification:** N/A.',
   prevention:
     '- Configuration change to prevent recurrence\n- Monitoring alert to add\n- Process change or documentation update',
 };

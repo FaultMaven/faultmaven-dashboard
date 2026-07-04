@@ -7171,7 +7171,7 @@ export interface components {
             diagnostic_steps: string;
             /**
              * Causes
-             * @description Pre-formatted markdown with ### Cause N subsections. Each cause needs Statement, Mechanism, Indicator, Mitigation, Resolution, Verification sub-fields. Include ### Cause Z: Unidentified with [Default] indicator as fallback.
+             * @description Pre-formatted markdown with ### Cause N subsections (one ROOT each). Each cause needs Statement, an optional Chain (root->D rungs), Indicators (per-rung, [Step N]-anchored), and quadrant-tagged Interventions (remediation/defensive_fix/mitigation/loop_break). Include ### Cause Z: Unidentified with a [Default] indicator as fallback.
              */
             causes: string;
             /** Prevention */
