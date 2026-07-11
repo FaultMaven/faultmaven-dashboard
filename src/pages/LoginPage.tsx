@@ -99,16 +99,18 @@ export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
       <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md relative">
-        {/* Local Mode Badge */}
-        <div className="absolute top-4 right-4">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-fm-warning-bg text-fm-warning text-xs font-semibold rounded-full border border-fm-warning-border">
-            <span className="w-2 h-2 bg-fm-warning rounded-full animate-pulse-dot"></span>
-            LOCAL MODE ACTIVE
+        {/* Local Mode Badge — only for a confirmed standalone backend, never cloud */}
+        {deployment === 'standalone' && (
+          <div className="absolute top-4 right-4">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-fm-warning-bg text-fm-warning text-xs font-semibold rounded-full border border-fm-warning-border">
+              <span className="w-2 h-2 bg-fm-warning rounded-full animate-pulse-dot"></span>
+              LOCAL MODE ACTIVE
+            </div>
+            <div className="text-fm-xs text-fm-text-tertiary text-right mt-1 font-medium">
+              Authentication Bypassed
+            </div>
           </div>
-          <div className="text-fm-xs text-fm-text-tertiary text-right mt-1 font-medium">
-            Authentication Bypassed
-          </div>
-        </div>
+        )}
 
         {/* Logo and Header */}
         <div className="text-center mb-8 mt-6">
