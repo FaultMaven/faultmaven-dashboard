@@ -58,6 +58,7 @@ src/
 │   ├── AdminKBPage.tsx       # Global KB management (system-wide)
 │   ├── CaseListPage.tsx      # Paginated case list with filters
 │   ├── CaseDetailPage.tsx    # Case detail with tabs + annotation
+│   ├── AdminCaseListPage.tsx # Cross-tenant "All Cases" list (standalone admin only)
 │   ├── UserManagementPage.tsx # Platform admin user management
 │   ├── LLMConfigPage.tsx     # LLM provider configuration
 │   └── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
@@ -69,6 +70,7 @@ src/
 │   ├── DocumentCard.tsx      # Expandable document card with content preview
 │   ├── DraftEditor.tsx       # Runbook draft editor with validation/quality display
 │   ├── CaseStatusBadge.tsx   # Status badge with phase colors
+│   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/Status/Progress/Last Activity/[actions]) — used by CaseListPage + AdminCaseListPage
 │   ├── MilestoneProgress.tsx # Milestone progress indicator
 │   ├── ConfirmDialog.tsx     # Reusable confirmation modal
 │   ├── UploadModal.tsx       # File upload modal for KB
@@ -123,7 +125,8 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **LoginPage**: Authentication interface with FaultMaven branding
 - **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
 - **AdminKBPage**: Organization KB management (admin only)
-- **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`
+- **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`. Renders rows via the shared `CaseTable` component.
+- **AdminCaseListPage**: Cross-tenant "All Cases" list (ADR-012 D9) — every user's cases on the server (Copilot- and Slack-agent-originated), with an Owner column. Backed by `GET /api/v1/admin/cases`; state-filter only. Gated by `canViewAllCases(deployment, isAdmin)` → **standalone admin only** (route `/admin/cases` + nav item); cloud `platform_admin` is deferred until the audited break-glass backend path exists.
 - **CaseDetailPage**: Case header (title, description, status badge, milestone progress, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.
