@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canManageUsers } from '../../lib/access';
+import { canManageUsers, canViewAllCases } from '../../lib/access';
 
 describe('canManageUsers', () => {
   it('allows only cloud platform_admin', () => {
@@ -23,5 +23,25 @@ describe('canManageUsers', () => {
     expect(canManageUsers(null, null)).toBe(false);
     expect(canManageUsers('cloud', null)).toBe(false);
     expect(canManageUsers(null, 'platform_admin')).toBe(false);
+  });
+});
+
+describe('canViewAllCases', () => {
+  it('allows a standalone admin (the single operator)', () => {
+    expect(canViewAllCases('standalone', true)).toBe(true);
+  });
+
+  it('denies a standalone non-admin', () => {
+    expect(canViewAllCases('standalone', false)).toBe(false);
+  });
+
+  it('denies cloud for now — even an admin (break-glass deferred, backend 403s)', () => {
+    expect(canViewAllCases('cloud', true)).toBe(false);
+    expect(canViewAllCases('cloud', false)).toBe(false);
+  });
+
+  it('denies the loading/unknown state (null deployment)', () => {
+    expect(canViewAllCases(null, true)).toBe(false);
+    expect(canViewAllCases(null, false)).toBe(false);
   });
 });

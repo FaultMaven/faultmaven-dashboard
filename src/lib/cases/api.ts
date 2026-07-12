@@ -20,6 +20,7 @@ import type {
 } from '../../types/cases';
 
 const CASES_BASE = '/api/v1/cases';
+const ADMIN_CASES_BASE = '/api/v1/admin/cases';
 
 /**
  * List investigation cases with optional filters and pagination.
@@ -43,6 +44,32 @@ export async function listCases(
 
   const response = await makeAuthenticatedRequest(url);
   await handleAPIResponse(response, 'Failed to list cases');
+  return response.json();
+}
+
+/**
+ * List cases across ALL users/orgs — the platform-admin cross-tenant view
+ * (ADR-012 D9, GET /api/v1/admin/cases). Only reachable for an admin on a
+ * standalone deployment (see `canViewAllCases`); the backend enforces the same
+ * and returns 403 in cloud until an audited break-glass path exists.
+ */
+export async function getAdminCases(
+  filters: CaseFilters = {},
+  page = 0,
+  pageSize = 20
+): Promise<CaseListResponse> {
+  // The admin endpoint paginates by limit/offset (not page/page_size).
+  const params: Record<string, string | number | undefined> = {
+    limit: pageSize,
+    offset: page * pageSize,
+    ...(filters.state && { state: filters.state }),
+  };
+
+  const queryString = buildQueryParams(params);
+  const url = `${ADMIN_CASES_BASE}${queryString ? `?${queryString}` : ''}`;
+
+  const response = await makeAuthenticatedRequest(url);
+  await handleAPIResponse(response, 'Failed to list all cases');
   return response.json();
 }
 

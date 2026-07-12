@@ -1,5 +1,5 @@
 import { useAuth } from '../context/AuthContext';
-import { canManageUsers } from '../lib/access';
+import { canManageUsers, canViewAllCases } from '../lib/access';
 
 export interface NavItem {
   label: string;
@@ -13,12 +13,18 @@ export interface NavItem {
  * not just hidden — so the nav bar never leaks privileged routes.
  */
 export function useNavigationItems(currentPath: string): NavItem[] {
-  const { deployment, role } = useAuth();
+  const { deployment, role, isAdmin } = useAuth();
 
   const items: Omit<NavItem, 'active'>[] = [
     { label: 'Cases', path: '/cases' },
     { label: 'Knowledge Base', path: '/kb' },
   ];
+
+  // All Cases (cross-tenant admin view): standalone admin only — see
+  // canViewAllCases (ADR-012 D9; cloud deferred to break-glass).
+  if (canViewAllCases(deployment, isAdmin)) {
+    items.push({ label: 'All Cases', path: '/admin/cases' });
+  }
 
   // LLM Settings: visible to all standalone users and cloud Platform Admins
   if (deployment === 'standalone' || role === 'platform_admin') {

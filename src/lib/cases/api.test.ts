@@ -19,7 +19,7 @@ vi.mock('../knowledge/errors', () => ({
 }));
 
 import { makeAuthenticatedRequest } from '../knowledge/client';
-import { getCaseMessages } from './api';
+import { getCaseMessages, getAdminCases } from './api';
 
 const mockRequest = makeAuthenticatedRequest as ReturnType<typeof vi.fn>;
 
@@ -93,5 +93,33 @@ describe('getCaseMessages pagination', () => {
 
     expect(mockRequest).toHaveBeenCalledTimes(1);
     expect(res.messages).toHaveLength(30);
+  });
+});
+
+describe('getAdminCases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('hits the admin endpoint with limit/offset pagination', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, has_more: false }),
+    });
+
+    await getAdminCases({}, 2, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith('/api/v1/admin/cases?limit=20&offset=40');
+  });
+
+  it('forwards the state filter', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, has_more: false }),
+    });
+
+    await getAdminCases({ state: 'investigating' }, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/admin/cases?limit=20&offset=0&state=investigating'
+    );
   });
 });

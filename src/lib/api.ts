@@ -46,6 +46,7 @@ export type {
 // Re-export cases module
 export {
   listCases,
+  getAdminCases,
   getCaseDetail,
   searchCases,
   annotateCase,
