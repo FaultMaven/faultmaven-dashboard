@@ -6,11 +6,13 @@ import CaseListPage from './pages/CaseListPage';
 import CaseDetailPage from './pages/CaseDetailPage';
 import LLMConfigPage from './pages/LLMConfigPage';
 import UserManagementPage from './pages/UserManagementPage';
+import AdminCaseListPage from './pages/AdminCaseListPage';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminProtectedRoute } from './components/AdminProtectedRoute';
+import { canViewAllCases } from './lib/access';
 
 function LLMConfigRoute({ children }: { children: React.ReactNode }) {
   const { deployment, role, loading, authState } = useAuth();
@@ -22,6 +24,22 @@ function LLMConfigRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (deployment === 'standalone' || role === 'platform_admin') {
+    return <>{children}</>;
+  }
+
+  return <Navigate to="/cases" replace />;
+}
+
+function AllCasesRoute({ children }: { children: React.ReactNode }) {
+  const { deployment, isAdmin, loading, authState } = useAuth();
+
+  if (loading) return null;
+
+  if (!authState) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (canViewAllCases(deployment, isAdmin)) {
     return <>{children}</>;
   }
 
@@ -83,6 +101,14 @@ export default function App() {
                 <AdminProtectedRoute>
                   <UserManagementPage />
                 </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/cases"
+              element={
+                <AllCasesRoute>
+                  <AdminCaseListPage />
+                </AllCasesRoute>
               }
             />
             <Route path="*" element={<Navigate to="/cases" replace />} />

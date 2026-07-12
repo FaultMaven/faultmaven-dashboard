@@ -92,4 +92,43 @@ describe('useNavigationItems', () => {
     expect(labels).not.toContain('LLM Settings');
     expect(labels).not.toContain('Users');
   });
+
+  it('standalone admin sees "All Cases" (cross-tenant admin view)', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: true,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    const labels = result.current.map((i) => i.label);
+
+    expect(labels).toContain('All Cases');
+  });
+
+  it('standalone non-admin does NOT see "All Cases"', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: false,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    const labels = result.current.map((i) => i.label);
+
+    expect(labels).not.toContain('All Cases');
+  });
+
+  it('cloud platform_admin does NOT see "All Cases" yet (break-glass deferred)', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'platform_admin',
+      isAdmin: true,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    const labels = result.current.map((i) => i.label);
+
+    expect(labels).not.toContain('All Cases');
+  });
 });

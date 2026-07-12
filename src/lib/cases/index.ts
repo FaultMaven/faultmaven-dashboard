@@ -1,5 +1,6 @@
 export {
   listCases,
+  getAdminCases,
   getCaseDetail,
   searchCases,
   annotateCase,
