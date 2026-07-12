@@ -105,6 +105,19 @@ describe('AdminCaseListPage', () => {
     expect(screen.getByText('copilot_user')).toBeInTheDocument();
   });
 
+  it('renders state filters only — no date/search controls the endpoint ignores', async () => {
+    await act(async () => {
+      renderPage();
+    });
+
+    // State chips are present…
+    expect(screen.getByRole('button', { name: 'Investigating' })).toBeInTheDocument();
+    // …but the date-range and search inputs (unsupported by the admin endpoint) are not.
+    expect(screen.queryByLabelText('Search cases')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('From date')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('To date')).not.toBeInTheDocument();
+  });
+
   it('shows empty state when no cases', async () => {
     mockGetAdminCases.mockResolvedValue({ cases: [], total_count: 0, has_more: false });
 
