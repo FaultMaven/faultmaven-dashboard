@@ -5,6 +5,7 @@ import { CaseFiltersBar } from '../components/CaseFiltersBar';
 import { PaginationControls } from '../components/PaginationControls';
 import { useAuth } from '../context/AuthContext';
 import { getAdminCases, logoutAuth } from '../lib/api';
+import { chipBase, chipActive, chipInactive } from '../lib/ui/chip';
 import type { CaseSummary, CaseFilters, CaseSource } from '../lib/api';
 
 const PAGE_SIZE = 20;
@@ -89,11 +90,7 @@ export default function AdminCaseListPage() {
               <button
                 key={label}
                 onClick={() => setFilters({ ...filters, source: value })}
-                className={`px-3 py-1 text-sm font-medium rounded-full border transition-colors ${
-                  active
-                    ? 'bg-fm-accent text-white border-fm-accent'
-                    : 'text-fm-text-secondary border-fm-border hover:bg-fm-elevated'
-                }`}
+                className={`${chipBase} ${active ? chipActive : chipInactive}`}
               >
                 {label}
               </button>

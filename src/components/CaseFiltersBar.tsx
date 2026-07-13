@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import type { CaseFilters } from '../types/cases';
 import type { CaseState } from '../types/cases';
 import { debounce } from '../utils/debounce';
+import { chipBase, chipActive, chipInactive } from '../lib/ui/chip';
 
 interface CaseFiltersBarProps {
   filters: CaseFilters;
@@ -26,9 +27,6 @@ const STATE_OPTIONS: { value: CaseState | ''; label: string }[] = [
 const inputClass =
   'px-3 py-1.5 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 
-const chipBase = 'px-3 py-1 text-sm font-medium rounded-full border transition-colors cursor-pointer';
-const chipActive = 'bg-fm-accent text-white border-fm-accent';
-const chipInactive = 'text-fm-text-secondary border-fm-border hover:bg-fm-elevated';
 
 export function CaseFiltersBar({ filters, onChange, stateOnly = false }: CaseFiltersBarProps) {
   const debouncedSearch = useMemo(
