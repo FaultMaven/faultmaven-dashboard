@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import AdminCaseListPage from '../../pages/AdminCaseListPage';
@@ -55,6 +55,7 @@ const copilotCase = {
   total_milestones: 8,
   is_stuck: false,
   is_terminal: false,
+  source: 'copilot' as const,
 };
 
 const slackCase = {
@@ -63,6 +64,7 @@ const slackCase = {
   title: 'Slack Case',
   description: 'from the slack agent',
   user_id: 'slack-agent',
+  source: 'slack' as const,
 };
 
 function renderPage() {
@@ -116,6 +118,33 @@ describe('AdminCaseListPage', () => {
     expect(screen.queryByLabelText('Search cases')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('From date')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('To date')).not.toBeInTheDocument();
+  });
+
+  it('shows a Slack source badge on Slack cases', async () => {
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => screen.getByText('Slack Case'));
+    // "Slack" appears both as a filter chip (button) and the row badge (span).
+    const slackTexts = screen.getAllByText('Slack');
+    expect(slackTexts.some((el) => el.tagName === 'SPAN')).toBe(true);
+  });
+
+  it('filters by source when the Slack chip is clicked', async () => {
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => screen.getByText('Slack Case'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Slack' }));
+    });
+    await waitFor(() =>
+      expect(mockGetAdminCases).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'slack' }),
+        0,
+        20
+      )
+    );
   });
 
   it('shows empty state when no cases', async () => {

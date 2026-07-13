@@ -5,9 +5,16 @@ import { CaseFiltersBar } from '../components/CaseFiltersBar';
 import { PaginationControls } from '../components/PaginationControls';
 import { useAuth } from '../context/AuthContext';
 import { getAdminCases, logoutAuth } from '../lib/api';
-import type { CaseSummary, CaseFilters } from '../lib/api';
+import { chipBase, chipActive, chipInactive } from '../lib/ui/chip';
+import type { CaseSummary, CaseFilters, CaseSource } from '../lib/api';
 
 const PAGE_SIZE = 20;
+
+const SOURCE_OPTIONS: { value: CaseSource | undefined; label: string }[] = [
+  { value: undefined, label: 'All' },
+  { value: 'copilot', label: 'Copilot' },
+  { value: 'slack', label: 'Slack' },
+];
 
 /**
  * Platform-admin cross-tenant case list (ADR-012 D9) — every user's cases on
@@ -73,6 +80,23 @@ export default function AdminCaseListPage() {
 
         {/* The admin endpoint filters by state only — hide date/search controls. */}
         <CaseFiltersBar filters={filters} onChange={setFilters} stateOnly />
+
+        {/* Source filter (ADR-012): tell Copilot and Slack cases apart. */}
+        <div className="mb-4 flex items-center gap-1.5">
+          <span className="text-sm text-fm-text-tertiary mr-1">Source</span>
+          {SOURCE_OPTIONS.map(({ value, label }) => {
+            const active = filters.source === value;
+            return (
+              <button
+                key={label}
+                onClick={() => setFilters({ ...filters, source: value })}
+                className={`${chipBase} ${active ? chipActive : chipInactive}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         {error && (
           <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">

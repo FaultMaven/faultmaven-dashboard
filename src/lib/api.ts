@@ -66,6 +66,7 @@ export {
 
 export type {
   CaseSummary,
+  CaseSource,
   CaseDetail,
   CaseListResponse,
   CaseFilters,

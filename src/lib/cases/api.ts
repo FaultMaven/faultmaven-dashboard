@@ -34,6 +34,7 @@ export async function listCases(
     page,
     page_size: pageSize,
     ...(filters.state && { state: filters.state }),
+    ...(filters.source && { source: filters.source }),
     ...(filters.date_from && { date_from: filters.date_from }),
     ...(filters.date_to && { date_to: filters.date_to }),
     ...(filters.include_archived && { include_archived: 'true' }),
@@ -63,6 +64,7 @@ export async function getAdminCases(
     limit: pageSize,
     offset: page * pageSize,
     ...(filters.state && { state: filters.state }),
+    ...(filters.source && { source: filters.source }),
   };
 
   const queryString = buildQueryParams(params);
