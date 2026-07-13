@@ -21,6 +21,7 @@ export interface CaseSummary {
   closure_reason: string | null;
   user_id: string;
   organization_id: string;
+  source?: CaseSource;
   current_turn: number;
   milestones_completed: number;
   total_milestones: number;
@@ -28,6 +29,9 @@ export interface CaseSummary {
   is_stuck: boolean;
   is_terminal: boolean;
 }
+
+/** Case origin (ADR-012), derived from the creator's account kind. */
+export type CaseSource = 'copilot' | 'slack' | 'api';
 
 export interface CaseDetail extends Omit<CaseSummary, 'milestones_completed'> {
   turns_without_progress: number;
@@ -51,6 +55,7 @@ export interface CaseListResponse {
 
 export interface CaseFilters {
   state?: CaseState;
+  source?: CaseSource;
   date_from?: string;
   date_to?: string;
   search?: string;

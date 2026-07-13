@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
 import { MilestoneProgress } from './MilestoneProgress';
+import { SourceBadge } from './SourceBadge';
 import type { CaseSummary } from '../lib/api';
 
 interface CaseTableProps {
@@ -45,12 +46,15 @@ export function CaseTable({ cases, loading, showOwner = false, renderActions }: 
             {cases.map((c) => (
               <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
                 <td className="px-4 py-3">
-                  <Link
-                    to={`/cases/${c.case_id}`}
-                    className="font-medium text-fm-text-primary hover:text-fm-accent transition-colors"
-                  >
-                    {c.title || 'Untitled Case'}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/cases/${c.case_id}`}
+                      className="font-medium text-fm-text-primary hover:text-fm-accent transition-colors"
+                    >
+                      {c.title || 'Untitled Case'}
+                    </Link>
+                    <SourceBadge source={c.source} />
+                  </div>
                   {c.description && (
                     <p className="text-xs text-fm-text-tertiary mt-0.5 line-clamp-1">{c.description}</p>
                   )}

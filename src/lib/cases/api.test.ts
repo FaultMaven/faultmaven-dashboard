@@ -122,4 +122,16 @@ describe('getAdminCases', () => {
       '/api/v1/admin/cases?limit=20&offset=0&state=investigating'
     );
   });
+
+  it('forwards the source filter', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, has_more: false }),
+    });
+
+    await getAdminCases({ source: 'slack' }, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/admin/cases?limit=20&offset=0&source=slack'
+    );
+  });
 });
