@@ -23,6 +23,17 @@ const mockBrowser = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).window = { browser: mockBrowser };
 
+// Minimal localStorage mock — AuthManager mirrors auth state into the
+// `fm_auth_state` bridge key (#109).
+const mockLocalStore: Record<string, string> = {};
+const mockLocalStorage = {
+  getItem: vi.fn((k: string) => (k in mockLocalStore ? mockLocalStore[k] : null)),
+  setItem: vi.fn((k: string, v: string) => { mockLocalStore[k] = v; }),
+  removeItem: vi.fn((k: string) => { delete mockLocalStore[k]; }),
+};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).localStorage = mockLocalStorage;
+
 import { AuthManager, deriveExpiresAt } from './AuthManager';
 
 // Get mocked functions for assertions
@@ -37,6 +48,7 @@ describe('AuthManager', () => {
   beforeEach(() => {
     authManager = new AuthManager();
     vi.clearAllMocks();
+    for (const k of Object.keys(mockLocalStore)) delete mockLocalStore[k];
 
     // Create mock auth state with future expiry
     mockAuthState = {
@@ -86,6 +98,53 @@ describe('AuthManager', () => {
       expect(mockSet).toHaveBeenCalledWith({
         authState: minimalAuthState,
       });
+    });
+  });
+
+  // #109: the bridge re-forwards fm_auth_state to the copilot. It must track
+  // token rotation, or a dashboard reload re-forwards a revoked refresh token
+  // and logs the extension out.
+  describe('fm_auth_state bridge sync (#109)', () => {
+    it('updates fm_auth_state on save when the bridge key already exists', async () => {
+      mockLocalStore['fm_auth_state'] = JSON.stringify({ access_token: 'old', refresh_token: 'r0' });
+
+      await authManager.saveAuthState(mockAuthState);
+
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('fm_auth_state', JSON.stringify(mockAuthState));
+      expect(JSON.parse(mockLocalStore['fm_auth_state']).access_token).toBe('test-token-123');
+    });
+
+    it('does NOT create fm_auth_state when the bridge key is absent (non-bridge session)', async () => {
+      await authManager.saveAuthState(mockAuthState);
+
+      expect(mockLocalStorage.setItem).not.toHaveBeenCalledWith('fm_auth_state', expect.anything());
+      expect('fm_auth_state' in mockLocalStore).toBe(false);
+    });
+
+    it('mirrors the rotated tokens into fm_auth_state after a silent refresh', async () => {
+      mockLocalStore['fm_auth_state'] = JSON.stringify({ access_token: 'old', refresh_token: 'r0' });
+      const expired: AuthState = { ...mockAuthState, refresh_token: 'r0', expires_at: Date.now() - 1000 };
+      mockGet.mockResolvedValue({ authState: expired });
+      const fetchSpy = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600 }),
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      await authManager.getAccessToken();
+
+      const bridge = JSON.parse(mockLocalStore['fm_auth_state']);
+      expect(bridge.access_token).toBe('rotated-access');
+      expect(bridge.refresh_token).toBe('rotated-refresh');
+    });
+
+    it('removes fm_auth_state on clearAuthState', async () => {
+      mockLocalStore['fm_auth_state'] = JSON.stringify({ access_token: 'x', refresh_token: 'r0' });
+
+      await authManager.clearAuthState();
+
+      expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('fm_auth_state');
+      expect('fm_auth_state' in mockLocalStore).toBe(false);
     });
   });
 
