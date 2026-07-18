@@ -60,6 +60,31 @@ export class AuthManager {
     if (browser?.storage) {
       await browser.storage.local.set({ authState });
     }
+    // Keep the extension-bridge copy current on every save — including token
+    // rotation (#109).
+    this.syncBridgeAuthState(authState);
+  }
+
+  /**
+   * Mirror the current auth state into `fm_auth_state`, the localStorage key the
+   * copilot's auth-bridge content script re-forwards to the extension.
+   *
+   * Written at login (LoginPage) but previously NOT on rotation, so after a
+   * silent refresh the bridge still held the ORIGINAL — now-revoked — refresh
+   * token. A dashboard reload then re-forwarded that revoked token and logged
+   * the extension out (#109). Keeping it in sync means the bridge always forwards
+   * the live token. Only UPDATE the key when it already exists (login creates it);
+   * never create it here, so a non-bridge dashboard session stays untouched.
+   */
+  private syncBridgeAuthState(authState: AuthState): void {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('fm_auth_state')) {
+        localStorage.setItem('fm_auth_state', JSON.stringify(authState));
+      }
+    } catch {
+      // localStorage unavailable/blocked — non-fatal; the bridge falls back to
+      // its page-load read and the extension's own refresh path.
+    }
   }
 
   /**
@@ -189,6 +214,15 @@ export class AuthManager {
     const browser = getBrowserStorage();
     if (browser?.storage) {
       await browser.storage.local.remove(['authState']);
+    }
+    // Also drop the bridge copy so a dashboard logout / definitive refresh
+    // rejection can't leave a revoked token for the bridge to re-forward (#109).
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('fm_auth_state');
+      }
+    } catch {
+      // localStorage unavailable/blocked — non-fatal.
     }
   }
 
