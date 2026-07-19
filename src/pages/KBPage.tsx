@@ -31,7 +31,7 @@ import { ConversionResults } from '../components/ConversionResults';
 import { DraftEditor } from '../components/DraftEditor';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CreateRunbookForm, type RunbookFormData } from '../components/CreateRunbookForm';
-import { useKBList } from '../hooks/useKBList';
+import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
@@ -254,7 +254,7 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
         />
         <select
           value={scopeFilter}
-          onChange={(e) => setScopeFilter(e.target.value as 'all' | 'global' | 'team' | 'personal')}
+          onChange={(e) => setScopeFilter(e.target.value as KnowledgeScope)}
           className={`w-40 ${inputClass}`}
           aria-label="Filter by scope"
         >

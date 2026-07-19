@@ -80,7 +80,7 @@ describe('KBPage — scope filter visibility by membership', () => {
       clearAuthState: vi.fn(),
     });
     mockUseAvailableScopes.mockReturnValue({
-      scopes: ['personal', 'team', 'organization', 'global'],
+      scopes: ['personal', 'team', 'global'],
       loading: false,
       error: null,
       refetch: vi.fn(),

@@ -4,7 +4,7 @@ import config from '../../config';
 import { authManager, deriveExpiresAt } from './AuthManager';
 import { AuthenticationError, type AuthState } from './types';
 
-export type PublishableScope = 'personal' | 'team' | 'organization' | 'global';
+export type PublishableScope = 'personal' | 'team' | 'global';
 
 interface AvailableScopesResponse {
   scopes: PublishableScope[];

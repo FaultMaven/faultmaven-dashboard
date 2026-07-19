@@ -4,7 +4,6 @@ import { useAvailableScopes } from '../hooks/useAvailableScopes';
 const SCOPE_LABELS: Record<string, string> = {
   personal: 'Personal',
   team: 'Team',
-  organization: 'Organization',
   global: 'Global',
 };
 
@@ -29,7 +28,6 @@ export interface RunbookFormData {
   diagnostic_steps: string;
   causes: string;
   prevention: string;
-  team_id?: string;
 }
 
 const inputClass =
