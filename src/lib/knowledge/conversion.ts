@@ -243,12 +243,10 @@ export class ConversionAPIError extends Error {
 export async function convertDocument(
   file: File,
   scope: string,
-  teamId?: string,
 ): Promise<ConversionResponse> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('scope', scope);
-  if (teamId) formData.append('team_id', teamId);
 
   const response = await makeAuthenticatedRequest(`${CONVERT_BASE}/convert`, {
     method: 'POST',
@@ -446,7 +444,6 @@ export async function createRunbookManually(data: {
   diagnostic_steps: string;
   causes: string;
   prevention: string;
-  team_id?: string;
 }): Promise<{ conversion_id: string; draft: ConversionDraft }> {
   const response = await makeAuthenticatedRequest(
     `${CONVERT_BASE}/runbooks/create`,

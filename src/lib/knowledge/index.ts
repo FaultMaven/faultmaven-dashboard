@@ -14,6 +14,7 @@ export {
 export type {
   KBDocument,
   AdminKBDocument,
+  ScopeCounts,
   DocumentListResponse,
   AdminDocumentListResponse,
   UploadDocumentParams,

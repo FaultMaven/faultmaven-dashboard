@@ -6,16 +6,11 @@ import {
   deleteAdminDocument,
   KBDocument,
   AdminKBDocument,
+  ScopeCounts,
 } from '../lib/api';
 
 export type KBScope = 'user' | 'admin';
 export type KnowledgeScope = 'all' | 'global' | 'team' | 'personal';
-
-export interface ScopeCounts {
-  global: number;
-  team: number;
-  personal: number;
-}
 
 export interface UseKBListResult<T extends KBDocument | AdminKBDocument> {
   documents: T[];

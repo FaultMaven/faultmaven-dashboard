@@ -6,12 +6,11 @@ import { useAvailableScopes } from '../hooks/useAvailableScopes';
 const SCOPE_LABELS: Record<string, string> = {
   personal: 'Personal',
   team: 'Team',
-  organization: 'Organization',
   global: 'Global',
 };
 
 interface ConvertUploadProps {
-  onConvert: (file: File, scope: string, teamId?: string) => Promise<void>;
+  onConvert: (file: File, scope: string) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
   error: ConversionErrorInfo | null;
