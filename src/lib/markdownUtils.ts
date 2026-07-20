@@ -13,6 +13,6 @@ export function stripHtmlComments(md: string): string {
  * Always strips HTML comments. Optionally strips YAML frontmatter.
  */
 export function prepareMarkdown(md: string, opts?: { frontmatter?: boolean }): string {
-  let result = opts?.frontmatter ? stripFrontmatter(md) : md;
+  const result = opts?.frontmatter ? stripFrontmatter(md) : md;
   return stripHtmlComments(result);
 }

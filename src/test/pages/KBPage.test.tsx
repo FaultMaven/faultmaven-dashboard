@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import KBPage from '../../pages/KBPage';
@@ -111,5 +111,35 @@ describe('KBPage — scope filter visibility by membership', () => {
     // we just verify the dialog text is correct when opened.
     // We test the ConfirmDialog props indirectly: check no "Delete Document" text anywhere
     expect(screen.queryByText('Delete Document')).not.toBeInTheDocument();
+  });
+
+  it('opens the "Add Runbook" overlay without a rules-of-hooks crash', async () => {
+    // Regression: OverlayPanel declared five useState calls AFTER an
+    // `if (!mode) return null` early return, and was mounted unconditionally.
+    // Setting overlayMode='upload' re-rendered the same fiber 0→5 hooks, so
+    // React threw "Rendered more hooks than during the previous render".
+    // canUpload requires standalone or admin.
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: false,
+      authState: { user: { user_id: 'u1' } },
+      clearAuthState: vi.fn(),
+    });
+
+    await act(async () => {
+      renderPage();
+    });
+
+    // Open the "+ New" dropdown, then choose "Add Runbook" (the upload flow).
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /New/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Add Runbook'));
+    });
+
+    // The overlay mounted: its heading appears and no crash was thrown.
+    expect(screen.getByRole('heading', { name: 'Add Runbook' })).toBeInTheDocument();
   });
 });
