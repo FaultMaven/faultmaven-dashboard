@@ -19,7 +19,14 @@ vi.mock('../knowledge/errors', () => ({
 }));
 
 import { makeAuthenticatedRequest } from '../knowledge/client';
-import { getCaseMessages, getAdminCases } from './api';
+import {
+  getCaseMessages,
+  getAdminCases,
+  listCases,
+  searchCases,
+  shareCaseWithTeam,
+  unshareCaseFromTeam,
+} from './api';
 
 const mockRequest = makeAuthenticatedRequest as ReturnType<typeof vi.fn>;
 
@@ -132,6 +139,78 @@ describe('getAdminCases', () => {
 
     expect(mockRequest).toHaveBeenCalledWith(
       '/api/v1/admin/cases?limit=20&offset=0&source=slack'
+    );
+  });
+});
+
+describe('team filter + share (ADR-013 §D4)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('listCases forwards team_id as a query param', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, has_more: false }),
+    });
+
+    await listCases({ team_id: 'team_42' }, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases?page=0&page_size=20&team_id=team_42'
+    );
+  });
+
+  it('listCases omits team_id when unset', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, has_more: false }),
+    });
+
+    await listCases({}, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases?page=0&page_size=20');
+  });
+
+  it('searchCases includes team_id in the body only when provided', async () => {
+    mockRequest.mockResolvedValue({ json: async () => [] });
+
+    await searchCases('disk full', 0, 20, 'team_42');
+    expect(mockRequest).toHaveBeenLastCalledWith(
+      '/api/v1/cases/search',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ query: 'disk full', page: 0, page_size: 20, team_id: 'team_42' }),
+      })
+    );
+
+    await searchCases('disk full', 0, 20);
+    expect(mockRequest).toHaveBeenLastCalledWith(
+      '/api/v1/cases/search',
+      expect.objectContaining({
+        body: JSON.stringify({ query: 'disk full', page: 0, page_size: 20 }),
+      })
+    );
+  });
+
+  it('shareCaseWithTeam POSTs the team id to the team-shares endpoint', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => ({}) });
+
+    await shareCaseWithTeam('case_x', 'team_42');
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases/case_x/team-shares',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ team_id: 'team_42' }),
+      })
+    );
+  });
+
+  it('unshareCaseFromTeam DELETEs the team-share sub-resource', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => ({}) });
+
+    await unshareCaseFromTeam('case_x', 'team_42');
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases/case_x/team-shares/team_42',
+      expect.objectContaining({ method: 'DELETE' })
     );
   });
 });

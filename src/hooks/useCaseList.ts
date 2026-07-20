@@ -29,7 +29,7 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
       setError(null);
       try {
         if (filters.search) {
-          const results = await searchCases(filters.search, nextPage, pageSize);
+          const results = await searchCases(filters.search, nextPage, pageSize, filters.team_id);
           setCases(results);
           setTotalCount(results.length);
           setPage(nextPage);

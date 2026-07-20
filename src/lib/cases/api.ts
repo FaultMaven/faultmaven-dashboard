@@ -38,6 +38,7 @@ export async function listCases(
     ...(filters.date_from && { date_from: filters.date_from }),
     ...(filters.date_to && { date_to: filters.date_to }),
     ...(filters.include_archived && { include_archived: 'true' }),
+    ...(filters.team_id && { team_id: filters.team_id }),
   };
 
   const queryString = buildQueryParams(params);
@@ -91,12 +92,18 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
 export async function searchCases(
   query: string,
   page = 0,
-  pageSize = 20
+  pageSize = 20,
+  teamId?: string
 ): Promise<CaseSummary[]> {
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, page, page_size: pageSize }),
+    body: JSON.stringify({
+      query,
+      page,
+      page_size: pageSize,
+      ...(teamId && { team_id: teamId }),
+    }),
   });
   await handleAPIResponse(response, 'Failed to search cases');
   return response.json();
@@ -136,6 +143,33 @@ export async function unarchiveCase(caseId: string): Promise<void> {
     method: 'POST',
   });
   await handleAPIResponse(response, 'Failed to unarchive case');
+}
+
+/**
+ * Share a case with a Team (ADR-013 §D4). Owner-only and the Team must be one
+ * the caller belongs to; the backend enforces both (403 otherwise). Idempotent —
+ * re-sharing an already-shared case is a no-op. Cloud-only: standalone has no
+ * teams, so the backend returns a clear "not available".
+ */
+export async function shareCaseWithTeam(caseId: string, teamId: string): Promise<void> {
+  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/team-shares`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ team_id: teamId }),
+  });
+  await handleAPIResponse(response, 'Failed to share case with team');
+}
+
+/**
+ * Remove a case's share to a Team (ADR-013 §D4). Owner-only. No body is
+ * returned (204); a 404 means the case was not shared with that Team.
+ */
+export async function unshareCaseFromTeam(caseId: string, teamId: string): Promise<void> {
+  const response = await makeAuthenticatedRequest(
+    `${CASES_BASE}/${caseId}/team-shares/${teamId}`,
+    { method: 'DELETE' }
+  );
+  await handleAPIResponse(response, 'Failed to unshare case from team');
 }
 
 /**
