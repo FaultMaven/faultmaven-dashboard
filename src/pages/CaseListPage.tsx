@@ -6,10 +6,12 @@ import { PaginationControls } from '../components/PaginationControls';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { useCaseList } from '../hooks/useCaseList';
+import { useTeamSharing } from '../hooks/useTeamSharing';
 import { logoutAuth } from '../lib/api';
 
 export default function CaseListPage() {
   const { clearAuthState } = useAuth();
+  const { teams, teamsById } = useTeamSharing();
   const { cases, totalCount, loading, error, page, pageSize, filters, setFilters, loadPage, archiveById } =
     useCaseList();
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
@@ -57,7 +59,7 @@ export default function CaseListPage() {
           </label>
         </div>
 
-        <CaseFiltersBar filters={filters} onChange={setFilters} />
+        <CaseFiltersBar filters={filters} onChange={setFilters} teams={teams} />
 
         {error && (
           <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
@@ -74,6 +76,7 @@ export default function CaseListPage() {
         <CaseTable
           cases={cases}
           loading={loading}
+          teamsById={teamsById}
           renderActions={(c) => {
             // Archive available for terminal cases (resolved/closed) not yet archived.
             const canArchive = c.is_terminal && !c.is_archived;
