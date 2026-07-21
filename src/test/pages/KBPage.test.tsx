@@ -1,4 +1,4 @@
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import KBPage from '../../pages/KBPage';
@@ -111,6 +111,46 @@ describe('KBPage — scope filter visibility by membership', () => {
     // we just verify the dialog text is correct when opened.
     // We test the ConfirmDialog props indirectly: check no "Delete Document" text anywhere
     expect(screen.queryByText('Delete Document')).not.toBeInTheDocument();
+  });
+
+  it('confirms before batch-removing runbooks and reports a partial failure', async () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      authState: { user: { user_id: 'u1' } },
+      clearAuthState: vi.fn(),
+    });
+    const api = await import('../../lib/api');
+    const listDocuments = api.listDocuments as ReturnType<typeof vi.fn>;
+    const deleteDocument = api.deleteDocument as ReturnType<typeof vi.fn>;
+    const docs = [
+      { document_id: 'd1', title: 'Runbook One', document_type: 'runbook', tags: [], scope: 'personal', created_at: '2024-01-01T00:00:00Z' },
+      { document_id: 'd2', title: 'Runbook Two', document_type: 'runbook', tags: [], scope: 'personal', created_at: '2024-01-01T00:00:00Z' },
+    ];
+    listDocuments.mockResolvedValue({ documents: docs, total_count: 2, limit: 20, offset: 0, scope_counts: { global: 0, team: 0, personal: 2 } });
+    // First delete succeeds, second fails → a partial failure.
+    deleteDocument.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('boom'));
+
+    await act(async () => { renderPage(); });
+    expect(await screen.findByText('Runbook One')).toBeInTheDocument();
+
+    // Select all (first checkbox), then click the batch Remove.
+    const [selectAll] = screen.getAllByRole('checkbox');
+    await act(async () => { fireEvent.click(selectAll); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Remove' })); });
+
+    // A confirm dialog gates the destructive action (nothing deleted yet).
+    expect(screen.getByRole('heading', { name: /Remove 2 runbooks/ })).toBeInTheDocument();
+    expect(deleteDocument).not.toHaveBeenCalled();
+
+    // Confirm → both deletes attempted, and the partial failure is surfaced.
+    // Scope to the dialog: the toolbar also has a "Remove" button.
+    const dialog = screen.getByRole('dialog');
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    });
+    expect(deleteDocument).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText(/1 runbook could not be removed/)).toBeInTheDocument();
   });
 
   it('opens the "Add Runbook" overlay without a rules-of-hooks crash', async () => {

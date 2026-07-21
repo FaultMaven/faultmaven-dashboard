@@ -8,6 +8,20 @@ import {
 } from '../lib/api/oauth';
 import { useAuth } from '../context/AuthContext';
 
+// Build the OAuth error redirect (RFC 6749 §4.1.2.1). Each value is
+// percent-encoded so a redirect_uri that already carries a query, or a
+// `state` containing reserved characters (&, =, #), can't corrupt the
+// parameters the extension parses back out.
+function denyRedirectUrl(redirectUri: string, state: string): string {
+  const params = new URLSearchParams({
+    error: 'access_denied',
+    error_description: 'User denied authorization',
+    state,
+  });
+  const separator = redirectUri.includes('?') ? '&' : '?';
+  return `${redirectUri}${separator}${params.toString()}`;
+}
+
 export default function OAuthAuthorizePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -101,11 +115,9 @@ export default function OAuthAuthorizePage() {
         state: consent.state,
       });
 
-      const errorUrl = `${consent.redirect_uri}?error=access_denied&error_description=User denied authorization&state=${consent.state}`;
-      window.location.href = errorUrl;
+      window.location.href = denyRedirectUrl(consent.redirect_uri, consent.state);
     } catch {
-      const errorUrl = `${consent.redirect_uri}?error=access_denied&error_description=User denied authorization&state=${consent.state}`;
-      window.location.href = errorUrl;
+      window.location.href = denyRedirectUrl(consent.redirect_uri, consent.state);
     }
   }
 

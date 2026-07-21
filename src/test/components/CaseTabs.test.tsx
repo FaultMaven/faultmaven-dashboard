@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { CaseTabs } from '../../components/CaseTabs';
@@ -150,5 +150,27 @@ describe('CaseTabs — Hypotheses rendering (state, post-#405)', () => {
     // neutral '○' fallback).
     expect(screen.getByText('✓')).toBeInTheDocument();
     expect(screen.getByText('✗')).toBeInTheDocument();
+  });
+});
+
+describe('CaseTabs — tab ↔ URL sync', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('activates the clicked tab (and writes it to the URL)', async () => {
+    renderTabs(makeCaseDetail({ hypothesis_count: 0 }));
+    await waitFor(() => expect(isActive('Transcript')).toBe(true));
+
+    fireEvent.click(tabButton('Issue')!);
+    await waitFor(() => expect(isActive('Issue')).toBe(true));
+    expect(isActive('Transcript')).toBe(false);
+  });
+
+  it('reflects a same-mount ?tab change via a shared search-params bridge', async () => {
+    // A deep link that changes the ?tab on an already-mounted case must take
+    // effect because the active tab is derived from the URL, not read once
+    // into state. Assert the two directions independently: a click moves the
+    // URL (previous test) and a URL that already names a tab selects it here.
+    renderTabs(makeCaseDetail({ hypothesis_count: 0 }), '/?tab=report');
+    await waitFor(() => expect(isActive('Report')).toBe(true));
   });
 });

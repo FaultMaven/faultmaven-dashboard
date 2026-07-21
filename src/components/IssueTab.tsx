@@ -20,6 +20,12 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
   const hasRootCause = milestones.includes('root_cause_identified');
   const hasSolution = milestones.includes('solution_verified');
 
+  // Only a genuinely resolved case earns success-green. `closed` is terminal
+  // but not necessarily resolved (e.g. abandoned/duplicate), and the active
+  // states aren't outcomes at all — so those read neutral, not green.
+  const stateColor =
+    caseDetail.state === 'resolved' ? 'text-fm-success font-medium' : 'text-fm-text-primary font-medium';
+
   return (
     <div className="py-1 space-y-4">
       {/* Problem Statement */}
@@ -40,7 +46,7 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
         <div className="flex items-center gap-4 text-sm text-fm-text-secondary">
           <div>
             <span className="text-fm-text-tertiary">Status: </span>
-            <span className="text-fm-success font-medium capitalize">{caseDetail.state}</span>
+            <span className={`capitalize ${stateColor}`}>{caseDetail.state}</span>
           </div>
           {caseDetail.resolved_at && (
             <div>

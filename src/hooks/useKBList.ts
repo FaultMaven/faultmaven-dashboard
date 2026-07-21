@@ -18,6 +18,7 @@ export interface UseKBListResult<T extends KBDocument | AdminKBDocument> {
   totalCount: number;
   scopeCounts: ScopeCounts;
   loading: boolean;
+  error: string | null;
   page: number;
   pageSize: number;
   search: string;
@@ -33,6 +34,7 @@ export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocu
   const [totalCount, setTotalCount] = useState(0);
   const [scopeCounts, setScopeCounts] = useState<ScopeCounts>({ global: 0, team: 0, personal: 0 });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [scopeFilter, setScopeFilter] = useState<KnowledgeScope>('all');
@@ -54,6 +56,7 @@ export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocu
     async (nextPage: number) => {
       const reqId = ++reqIdRef.current;
       setLoading(true);
+      setError(null);
       try {
         const params: { limit: number; offset: number; scope?: string } = {
           limit: pageSize,
@@ -70,12 +73,26 @@ export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocu
           response = await listUserDocuments(params);
         }
         if (reqId !== reqIdRef.current || !mountedRef.current) return; // superseded
+        // The page came back empty on a non-first page — it was emptied out
+        // from under us (e.g. deleting its last row(s), single or batch). Fall
+        // back to the previous page rather than stranding the user on a blank
+        // list with a live "Prev". The recursion re-checks and unwinds to a
+        // populated page (or page 0). Reading emptiness off the fresh response
+        // (not stale `documents`) makes this correct under batch deletes too.
+        if (response.documents.length === 0 && nextPage > 0) {
+          return loadPage(nextPage - 1);
+        }
         setDocuments(response.documents);
         setTotalCount(response.total_count);
         if (response.scope_counts) {
           setScopeCounts(response.scope_counts);
         }
         setPage(nextPage);
+      } catch (err) {
+        // Without a catch the rejection was unhandled and the list silently
+        // stayed empty; surface it so the page can render an error state.
+        if (reqId !== reqIdRef.current || !mountedRef.current) return;
+        setError(err instanceof Error ? err.message : 'Failed to load documents');
       } finally {
         // Only the latest request may clear the spinner: a superseded request
         // settling first must not flip loading off while a newer one is pending.
@@ -96,6 +113,9 @@ export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocu
       } else {
         await deleteUserDocument(id);
       }
+      // Reload the current page; loadPage falls back to the previous page if
+      // this one is now empty (last row removed), so no stale-`page` math is
+      // needed here and it stays correct under batch deletes.
       await loadPage(page);
     },
     [scope, loadPage, page]
@@ -116,6 +136,7 @@ export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocu
     totalCount,
     scopeCounts,
     loading,
+    error,
     page,
     pageSize,
     search,

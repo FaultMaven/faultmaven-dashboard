@@ -48,8 +48,10 @@ class LocalStorageAdapter {
 
   async set(items: StorageData): Promise<void> {
     for (const [key, value] of Object.entries(items)) {
-      const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-      localStorage.setItem(`faultmaven_${key}`, serialized);
+      // Always JSON-serialize so `get` (which JSON.parses) round-trips the
+      // original type. Writing strings verbatim made `set("42")` read back as
+      // the number 42 (JSON.parse coerces), and `"true"` as a boolean.
+      localStorage.setItem(`faultmaven_${key}`, JSON.stringify(value));
     }
   }
 

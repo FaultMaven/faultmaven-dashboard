@@ -503,7 +503,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
 }
 
 export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
   // so many cases have none. Show the tab only when the case actually produced
@@ -521,14 +521,26 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   ];
   const tabLabels = allTabs.filter((t) => t.id !== 'hypotheses' || showHypotheses);
 
-  // Resolve the initial tab against what's actually visible — a deep link to
-  // ?tab=hypotheses on a case without the tab (or any unknown value) falls back
-  // to Transcript rather than rendering a blank panel.
+  // The active tab is derived from the URL (single source of truth), so a
+  // ?tab= deep link that changes on the same mounted case takes effect, and a
+  // click updates the URL — keeping copied links current. A deep link to a tab
+  // that isn't visible (e.g. ?tab=hypotheses on a case with none) or an unknown
+  // value falls back to Transcript rather than rendering a blank panel.
   const requestedTab = searchParams.get('tab') as Tab | null;
-  const initialTab: Tab = tabLabels.some((t) => t.id === requestedTab)
+  const activeTab: Tab = tabLabels.some((t) => t.id === requestedTab)
     ? (requestedTab as Tab)
     : 'transcript';
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  const setActiveTab = (id: Tab) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', id);
+        return next;
+      },
+      { replace: true },
+    );
+  };
 
   const tabBtnBase = 'px-3 py-1.5 text-sm font-medium border-b-2 transition-colors';
   const tabActive = 'border-fm-accent text-fm-accent';

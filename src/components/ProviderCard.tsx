@@ -34,13 +34,38 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
   const [modelSaved, setModelSaved] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Sync model input when provider data refreshes
   useEffect(() => {
     setModelInput(provider.selected_model ?? '');
   }, [provider.selected_model]);
+
+  // Clear the "Saved" flash timer if the card unmounts mid-flash.
+  useEffect(() => () => clearTimeout(savedTimerRef.current), []);
+
+  // Persist a model choice. Both the typed-Save path and the suggestion-click
+  // path funnel here so a failure is surfaced (previously swallowed) instead of
+  // silently reverting on the next refresh.
+  const saveModel = async (model: string) => {
+    setSavingModel(true);
+    setModelSaved(false);
+    setModelError(null);
+    try {
+      await updateLLMConfig({ provider_name: provider.name, model });
+      setModelSaved(true);
+      clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setModelSaved(false), 2000);
+      onUpdated();
+    } catch (err) {
+      setModelError(err instanceof Error ? err.message : 'Failed to save model');
+    } finally {
+      setSavingModel(false);
+    }
+  };
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -72,30 +97,14 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
   const handleSaveModel = async () => {
     const trimmed = modelInput.trim();
     if (!trimmed || trimmed === provider.selected_model) return;
-    setSavingModel(true);
-    setModelSaved(false);
-    try {
-      await updateLLMConfig({ provider_name: provider.name, model: trimmed });
-      setModelSaved(true);
-      setTimeout(() => setModelSaved(false), 2000);
-      onUpdated();
-    } catch {
-      // Will revert on next fetch
-    } finally {
-      setSavingModel(false);
-    }
+    await saveModel(trimmed);
   };
 
   const handleSelectSuggestion = (model: string) => {
     setModelInput(model);
     setShowSuggestions(false);
     if (model !== provider.selected_model) {
-      setSavingModel(true);
-      setModelSaved(false);
-      updateLLMConfig({ provider_name: provider.name, model })
-        .then(() => { setModelSaved(true); setTimeout(() => setModelSaved(false), 2000); onUpdated(); })
-        .catch(() => {})
-        .finally(() => setSavingModel(false));
+      void saveModel(model);
     }
   };
 
@@ -232,6 +241,7 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
             )}
             {savingModel && <span className="text-xs text-fm-text-tertiary">Saving...</span>}
             {modelSaved && <span className="text-xs text-fm-success">Saved</span>}
+            {modelError && <span className="text-xs text-fm-critical">{modelError}</span>}
           </>
         )}
         {modelSource && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { ProviderCard } from '../components/ProviderCard';
 import { FeatureStatusPanel } from '../components/FeatureStatusPanel';
@@ -23,21 +23,26 @@ export default function LLMConfigPage() {
     await clearAuthState();
   };
 
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(savedTimerRef.current), []);
+
   const loadConfig = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [cfg, env] = await Promise.all([
-        getLLMConfig().catch(() => null),
-        getEnvConfigStatus().catch(() => null),
-      ]);
-      setConfig(cfg);
-      setEnvStatus(env);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load configuration');
-    } finally {
-      setLoading(false);
+    // The config drives the whole page; the env-status panels are secondary and
+    // simply hide when absent. So a config failure surfaces an error (with
+    // Retry), while a failing env-status probe alone degrades gracefully.
+    const [cfgResult, envResult] = await Promise.allSettled([
+      getLLMConfig(),
+      getEnvConfigStatus(),
+    ]);
+    setConfig(cfgResult.status === 'fulfilled' ? cfgResult.value : null);
+    setEnvStatus(envResult.status === 'fulfilled' ? envResult.value : null);
+    if (cfgResult.status === 'rejected') {
+      const reason = cfgResult.reason;
+      setError(reason instanceof Error ? reason.message : 'Failed to load configuration');
     }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -54,7 +59,8 @@ export default function LLMConfigPage() {
         fallback_chain: config.fallback_chain,
       });
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
       loadConfig();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save configuration');
@@ -87,8 +93,15 @@ export default function LLMConfigPage() {
         )}
 
         {error && (
-          <div className="text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3 mb-4">
-            {error}
+          <div className="text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3 mb-4 flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <button
+              onClick={loadConfig}
+              disabled={loading}
+              className="px-3 py-1 text-xs font-medium text-fm-critical border border-fm-critical-border rounded-fm-btn hover:bg-fm-critical/10 transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              Retry
+            </button>
           </div>
         )}
 

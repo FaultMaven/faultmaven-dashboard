@@ -253,6 +253,36 @@ describe('handleAPIResponse', () => {
     }
   });
 
+  it('prefers the body error_code over the HTTP statusText', async () => {
+    const response = new Response(JSON.stringify({ detail: 'Nope', error_code: 'CASE_TERMINAL' }), {
+      status: 409,
+      statusText: 'Conflict',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    try {
+      await handleAPIResponse(response);
+      expect.fail('Should have thrown APIError');
+    } catch (error) {
+      expect((error as APIError).errorCode).toBe('CASE_TERMINAL');
+    }
+  });
+
+  it('falls back to statusText when the body carries no error_code', async () => {
+    const response = new Response(JSON.stringify({ detail: 'Nope' }), {
+      status: 400,
+      statusText: 'Bad Request',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    try {
+      await handleAPIResponse(response);
+      expect.fail('Should have thrown APIError');
+    } catch (error) {
+      expect((error as APIError).errorCode).toBe('Bad Request');
+    }
+  });
+
   it('should handle 401 unauthorized errors', async () => {
     const response = new Response(JSON.stringify({ detail: 'Unauthorized' }), {
       status: 401,
