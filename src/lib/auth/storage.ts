@@ -1,7 +1,9 @@
-// Browser storage adapter for authentication state
-
-// Note: Storage adapter is initialized in main.tsx
-// Use the global browser object provided by storage adapter
+// Ambient type for the `window.browser` storage shim.
+//
+// The runtime shim itself is installed by `lib/storage.ts` (imported for
+// side-effects in main.tsx). This file only augments the global `Window` type
+// so `window.browser` is typed wherever AuthManager reads it — it is a
+// declaration-only module (no runtime export).
 declare global {
   interface Window {
     browser?: {
@@ -16,4 +18,6 @@ declare global {
   }
 }
 
-export const browser = typeof window !== 'undefined' ? window.browser : undefined;
+// Declaration-only module: `export {}` keeps it a module (so `declare global`
+// augments rather than replaces the global scope) without exporting runtime code.
+export {};

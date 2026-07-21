@@ -22,6 +22,14 @@ interface AuthContextValue {
   isAdmin: boolean;
   deployment: Deployment | null;
   role: DashboardRole | null;
+  /**
+   * Deployment-config-driven sign-in URL for cloud (OIDC) deployments, resolved
+   * from the backend's `/auth/config`. `null` in standalone (passwordless
+   * dev-login) or when the backend has not advertised an IdP authorize URL. The
+   * dashboard never hardcodes the IdP (WorkOS) — it follows whatever the
+   * deployment's auth config advertises.
+   */
+  loginUrl: string | null;
   setAuthState: (state: AuthState | null) => Promise<void>;
   clearAuthState: () => Promise<void>;
 }
@@ -34,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [role, setRole] = useState<DashboardRole | null>(null);
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -45,16 +54,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Detect deployment from backend auth config (public endpoint, no auth needed)
       let dep: Deployment = 'standalone';
+      let resolvedLoginUrl: string | null = null;
       try {
         const res = await fetch(`${config.apiUrl}/api/v1/auth/config`);
         if (res.ok) {
-          const authConfig: { auth_mode?: string } = await res.json();
+          const authConfig: {
+            auth_mode?: string;
+            oauth?: { authorize_url?: string } | null;
+          } = await res.json();
           dep = authConfig.auth_mode === 'oauth' ? 'cloud' : 'standalone';
+          // Cloud sign-in target comes from the deployment's advertised IdP
+          // authorize URL — never a hardcoded provider. Relative URLs resolve
+          // against the API origin.
+          const advertised = authConfig.oauth?.authorize_url;
+          if (dep === 'cloud' && advertised) {
+            resolvedLoginUrl = advertised.startsWith('http')
+              ? advertised
+              : `${config.apiUrl}${advertised.startsWith('/') ? '' : '/'}${advertised}`;
+          }
         }
       } catch {
         // Network error or backend unavailable — default to standalone
       }
       setDeployment(dep);
+      setLoginUrl(resolvedLoginUrl);
 
       // Derive role from JWT roles array and deployment
       if (state) {
@@ -64,6 +87,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     };
     load();
+  }, []);
+
+  // React to AuthManager-initiated clears (a definitive refresh failure wipes
+  // storage from deep inside the API layer). Without this, React state still
+  // said "authenticated" and the user was stuck on error banners; now the
+  // context drops its state so ProtectedRoute routes back to login.
+  useEffect(() => {
+    const unsubscribe = authManager.onAuthCleared(() => {
+      setAuthStateInternal(null);
+      setRole(null);
+    });
+    return unsubscribe;
   }, []);
 
   const setAuthState = useCallback(
@@ -99,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: !!authState?.user?.roles?.includes('admin') || !!authState?.user?.is_admin,
         deployment,
         role,
+        loginUrl,
         setAuthState,
         clearAuthState,
       }}

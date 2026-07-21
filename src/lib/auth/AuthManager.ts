@@ -42,6 +42,14 @@ export class AuthManager {
   // but only one /auth/refresh call should fire (rotation revokes the old token).
   private refreshInFlight: Promise<string | null> | null = null;
 
+  // Listeners notified whenever auth state is cleared — logout OR an
+  // AuthManager-initiated wipe (e.g. a definitive refresh failure). React
+  // context subscribes so it can drop its cached auth state and route back to
+  // login instead of leaving the user on an error banner with stale
+  // "authenticated" state; process-wide caches (e.g. available KB scopes)
+  // subscribe so the next identity never sees the previous user's values.
+  private authClearedListeners = new Set<() => void>();
+
   constructor() {
     // Dev-mode assertion: Ensure storage adapter is initialized
     if (import.meta.env.DEV && typeof window !== 'undefined' && !getBrowserStorage()?.storage) {
@@ -85,6 +93,72 @@ export class AuthManager {
       // localStorage unavailable/blocked — non-fatal; the bridge falls back to
       // its page-load read and the extension's own refresh path.
     }
+  }
+
+  /**
+   * Subscribe to auth-cleared events. The listener fires after storage is wiped
+   * (logout or a definitive refresh failure). Returns an unsubscribe function.
+   */
+  onAuthCleared(listener: () => void): () => void {
+    this.authClearedListeners.add(listener);
+    return () => {
+      this.authClearedListeners.delete(listener);
+    };
+  }
+
+  private notifyAuthCleared(): void {
+    for (const listener of this.authClearedListeners) {
+      try {
+        listener();
+      } catch (error: unknown) {
+        console.error('[AuthManager] auth-cleared listener failed:', error);
+      }
+    }
+  }
+
+  /**
+   * Create/refresh the extension-bridge mirror (`fm_auth_state`).
+   *
+   * Only the copilot auth-bridge flow needs this localStorage key. A plain
+   * dashboard session must NEVER create it, so that syncBridgeAuthState's
+   * "update only when already present" guard keeps ordinary sessions from ever
+   * mirroring tokens (incl. the refresh token) into plain localStorage. Call
+   * this exclusively from the extension-login path.
+   */
+  writeBridgeAuthState(authState: AuthState): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('fm_auth_state', JSON.stringify(authState));
+      }
+    } catch {
+      // localStorage unavailable/blocked — non-fatal.
+    }
+  }
+
+  /**
+   * Whether the extension-bridge mirror currently exists. Lets the
+   * extension-login screen decide what to render without reading raw
+   * localStorage at the call site.
+   */
+  hasBridgeAuthState(): boolean {
+    try {
+      return typeof localStorage !== 'undefined' && localStorage.getItem('fm_auth_state') !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Read the stored access token verbatim, WITHOUT triggering a refresh.
+   *
+   * For best-effort logout: getAccessToken would silently refresh an expired
+   * session, minting a rotated refresh token only to discard it on logout and
+   * leaving a live token orphaned server-side. Returns null when no session is
+   * stored.
+   */
+  async peekAccessToken(): Promise<string | null> {
+    const authState = await this.readState();
+    return authState?.access_token ?? null;
   }
 
   /**
@@ -224,6 +298,9 @@ export class AuthManager {
     } catch {
       // localStorage unavailable/blocked — non-fatal.
     }
+    // Notify subscribers (React context, per-user caches) AFTER storage is wiped
+    // so they observe a clean, logged-out world.
+    this.notifyAuthCleared();
   }
 
   /**
