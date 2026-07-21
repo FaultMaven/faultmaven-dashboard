@@ -31,8 +31,6 @@ function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
     organization_id: 'org1',
     current_turn: 5,
     total_milestones: 5,
-    is_archived: false,
-    is_stuck: false,
     is_terminal: false,
     turns_without_progress: 0,
     current_stage: null,

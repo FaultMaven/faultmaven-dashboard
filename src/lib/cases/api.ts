@@ -5,7 +5,6 @@ import type {
   CaseSummary,
   CaseListResponse,
   CaseFilters,
-  CaseAnnotation,
   CaseMessage,
   CaseMessagesResponse,
   CaseReport,
@@ -38,7 +37,6 @@ export async function listCases(
     offset: page * pageSize,
     ...(filters.state && { state: filters.state }),
     ...(filters.source && { source: filters.source }),
-    ...(filters.include_archived && { include_archived: 'true' }),
     ...(filters.team_id && { team_id: filters.team_id }),
   };
 
@@ -108,42 +106,6 @@ export async function searchCases(
   });
   await handleAPIResponse(response, 'Failed to search cases');
   return response.json();
-}
-
-/**
- * Annotate a case with resolution notes or update its status.
- */
-export async function annotateCase(
-  caseId: string,
-  annotation: CaseAnnotation
-): Promise<void> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(annotation),
-  });
-  await handleAPIResponse(response, 'Failed to update case');
-}
-
-/**
- * Archive a terminal case. Hides it from the default list view.
- * Non-destructive and reversible via unarchiveCase().
- */
-export async function archiveCase(caseId: string): Promise<void> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/archive`, {
-    method: 'POST',
-  });
-  await handleAPIResponse(response, 'Failed to archive case');
-}
-
-/**
- * Unarchive a case. Restores it to the default list view.
- */
-export async function unarchiveCase(caseId: string): Promise<void> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/unarchive`, {
-    method: 'POST',
-  });
-  await handleAPIResponse(response, 'Failed to unarchive case');
 }
 
 /**

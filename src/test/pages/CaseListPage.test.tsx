@@ -1,13 +1,14 @@
-import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import CaseListPage from '../../pages/CaseListPage';
 
-// Shared mock setup (same pattern as App.test.tsx)
+// Shared mock setup (same pattern as App.test.tsx). The Dashboard is read-only
+// for cases (D1) — there is no archive/mutation client to mock here.
 vi.mock('../../lib/api', () => ({
   logoutAuth: vi.fn().mockResolvedValue(undefined),
   listCases: vi.fn(),
-  archiveCase: vi.fn().mockResolvedValue(undefined),
+  searchCases: vi.fn(),
   authManager: {
     getAuthState: vi.fn().mockResolvedValue(null),
     saveAuthState: vi.fn(),
@@ -34,10 +35,9 @@ vi.mock('../../hooks/useNavigationItems', () => ({
   ]),
 }));
 
-import { listCases, archiveCase } from '../../lib/api';
+import { listCases } from '../../lib/api';
 
 const mockListCases = listCases as ReturnType<typeof vi.fn>;
-const mockArchiveCase = archiveCase as ReturnType<typeof vi.fn>;
 
 const sampleCase = {
   case_id: 'case-1',
@@ -55,8 +55,8 @@ const sampleCase = {
   current_turn: 5,
   milestones_completed: 2,
   total_milestones: 5,
-  is_stuck: false,
   is_terminal: false,
+  shared_team_ids: [],
 };
 
 function renderPage() {
@@ -67,7 +67,7 @@ function renderPage() {
   );
 }
 
-describe('CaseListPage', () => {
+describe('CaseListPage (read-only, D1)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockListCases.mockResolvedValue({
@@ -110,7 +110,7 @@ describe('CaseListPage', () => {
     });
   });
 
-  it('shows Archive button only for resolved cases', async () => {
+  it('renders no case-mutation controls (no Archive button, no include-archived toggle)', async () => {
     const resolvedCase = { ...sampleCase, state: 'resolved' as const, is_terminal: true };
     mockListCases.mockResolvedValue({
       cases: [resolvedCase],
@@ -124,58 +124,9 @@ describe('CaseListPage', () => {
       renderPage();
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /archive/i })).toBeInTheDocument();
-    });
-  });
-
-  it('opens confirm dialog when Archive is clicked', async () => {
-    const resolvedCase = { ...sampleCase, state: 'resolved' as const, is_terminal: true };
-    mockListCases.mockResolvedValue({
-      cases: [resolvedCase],
-      total_count: 1,
-      page: 0,
-      page_size: 20,
-      has_more: false,
-    });
-
-    await act(async () => {
-      renderPage();
-    });
-
-    await waitFor(() => screen.getByRole('button', { name: /^archive$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^archive$/i }));
-
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Archive Case')).toBeInTheDocument();
-  });
-
-  it('calls archiveCase when confirm dialog is confirmed', async () => {
-    const resolvedCase = { ...sampleCase, state: 'resolved' as const, is_terminal: true };
-    mockListCases.mockResolvedValue({
-      cases: [resolvedCase],
-      total_count: 1,
-      page: 0,
-      page_size: 20,
-      has_more: false,
-    });
-
-    await act(async () => {
-      renderPage();
-    });
-
-    // Click the Archive button in the table row
-    await waitFor(() => screen.getByRole('button', { name: /^archive$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^archive$/i }));
-
-    // Click the Archive confirm button inside the dialog
-    const dialog = await screen.findByRole('dialog');
-    const confirmBtn = dialog.querySelector('button:last-child') as HTMLElement;
-    await act(async () => {
-      fireEvent.click(confirmBtn);
-    });
-
-    await waitFor(() => expect(mockArchiveCase).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('Database Outage')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /archive/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/include archived/i)).not.toBeInTheDocument();
   });
 
   it('shows empty state when no cases', async () => {

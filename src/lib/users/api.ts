@@ -1,21 +1,11 @@
 import { makeAuthenticatedRequest, buildQueryParams } from '../knowledge/client';
 import { handleAPIResponse } from '../knowledge/errors';
-import type {
-  UserProfile,
-  UserListResponse,
-  UserInviteRequest,
-  UserRoleUpdate,
-} from '../../types/users';
+import type { UserListResponse, UserRoleUpdate } from '../../types/users';
 
-// [PENDING: backend endpoint] — All user management endpoints require new
-// backend implementation. Currently only available via CLI scripts.
-// See dashboard-phase1-specification.md §9 Backend Gaps.
 const USERS_BASE = '/api/v1/admin/users';
 
 /**
- * List all users on the platform.
- *
- * [PENDING: backend endpoint]
+ * List all users on the platform (`GET /api/v1/admin/users`).
  */
 export async function listUsers(
   page = 0,
@@ -40,45 +30,45 @@ export async function listUsers(
 }
 
 /**
- * Invite a new user to the platform.
+ * Set a user's admin membership to match the Dashboard's two-value role model
+ * (`admin` / `user`), against the real backend RBAC endpoints:
+ *   - promote → `POST /admin/users/{id}/roles` with `{role:'admin'}` (replaces roles)
+ *   - demote  → `DELETE /admin/users/{id}/roles/admin` (downgrades to viewer)
  *
- * [PENDING: backend endpoint]
- */
-export async function inviteUser(request: UserInviteRequest): Promise<UserProfile> {
-  const response = await makeAuthenticatedRequest(USERS_BASE, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  });
-  await handleAPIResponse(response, 'Failed to invite user');
-  return response.json();
-}
-
-/**
- * Update a user's role.
- *
- * [PENDING: backend endpoint]
+ * The backend role set is `admin | member | viewer`; the Dashboard only
+ * distinguishes admin from non-admin, so a demote drops the admin role and the
+ * backend settles the user at the minimum-privilege `viewer`. Both writes revoke
+ * the target's JWTs server-side. Admins cannot change their own role (backend 403).
  */
 export async function updateUserRole(
   userId: string,
   update: UserRoleUpdate
 ): Promise<void> {
-  const response = await makeAuthenticatedRequest(`${USERS_BASE}/${userId}/role`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(update),
+  if (update.role === 'admin') {
+    const response = await makeAuthenticatedRequest(`${USERS_BASE}/${userId}/roles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'admin' }),
+    });
+    await handleAPIResponse(response, 'Failed to update user role');
+    return;
+  }
+
+  const response = await makeAuthenticatedRequest(`${USERS_BASE}/${userId}/roles/admin`, {
+    method: 'DELETE',
   });
   await handleAPIResponse(response, 'Failed to update user role');
 }
 
 /**
- * Remove a user from the platform.
- *
- * [PENDING: backend endpoint]
+ * Deactivate a user (`POST /admin/users/{id}/deactivate`): sets `is_active=false`
+ * and revokes all their JWT tokens. This is the platform's "remove access"
+ * action — provisioning/removal proper moves to the IdP/SCIM (D3). Admins cannot
+ * deactivate themselves (backend 403).
  */
-export async function removeUser(userId: string): Promise<void> {
-  const response = await makeAuthenticatedRequest(`${USERS_BASE}/${userId}`, {
-    method: 'DELETE',
+export async function deactivateUser(userId: string): Promise<void> {
+  const response = await makeAuthenticatedRequest(`${USERS_BASE}/${userId}/deactivate`, {
+    method: 'POST',
   });
-  await handleAPIResponse(response, 'Failed to remove user');
+  await handleAPIResponse(response, 'Failed to deactivate user');
 }

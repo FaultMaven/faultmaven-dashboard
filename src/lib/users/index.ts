@@ -1,14 +1,12 @@
 export {
   listUsers,
-  inviteUser,
   updateUserRole,
-  removeUser,
+  deactivateUser,
 } from './api';
 
 export type {
   UserProfile,
   UserListResponse,
-  UserInviteRequest,
   UserRoleUpdate,
   DashboardRoleValue,
 } from '../../types/users';

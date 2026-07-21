@@ -3,10 +3,10 @@ import type { UserProfile, DashboardRoleValue } from '../types/users';
 interface UserTableProps {
   users: UserProfile[];
   onChangeRole: (userId: string, role: DashboardRoleValue) => void;
-  onRemove: (userId: string) => void;
+  onDeactivate: (userId: string) => void;
 }
 
-export function UserTable({ users, onChangeRole, onRemove }: UserTableProps) {
+export function UserTable({ users, onChangeRole, onDeactivate }: UserTableProps) {
   if (users.length === 0) {
     return (
       <div className="py-12 text-center">
@@ -49,10 +49,10 @@ export function UserTable({ users, onChangeRole, onRemove }: UserTableProps) {
               </td>
               <td className="px-4 py-3 text-right">
                 <button
-                  onClick={() => onRemove(user.user_id)}
+                  onClick={() => onDeactivate(user.user_id)}
                   className="text-xs text-fm-text-tertiary hover:text-fm-critical transition-colors"
                 >
-                  Remove
+                  Deactivate
                 </button>
               </td>
             </tr>

@@ -1,34 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
 import { MilestoneProgress } from '../components/MilestoneProgress';
 import { CaseTabs } from '../components/CaseTabs';
-import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TeamShareBadge } from '../components/TeamShareBadge';
 import { ShareCaseModal } from '../components/ShareCaseModal';
 import { useAuth } from '../context/AuthContext';
 import { useTeamSharing } from '../hooks/useTeamSharing';
-import { getCaseDetail, archiveCase, annotateCase, logoutAuth } from '../lib/api';
-import type { CaseDetail, CaseAnnotation } from '../types/cases';
+import { getCaseDetail, fetchCaseMarkdown, logoutAuth } from '../lib/api';
+import type { CaseDetail } from '../types/cases';
 
 export default function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>();
-  const navigate = useNavigate();
   const { clearAuthState, authState } = useAuth();
   const { enabled: teamSharingEnabled, teams, teamsById } = useTeamSharing();
 
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
-  const [archiving, setArchiving] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-
-  const [annotation, setAnnotation] = useState<CaseAnnotation>({});
-  const [savingAnnotation, setSavingAnnotation] = useState(false);
-  const [annotationSaved, setAnnotationSaved] = useState(false);
-  const [annotationError, setAnnotationError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleLogout = async () => {
     await logoutAuth();
@@ -42,7 +35,6 @@ export default function CaseDetailPage() {
       try {
         const detail = await getCaseDetail(caseId);
         setCaseDetail(detail);
-        setAnnotation({ resolution_notes: detail.closure_reason ?? '' });
       } catch (err) {
         // Only the initial load owns the page-level error (which swaps the whole
         // page for an error view). A best-effort background refresh — e.g. after
@@ -62,32 +54,25 @@ export default function CaseDetailPage() {
     void loadCase({ withSpinner: true });
   }, [loadCase]);
 
-  const handleArchive = async () => {
-    if (!caseId) return;
-    setArchiving(true);
+  // "Export / Archive to Markdown" (D2): a read-only client-side download of a
+  // self-contained case record. Not a mutation — the backend retention-archiving
+  // transition is a separate workstream (ADR-014).
+  const handleExport = async () => {
+    if (!caseDetail) return;
+    setExporting(true);
+    setExportError(null);
     try {
-      await archiveCase(caseId);
-      navigate('/cases');
+      const markdown = await fetchCaseMarkdown(caseDetail.case_id, caseDetail);
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `case_${caseDetail.case_id}.md`;
+      a.click();
+      URL.revokeObjectURL(a.href);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive case');
+      setExportError(err instanceof Error ? err.message : 'Failed to export case');
     } finally {
-      setArchiving(false);
-      setShowArchiveConfirm(false);
-    }
-  };
-
-  const handleSaveAnnotation = async () => {
-    if (!caseId) return;
-    setSavingAnnotation(true);
-    setAnnotationError(null);
-    try {
-      await annotateCase(caseId, annotation);
-      setAnnotationSaved(true);
-      setTimeout(() => setAnnotationSaved(false), 2000);
-    } catch (err) {
-      setAnnotationError(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setSavingAnnotation(false);
+      setExporting(false);
     }
   };
 
@@ -160,17 +145,22 @@ export default function CaseDetailPage() {
                   Share
                 </button>
               )}
-              {caseDetail.is_terminal && !caseDetail.is_archived && (
+              {caseDetail.is_terminal && (
                 <button
-                  onClick={() => setShowArchiveConfirm(true)}
-                  disabled={archiving}
-                  className="px-3 py-1.5 text-xs text-fm-text-tertiary border border-fm-border rounded-fm-btn hover:text-fm-warning hover:border-fm-warning/40 hover:bg-fm-warning/10 transition-colors disabled:opacity-50"
+                  onClick={handleExport}
+                  disabled={exporting}
+                  title="Download a self-contained Markdown record of this case"
+                  className="px-3 py-1.5 text-xs text-fm-text-secondary border border-fm-border rounded-fm-btn hover:text-fm-accent hover:border-fm-accent/40 hover:bg-fm-accent/10 transition-colors disabled:opacity-50"
                 >
-                  Archive
+                  {exporting ? 'Exporting…' : 'Export to Markdown'}
                 </button>
               )}
             </div>
           </div>
+
+          {exportError && (
+            <p className="mt-2 text-xs text-fm-critical">{exportError}</p>
+          )}
 
           {/* Meta row */}
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-fm-text-tertiary">
@@ -184,31 +174,10 @@ export default function CaseDetailPage() {
 
         {/* Tabs */}
         <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
-          <CaseTabs
-            caseId={caseDetail.case_id}
-            caseDetail={caseDetail}
-            resolutionNotes={caseDetail.is_terminal ? {
-              notes: annotation.resolution_notes ?? '',
-              onChange: (notes) => setAnnotation({ ...annotation, resolution_notes: notes }),
-              onSave: handleSaveAnnotation,
-              saving: savingAnnotation,
-              saved: annotationSaved,
-              error: annotationError,
-              disabled: caseDetail.state === 'closed',
-            } : undefined}
-          />
+          <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
         </div>
 
       </main>
-
-      <ConfirmDialog
-        isOpen={showArchiveConfirm}
-        title="Archive Case"
-        message="Archive this case? It will be hidden from the default case list. You can view it again by checking 'Include archived'."
-        confirmLabel="Archive"
-        onConfirm={handleArchive}
-        onCancel={() => setShowArchiveConfirm(false)}
-      />
 
       <ShareCaseModal
         isOpen={showShareModal}

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { UserTable } from '../components/UserTable';
-import { InviteUserModal } from '../components/InviteUserModal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PaginationControls } from '../components/PaginationControls';
 import { useAuth } from '../context/AuthContext';
-import { listUsers, inviteUser, updateUserRole, removeUser, logoutAuth } from '../lib/api';
-import type { UserProfile, DashboardRoleValue, UserInviteRequest } from '../types/users';
+import { listUsers, updateUserRole, deactivateUser, logoutAuth } from '../lib/api';
+import type { UserProfile, DashboardRoleValue } from '../types/users';
 
 const PAGE_SIZE = 50;
 
@@ -18,8 +17,7 @@ export default function UserManagementPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const handleLogout = async () => {
@@ -72,23 +70,17 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleRemove = async () => {
-    if (!confirmRemoveId) return;
+  const handleDeactivate = async () => {
+    if (!confirmDeactivateId) return;
     setActionError(null);
     try {
-      await removeUser(confirmRemoveId);
+      await deactivateUser(confirmDeactivateId);
       await loadUsers(page);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to remove user');
+      setActionError(err instanceof Error ? err.message : 'Failed to deactivate user');
     } finally {
-      setConfirmRemoveId(null);
+      setConfirmDeactivateId(null);
     }
-  };
-
-  const handleInvite = async (request: UserInviteRequest) => {
-    await inviteUser(request);
-    setShowInviteModal(false);
-    await loadUsers(0);
   };
 
   const inputClass =
@@ -99,17 +91,9 @@ export default function UserManagementPage() {
       <PageHeader onLogout={handleLogout} />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">Users</h2>
-            <p className="text-fm-text-secondary text-sm">{totalCount} user{totalCount !== 1 ? 's' : ''}</p>
-          </div>
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors"
-          >
-            Invite User
-          </button>
+        <div className="mb-6">
+          <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">Users</h2>
+          <p className="text-fm-text-secondary text-sm">{totalCount} user{totalCount !== 1 ? 's' : ''}</p>
         </div>
 
         <div className="mb-4">
@@ -142,7 +126,7 @@ export default function UserManagementPage() {
             <UserTable
               users={filteredUsers}
               onChangeRole={handleChangeRole}
-              onRemove={(id) => setConfirmRemoveId(id)}
+              onDeactivate={(id) => setConfirmDeactivateId(id)}
             />
           )}
         </div>
@@ -155,19 +139,13 @@ export default function UserManagementPage() {
         />
       </main>
 
-      <InviteUserModal
-        isOpen={showInviteModal}
-        onCancel={() => setShowInviteModal(false)}
-        onInvite={handleInvite}
-      />
-
       <ConfirmDialog
-        isOpen={!!confirmRemoveId}
-        title="Remove User"
-        message="Remove this user from the platform? They will lose access immediately."
-        confirmLabel="Remove"
-        onConfirm={handleRemove}
-        onCancel={() => setConfirmRemoveId(null)}
+        isOpen={!!confirmDeactivateId}
+        title="Deactivate User"
+        message="Deactivate this user? They will lose access immediately and all their active sessions are revoked."
+        confirmLabel="Deactivate"
+        onConfirm={handleDeactivate}
+        onCancel={() => setConfirmDeactivateId(null)}
       />
     </div>
   );

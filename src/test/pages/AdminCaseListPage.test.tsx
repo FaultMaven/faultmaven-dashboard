@@ -53,7 +53,6 @@ const copilotCase = {
   current_turn: 3,
   milestones_completed: 1,
   total_milestones: 8,
-  is_stuck: false,
   is_terminal: false,
   source: 'copilot' as const,
 };

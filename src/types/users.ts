@@ -20,13 +20,7 @@ export type UserProfile = components['schemas']['AdminUserListItem'];
 export type UserListResponse = components['schemas']['AdminUserListResponse'];
 
 // ==================== Frontend-only request DTOs ====================
-// No generated counterpart — these are dashboard-originated write payloads.
-
-export interface UserInviteRequest {
-  email: string;
-  username: string;
-  role: DashboardRoleValue;
-}
+// No generated counterpart — this is a dashboard-originated write payload.
 
 export interface UserRoleUpdate {
   role: DashboardRoleValue;

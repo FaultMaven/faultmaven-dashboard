@@ -18,18 +18,6 @@ export type { CaseState };
 // ==================== Case core (list + detail) ====================
 
 /**
- * TODO(PR5): archive redesign. The backend removed the archive concept from the
- * case domain, so the generated `CaseSummary`/`CaseDetail` no longer expose
- * `is_archived`/`is_stuck`. These optional fields are a thin seam that keeps the
- * existing archive reads in `CaseListPage`/`CaseDetailPage` compiling until PR 5
- * removes the archive-as-mutation UI (D1/D2). Do not build new logic on them.
- */
-interface ArchiveSeamFields {
-  is_archived?: boolean;
-  is_stuck?: boolean;
-}
-
-/**
  * Team-sharing seam (U12 / ADR-013 §D4). The backend surfaces `shared_team_ids`
  * on case reads, but openapi-typescript's generated `CaseSummary`/`CaseDetail`
  * do not carry it yet (not published in the OpenAPI schema). This small local
@@ -46,7 +34,6 @@ interface TeamSharingFields {
 export type CaseSource = 'copilot' | 'slack' | 'api';
 
 export type CaseSummary = components['schemas']['CaseSummary'] &
-  ArchiveSeamFields &
   TeamSharingFields & {
     /** ADR-012 case origin; optional until the backend surfaces it on `CaseSummary`. */
     source?: CaseSource;
@@ -63,15 +50,13 @@ export interface Team {
   organization_id: string;
 }
 
-export type CaseDetail = components['schemas']['CaseDetail'] &
-  ArchiveSeamFields &
-  TeamSharingFields;
+export type CaseDetail = components['schemas']['CaseDetail'] & TeamSharingFields;
 
 /**
  * The generated `CaseListResponse.cases` is the raw generated `CaseSummary`,
- * which lacks the `TeamSharingFields`/`ArchiveSeamFields` seams above. The
- * backend returns those fields on list reads (see `TeamSharingFields`), so the
- * page carries the extended `CaseSummary` — override `cases` to it.
+ * which lacks the `TeamSharingFields` seam above. The backend returns those
+ * fields on list reads (see `TeamSharingFields`), so the page carries the
+ * extended `CaseSummary` — override `cases` to it.
  */
 export type CaseListResponse = Omit<components['schemas']['CaseListResponse'], 'cases'> & {
   cases: CaseSummary[];
@@ -88,19 +73,12 @@ export interface CaseFilters {
   date_from?: string;
   date_to?: string;
   search?: string;
-  include_archived?: boolean;
   /**
    * Restrict to cases shared with this Team (ADR-013 §D4). Only Teams the caller
    * belongs to yield results; ignored in standalone. Doubles as the "team case
    * view" — selecting a team narrows the list to that team's shared cases.
    */
   team_id?: string;
-}
-
-/** TODO(PR5): case annotation is a Dashboard write surface being removed (D1). */
-export interface CaseAnnotation {
-  resolution_notes?: string;
-  closure_reason?: string;
 }
 
 // ==================== Messages ====================
