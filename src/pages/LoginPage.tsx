@@ -1,20 +1,19 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { devLogin } from '../lib/api';
+import { devLogin, authManager } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 
 const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { deployment, setAuthState } = useAuth();
+  const { deployment, loginUrl, setAuthState } = useAuth();
 
-  const isStandalone = deployment !== 'cloud';
   const isExtensionLogin = new URLSearchParams(location.search).get('source') === 'extension';
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -23,11 +22,6 @@ export default function LoginPage() {
 
     if (!username || username.trim().length < 3) {
       setError('Username must be at least 3 characters');
-      return;
-    }
-
-    if (!isStandalone && (!password || password.length < 3)) {
-      setError('Password must be at least 3 characters');
       return;
     }
 
@@ -40,7 +34,17 @@ export default function LoginPage() {
         payload: authState
       }, window.location.origin);
 
-      localStorage.setItem('fm_auth_state', JSON.stringify(authState));
+      // Only the copilot extension bridge needs the `fm_auth_state` localStorage
+      // mirror; creating it here arms AuthManager's rotation-sync. A plain
+      // dashboard login must NOT create it (keeps full tokens, incl. the refresh
+      // token, out of plain localStorage for ordinary sessions).
+      if (isExtensionLogin) {
+        authManager.writeBridgeAuthState(authState);
+      }
+
+      // Evict any previous identity's cached KB scopes before the new session
+      // renders (cross-user residue guard).
+      invalidateAvailableScopes();
       await setAuthState(authState);
 
       const oauthRedirect = sessionStorage.getItem('oauth_redirect_after_login');
@@ -72,7 +76,61 @@ export default function LoginPage() {
     }
   };
 
-  if (isExtensionLogin && localStorage.getItem('fm_auth_state') && !loading && !error) {
+  const handleCloudSignIn = () => {
+    setError(null);
+    if (!loginUrl) {
+      // The IdP authorize URL comes from the deployment's auth config; if the
+      // backend hasn't advertised one yet, fail honestly rather than silently.
+      setError('Single sign-on is not configured for this deployment yet.');
+      return;
+    }
+    // Deployment-config-driven redirect (OIDC IdP). Full callback/token wiring
+    // is a separate cross-repo workstream; this hands off to the advertised IdP.
+    window.location.assign(loginUrl);
+  };
+
+  // Wait for deployment detection before rendering a login variant, so a cloud
+  // user never briefly sees the standalone username form (and vice versa).
+  if (deployment === null) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+        <div className="text-fm-text-secondary">Loading...</div>
+      </div>
+    );
+  }
+
+  // Cloud (OIDC) deployment: no password, no dev-login — redirect to the IdP.
+  if (deployment === 'cloud') {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+        <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
+          <div className="text-center mb-8 mt-6">
+            <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
+            <p className="text-fm-text-secondary">
+              Sign in with your organization account to access the Knowledge Base, view case metrics, and launch the AI Copilot.
+            </p>
+          </div>
+
+          {error && (
+            <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border p-3 rounded-fm-btn">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCloudSignIn}
+            className="w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 transition-colors"
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Standalone (self-hosted): passwordless, single-user dev-login.
+  if (isExtensionLogin && authManager.hasBridgeAuthState() && !loading && !error) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
         <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md text-center">
@@ -100,17 +158,15 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
       <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md relative">
         {/* Local Mode Badge — only for a confirmed standalone backend, never cloud */}
-        {deployment === 'standalone' && (
-          <div className="absolute top-4 right-4">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-fm-warning-bg text-fm-warning text-xs font-semibold rounded-full border border-fm-warning-border">
-              <span className="w-2 h-2 bg-fm-warning rounded-full animate-pulse-dot"></span>
-              LOCAL MODE ACTIVE
-            </div>
-            <div className="text-fm-xs text-fm-text-tertiary text-right mt-1 font-medium">
-              Authentication Bypassed
-            </div>
+        <div className="absolute top-4 right-4">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-fm-warning-bg text-fm-warning text-xs font-semibold rounded-full border border-fm-warning-border">
+            <span className="w-2 h-2 bg-fm-warning rounded-full animate-pulse-dot"></span>
+            LOCAL MODE ACTIVE
           </div>
-        )}
+          <div className="text-fm-xs text-fm-text-tertiary text-right mt-1 font-medium">
+            Authentication Bypassed
+          </div>
+        </div>
 
         {/* Logo and Header */}
         <div className="text-center mb-8 mt-6">
@@ -135,21 +191,6 @@ export default function LoginPage() {
               placeholder="Enter your username"
               disabled={loading}
               autoFocus
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-fm-text-secondary mb-2">
-              Password{isStandalone && <span className="text-fm-text-tertiary font-normal ml-1">(optional)</span>}
-            </label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
-              placeholder="Enter your password"
-              disabled={loading}
             />
           </div>
 

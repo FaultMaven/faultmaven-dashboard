@@ -18,6 +18,7 @@ vi.mock('./AuthManager', async () => {
     authManager: {
       saveAuthState: vi.fn().mockResolvedValue(undefined),
       getAccessToken: vi.fn().mockResolvedValue('test-token'),
+      peekAccessToken: vi.fn().mockResolvedValue('test-token'),
       clearAuthState: vi.fn().mockResolvedValue(undefined),
     },
   };
@@ -30,6 +31,7 @@ import { authManager } from './AuthManager';
 // Get mocked functions for assertions
 const mockSaveAuthState = authManager.saveAuthState as ReturnType<typeof vi.fn>;
 const mockGetAccessToken = authManager.getAccessToken as ReturnType<typeof vi.fn>;
+const mockPeekAccessToken = authManager.peekAccessToken as ReturnType<typeof vi.fn>;
 const mockClearAuthState = authManager.clearAuthState as ReturnType<typeof vi.fn>;
 
 describe('devLogin', () => {
@@ -229,14 +231,14 @@ describe('logoutAuth', () => {
   });
 
   it('should successfully logout with valid token', async () => {
-    mockGetAccessToken.mockResolvedValueOnce('test-token-123');
+    mockPeekAccessToken.mockResolvedValueOnce('test-token-123');
     fetchSpy.mockResolvedValueOnce({
       ok: true,
     });
 
     await logoutAuth();
 
-    expect(mockGetAccessToken).toHaveBeenCalled();
+    expect(mockPeekAccessToken).toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledWith('http://test-api.local/api/v1/auth/logout', {
       method: 'POST',
       headers: {
@@ -246,18 +248,46 @@ describe('logoutAuth', () => {
     expect(mockClearAuthState).toHaveBeenCalled();
   });
 
-  it('should clear auth state even when no token exists', async () => {
-    mockGetAccessToken.mockResolvedValueOnce(null);
+  it('reads the raw stored token and never triggers a refresh', async () => {
+    // Regression: logout used to call getAccessToken (the refresh path), which
+    // could mint a rotated refresh token only to discard it, orphaning a live
+    // token server-side. It must read the RAW token (peekAccessToken) instead.
+    mockPeekAccessToken.mockResolvedValueOnce('raw-stored-token');
+    fetchSpy.mockResolvedValueOnce({ ok: true });
 
     await logoutAuth();
 
-    expect(mockGetAccessToken).toHaveBeenCalled();
+    expect(mockPeekAccessToken).toHaveBeenCalled();
+    expect(mockGetAccessToken).not.toHaveBeenCalled();
+    const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer raw-stored-token');
+  });
+
+  it('logs out best-effort with an expired token (no refresh)', async () => {
+    // Even when the stored access token is already expired, logout sends it
+    // best-effort rather than refreshing first.
+    mockPeekAccessToken.mockResolvedValueOnce('expired-but-sent');
+    fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
+
+    await logoutAuth();
+
+    expect(mockGetAccessToken).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(mockClearAuthState).toHaveBeenCalled();
+  });
+
+  it('should clear auth state even when no token exists', async () => {
+    mockPeekAccessToken.mockResolvedValueOnce(null);
+
+    await logoutAuth();
+
+    expect(mockPeekAccessToken).toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(mockClearAuthState).toHaveBeenCalled();
   });
 
   it('should clear auth state even when logout API fails', async () => {
-    mockGetAccessToken.mockResolvedValueOnce('test-token-123');
+    mockPeekAccessToken.mockResolvedValueOnce('test-token-123');
     fetchSpy.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -270,7 +300,7 @@ describe('logoutAuth', () => {
   });
 
   it('should clear auth state even when network error occurs', async () => {
-    mockGetAccessToken.mockResolvedValueOnce('test-token-123');
+    mockPeekAccessToken.mockResolvedValueOnce('test-token-123');
     fetchSpy.mockRejectedValueOnce(new Error('Network error'));
 
     await logoutAuth();
@@ -281,7 +311,7 @@ describe('logoutAuth', () => {
   });
 
   it('should handle empty token string', async () => {
-    mockGetAccessToken.mockResolvedValueOnce('');
+    mockPeekAccessToken.mockResolvedValueOnce('');
 
     await logoutAuth();
 
@@ -290,24 +320,11 @@ describe('logoutAuth', () => {
   });
 
   it('should handle clearAuthState errors gracefully', async () => {
-    mockGetAccessToken.mockResolvedValueOnce(null);
+    mockPeekAccessToken.mockResolvedValueOnce(null);
     mockClearAuthState.mockRejectedValueOnce(new Error('Storage error'));
 
     await expect(logoutAuth()).rejects.toThrow('Storage error');
 
-    expect(mockClearAuthState).toHaveBeenCalled();
-  });
-
-  it('should handle 401 unauthorized on logout', async () => {
-    mockGetAccessToken.mockResolvedValueOnce('expired-token');
-    fetchSpy.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-    });
-
-    await logoutAuth();
-
-    expect(fetchSpy).toHaveBeenCalled();
     expect(mockClearAuthState).toHaveBeenCalled();
   });
 });
