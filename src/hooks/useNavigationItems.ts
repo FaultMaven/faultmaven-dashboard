@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
-import { canManageUsers, canViewAllCases } from '../lib/access';
+import { useCapabilities } from './useCapabilities';
+import { canManageConsole, canManageUsers, canViewAllCases } from '../lib/access';
 
 export interface NavItem {
   label: string;
@@ -14,6 +15,7 @@ export interface NavItem {
  */
 export function useNavigationItems(currentPath: string): NavItem[] {
   const { deployment, role, isAdmin } = useAuth();
+  const { managementConsole } = useCapabilities();
 
   const items: Omit<NavItem, 'active'>[] = [
     { label: 'Cases', path: '/cases' },
@@ -31,9 +33,16 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     items.push({ label: 'LLM Settings', path: '/settings/llm' });
   }
 
-  // Users (org/team management): cloud-only — see canManageUsers (ADR-006).
+  // Users (platform user management): cloud-only — see canManageUsers (ADR-006).
   if (canManageUsers(deployment, role)) {
     items.push({ label: 'Users', path: '/admin/users' });
+  }
+
+  // Organization & Teams console (composed Cloud admin module, ADR-010 D7):
+  // gated on the managementConsole capability + platform_admin — see
+  // canManageConsole. Absent in standalone and pre-P2 cloud.
+  if (canManageConsole(managementConsole, role)) {
+    items.push({ label: 'Organization', path: '/admin/organization' });
   }
 
   return items.map((item) => ({

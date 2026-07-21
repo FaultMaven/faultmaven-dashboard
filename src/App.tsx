@@ -6,13 +6,15 @@ import CaseListPage from './pages/CaseListPage';
 import CaseDetailPage from './pages/CaseDetailPage';
 import LLMConfigPage from './pages/LLMConfigPage';
 import UserManagementPage from './pages/UserManagementPage';
+import OrgTeamManagementPage from './pages/OrgTeamManagementPage';
 import AdminCaseListPage from './pages/AdminCaseListPage';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useCapabilities } from './hooks/useCapabilities';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminProtectedRoute } from './components/AdminProtectedRoute';
-import { canViewAllCases } from './lib/access';
+import { canManageConsole, canViewAllCases } from './lib/access';
 
 function LLMConfigRoute({ children }: { children: React.ReactNode }) {
   const { deployment, role, loading, authState } = useAuth();
@@ -24,6 +26,25 @@ function LLMConfigRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (deployment === 'standalone' || role === 'platform_admin') {
+    return <>{children}</>;
+  }
+
+  return <Navigate to="/cases" replace />;
+}
+
+function ManagementConsoleRoute({ children }: { children: React.ReactNode }) {
+  const { role, loading, authState } = useAuth();
+  const { managementConsole, loading: capLoading } = useCapabilities();
+
+  if (loading || capLoading) return null;
+
+  if (!authState) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Same predicate the nav item uses (anti-drift): the console is unreachable by
+  // direct URL in standalone / pre-P2 cloud or for non-admins.
+  if (canManageConsole(managementConsole, role)) {
     return <>{children}</>;
   }
 
@@ -101,6 +122,14 @@ export default function App() {
                 <AdminProtectedRoute>
                   <UserManagementPage />
                 </AdminProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/organization"
+              element={
+                <ManagementConsoleRoute>
+                  <OrgTeamManagementPage />
+                </ManagementConsoleRoute>
               }
             />
             <Route

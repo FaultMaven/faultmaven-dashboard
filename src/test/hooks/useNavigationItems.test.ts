@@ -7,6 +7,13 @@ vi.mock('../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+// Mock the capabilities hook: the Organization console item gates on
+// managementConsole. Default OFF so existing cases (which don't expect it) hold.
+const mockUseCapabilities = vi.fn();
+vi.mock('../../hooks/useCapabilities', () => ({
+  useCapabilities: () => mockUseCapabilities(),
+}));
+
 import { useAuth } from '../../context/AuthContext';
 
 const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
@@ -14,6 +21,7 @@ const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
 describe('useNavigationItems', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseCapabilities.mockReturnValue({ managementConsole: false });
   });
 
   it('standalone user sees Cases, Knowledge Base, LLM Settings — no Users', () => {
@@ -130,5 +138,27 @@ describe('useNavigationItems', () => {
     const labels = result.current.map((i) => i.label);
 
     expect(labels).not.toContain('All Cases');
+  });
+
+  it('cloud platform_admin sees "Organization" only when managementConsole is on', () => {
+    mockUseAuth.mockReturnValue({ deployment: 'cloud', role: 'platform_admin' });
+
+    // Capability off (standalone / pre-P2 cloud): hidden.
+    mockUseCapabilities.mockReturnValue({ managementConsole: false });
+    let result = renderHook(() => useNavigationItems('/cases')).result;
+    expect(result.current.map((i) => i.label)).not.toContain('Organization');
+
+    // Capability on (multi-tenant active): shown.
+    mockUseCapabilities.mockReturnValue({ managementConsole: true });
+    result = renderHook(() => useNavigationItems('/cases')).result;
+    expect(result.current.map((i) => i.label)).toContain('Organization');
+  });
+
+  it('cloud standard_user never sees "Organization" even when managementConsole is on', () => {
+    mockUseAuth.mockReturnValue({ deployment: 'cloud', role: 'standard_user' });
+    mockUseCapabilities.mockReturnValue({ managementConsole: true });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    expect(result.current.map((i) => i.label)).not.toContain('Organization');
   });
 });
