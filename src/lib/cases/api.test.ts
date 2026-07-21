@@ -19,6 +19,7 @@ vi.mock('../knowledge/errors', () => ({
 }));
 
 import { makeAuthenticatedRequest } from '../knowledge/client';
+import * as casesApi from './api';
 import {
   getCaseMessages,
   getAdminCases,
@@ -243,6 +244,27 @@ describe('team filter + share (ADR-013 §D4)', () => {
       '/api/v1/cases/case_x/team-shares/team_42',
       expect.objectContaining({ method: 'DELETE' })
     );
+  });
+});
+
+describe('read-only cases (D1)', () => {
+  // The Dashboard views cases; it never mutates them. The write surfaces
+  // (annotate/archive/unarchive) were removed — guard against reintroduction.
+  it('exposes no case-write functions', () => {
+    expect('annotateCase' in casesApi).toBe(false);
+    expect('archiveCase' in casesApi).toBe(false);
+    expect('unarchiveCase' in casesApi).toBe(false);
+  });
+
+  it('never sends include_archived on the list endpoint', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({ state: 'resolved' }, 0, 20);
+
+    const url = mockRequest.mock.calls[0][0] as string;
+    expect(url).not.toContain('include_archived');
   });
 });
 

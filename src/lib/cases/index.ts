@@ -3,9 +3,6 @@ export {
   getAdminCases,
   getCaseDetail,
   searchCases,
-  annotateCase,
-  archiveCase,
-  unarchiveCase,
   shareCaseWithTeam,
   unshareCaseFromTeam,
   getCaseMessages,
@@ -20,6 +17,8 @@ export {
   getReportRecommendations,
 } from './api';
 
+export { buildCaseMarkdown, fetchCaseMarkdown } from './exportMarkdown';
+
 export type {
   CaseSummary,
   CaseSource,
@@ -27,7 +26,6 @@ export type {
   CaseListResponse,
   CaseFilters,
   Team,
-  CaseAnnotation,
   CaseMessagesResponse,
   UploadedFile,
   UploadedFilesResponse,

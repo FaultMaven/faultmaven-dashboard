@@ -25,20 +25,9 @@ import { prepareMarkdown } from '../lib/markdownUtils';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
-interface ResolutionNotesProps {
-  notes: string;
-  onChange: (notes: string) => void;
-  onSave: () => void;
-  saving: boolean;
-  saved: boolean;
-  error: string | null;
-  disabled: boolean;
-}
-
 interface CaseTabsProps {
   caseId: string;
   caseDetail: CaseDetail;
-  resolutionNotes?: ResolutionNotesProps;
 }
 
 function hypothesisStatusStyle(state: HypothesisState): { color: string; symbol: string } {
@@ -513,7 +502,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
   );
 }
 
-export function CaseTabs({ caseId, caseDetail, resolutionNotes }: CaseTabsProps) {
+export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   const [searchParams] = useSearchParams();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
@@ -560,7 +549,7 @@ export function CaseTabs({ caseId, caseDetail, resolutionNotes }: CaseTabsProps)
       </div>
 
       {activeTab === 'transcript' && <TranscriptTab caseId={caseId} />}
-      {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} resolutionNotes={resolutionNotes} />}
+      {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
       {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
       {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
       {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}

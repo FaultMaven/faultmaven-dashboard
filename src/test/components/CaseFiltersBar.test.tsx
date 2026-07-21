@@ -15,10 +15,10 @@ describe('CaseFiltersBar', () => {
     // Mount with no filters, then update filters (as the parent does after a
     // chip click). The debounced search callback is memoized on [onChange]; the
     // stale-closure bug captured the first-render (empty) filters and wiped the
-    // state/archived chips on the next keystroke.
+    // other active filters on the next keystroke.
     const { rerender } = render(<CaseFiltersBar filters={{}} onChange={onChange} />);
 
-    const activeFilters: CaseFilters = { state: 'resolved', include_archived: true };
+    const activeFilters: CaseFilters = { state: 'resolved', source: 'copilot' };
     rerender(<CaseFiltersBar filters={activeFilters} onChange={onChange} />);
 
     fireEvent.change(screen.getByLabelText('Search cases'), {
@@ -28,7 +28,7 @@ describe('CaseFiltersBar', () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith({
         state: 'resolved',
-        include_archived: true,
+        source: 'copilot',
         search: 'payment',
       })
     );

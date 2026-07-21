@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { listCases, searchCases, archiveCase } from '../lib/api';
+import { listCases, searchCases } from '../lib/api';
 import type { CaseSummary, CaseFilters } from '../types/cases';
 
 /**
@@ -20,7 +20,6 @@ export interface UseCaseListResult {
   filters: CaseFilters;
   setFilters: (filters: CaseFilters) => void;
   loadPage: (page: number) => Promise<void>;
-  archiveById: (caseId: string, reason?: string) => Promise<void>;
 }
 
 export function useCaseList(pageSize = 20): UseCaseListResult {
@@ -89,14 +88,6 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
     // loadPage will be called by the effect when filters change
   }, []);
 
-  const archiveById = useCallback(
-    async (caseId: string, _reason?: string) => {
-      await archiveCase(caseId);
-      await loadPage(page);
-    },
-    [loadPage, page]
-  );
-
   // In search mode the backend returns every match in one page, so collapse the
   // pager to a single page (Prev/Next disabled) instead of faking pages that
   // would silently hide matches beyond the first slice.
@@ -113,6 +104,5 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
     filters,
     setFilters,
     loadPage,
-    archiveById,
   };
 }

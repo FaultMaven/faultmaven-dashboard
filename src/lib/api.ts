@@ -50,9 +50,6 @@ export {
   getAdminCases,
   getCaseDetail,
   searchCases,
-  annotateCase,
-  archiveCase,
-  unarchiveCase,
   shareCaseWithTeam,
   unshareCaseFromTeam,
   getCaseMessages,
@@ -65,6 +62,8 @@ export {
   getCaseReportDownloadUrl,
   generateCaseReport,
   getReportRecommendations,
+  buildCaseMarkdown,
+  fetchCaseMarkdown,
 } from './cases';
 
 export type {
@@ -74,7 +73,6 @@ export type {
   CaseListResponse,
   CaseFilters,
   Team,
-  CaseAnnotation,
   CaseMessagesResponse,
   UploadedFile,
   UploadedFilesResponse,
@@ -124,15 +122,13 @@ export type {
 // Re-export user management module
 export {
   listUsers,
-  inviteUser,
   updateUserRole,
-  removeUser,
+  deactivateUser,
 } from './users';
 
 export type {
   UserProfile,
   UserListResponse,
-  UserInviteRequest,
   UserRoleUpdate,
   DashboardRoleValue,
 } from './users';

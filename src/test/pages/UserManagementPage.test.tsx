@@ -7,9 +7,8 @@ import type { UserProfile, UserListResponse } from '../../types/users';
 vi.mock('../../lib/api', () => ({
   logoutAuth: vi.fn().mockResolvedValue(undefined),
   listUsers: vi.fn(),
-  inviteUser: vi.fn().mockResolvedValue(undefined),
   updateUserRole: vi.fn().mockResolvedValue(undefined),
-  removeUser: vi.fn().mockResolvedValue(undefined),
+  deactivateUser: vi.fn().mockResolvedValue(undefined),
   config: { apiUrl: 'http://localhost:8090' },
 }));
 
@@ -30,9 +29,11 @@ vi.mock('../../hooks/useNavigationItems', () => ({
   ]),
 }));
 
-import { listUsers } from '../../lib/api';
+import { listUsers, updateUserRole, deactivateUser } from '../../lib/api';
 
 const mockListUsers = listUsers as ReturnType<typeof vi.fn>;
+const mockUpdateUserRole = updateUserRole as ReturnType<typeof vi.fn>;
+const mockDeactivateUser = deactivateUser as ReturnType<typeof vi.fn>;
 
 // Backend-real AdminUserListItem shape: `full_name`, `roles`, `last_login_at`,
 // `is_active`, `is_verified` — and crucially NO `username`, `display_name`,
@@ -142,5 +143,50 @@ describe('UserManagementPage — backend-real admin user shape', () => {
     });
     await waitFor(() => expect(mockListUsers).toHaveBeenCalled());
     expect(mockListUsers).toHaveBeenCalledWith(0, 50);
+  });
+
+  // D3: user provisioning moves to the IdP/SCIM — the Dashboard has no invite.
+  it('renders no Invite control', async () => {
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('Ada Admin')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /invite/i })).not.toBeInTheDocument();
+  });
+
+  it('changing a role calls updateUserRole with the selected role', async () => {
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('Stan Standard')).toBeInTheDocument());
+
+    const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+    // Promote the standard user (second row) to admin.
+    await act(async () => {
+      fireEvent.change(selects[1], { target: { value: 'admin' } });
+    });
+
+    expect(mockUpdateUserRole).toHaveBeenCalledWith('u-standard', { role: 'admin' });
+  });
+
+  it('the Deactivate action confirms then calls deactivateUser', async () => {
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('Ada Admin')).toBeInTheDocument());
+
+    // Deactivate the standard user (second row).
+    const deactivateButtons = screen.getAllByRole('button', { name: /deactivate/i });
+    await act(async () => {
+      fireEvent.click(deactivateButtons[1]);
+    });
+
+    const dialog = await screen.findByRole('dialog');
+    const confirmBtn = dialog.querySelector('button:last-child') as HTMLElement;
+    await act(async () => {
+      fireEvent.click(confirmBtn);
+    });
+
+    await waitFor(() => expect(mockDeactivateUser).toHaveBeenCalledWith('u-standard'));
   });
 });

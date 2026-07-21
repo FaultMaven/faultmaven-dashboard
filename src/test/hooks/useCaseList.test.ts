@@ -5,20 +5,18 @@ import { useCaseList } from '../../hooks/useCaseList';
 vi.mock('../../lib/api', () => ({
   listCases: vi.fn(),
   searchCases: vi.fn(),
-  archiveCase: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { listCases, searchCases, archiveCase } from '../../lib/api';
+import { listCases, searchCases } from '../../lib/api';
 
 const mockListCases = listCases as ReturnType<typeof vi.fn>;
 const mockSearchCases = searchCases as ReturnType<typeof vi.fn>;
-const mockArchiveCase = archiveCase as ReturnType<typeof vi.fn>;
 
 const mockCase = {
   case_id: 'c1',
   title: 'Test Case',
   description: 'desc',
-  status: 'investigating' as const,
+  state: 'investigating' as const,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   last_activity_at: '2024-01-01T00:00:00Z',
@@ -30,7 +28,6 @@ const mockCase = {
   current_turn: 3,
   milestones_completed: 2,
   total_milestones: 5,
-  is_stuck: false,
   is_terminal: false,
 };
 
@@ -65,25 +62,13 @@ describe('useCaseList', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
-      result.current.setFilters({ status: 'resolved' });
+      result.current.setFilters({ state: 'resolved' });
     });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Should have called with new filters and page 0
-    expect(mockListCases).toHaveBeenLastCalledWith({ status: 'resolved' }, 0, 20);
-  });
-
-  it('archiveById calls archiveCase and reloads', async () => {
-    const { result } = renderHook(() => useCaseList());
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    await act(async () => {
-      await result.current.archiveById('c1', 'archived');
-    });
-
-    expect(mockArchiveCase).toHaveBeenCalledWith('c1');
-    expect(mockListCases).toHaveBeenCalledTimes(2); // initial + reload
+    expect(mockListCases).toHaveBeenLastCalledWith({ state: 'resolved' }, 0, 20);
   });
 
   it('sets error state on fetch failure', async () => {

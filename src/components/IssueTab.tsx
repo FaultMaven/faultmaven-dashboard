@@ -1,18 +1,7 @@
 import type { CaseDetail } from '../types/cases';
 
-interface ResolutionNotesProps {
-  notes: string;
-  onChange: (notes: string) => void;
-  onSave: () => void;
-  saving: boolean;
-  saved: boolean;
-  error: string | null;
-  disabled: boolean;
-}
-
 interface IssueTabProps {
   caseDetail: CaseDetail;
-  resolutionNotes?: ResolutionNotesProps;
 }
 
 function DurationDisplay({ createdAt, resolvedAt }: { createdAt: string; resolvedAt: string | null }) {
@@ -26,7 +15,7 @@ function DurationDisplay({ createdAt, resolvedAt }: { createdAt: string; resolve
   return <span>{days}d {hours % 24}h</span>;
 }
 
-export function IssueTab({ caseDetail, resolutionNotes }: IssueTabProps) {
+export function IssueTab({ caseDetail }: IssueTabProps) {
   const milestones = caseDetail.milestones_completed || [];
   const hasRootCause = milestones.includes('root_cause_identified');
   const hasSolution = milestones.includes('solution_verified');
@@ -131,36 +120,17 @@ export function IssueTab({ caseDetail, resolutionNotes }: IssueTabProps) {
         </div>
       </section>
 
-      {/* Resolution Notes */}
-      {resolutionNotes && (
+      {/* Resolution Notes — read-only display of the case's closure reason.
+          Cases are authored/mutated only in the Copilot (D1); the Dashboard
+          views them. */}
+      {caseDetail.closure_reason && (
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
             Resolution Notes
           </h3>
-          <textarea
-            value={resolutionNotes.notes}
-            onChange={(e) => resolutionNotes.onChange(e.target.value)}
-            className="w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent resize-y min-h-[80px]"
-            placeholder="Add resolution notes, root cause findings, or follow-up actions..."
-            disabled={resolutionNotes.disabled}
-          />
-          {resolutionNotes.error && (
-            <p className="text-fm-critical text-xs mt-1">{resolutionNotes.error}</p>
-          )}
-          {!resolutionNotes.disabled && (
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                onClick={resolutionNotes.onSave}
-                disabled={resolutionNotes.saving}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
-              >
-                {resolutionNotes.saving ? 'Saving...' : 'Save Notes'}
-              </button>
-              {resolutionNotes.saved && (
-                <span className="text-fm-success text-xs">Saved</span>
-              )}
-            </div>
-          )}
+          <p className="text-sm text-fm-text-primary whitespace-pre-wrap">
+            {caseDetail.closure_reason}
+          </p>
         </section>
       )}
     </div>
