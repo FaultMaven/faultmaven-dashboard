@@ -84,9 +84,17 @@ export default function LoginPage() {
       setError('Single sign-on is not configured for this deployment yet.');
       return;
     }
-    // Deployment-config-driven redirect (OIDC IdP). Full callback/token wiring
-    // is a separate cross-repo workstream; this hands off to the advertised IdP.
-    window.location.assign(loginUrl);
+    // Deployment-config-driven redirect (OIDC IdP): hands off to the advertised
+    // hosted-login URL; the backend redirects back to /auth/sso/callback
+    // (SSOCallbackPage) with a completion code. Forward the ProtectedRoute-saved
+    // destination as return_to so the backend echoes it through the IdP round
+    // trip (belt to sessionStorage's braces — survives a cleared tab state).
+    const returnTo = sessionStorage.getItem('oauth_redirect_after_login');
+    const target =
+      returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
+        ? `${loginUrl}${loginUrl.includes('?') ? '&' : '?'}return_to=${encodeURIComponent(returnTo)}`
+        : loginUrl;
+    window.location.assign(target);
   };
 
   // Wait for deployment detection before rendering a login variant, so a cloud

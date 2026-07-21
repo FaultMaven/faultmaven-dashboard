@@ -84,6 +84,49 @@ export async function devLogin(username: string): Promise<AuthState> {
 }
 
 /**
+ * Exchange an SSO completion code for a FaultMaven session (ADR-015).
+ *
+ * The backend's `/auth/sso/callback` redirects the browser to the dashboard
+ * with a short-lived single-use `code`; this trades it for the standard token
+ * response. The code is single-use and expires in ~60s, so any failure means
+ * the user must restart the hosted-login flow — surfaced as an
+ * AuthenticationError, never retried here.
+ *
+ * @param code - Single-use completion code from the SSO callback redirect
+ * @returns Authentication state with access token (already persisted)
+ * @throws {AuthenticationError} If the exchange fails
+ */
+export async function ssoExchange(code: string): Promise<AuthState> {
+  const response = await fetch(`${config.apiUrl}/api/v1/auth/sso/exchange`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ code }),
+  });
+
+  if (!response.ok) {
+    // The backend deliberately returns a uniform 401 for every failure mode
+    // (expired/replayed code, deactivated user) — don't over-interpret.
+    throw new AuthenticationError('Sign-in could not be completed');
+  }
+
+  // Same contract handling as devLogin: derive the absolute expires_at that
+  // AuthManager's expiry guard checks from the backend's expires_in (seconds).
+  const body = await response.json();
+  const expiresAt = deriveExpiresAt(body.expires_in);
+  if (!body.access_token || expiresAt === null) {
+    throw new AuthenticationError('Login response missing a valid token');
+  }
+  const authState: AuthState = {
+    ...body,
+    expires_at: expiresAt,
+  };
+  await authManager.saveAuthState(authState);
+  return authState;
+}
+
+/**
  * Logout and clear authentication state
  *
  * Attempts to call the logout endpoint best-effort and always clears local auth
