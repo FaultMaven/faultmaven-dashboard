@@ -18,36 +18,49 @@ jobs:
           WORKFLOW_DIR=".github/workflows"
           echo "Scanning workflows under ${WORKFLOW_DIR}..."
 
-          # Disallow direct kubectl/kustomize/self-hosted deploy logic in service repos.
-          PATTERN='(kubectl[[:space:]]|kustomize[[:space:]]|runs-on:[[:space:]]*\\[self-hosted|faultmaven-enterprise-infra)'
+          # Service repos must not carry direct cluster-deploy logic; deploys are
+          # owned by faultmaven-enterprise-infra (GitOps). Anchor on the actual
+          # mutating invocations rather than bare tool mentions, so that legitimate
+          # read-only or non-deploy references do NOT trip the gate — e.g.
+          # publish-docker.yml checks out faultmaven-enterprise-infra to bump an
+          # image-queue file, and `kubectl version` is read-only.
+          #
+          #   - kubectl <mutating subcommand>   (apply/create/delete/rollout/...)
+          #   - helm install|upgrade|uninstall|rollback
+          #   - kustomize build                 (the pipe-into-kubectl deploy idiom)
+          #   - runs-on: [self-hosted ...]      (self-hosted deploy runners)
+          PATTERN='(kubectl[[:space:]]+(apply|create|delete|patch|replace|rollout|scale|set|edit|drain|cordon|uncordon|exec|label|annotate)|helm[[:space:]]+(install|upgrade|uninstall|rollback)|kustomize[[:space:]]+build|runs-on:[[:space:]]*\[?[[:space:]]*['"'"'"]?self-hosted)'
 
           # Exclude this policy file itself.
           FILES=$(find "${WORKFLOW_DIR}" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) ! -name 'policy-no-direct-k8s-deploy*' 2>/dev/null || true)
 
           MATCHED=false
           for f in $FILES; do
-            if grep -nE "$PATTERN" "$f" >/dev/null; then
+            # Distinguish grep's three exit states so an INVALID pattern or read
+            # error (rc>=2) fails the job instead of being silently read as "clean":
+            #   0 = match found (violation), 1 = no match (ok), >=2 = grep error.
+            set +e
+            hits=$(grep -nE "$PATTERN" "$f")
+            rc=$?
+            set -e
+
+            if [ "$rc" -eq 0 ]; then
               echo "::error file=$f::Direct deploy logic detected. Service repos must not deploy to Kubernetes."
               echo "Matches:"
-              grep -nE "$PATTERN" "$f" || true
+              echo "$hits"
               echo ""
               MATCHED=true
+            elif [ "$rc" -eq 1 ]; then
+              : # No match — this file is clean.
+            else
+              echo "::error file=$f::grep failed (exit $rc) — invalid pattern or unreadable file."
+              exit "$rc"
             fi
           done
 
           if [ "$MATCHED" = "true" ]; then
-            echo "Policy violation: remove kubectl/kustomize/self-hosted deploy logic from service repo workflows."
+            echo "Policy violation: remove kubectl/helm/kustomize/self-hosted deploy logic from service repo workflows."
             exit 1
           fi
 
           echo "OK: no direct deploy logic detected."
-
-
-
-
-
-
-
-
-
-
