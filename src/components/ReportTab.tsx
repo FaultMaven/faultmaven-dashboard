@@ -239,6 +239,9 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
               </button>
               <button
                 onClick={async () => {
+                  // report_id is optional on the generated contract; a report
+                  // without an id has no download route.
+                  if (!selectedReport.report_id) return;
                   const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
                   const res = await makeAuthenticatedRequest(url);
                   if (!res.ok) return;

@@ -33,7 +33,7 @@ export default function UserManagementPage() {
     try {
       const res = await listUsers(nextPage, PAGE_SIZE);
       setUsers(res.users);
-      setTotalCount(res.total_count);
+      setTotalCount(res.total);
       setPage(nextPage);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load users';
@@ -58,8 +58,7 @@ export default function UserManagementPage() {
     return users.filter(
       (u) =>
         u.email.toLowerCase().includes(term) ||
-        u.username.toLowerCase().includes(term) ||
-        (u.display_name ?? '').toLowerCase().includes(term)
+        (u.full_name ?? '').toLowerCase().includes(term)
     );
   }, [users, search]);
 

@@ -22,9 +22,12 @@ export async function listUsers(
   pageSize = 50,
   search?: string
 ): Promise<UserListResponse> {
+  // The backend admin-users endpoint paginates by limit/offset (mirrors the
+  // case list). FastAPI silently drops unknown params, so the old page/page_size
+  // returned the same first slice for every page.
   const params: Record<string, string | number | undefined> = {
-    page,
-    page_size: pageSize,
+    limit: pageSize,
+    offset: page * pageSize,
     ...(search && { search }),
   };
 

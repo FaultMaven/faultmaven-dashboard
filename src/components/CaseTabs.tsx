@@ -16,7 +16,7 @@ import type {
   UploadedFile,
   UploadedFileDetails,
   EvidenceDetails,
-  HypothesisStatus,
+  HypothesisState,
   HypothesisSummary,
 } from '../types/cases';
 import { ReportTab } from './ReportTab';
@@ -41,8 +41,8 @@ interface CaseTabsProps {
   resolutionNotes?: ResolutionNotesProps;
 }
 
-function hypothesisStatusStyle(status: HypothesisStatus): { color: string; symbol: string } {
-  switch (status) {
+function hypothesisStatusStyle(state: HypothesisState): { color: string; symbol: string } {
+  switch (state) {
     case 'validated':
       return { color: 'text-fm-success', symbol: '✓' };
     case 'refuted':
@@ -441,7 +441,7 @@ function EvidenceTab({ caseId }: { caseId: string }) {
 }
 
 function HypothesisRow({ hypothesis }: { hypothesis: HypothesisSummary }) {
-  const { color, symbol } = hypothesisStatusStyle(hypothesis.status);
+  const { color, symbol } = hypothesisStatusStyle(hypothesis.state);
   const likelihoodPct = Math.round(hypothesis.likelihood * 100);
   return (
     <li className="py-2 flex items-start gap-3">
@@ -449,7 +449,7 @@ function HypothesisRow({ hypothesis }: { hypothesis: HypothesisSummary }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className={`text-[10px] font-semibold uppercase tracking-wide ${color}`}>
-            {hypothesis.status}
+            {hypothesis.state}
           </span>
           <span className="text-xs text-fm-text-tertiary font-mono">{likelihoodPct}%</span>
           <span className="text-[10px] text-fm-text-tertiary">

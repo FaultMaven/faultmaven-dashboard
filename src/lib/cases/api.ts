@@ -176,7 +176,12 @@ export async function getCaseMessages(caseId: string): Promise<CaseMessagesRespo
     }
   }
 
-  return { messages, total_count: totalCount, retrieved_count: messages.length };
+  return {
+    messages,
+    total_count: totalCount,
+    retrieved_count: messages.length,
+    has_more: false,
+  };
 }
 
 /**

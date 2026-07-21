@@ -24,9 +24,10 @@ import { getCaseMessages, getAdminCases, listCases, searchCases } from './api';
 const mockRequest = makeAuthenticatedRequest as ReturnType<typeof vi.fn>;
 
 function msg(i: number): CaseMessage {
+  // Backend-real Message shape: no `case_id`, `turn_number` present.
   return {
     message_id: `m${i}`,
-    case_id: 'case_x',
+    turn_number: Math.floor(i / 2) + 1,
     role: i % 2 === 0 ? 'user' : 'assistant',
     content: `msg ${i}`,
     created_at: new Date(i).toISOString(),
@@ -34,7 +35,14 @@ function msg(i: number): CaseMessage {
 }
 
 function page(messages: CaseMessage[], total: number): { json: () => Promise<CaseMessagesResponse> } {
-  return { json: async () => ({ messages, total_count: total }) };
+  return {
+    json: async () => ({
+      messages,
+      total_count: total,
+      retrieved_count: messages.length,
+      has_more: false,
+    }),
+  };
 }
 
 describe('getCaseMessages pagination', () => {
