@@ -1,43 +1,56 @@
+/**
+ * Case types — sourced from the OpenAPI-generated contract.
+ *
+ * `api.generated.ts` is the single source of truth (regenerated from the
+ * backend OpenAPI schema). Hand-written shapes here previously drifted from it
+ * (`status` vs `state`, `page/page_size` vs `limit/offset`, `case_id` on
+ * messages, `source_type/data_type` on file details, …), which let contract
+ * bugs reach runtime instead of failing the type check. Everything below now
+ * aliases the generated schema. The only locally-declared shapes are
+ * frontend-only ones with no backend counterpart (request DTOs, the filter
+ * query bag, and the narrowed `/ui` read-adapter) — each is marked as such.
+ */
+import type { components } from './api.generated';
 import type { CaseState } from './case';
 
 export type { CaseState };
 
-export type InvestigationStage =
-  | 'symptom_verification'
-  | 'hypothesis_formulation'
-  | 'hypothesis_validation'
-  | 'solution';
+// ==================== Case core (list + detail) ====================
 
-export interface CaseSummary {
-  case_id: string;
-  title: string;
-  description: string;
-  state: CaseState;
-  created_at: string;
-  updated_at: string;
-  last_activity_at: string;
-  resolved_at: string | null;
-  closed_at: string | null;
-  closure_reason: string | null;
-  user_id: string;
-  organization_id: string;
-  source?: CaseSource;
-  current_turn: number;
-  milestones_completed: number;
-  total_milestones: number;
-  is_archived: boolean;
-  is_stuck: boolean;
-  is_terminal: boolean;
-  /**
-   * Ids of the Teams this case is shared with (ADR-013 §D4). Empty in standalone
-   * (team sharing is a Cloud collaboration feature — unwired there) and for a
-   * case shared with no Team. Resolve ids to names via `GET /api/v1/teams`.
-   */
+/**
+ * TODO(PR5): archive redesign. The backend removed the archive concept from the
+ * case domain, so the generated `CaseSummary`/`CaseDetail` no longer expose
+ * `is_archived`/`is_stuck`. These optional fields are a thin seam that keeps the
+ * existing archive reads in `CaseListPage`/`CaseDetailPage` compiling until PR 5
+ * removes the archive-as-mutation UI (D1/D2). Do not build new logic on them.
+ */
+interface ArchiveSeamFields {
+  is_archived?: boolean;
+  is_stuck?: boolean;
+}
+
+/**
+ * Team-sharing seam (U12 / ADR-013 §D4). The backend surfaces `shared_team_ids`
+ * on case reads, but openapi-typescript's generated `CaseSummary`/`CaseDetail`
+ * do not carry it yet (not published in the OpenAPI schema). This small local
+ * extension — same pattern as `ArchiveSeamFields` — keeps the team-sharing UI
+ * (badges, team filter, share action) typechecking. Empty in standalone (team
+ * sharing is a Cloud collaboration feature — unwired there) and for a case
+ * shared with no Team. Resolve ids to names via `GET /api/v1/teams`.
+ */
+interface TeamSharingFields {
   shared_team_ids: string[];
 }
 
 /** Case origin (ADR-012), derived from the creator's account kind. */
 export type CaseSource = 'copilot' | 'slack' | 'api';
+
+export type CaseSummary = components['schemas']['CaseSummary'] &
+  ArchiveSeamFields &
+  TeamSharingFields & {
+    /** ADR-012 case origin; optional until the backend surfaces it on `CaseSummary`. */
+    source?: CaseSource;
+  };
 
 /**
  * A Team the caller belongs to (ADR-013 §D4), from `GET /api/v1/teams`.
@@ -50,25 +63,24 @@ export interface Team {
   organization_id: string;
 }
 
-export interface CaseDetail extends Omit<CaseSummary, 'milestones_completed'> {
-  turns_without_progress: number;
-  current_stage: InvestigationStage | null;
-  milestones_completed: string[];
-  pending_milestones: string[];
-  evidence_count: number;
-  hypothesis_count: number;
-  solution_count: number;
-  degraded_mode_active: boolean;
-  escalated: boolean;
-}
+export type CaseDetail = components['schemas']['CaseDetail'] &
+  ArchiveSeamFields &
+  TeamSharingFields;
 
-export interface CaseListResponse {
+/**
+ * The generated `CaseListResponse.cases` is the raw generated `CaseSummary`,
+ * which lacks the `TeamSharingFields`/`ArchiveSeamFields` seams above. The
+ * backend returns those fields on list reads (see `TeamSharingFields`), so the
+ * page carries the extended `CaseSummary` — override `cases` to it.
+ */
+export type CaseListResponse = Omit<components['schemas']['CaseListResponse'], 'cases'> & {
   cases: CaseSummary[];
-  total_count: number;
-  page: number;
-  page_size: number;
-  has_more: boolean;
-}
+};
+
+export type InvestigationStage = components['schemas']['InvestigationStage'];
+
+// ==================== Frontend-only request / filter shapes ====================
+// (no generated counterpart — these are dashboard query/write bags)
 
 export interface CaseFilters {
   state?: CaseState;
@@ -85,85 +97,39 @@ export interface CaseFilters {
   team_id?: string;
 }
 
+/** TODO(PR5): case annotation is a Dashboard write surface being removed (D1). */
 export interface CaseAnnotation {
   resolution_notes?: string;
   closure_reason?: string;
 }
 
-export interface CaseMessage {
-  message_id: string;
-  case_id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  created_at: string;
-}
+// ==================== Messages ====================
 
-export interface CaseMessagesResponse {
-  messages: CaseMessage[];
-  total_count: number;
-  retrieved_count?: number;
-}
+export type CaseMessage = components['schemas']['Message'];
+export type CaseMessagesResponse = components['schemas']['CaseMessagesResponse'];
 
-export interface UploadedFile {
-  file_id: string;
-  filename: string;
-  size_bytes: number;
-  size_display: string;
-  uploaded_at_turn: number;
-  uploaded_at: string;
-  source_type: string;
-  analysis_status: string;
-  summary?: string | null;
-}
+// ==================== Uploaded files ====================
 
-export interface UploadedFilesResponse {
-  case_id: string;
-  total_count: number;
-  files: UploadedFile[];
-}
+export type UploadedFile = components['schemas']['UploadedFileMetadata'];
+export type UploadedFilesResponse = components['schemas']['UploadedFilesList'];
+export type UploadedFileDetails = components['schemas']['UploadedFileDetailsResponse'];
+export type DerivedEvidence = components['schemas']['DerivedEvidenceSummary'];
 
-export interface DerivedEvidence {
-  evidence_id: string;
-  summary: string;
-  category: string;
-  collected_at_turn: number;
-  source_type: string;
-  primary_purpose?: string | null;
-  related_hypothesis_ids?: string[];
-}
+// ==================== Hypotheses ====================
 
-export interface UploadedFileDetails {
-  file_id: string;
-  filename: string;
-  size_bytes: number;
-  size_display: string;
-  uploaded_at_turn: number;
-  uploaded_at: string;
-  source_type: string;
-  data_type: string;
-  summary?: string | null;
-  evidence_count: number;
-  derived_evidence?: DerivedEvidence[];
-}
+export type HypothesisState = components['schemas']['HypothesisState'];
+export type HypothesisSummary = components['schemas']['HypothesisSummary'];
 
-export type HypothesisStatus =
-  | 'captured'
-  | 'active'
-  | 'validated'
-  | 'refuted'
-  | 'inconclusive'
-  | 'retired';
+// ==================== Case UI snapshot (phase-adaptive) ====================
 
-export interface HypothesisSummary {
-  hypothesis_id: string;
-  text: string;
-  likelihood: number;
-  status: HypothesisStatus;
-  evidence_count: number;
-}
+export type CaseUIStatus = CaseState;
 
-export type CaseUIStatus = 'inquiry' | 'investigating' | 'resolved' | 'closed';
-
+/**
+ * Frontend read-adapter over `GET /cases/{id}/ui`. The endpoint returns a
+ * phase-discriminated union (see `CaseUIResponse_*` in `case.ts`); the Dashboard
+ * only consumes the active-hypotheses slice, so this narrows to the fields
+ * actually read rather than forcing every caller to discriminate the union.
+ */
 export interface CaseUIResponse {
   case_id: string;
   state: CaseUIStatus;
@@ -173,63 +139,26 @@ export interface CaseUIResponse {
   agent_status?: string;
 }
 
-export interface SourceFileReference {
-  file_id: string;
-  filename: string;
-  uploaded_at_turn: number;
-}
+// ==================== Evidence ====================
 
-export interface RelatedHypothesis {
-  hypothesis_id: string;
-  statement: string;
-  /** SUPPORTS | REFUTES | NEUTRAL */
-  stance: string;
-}
+export type SourceFileReference = components['schemas']['SourceFileReference'];
+export type RelatedHypothesis = components['schemas']['RelatedHypothesis'];
+export type EvidenceDetails = components['schemas']['EvidenceDetailsResponse'];
+export type CaseEvidenceListResponse = components['schemas']['CaseEvidenceListResponse'];
 
-export interface EvidenceDetails {
-  evidence_id: string;
-  case_id: string;
-  summary: string;
-  /** SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | MITIGATION_EVIDENCE | SOLUTION_EVIDENCE */
-  category: string;
-  primary_purpose: string;
-  collected_at_turn: number;
-  collected_at: string;
-  collected_by: string;
-  source_file?: SourceFileReference | null;
-  related_hypotheses?: RelatedHypothesis[];
-  /** Verbatim quote from the source — present when the LLM grounded the summary in a specific slice. */
-  extract?: string | null;
-  analysis?: string | null;
-}
+// ==================== Reports ====================
 
-export interface CaseEvidenceListResponse {
-  case_id: string;
-  total_count: number;
-  evidence: EvidenceDetails[];
-}
+export type CaseReport = components['schemas']['CaseReport'];
+export type ReportType = components['schemas']['ReportType'];
+export type ReportGenerationRequest = components['schemas']['ReportGenerationRequest'];
+export type ReportGenerationResponse = components['schemas']['ReportGenerationResponse'];
 
-export interface CaseReport {
-  report_id: string;
-  case_id: string;
-  report_type: string;
-  generated_at: string;
-  content: string;
-}
-
-// Report generation types
-export type ReportType = 'resolution_summary' | 'closure_summary' | 'runbook';
-
-export interface ReportGenerationRequest {
-  report_types: ReportType[];
-}
-
-export interface ReportGenerationResponse {
-  case_id: string;
-  reports: CaseReport[];
-  remaining_regenerations: number;
-}
-
+/**
+ * Report recommendations. The generated `ReportRecommendationResponse` types
+ * `runbook_recommendation` as an opaque object (openapi-typescript loses the
+ * nested schema), so these hand-written shapes are a strictly-better-typed
+ * refinement of the same payload, not drift.
+ */
 export interface ReportRecommendation {
   case_id: string;
   available_for_generation: ReportType[];
@@ -243,7 +172,9 @@ export interface RunbookRecommendation {
   reason: string;
 }
 
-// Case issue (structured investigation outcome for Issue tab)
+// ==================== Case issue (Issue tab view model) ====================
+// Frontend view model assembled from case detail + reports; no single backend type.
+
 export interface CaseIssue {
   problem_statement: string;
   root_cause: string | null;
@@ -255,9 +186,17 @@ export interface CaseIssue {
   resolution_time: string | null;
 }
 
-// Knowledge suggestion types
+// ==================== Knowledge suggestions ====================
+// No generated counterpart — kept hand-written.
+
 export type SuggestionStatus = 'pending_review' | 'approved' | 'rejected' | 'draft';
-export type PIIScanStatus = 'not_scanned' | 'scanning' | 'clean' | 'pii_detected' | 'remediated' | 'scan_failed';
+export type PIIScanStatus =
+  | 'not_scanned'
+  | 'scanning'
+  | 'clean'
+  | 'pii_detected'
+  | 'remediated'
+  | 'scan_failed';
 
 export interface KnowledgeSuggestion {
   suggestion_id: string;

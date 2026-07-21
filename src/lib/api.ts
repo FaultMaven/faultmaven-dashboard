@@ -80,7 +80,7 @@ export type {
   UploadedFilesResponse,
   UploadedFileDetails,
   DerivedEvidence,
-  HypothesisStatus,
+  HypothesisState,
   HypothesisSummary,
   CaseUIStatus,
   CaseUIResponse,

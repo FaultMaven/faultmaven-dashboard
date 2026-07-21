@@ -21,17 +21,17 @@ export function UserTable({ users, onChangeRole, onRemove }: UserTableProps) {
         <tr>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">User</th>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Role</th>
-          <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Last Active</th>
+          <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Last Login</th>
           <th className="px-4 py-3"></th>
         </tr>
       </thead>
       <tbody className="divide-y divide-fm-border">
         {users.map((user) => {
-          const role: DashboardRoleValue = user.is_admin ? 'admin' : 'user';
+          const role: DashboardRoleValue = user.roles.includes('admin') ? 'admin' : 'user';
           return (
             <tr key={user.user_id} className="hover:bg-fm-elevated/50 transition-colors">
               <td className="px-4 py-3">
-                <p className="font-medium text-fm-text-primary">{user.display_name || user.username}</p>
+                <p className="font-medium text-fm-text-primary">{user.full_name || user.email}</p>
                 <p className="text-xs text-fm-text-tertiary mt-0.5">{user.email}</p>
               </td>
               <td className="px-4 py-3">
@@ -45,7 +45,7 @@ export function UserTable({ users, onChangeRole, onRemove }: UserTableProps) {
                 </select>
               </td>
               <td className="px-4 py-3 text-fm-text-tertiary">
-                {user.last_active_at ? new Date(user.last_active_at).toLocaleDateString() : '—'}
+                {user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : '—'}
               </td>
               <td className="px-4 py-3 text-right">
                 <button
