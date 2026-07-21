@@ -143,9 +143,53 @@ describe('getAdminCases', () => {
   });
 });
 
+describe('listCases', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Encodes the BACKEND-REAL contract: GET /cases paginates by limit/offset.
+  // The old client sent page/page_size, which FastAPI silently dropped, so every
+  // page returned the same first slice (cases 51+ were unreachable).
+  it('paginates by limit/offset, not page/page_size', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 40, has_more: false }),
+    });
+
+    await listCases({}, 2, 20);
+
+    const url = mockRequest.mock.calls[0][0] as string;
+    expect(url).toBe('/api/v1/cases?limit=20&offset=40');
+    expect(url).not.toContain('page=');
+    expect(url).not.toContain('page_size=');
+  });
+
+  it('sends offset=0 for the first page', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({}, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases?limit=20&offset=0');
+  });
+
+  it('forwards state/source filters alongside limit/offset', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({ state: 'resolved', source: 'copilot' }, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases?limit=20&offset=0&state=resolved&source=copilot'
+    );
+  });
+});
+
 describe('team filter + share (ADR-013 §D4)', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  // U12 team filter, adapted to PR #52's limit/offset contract (team_id rides
+  // alongside limit/offset, not page/page_size).
   it('listCases forwards team_id as a query param', async () => {
     mockRequest.mockResolvedValueOnce({
       json: async () => ({ cases: [], total_count: 0, has_more: false }),
@@ -154,7 +198,7 @@ describe('team filter + share (ADR-013 §D4)', () => {
     await listCases({ team_id: 'team_42' }, 0, 20);
 
     expect(mockRequest).toHaveBeenCalledWith(
-      '/api/v1/cases?page=0&page_size=20&team_id=team_42'
+      '/api/v1/cases?limit=20&offset=0&team_id=team_42'
     );
   });
 
@@ -165,28 +209,7 @@ describe('team filter + share (ADR-013 §D4)', () => {
 
     await listCases({}, 0, 20);
 
-    expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases?page=0&page_size=20');
-  });
-
-  it('searchCases includes team_id in the body only when provided', async () => {
-    mockRequest.mockResolvedValue({ json: async () => [] });
-
-    await searchCases('disk full', 0, 20, 'team_42');
-    expect(mockRequest).toHaveBeenLastCalledWith(
-      '/api/v1/cases/search',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ query: 'disk full', page: 0, page_size: 20, team_id: 'team_42' }),
-      })
-    );
-
-    await searchCases('disk full', 0, 20);
-    expect(mockRequest).toHaveBeenLastCalledWith(
-      '/api/v1/cases/search',
-      expect.objectContaining({
-        body: JSON.stringify({ query: 'disk full', page: 0, page_size: 20 }),
-      })
-    );
+    expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases?limit=20&offset=0');
   });
 
   it('shareCaseWithTeam POSTs the team id to the team-shares endpoint', async () => {
@@ -212,5 +235,54 @@ describe('team filter + share (ADR-013 §D4)', () => {
       '/api/v1/cases/case_x/team-shares/team_42',
       expect.objectContaining({ method: 'DELETE' })
     );
+  });
+});
+
+describe('searchCases', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Backend CaseSearchRequest supports only `limit` (max 100) — no page/offset.
+  it('sends only query + limit (no page/page_size)', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('database outage');
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases/search',
+      expect.objectContaining({ method: 'POST' })
+    );
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toEqual({ query: 'database outage', limit: 100 });
+    expect(body).not.toHaveProperty('page');
+    expect(body).not.toHaveProperty('page_size');
+  });
+
+  it('honours a caller-supplied limit', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('db', 25);
+
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toEqual({ query: 'db', limit: 25 });
+  });
+
+  // U12 team filter on search, adapted to PR #52's (query, limit, teamId)
+  // signature: team_id rides in the body next to limit, no page/page_size.
+  it('includes team_id in the body only when provided', async () => {
+    mockRequest.mockResolvedValue({ json: async () => [] });
+
+    await searchCases('disk full', 100, 'team_42');
+    expect(mockRequest).toHaveBeenLastCalledWith(
+      '/api/v1/cases/search',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ query: 'disk full', limit: 100, team_id: 'team_42' }),
+      })
+    );
+
+    await searchCases('disk full', 100);
+    const body = JSON.parse((mockRequest.mock.calls[1][1] as RequestInit).body as string);
+    expect(body).toEqual({ query: 'disk full', limit: 100 });
+    expect(body).not.toHaveProperty('team_id');
   });
 });

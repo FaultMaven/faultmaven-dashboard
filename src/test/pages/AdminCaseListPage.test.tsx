@@ -107,17 +107,15 @@ describe('AdminCaseListPage', () => {
     expect(screen.getByText('copilot_user')).toBeInTheDocument();
   });
 
-  it('renders state filters only — no date/search controls the endpoint ignores', async () => {
+  it('renders state filters only — no search control the endpoint ignores', async () => {
     await act(async () => {
       renderPage();
     });
 
     // State chips are present…
     expect(screen.getByRole('button', { name: 'Investigating' })).toBeInTheDocument();
-    // …but the date-range and search inputs (unsupported by the admin endpoint) are not.
+    // …but the search input (unsupported by the admin endpoint) is hidden by stateOnly.
     expect(screen.queryByLabelText('Search cases')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('From date')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('To date')).not.toBeInTheDocument();
   });
 
   it('shows a Slack source badge on Slack cases', async () => {

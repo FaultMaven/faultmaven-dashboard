@@ -30,13 +30,14 @@ export async function listCases(
   page = 0,
   pageSize = 20
 ): Promise<CaseListResponse> {
+  // The backend paginates by limit/offset (not page/page_size); FastAPI
+  // silently drops unknown query params, so sending page/page_size returned the
+  // same first slice for every page. Mirror getAdminCases and derive limit/offset.
   const params: Record<string, string | number | undefined> = {
-    page,
-    page_size: pageSize,
+    limit: pageSize,
+    offset: page * pageSize,
     ...(filters.state && { state: filters.state }),
     ...(filters.source && { source: filters.source }),
-    ...(filters.date_from && { date_from: filters.date_from }),
-    ...(filters.date_to && { date_to: filters.date_to }),
     ...(filters.include_archived && { include_archived: 'true' }),
     ...(filters.team_id && { team_id: filters.team_id }),
   };
@@ -88,22 +89,22 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
 /**
  * Search cases by free text query.
  * Returns a flat array of CaseSummary (not wrapped in CaseListResponse).
+ *
+ * The backend `CaseSearchRequest` supports only a `limit` (max 100, default 20)
+ * — it has no `offset`/`page`, so search results cannot be paginated. We fetch
+ * up to `limit` matches in a single request and the caller presents them as a
+ * single page of "top N matches". Real search pagination requires a backend
+ * change (add an offset/cursor to `CaseSearchRequest`); do not fake it here.
  */
 export async function searchCases(
   query: string,
-  page = 0,
-  pageSize = 20,
+  limit = 100,
   teamId?: string
 ): Promise<CaseSummary[]> {
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query,
-      page,
-      page_size: pageSize,
-      ...(teamId && { team_id: teamId }),
-    }),
+    body: JSON.stringify({ query, limit, ...(teamId && { team_id: teamId }) }),
   });
   await handleAPIResponse(response, 'Failed to search cases');
   return response.json();
