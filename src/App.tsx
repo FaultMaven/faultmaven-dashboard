@@ -9,6 +9,7 @@ import UserManagementPage from './pages/UserManagementPage';
 import OrgTeamManagementPage from './pages/OrgTeamManagementPage';
 import AdminCaseListPage from './pages/AdminCaseListPage';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
+import SSOCallbackPage from './pages/SSOCallbackPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useCapabilities } from './hooks/useCapabilities';
@@ -75,6 +76,8 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signin" element={<Navigate to="/login" replace />} />
+            {/* Public by design: the SSO callback IS the login (no session exists yet). */}
+            <Route path="/auth/sso/callback" element={<SSOCallbackPage />} />
             <Route path="/" element={<Navigate to="/cases" replace />} />
             <Route
               path="/auth/authorize"

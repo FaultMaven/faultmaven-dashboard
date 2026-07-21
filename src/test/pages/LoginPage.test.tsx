@@ -64,6 +64,27 @@ describe('LoginPage', () => {
     assignSpy.mockRestore();
   });
 
+  it('cloud mode: forwards the saved destination as return_to on the hosted-login URL', () => {
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    // ProtectedRoute saved the intended destination; the hosted-login handoff
+    // echoes it via the backend's return_to so it survives the IdP round trip.
+    sessionStorage.setItem('oauth_redirect_after_login', '/cases/case-1?tab=report');
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(assignSpy).toHaveBeenCalledWith(
+      'https://idp.example/login?return_to=%2Fcases%2Fcase-1%3Ftab%3Dreport'
+    );
+    sessionStorage.removeItem('oauth_redirect_after_login');
+    assignSpy.mockRestore();
+  });
+
   it('standalone mode: passwordless username form, no password field', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',

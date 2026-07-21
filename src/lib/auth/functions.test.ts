@@ -24,7 +24,7 @@ vi.mock('./AuthManager', async () => {
   };
 });
 
-import { devLogin, logoutAuth } from './functions';
+import { devLogin, logoutAuth, ssoExchange } from './functions';
 import { AuthenticationError } from './types';
 import { authManager } from './AuthManager';
 
@@ -326,5 +326,91 @@ describe('logoutAuth', () => {
     await expect(logoutAuth()).rejects.toThrow('Storage error');
 
     expect(mockClearAuthState).toHaveBeenCalled();
+  });
+});
+
+describe('ssoExchange', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const backendResponse = {
+    access_token: 'sso-access-token',
+    token_type: 'bearer',
+    expires_in: 1800,
+    refresh_token: 'sso-refresh-token',
+    session_id: 'sess-sso-1',
+    user: {
+      user_id: 'user-sso',
+      username: 'jane.doe',
+      email: 'jane@example.com',
+      display_name: 'Jane Doe',
+      is_dev_user: false,
+      is_active: true,
+      roles: ['user'],
+    },
+  };
+
+  it('POSTs the completion code and persists a state with derived expires_at', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => backendResponse,
+    });
+
+    const before = Date.now();
+    const result = await ssoExchange('completion-code-abc');
+
+    expect(fetchSpy).toHaveBeenCalledWith('http://test-api.local/api/v1/auth/sso/exchange', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code: 'completion-code-abc' }),
+    });
+
+    // expires_in (seconds) → absolute expires_at (epoch ms), same contract
+    // handling as devLogin, so AuthManager's expiry guard + silent refresh work.
+    expect(result.access_token).toBe('sso-access-token');
+    expect(result.refresh_token).toBe('sso-refresh-token');
+    expect(result.expires_at).toBeGreaterThanOrEqual(before + 1800 * 1000);
+    expect(result.expires_at).toBeLessThanOrEqual(Date.now() + 1800 * 1000);
+    expect(mockSaveAuthState).toHaveBeenCalledWith(result);
+  });
+
+  it('throws AuthenticationError on the uniform 401 (expired/replayed code)', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+    });
+
+    await expect(ssoExchange('stale-code')).rejects.toThrow(AuthenticationError);
+    expect(mockSaveAuthState).not.toHaveBeenCalled();
+  });
+
+  it('throws when a 2xx exchange omits a usable token/expiry', async () => {
+    // Contract violation: 200 OK without access_token/expires_in must fail
+    // loudly rather than persist an instantly-stale session.
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { user_id: 'u1' } }),
+    });
+
+    await expect(ssoExchange('code-xyz-123456789')).rejects.toThrow(AuthenticationError);
+    expect(mockSaveAuthState).not.toHaveBeenCalled();
+  });
+
+  it('propagates network errors without persisting state', async () => {
+    fetchSpy.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(ssoExchange('code-net-fail')).rejects.toThrow('Network error');
+    expect(mockSaveAuthState).not.toHaveBeenCalled();
   });
 });

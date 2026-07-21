@@ -2,7 +2,7 @@
 // This file re-exports from modular structure for backward compatibility
 
 // Re-export everything from auth module
-export { AuthManager, authManager, devLogin, logoutAuth, AuthenticationError } from './auth';
+export { AuthManager, authManager, devLogin, ssoExchange, logoutAuth, AuthenticationError } from './auth';
 export type { AuthState } from './auth';
 
 // Re-export everything from knowledge module

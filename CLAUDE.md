@@ -61,7 +61,8 @@ src/
 │   ├── AdminCaseListPage.tsx # Cross-tenant "All Cases" list (standalone admin only)
 │   ├── UserManagementPage.tsx # Platform admin user management
 │   ├── LLMConfigPage.tsx     # LLM provider configuration
-│   └── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
+│   ├── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
+│   └── SSOCallbackPage.tsx   # Cloud SSO callback (completion-code exchange)
 ├── components/               # Reusable UI components
 │   ├── PageHeader.tsx        # Top navigation bar
 │   ├── CaseTabs.tsx          # Tab container (Transcript, Issue, Report, Hypotheses, Evidence) — all tabs shown for every case
@@ -102,7 +103,7 @@ src/
 
 The dashboard communicates with the FaultMaven backend through modular API clients (`lib/cases/`, `lib/knowledge/`, etc.), barrel-exported via `lib/api.ts`:
 
-- **Authentication**: `devLogin()`, `logoutAuth()`, AuthContext powered
+- **Authentication**: `devLogin()`, `ssoExchange()`, `logoutAuth()`, AuthContext powered
 - **Knowledge Base**: Upload, list (paginated), delete documents (user + admin scopes)
 - **Cases**: List, detail, search (title + case ID), annotate, archive, messages, evidence list/detail (`GET /cases/{id}/evidence`, `GET /cases/{id}/evidence/{evidence_id}`), uploaded files list/detail, phase-adaptive UI snapshot (`GET /cases/{id}/ui`), reports
 - **Reports**: `generateCaseReport()`, `getReportRecommendations()`, `getCaseReports()`
@@ -122,7 +123,8 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 
 ### Component Architecture
 
-- **LoginPage**: Authentication interface with FaultMaven branding
+- **LoginPage**: Authentication interface with FaultMaven branding. Standalone: passwordless username form. Cloud: single Sign In button that hands off to the backend-advertised hosted-login URL (`oauth.hosted_login_url` from `/auth/config`), forwarding the ProtectedRoute-saved destination as `return_to`.
+- **SSOCallbackPage**: Cloud hosted-login return leg (route `/auth/sso/callback`, public — it IS the login). The backend redirects here with a single-use completion `code` (+ optional same-origin `return_to`) or a sanitized `error` slug; the page POSTs `{code}` to `/api/v1/auth/sso/exchange`, stores the standard token response exactly like a LoginPage sign-in, and forwards to `return_to` → saved destination → `/kb`. Error slugs map to friendly messages with a "Back to sign in" link; raw query content is never echoed.
 - **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
 - **AdminKBPage**: Organization KB management (admin only)
 - **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`. Renders rows via the shared `CaseTable` component.
