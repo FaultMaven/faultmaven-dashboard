@@ -632,14 +632,16 @@ interface OverlayPanelProps {
 
 function OverlayPanel(props: OverlayPanelProps) {
   const { mode } = props;
-  if (!mode) return null;
 
-  // Upload file modal state
+  // Upload file modal state. Hooks must be declared unconditionally and before
+  // any early return so the hook count is stable across renders (rules of hooks).
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadForm, setUploadForm] = useState({ title: '', document_type: 'runbook', tags: '', description: '' });
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  if (!mode) return null;
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
@@ -1198,7 +1200,10 @@ export default function KBPage() {
           </div>
         )}
 
-        {/* Overlay panel (creation/editing) */}
+        {/* Overlay panel (creation/editing) — mounted only when active so the
+            panel's hooks mount/unmount as a whole rather than toggling hook
+            count on the same fiber (rules of hooks). */}
+        {overlayMode && (
         <OverlayPanel
           mode={overlayMode}
           onUploadFile={handleUploadFile}
@@ -1218,6 +1223,7 @@ export default function KBPage() {
           onBack={handleOverlayBack}
           onClose={closeOverlay}
         />
+        )}
 
         {/* Tab bar */}
         {!overlayMode && (
