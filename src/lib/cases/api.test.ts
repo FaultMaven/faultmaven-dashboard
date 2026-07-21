@@ -19,7 +19,7 @@ vi.mock('../knowledge/errors', () => ({
 }));
 
 import { makeAuthenticatedRequest } from '../knowledge/client';
-import { getCaseMessages, getAdminCases } from './api';
+import { getCaseMessages, getAdminCases, listCases, searchCases } from './api';
 
 const mockRequest = makeAuthenticatedRequest as ReturnType<typeof vi.fn>;
 
@@ -133,5 +133,76 @@ describe('getAdminCases', () => {
     expect(mockRequest).toHaveBeenCalledWith(
       '/api/v1/admin/cases?limit=20&offset=0&source=slack'
     );
+  });
+});
+
+describe('listCases', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Encodes the BACKEND-REAL contract: GET /cases paginates by limit/offset.
+  // The old client sent page/page_size, which FastAPI silently dropped, so every
+  // page returned the same first slice (cases 51+ were unreachable).
+  it('paginates by limit/offset, not page/page_size', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 40, has_more: false }),
+    });
+
+    await listCases({}, 2, 20);
+
+    const url = mockRequest.mock.calls[0][0] as string;
+    expect(url).toBe('/api/v1/cases?limit=20&offset=40');
+    expect(url).not.toContain('page=');
+    expect(url).not.toContain('page_size=');
+  });
+
+  it('sends offset=0 for the first page', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({}, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases?limit=20&offset=0');
+  });
+
+  it('forwards state/source filters alongside limit/offset', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({ state: 'resolved', source: 'copilot' }, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases?limit=20&offset=0&state=resolved&source=copilot'
+    );
+  });
+});
+
+describe('searchCases', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Backend CaseSearchRequest supports only `limit` (max 100) — no page/offset.
+  it('sends only query + limit (no page/page_size)', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('database outage');
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases/search',
+      expect.objectContaining({ method: 'POST' })
+    );
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toEqual({ query: 'database outage', limit: 100 });
+    expect(body).not.toHaveProperty('page');
+    expect(body).not.toHaveProperty('page_size');
+  });
+
+  it('honours a caller-supplied limit', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('db', 25);
+
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toEqual({ query: 'db', limit: 25 });
   });
 });

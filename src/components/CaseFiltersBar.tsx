@@ -8,10 +8,9 @@ interface CaseFiltersBarProps {
   filters: CaseFilters;
   onChange: (filters: CaseFilters) => void;
   /**
-   * When true, render only the state chips and hide the date-range + search
-   * inputs. Used by surfaces whose backend endpoint accepts only a state
-   * filter (e.g. the admin cross-tenant view), so no control is shown that
-   * silently does nothing.
+   * When true, render only the state chips and hide the search input. Used by
+   * surfaces whose backend endpoint accepts only a state filter (e.g. the admin
+   * cross-tenant view), so no control is shown that silently does nothing.
    */
   stateOnly?: boolean;
 }
@@ -29,27 +28,23 @@ const inputClass =
 
 
 export function CaseFiltersBar({ filters, onChange, stateOnly = false }: CaseFiltersBarProps) {
+  // `filters` is in the dependency list so the debounced search callback always
+  // closes over the *current* filters. Memoizing on `[onChange]` alone captured
+  // the first-render filters, so typing in search wiped the active state/archived
+  // chips. (Cancelling a pending debounce when other filters change is a
+  // separate follow-up — debounce has no cancel() yet.)
   const debouncedSearch = useMemo(
     () =>
       debounce((value: string) => {
         onChange({ ...filters, search: value || undefined });
       }, 300),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onChange]
+    [onChange, filters]
   );
 
   const searchRef = useRef<HTMLInputElement>(null);
 
   const handleStateClick = (value: CaseState | '') => {
     onChange({ ...filters, state: value || undefined });
-  };
-
-  const handleDateFrom = (value: string) => {
-    onChange({ ...filters, date_from: value || undefined });
-  };
-
-  const handleDateTo = (value: string) => {
-    onChange({ ...filters, date_to: value || undefined });
   };
 
   return (
@@ -70,32 +65,15 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false }: CaseFil
       </div>
 
       {!stateOnly && (
-        <>
-          <input
-            type="date"
-            defaultValue={filters.date_from ?? ''}
-            onChange={(e) => handleDateFrom(e.target.value)}
-            className={inputClass}
-            aria-label="From date"
-          />
-          <input
-            type="date"
-            defaultValue={filters.date_to ?? ''}
-            onChange={(e) => handleDateTo(e.target.value)}
-            className={inputClass}
-            aria-label="To date"
-          />
-
-          <input
-            ref={searchRef}
-            type="search"
-            defaultValue={filters.search ?? ''}
-            onChange={(e) => debouncedSearch(e.target.value)}
-            placeholder="Search cases..."
-            className={`flex-1 min-w-[200px] ${inputClass}`}
-            aria-label="Search cases"
-          />
-        </>
+        <input
+          ref={searchRef}
+          type="search"
+          defaultValue={filters.search ?? ''}
+          onChange={(e) => debouncedSearch(e.target.value)}
+          placeholder="Search cases..."
+          className={`flex-1 min-w-[200px] ${inputClass}`}
+          aria-label="Search cases"
+        />
       )}
     </div>
   );
