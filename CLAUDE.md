@@ -34,8 +34,8 @@ cp .env.example .env.local
 - `VITE_MAX_FILE_SIZE_MB` - Max file upload size in MB (default: `10`)
 
 **Port Reference:**
-- `8000` - FaultMaven API (monolithic backend)
-- `3000` - Dashboard (Docker/production)
+- `8090` - FaultMaven API (monolithic backend)
+- `3333` - Dashboard (Docker/production)
 - `5173` - Dashboard (Vite development server)
 
 **Notes**
@@ -202,15 +202,35 @@ pnpm build
 # Output: dist/ directory with optimized static files
 ```
 
-### Environment-Specific Builds
+### Runtime API-URL Injection (no rebuild)
+
+The published image is environment-agnostic — nothing is baked in. The backend
+API URL is chosen at **container startup** by `inject-config.sh`
+(`/docker-entrypoint.d/40-inject-config.sh`), which reads the `VITE_API_URL`
+environment variable and writes `window.ENV.API_URL` into `config.js`. At runtime
+`src/config.ts` (`getApiUrl()`) resolves the URL in this precedence order:
+
+1. `window.ENV.API_URL` — runtime injection. An explicitly-set key wins, **including
+   the empty string** (`""` = same-origin; the app makes relative `/api/v1/...`
+   calls, for the cloud reverse-proxy model).
+2. Build-time `VITE_API_URL` — rarely used; the shipped image bakes nothing.
+3. Same-host detection — API assumed on the host that served the dashboard at
+   `:8090` (covers localhost, `127.0.0.1`, and LAN IPs). This is the self-hosted
+   default when `VITE_API_URL` is unset.
 
 ```bash
-# Self-hosted
-docker build --build-arg VITE_API_URL=http://localhost:8090 -t dashboard:self-hosted .
+# Split-host (dashboard and API on different origins) — set VITE_API_URL at RUN time:
+docker run -p 3333:80 -e VITE_API_URL=https://api.faultmaven.ai \
+  ghcr.io/faultmaven/faultmaven-dashboard:latest
 
-# Enterprise
-docker build --build-arg VITE_API_URL=https://api.faultmaven.ai -t dashboard:enterprise .
+# Self-hosted same-host default — leave VITE_API_URL unset; same-host detection
+# targets :8090 on whatever host served the dashboard:
+docker run -p 3333:80 ghcr.io/faultmaven/faultmaven-dashboard:latest
 ```
+
+`inject-config.sh` validates that a set, non-empty `VITE_API_URL` is a bare origin
+(`scheme://host[:port]`) and refuses to start otherwise, so a malformed value
+cannot break out of the injected JS string.
 
 ## Related Projects
 

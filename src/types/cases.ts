@@ -29,18 +29,53 @@ interface ArchiveSeamFields {
   is_stuck?: boolean;
 }
 
+/**
+ * Team-sharing seam (U12 / ADR-013 §D4). The backend surfaces `shared_team_ids`
+ * on case reads, but openapi-typescript's generated `CaseSummary`/`CaseDetail`
+ * do not carry it yet (not published in the OpenAPI schema). This small local
+ * extension — same pattern as `ArchiveSeamFields` — keeps the team-sharing UI
+ * (badges, team filter, share action) typechecking. Empty in standalone (team
+ * sharing is a Cloud collaboration feature — unwired there) and for a case
+ * shared with no Team. Resolve ids to names via `GET /api/v1/teams`.
+ */
+interface TeamSharingFields {
+  shared_team_ids: string[];
+}
+
 /** Case origin (ADR-012), derived from the creator's account kind. */
 export type CaseSource = 'copilot' | 'slack' | 'api';
 
 export type CaseSummary = components['schemas']['CaseSummary'] &
-  ArchiveSeamFields & {
+  ArchiveSeamFields &
+  TeamSharingFields & {
     /** ADR-012 case origin; optional until the backend surfaces it on `CaseSummary`. */
     source?: CaseSource;
   };
 
-export type CaseDetail = components['schemas']['CaseDetail'] & ArchiveSeamFields;
+/**
+ * A Team the caller belongs to (ADR-013 §D4), from `GET /api/v1/teams`.
+ * Read-only here — team management is the Cloud admin surface.
+ */
+export interface Team {
+  team_id: string;
+  name: string;
+  description?: string | null;
+  organization_id: string;
+}
 
-export type CaseListResponse = components['schemas']['CaseListResponse'];
+export type CaseDetail = components['schemas']['CaseDetail'] &
+  ArchiveSeamFields &
+  TeamSharingFields;
+
+/**
+ * The generated `CaseListResponse.cases` is the raw generated `CaseSummary`,
+ * which lacks the `TeamSharingFields`/`ArchiveSeamFields` seams above. The
+ * backend returns those fields on list reads (see `TeamSharingFields`), so the
+ * page carries the extended `CaseSummary` — override `cases` to it.
+ */
+export type CaseListResponse = Omit<components['schemas']['CaseListResponse'], 'cases'> & {
+  cases: CaseSummary[];
+};
 
 export type InvestigationStage = components['schemas']['InvestigationStage'];
 
@@ -54,6 +89,12 @@ export interface CaseFilters {
   date_to?: string;
   search?: string;
   include_archived?: boolean;
+  /**
+   * Restrict to cases shared with this Team (ADR-013 §D4). Only Teams the caller
+   * belongs to yield results; ignored in standalone. Doubles as the "team case
+   * view" — selecting a team narrows the list to that team's shared cases.
+   */
+  team_id?: string;
 }
 
 /** TODO(PR5): case annotation is a Dashboard write surface being removed (D1). */

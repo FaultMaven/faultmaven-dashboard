@@ -1,5 +1,8 @@
 # Node dependencies
 node_modules/
+# Also ignore a root `node_modules` symlink (dev worktrees symlink the main
+# tree's modules); the trailing-slash pattern above only matches a directory.
+/node_modules
 
 # Build output
 dist/

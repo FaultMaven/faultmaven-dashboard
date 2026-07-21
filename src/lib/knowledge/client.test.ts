@@ -47,24 +47,11 @@ describe('makeAuthenticatedRequest', () => {
     vi.restoreAllMocks();
   });
 
-  it('should make authenticated request with token and user headers', async () => {
-    const mockAuthState: AuthState = {
-      access_token: 'test-token-123',
-      token_type: 'bearer',
-      expires_at: Date.now() + 3600000,
-      user: {
-        user_id: 'user-123',
-        username: 'testuser',
-        email: 'test@example.com',
-        display_name: 'Test User',
-        is_dev_user: false,
-        is_active: true,
-        roles: ['user'],
-      },
-    };
-
+  it('sends only the bearer token — no client-asserted identity headers', async () => {
+    // The backend derives identity/roles from the verified JWT. The dashboard
+    // must NOT assert its own X-User-ID / X-User-Roles (zero backend consumers;
+    // client-asserted roles are a security smell).
     mockGetAccessToken.mockResolvedValueOnce('test-token-123');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
     fetchSpy.mockResolvedValueOnce({ ok: true });
 
     await makeAuthenticatedRequest('/api/test');
@@ -80,104 +67,24 @@ describe('makeAuthenticatedRequest', () => {
     const headers = callArgs[1].headers as Headers;
 
     expect(headers.get('Authorization')).toBe('Bearer test-token-123');
-    expect(headers.get('X-User-ID')).toBe('user-123');
-    expect(headers.get('X-User-Roles')).toBe('user');
-  });
-
-  it('should handle multiple roles in X-User-Roles header', async () => {
-    const mockAuthState: AuthState = {
-      access_token: 'token',
-      token_type: 'bearer',
-      expires_at: Date.now() + 3600000,
-      user: {
-        user_id: 'user-123',
-        username: 'adminuser',
-        email: 'admin@example.com',
-        display_name: 'Admin User',
-        is_dev_user: false,
-        is_active: true,
-        roles: ['admin', 'user', 'moderator'],
-      },
-    };
-
-    mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
-    fetchSpy.mockResolvedValueOnce({ ok: true });
-
-    await makeAuthenticatedRequest('/api/test');
-
-    const callArgs = fetchSpy.mock.calls[0];
-    const headers = callArgs[1].headers as Headers;
-
-    expect(headers.get('X-User-Roles')).toBe('admin,user,moderator');
-  });
-
-  it('should not set X-User-Roles when roles is undefined', async () => {
-    const mockAuthState: AuthState = {
-      access_token: 'token',
-      token_type: 'bearer',
-      expires_at: Date.now() + 3600000,
-      user: {
-        user_id: 'user-123',
-        username: 'testuser',
-        email: 'test@example.com',
-        display_name: 'Test User',
-        is_dev_user: false,
-        is_active: true,
-        roles: undefined as unknown as string[],
-      },
-    };
-
-    mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
-    fetchSpy.mockResolvedValueOnce({ ok: true });
-
-    await makeAuthenticatedRequest('/api/test');
-
-    const callArgs = fetchSpy.mock.calls[0];
-    const headers = callArgs[1].headers as Headers;
-
+    expect(headers.get('X-User-ID')).toBeNull();
     expect(headers.get('X-User-Roles')).toBeNull();
   });
 
-  it('should handle empty roles array', async () => {
-    const mockAuthState: AuthState = {
-      access_token: 'token',
-      token_type: 'bearer',
-      expires_at: Date.now() + 3600000,
-      user: {
-        user_id: 'user-123',
-        username: 'testuser',
-        email: 'test@example.com',
-        display_name: 'Test User',
-        is_dev_user: false,
-        is_active: true,
-        roles: [],
-      },
-    };
-
+  it('does not read auth state (no duplicate storage round-trip)', async () => {
+    // The former second getAuthState() read existed only to build the removed
+    // identity headers; the request now proceeds on the token alone.
     mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
     fetchSpy.mockResolvedValueOnce({ ok: true });
 
     await makeAuthenticatedRequest('/api/test');
 
-    const callArgs = fetchSpy.mock.calls[0];
-    const headers = callArgs[1].headers as Headers;
-
-    expect(headers.get('X-User-Roles')).toBe('');
+    expect(mockGetAuthState).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should throw AuthenticationError when no token', async () => {
     mockGetAccessToken.mockResolvedValueOnce(null);
-
-    await expect(makeAuthenticatedRequest('/api/test')).rejects.toThrow('Not authenticated');
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it('should throw AuthenticationError when no auth state', async () => {
-    mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(null);
 
     await expect(makeAuthenticatedRequest('/api/test')).rejects.toThrow('Not authenticated');
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -274,7 +181,6 @@ describe('makeAuthenticatedRequest', () => {
     const headers = callArgs[1].headers as Headers;
 
     expect(headers.get('Authorization')).toBe('Bearer token');
-    expect(headers.get('X-User-ID')).toBe('user-123');
     expect(headers.get('Content-Type')).toBe('application/json');
     expect(headers.get('X-Custom-Header')).toBe('custom-value');
   });

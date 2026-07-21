@@ -132,8 +132,9 @@ describe('useCaseList', () => {
     });
     await waitFor(() => expect(result.current.searchMode).toBe(true));
 
-    // Sends only query + limit (limit-based, no page/page_size args).
-    expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100);
+    // Sends query + limit + the (here-undefined) team_id (limit-based, no
+    // page/page_size args). team_id rides through from the U12 team filter.
+    expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100, undefined);
     expect(result.current.cases).toHaveLength(60);
     // pageSize collapses to the result count => exactly one page in the pager.
     expect(Math.ceil(result.current.totalCount / result.current.pageSize)).toBe(1);

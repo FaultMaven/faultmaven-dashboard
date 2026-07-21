@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react';
-import type { CaseFilters } from '../types/cases';
+import type { CaseFilters, Team } from '../types/cases';
 import type { CaseState } from '../types/cases';
 import { debounce } from '../utils/debounce';
 import { chipBase, chipActive, chipInactive } from '../lib/ui/chip';
@@ -13,6 +13,13 @@ interface CaseFiltersBarProps {
    * cross-tenant view), so no control is shown that silently does nothing.
    */
   stateOnly?: boolean;
+  /**
+   * Teams the caller belongs to (ADR-013 §D4). When provided and non-empty,
+   * renders a team filter — selecting a team narrows the list to cases shared
+   * with it (the "team case view"). Omitted where team sharing is off, so the
+   * control never appears in standalone.
+   */
+  teams?: Team[];
 }
 
 const STATE_OPTIONS: { value: CaseState | ''; label: string }[] = [
@@ -27,7 +34,7 @@ const inputClass =
   'px-3 py-1.5 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 
 
-export function CaseFiltersBar({ filters, onChange, stateOnly = false }: CaseFiltersBarProps) {
+export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: CaseFiltersBarProps) {
   // `filters` is in the dependency list so the debounced search callback always
   // closes over the *current* filters. Memoizing on `[onChange]` alone captured
   // the first-render filters, so typing in search wiped the active state/archived
@@ -47,6 +54,12 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false }: CaseFil
     onChange({ ...filters, state: value || undefined });
   };
 
+  const handleTeam = (value: string) => {
+    onChange({ ...filters, team_id: value || undefined });
+  };
+
+  const showTeamFilter = !stateOnly && teams && teams.length > 0;
+
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4">
       <div className="flex gap-1.5">
@@ -63,6 +76,22 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false }: CaseFil
           );
         })}
       </div>
+
+      {showTeamFilter && (
+        <select
+          value={filters.team_id ?? ''}
+          onChange={(e) => handleTeam(e.target.value)}
+          className={inputClass}
+          aria-label="Filter by team"
+        >
+          <option value="">All teams</option>
+          {teams.map((team) => (
+            <option key={team.team_id} value={team.team_id}>
+              {team.name}
+            </option>
+          ))}
+        </select>
+      )}
 
       {!stateOnly && (
         <input

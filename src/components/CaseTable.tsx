@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
 import { MilestoneProgress } from './MilestoneProgress';
 import { SourceBadge } from './SourceBadge';
+import { TeamShareBadge } from './TeamShareBadge';
 import type { CaseSummary } from '../lib/api';
 
 interface CaseTableProps {
@@ -12,6 +13,9 @@ interface CaseTableProps {
   showOwner?: boolean;
   /** Optional trailing action cell per row (e.g. the Archive control). */
   renderActions?: (c: CaseSummary) => ReactNode;
+  /** team_id → name for the team-share badge (ADR-013 §D4). Omit where team
+   *  sharing is off; the badge then renders nothing (cases carry no team ids). */
+  teamsById?: Map<string, string>;
 }
 
 /**
@@ -19,7 +23,7 @@ interface CaseTableProps {
  * [actions]). Used by both the per-user `CaseListPage` and the cross-tenant
  * `AdminCaseListPage` so the two never drift.
  */
-export function CaseTable({ cases, loading, showOwner = false, renderActions }: CaseTableProps) {
+export function CaseTable({ cases, loading, showOwner = false, renderActions, teamsById }: CaseTableProps) {
   return (
     <div className="bg-fm-surface rounded-fm-card border border-fm-border overflow-hidden">
       {loading ? (
@@ -54,6 +58,7 @@ export function CaseTable({ cases, loading, showOwner = false, renderActions }: 
                       {c.title || 'Untitled Case'}
                     </Link>
                     <SourceBadge source={c.source} />
+                    <TeamShareBadge teamIds={c.shared_team_ids} teamsById={teamsById} />
                   </div>
                   {c.description && (
                     <p className="text-xs text-fm-text-tertiary mt-0.5 line-clamp-1">{c.description}</p>

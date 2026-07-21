@@ -6,7 +6,10 @@ import { authManager, AuthenticationError } from '../auth';
 /**
  * Make an authenticated API request
  *
- * Automatically includes authentication token and user ID headers.
+ * Attaches the bearer access token. The backend derives the caller's identity
+ * and roles from that verified JWT — the dashboard does NOT assert its own
+ * identity via headers. (The former `X-User-ID`/`X-User-Roles` headers had zero
+ * backend consumers and, being client-asserted, were a security smell.)
  *
  * @param url - API endpoint URL (relative or absolute)
  * @param options - Fetch options
@@ -22,18 +25,8 @@ export async function makeAuthenticatedRequest(
     throw new AuthenticationError('Not authenticated');
   }
 
-  const authState = await authManager.getAuthState();
-  if (!authState) {
-    throw new AuthenticationError('Not authenticated');
-  }
-
   const headers = new Headers(options.headers);
   headers.set('Authorization', `Bearer ${token}`);
-  headers.set('X-User-ID', authState.user.user_id);
-
-  if (authState.user.roles) {
-    headers.set('X-User-Roles', authState.user.roles.join(','));
-  }
 
   const fullUrl = url.startsWith('http') ? url : `${config.apiUrl}${url}`;
 

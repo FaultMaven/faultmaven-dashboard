@@ -1,24 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
 import { MilestoneProgress } from '../components/MilestoneProgress';
 import { CaseTabs } from '../components/CaseTabs';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { TeamShareBadge } from '../components/TeamShareBadge';
+import { ShareCaseModal } from '../components/ShareCaseModal';
 import { useAuth } from '../context/AuthContext';
+import { useTeamSharing } from '../hooks/useTeamSharing';
 import { getCaseDetail, archiveCase, annotateCase, logoutAuth } from '../lib/api';
 import type { CaseDetail, CaseAnnotation } from '../types/cases';
 
 export default function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
-  const { clearAuthState } = useAuth();
+  const { clearAuthState, authState } = useAuth();
+  const { enabled: teamSharingEnabled, teams, teamsById } = useTeamSharing();
 
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const [annotation, setAnnotation] = useState<CaseAnnotation>({});
   const [savingAnnotation, setSavingAnnotation] = useState(false);
@@ -30,19 +35,32 @@ export default function CaseDetailPage() {
     await clearAuthState();
   };
 
-  useEffect(() => {
-    if (!caseId) return;
-    setLoading(true);
-    getCaseDetail(caseId)
-      .then((detail) => {
+  const loadCase = useCallback(
+    async (opts: { withSpinner?: boolean } = {}) => {
+      if (!caseId) return;
+      if (opts.withSpinner) setLoading(true);
+      try {
+        const detail = await getCaseDetail(caseId);
         setCaseDetail(detail);
-        setAnnotation({
-          resolution_notes: detail.closure_reason ?? '',
-        });
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load case'))
-      .finally(() => setLoading(false));
-  }, [caseId]);
+        setAnnotation({ resolution_notes: detail.closure_reason ?? '' });
+      } catch (err) {
+        // Only the initial load owns the page-level error (which swaps the whole
+        // page for an error view). A best-effort background refresh — e.g. after
+        // a team-share change — must not blow away a working page on a transient
+        // failure; the triggering action surfaces its own error.
+        if (opts.withSpinner) {
+          setError(err instanceof Error ? err.message : 'Failed to load case');
+        }
+      } finally {
+        if (opts.withSpinner) setLoading(false);
+      }
+    },
+    [caseId]
+  );
+
+  useEffect(() => {
+    void loadCase({ withSpinner: true });
+  }, [loadCase]);
 
   const handleArchive = async () => {
     if (!caseId) return;
@@ -96,6 +114,12 @@ export default function CaseDetailPage() {
     );
   }
 
+  // Share-to-team is owner-only (the backend enforces the same) and only shown
+  // where team sharing is live. The badge itself needs neither gate — a case
+  // carries team ids only where sharing is wired.
+  const canShare =
+    teamSharingEnabled && caseDetail.user_id === authState?.user?.user_id;
+
   return (
     <div className="min-h-screen bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
@@ -124,17 +148,28 @@ export default function CaseDetailPage() {
                   total={caseDetail.milestones_completed.length + (caseDetail.pending_milestones?.length || 0)}
                   transparent={caseDetail.state === 'investigating' && caseDetail.turns_without_progress >= 5}
                 />
+                <TeamShareBadge teamIds={caseDetail.shared_team_ids} teamsById={teamsById} />
               </div>
             </div>
-            {caseDetail.is_terminal && !caseDetail.is_archived && (
-              <button
-                onClick={() => setShowArchiveConfirm(true)}
-                disabled={archiving}
-                className="flex-shrink-0 px-3 py-1.5 text-xs text-fm-text-tertiary border border-fm-border rounded-fm-btn hover:text-fm-warning hover:border-fm-warning/40 hover:bg-fm-warning/10 transition-colors disabled:opacity-50"
-              >
-                Archive
-              </button>
-            )}
+            <div className="flex-shrink-0 flex items-center gap-2">
+              {canShare && (
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  className="px-3 py-1.5 text-xs text-fm-text-secondary border border-fm-border rounded-fm-btn hover:text-fm-accent hover:border-fm-accent/40 hover:bg-fm-accent/10 transition-colors"
+                >
+                  Share
+                </button>
+              )}
+              {caseDetail.is_terminal && !caseDetail.is_archived && (
+                <button
+                  onClick={() => setShowArchiveConfirm(true)}
+                  disabled={archiving}
+                  className="px-3 py-1.5 text-xs text-fm-text-tertiary border border-fm-border rounded-fm-btn hover:text-fm-warning hover:border-fm-warning/40 hover:bg-fm-warning/10 transition-colors disabled:opacity-50"
+                >
+                  Archive
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Meta row */}
@@ -173,6 +208,15 @@ export default function CaseDetailPage() {
         confirmLabel="Archive"
         onConfirm={handleArchive}
         onCancel={() => setShowArchiveConfirm(false)}
+      />
+
+      <ShareCaseModal
+        isOpen={showShareModal}
+        caseId={caseDetail.case_id}
+        sharedTeamIds={caseDetail.shared_team_ids}
+        teams={teams}
+        onClose={() => setShowShareModal(false)}
+        onChanged={() => void loadCase()}
       />
     </div>
   );

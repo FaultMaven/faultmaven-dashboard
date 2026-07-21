@@ -53,6 +53,8 @@ export {
   annotateCase,
   archiveCase,
   unarchiveCase,
+  shareCaseWithTeam,
+  unshareCaseFromTeam,
   getCaseMessages,
   getUploadedFiles,
   getUploadedFileDetails,
@@ -71,6 +73,7 @@ export type {
   CaseDetail,
   CaseListResponse,
   CaseFilters,
+  Team,
   CaseAnnotation,
   CaseMessagesResponse,
   UploadedFile,
@@ -97,6 +100,9 @@ export type {
   PIIScanStatus,
   KnowledgeSuggestion,
 } from './cases';
+
+// Re-export teams module (read-only team listing, ADR-013 §D4)
+export { listTeams } from './teams';
 
 // Re-export LLM configuration module
 export {
