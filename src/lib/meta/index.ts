@@ -1,0 +1,1 @@
+export { getCapabilities } from './capabilities';
