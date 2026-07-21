@@ -18,16 +18,21 @@ const GENERIC_ERROR = 'Sign-in failed. Please try again.';
 const EXCHANGE_ERROR =
   'Sign-in could not be completed — the sign-in link may have expired. Please try again.';
 
+const MAX_RETURN_TO_LENGTH = 512;
+
 /**
  * Same-origin path guard for the post-login destination, mirroring the
  * backend's sanitize_return_to: an absolute path only ("//host" is a
  * scheme-relative URL and is rejected), no backslashes (browsers normalize
- * "\" to "/"). Anything else falls through to the default destination.
+ * "\" to "/"), no control characters or whitespace, bounded length. Anything
+ * else falls through to the default destination.
  */
 function sanitizeReturnTo(value: string | null): string | null {
-  if (!value) return null;
+  if (!value || value.length > MAX_RETURN_TO_LENGTH) return null;
   if (!value.startsWith('/') || value.startsWith('//')) return null;
   if (value.includes('\\')) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f ]/.test(value)) return null;
   return value;
 }
 

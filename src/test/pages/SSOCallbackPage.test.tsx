@@ -92,6 +92,14 @@ describe('SSOCallbackPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent('/kb');
   });
 
+  it('rejects an oversized return_to and falls back to /kb', async () => {
+    // Parity with the backend guard: bounded length (512).
+    const huge = '/' + 'a'.repeat(600);
+    renderCallback(`/auth/sso/callback?code=abc&return_to=${encodeURIComponent(huge)}`);
+
+    expect(await screen.findByTestId('location')).toHaveTextContent('/kb');
+  });
+
   it('falls back to the ProtectedRoute-saved destination and consumes it', async () => {
     sessionStorage.setItem('oauth_redirect_after_login', '/auth/authorize?client_id=copilot');
 
