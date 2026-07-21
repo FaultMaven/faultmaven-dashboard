@@ -133,7 +133,7 @@ function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, 
 }
 
 function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }: { canUpload: boolean; isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
-  const { filteredDocuments, totalCount, loading, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
+  const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
   const { scopes: availableScopes } = useAvailableScopes();
 
@@ -147,10 +147,10 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
     onCountChange(totalCount);
   }, [totalCount, onCountChange]);
 
-  const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [confirmBatch, setConfirmBatch] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
 
   // Domain/Service/Severity filters
   const [domainFilter, setDomainFilter] = useState<string | null>(null);
@@ -161,6 +161,15 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
     () => debounce((value: string) => setSearch(value), 200),
     [setSearch],
   );
+  // Drop any pending debounced search when the tab unmounts.
+  useEffect(() => () => handleSearchChange.cancel(), [handleSearchChange]);
+
+  // A selection must never outlive the rows it was made against: a filter,
+  // scope, or page change swaps the visible set, so a stale id could act on a
+  // row the user can no longer see. Clear on any such change.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page]);
 
   // Derive filter options from loaded documents
   const domains = useMemo(() =>
@@ -216,27 +225,27 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
     }
   };
 
-  const handleBatchDelete = async () => {
+  const runBatchDelete = async () => {
+    setConfirmBatch(false);
     setBatchDeleting(true);
+    setBatchError(null);
+    let failed = 0;
     try {
       for (const id of selectedIds) {
-        try { await deleteById(id); } catch { /* continue */ }
+        try {
+          await deleteById(id);
+        } catch {
+          // Keep going so one bad row doesn't strand the rest, but count it
+          // — a partial failure must not be reported as full success.
+          failed += 1;
+        }
       }
       setSelectedIds(new Set());
+      if (failed > 0) {
+        setBatchError(`${failed} runbook${failed !== 1 ? 's' : ''} could not be removed. Please try again.`);
+      }
     } finally {
       setBatchDeleting(false);
-    }
-  };
-
-  const confirmArchive = async () => {
-    if (!confirmArchiveId) return;
-    try {
-      setArchiveError(null);
-      await deleteById(confirmArchiveId);
-    } catch (error) {
-      setArchiveError(error instanceof Error ? error.message : 'Failed to remove runbook');
-    } finally {
-      setConfirmArchiveId(null);
     }
   };
 
@@ -298,7 +307,13 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
-        <div className="text-xs text-fm-text-tertiary whitespace-nowrap">{displayDocuments.length} runbook{displayDocuments.length !== 1 ? 's' : ''}</div>
+        <div className="text-xs text-fm-text-tertiary whitespace-nowrap">
+          {displayDocuments.length} runbook{displayDocuments.length !== 1 ? 's' : ''}
+          {/* Domain/service/severity filters run client-side over the loaded
+              page only, so the count reflects this page — not the server total
+              the pager shows. Label it so the two numbers don't read as a bug. */}
+          {(domainFilter || serviceFilter || severityFilter) && ' on this page'}
+        </div>
       </div>
 
       {/* Select all + batch action toolbar */}
@@ -317,7 +332,7 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
             <div className="flex items-center gap-2">
               <span className="text-xs text-fm-text-secondary">{selectedIds.size} selected</span>
               <button
-                onClick={handleBatchDelete}
+                onClick={() => setConfirmBatch(true)}
                 disabled={batchDeleting}
                 className="px-2.5 py-1 text-xs font-medium text-fm-critical border border-fm-critical/30 rounded-fm-btn hover:bg-fm-critical/10 transition-colors disabled:opacity-50"
               >
@@ -336,9 +351,9 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
         </div>
       )}
 
-      {archiveError && (
+      {(error || batchError) && (
         <div className="mb-3 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
-          {archiveError}
+          {error ?? batchError}
         </div>
       )}
 
@@ -357,12 +372,12 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
       <ConfirmDialog
-        isOpen={!!confirmArchiveId}
-        title="Remove Runbook"
-        message="Remove this runbook from the knowledge base? It will no longer be available during investigations."
+        isOpen={confirmBatch}
+        title={`Remove ${selectedIds.size} runbook${selectedIds.size !== 1 ? 's' : ''}`}
+        message={`Remove ${selectedIds.size} selected runbook${selectedIds.size !== 1 ? 's' : ''} from the knowledge base? They will no longer be available during investigations.`}
         confirmLabel="Remove"
-        onConfirm={confirmArchive}
-        onCancel={() => setConfirmArchiveId(null)}
+        onConfirm={runBatchDelete}
+        onCancel={() => setConfirmBatch(false)}
       />
     </>
   );
@@ -828,10 +843,12 @@ export default function KBPage() {
   const [confirmVerify, setConfirmVerify] = useState<ConversionDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
 
-  // Drafts
-  const DRAFT_COUNT_KEY = 'faultmaven_draftCount';
+  // Drafts. The cached count badge is per-user: an unscoped key leaked one
+  // user's draft count to the next user on a shared browser (cross-user
+  // residue). Key it by user id so each identity reads its own value.
+  const draftCountKey = `faultmaven_draftCount_${authState?.user?.user_id ?? 'anon'}`;
   const [cachedCount, setCachedCount] = useState(() => {
-    const stored = localStorage.getItem(DRAFT_COUNT_KEY);
+    const stored = localStorage.getItem(draftCountKey);
     return stored !== null ? parseInt(stored, 10) : 0;
   });
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
@@ -843,6 +860,12 @@ export default function KBPage() {
   // Multi-select state
   const [selectedDrafts, setSelectedDrafts] = useState<Array<{ conversion_id: string; draft_id: string }>>([]);
   const [batchActionInProgress, setBatchActionInProgress] = useState(false);
+
+  // Drop draft selections when the visible set changes (switching tab or the
+  // deep-link case filter), so a batch action can't hit a now-hidden draft.
+  useEffect(() => {
+    setSelectedDrafts([]);
+  }, [caseFilter, activeTab]);
 
   // Runbook count (lifted from DocumentsTab)
   const [runbookCount, setRunbookCount] = useState(0);
@@ -881,13 +904,13 @@ export default function KBPage() {
       setDrafts(result);
       const count = result.filter((d) => d.status === 'draft').length;
       setCachedCount(count);
-      localStorage.setItem(DRAFT_COUNT_KEY, String(count));
+      localStorage.setItem(draftCountKey, String(count));
     } catch {
       // silent
     } finally {
       setDraftsLoading(false);
     }
-  }, []);
+  }, [draftCountKey]);
 
   // Load drafts on mount. Auto-scan was removed — KB ingestion is now
   // owned by the server-side startup bootstrap (faultmaven/bootstrap/kb_init.py).
@@ -958,13 +981,16 @@ export default function KBPage() {
   };
 
   const handleOpenDraft = async (conversionId: string) => {
+    setActionError(null);
     try {
       const result = await getConversion(conversionId);
       if (result) {
         setConversion(result);
         setOverlayMode('results');
       }
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to open draft');
+    }
   };
 
   const handleEdit = (draft: ConversionDraft) => {
@@ -1004,11 +1030,14 @@ export default function KBPage() {
 
   const handleDeleteConfirmed = async () => {
     if (!conversion || !confirmDelete) return;
+    setActionError(null);
     try {
       await deleteDraft(conversion.conversion_id, confirmDelete.draft_id);
       setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.filter((d) => d.draft_id !== confirmDelete.draft_id) } : prev);
       loadDrafts();
-    } catch { /* ignore */ } finally {
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to delete draft');
+    } finally {
       setConfirmDelete(null);
     }
   };

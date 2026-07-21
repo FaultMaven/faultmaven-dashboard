@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
@@ -28,14 +28,27 @@ export default function CaseDetailPage() {
     await clearAuthState();
   };
 
+  // Monotonic request id: guards against a stale in-flight load (from a
+  // previous caseId) resolving after a newer one and clobbering the page.
+  const reqIdRef = useRef(0);
+
   const loadCase = useCallback(
     async (opts: { withSpinner?: boolean } = {}) => {
       if (!caseId) return;
-      if (opts.withSpinner) setLoading(true);
+      const reqId = ++reqIdRef.current;
+      if (opts.withSpinner) {
+        setLoading(true);
+        // Reset the page-level error at the start of a fresh load; otherwise a
+        // failure on one case poisoned every later navigation with a stale
+        // error view even after a successful fetch.
+        setError(null);
+      }
       try {
         const detail = await getCaseDetail(caseId);
+        if (reqId !== reqIdRef.current) return; // superseded by a newer load
         setCaseDetail(detail);
       } catch (err) {
+        if (reqId !== reqIdRef.current) return;
         // Only the initial load owns the page-level error (which swaps the whole
         // page for an error view). A best-effort background refresh — e.g. after
         // a team-share change — must not blow away a working page on a transient
@@ -44,7 +57,7 @@ export default function CaseDetailPage() {
           setError(err instanceof Error ? err.message : 'Failed to load case');
         }
       } finally {
-        if (opts.withSpinner) setLoading(false);
+        if (reqId === reqIdRef.current && opts.withSpinner) setLoading(false);
       }
     },
     [caseId]

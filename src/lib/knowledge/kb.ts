@@ -26,6 +26,7 @@ export async function uploadDocument(params: UploadDocumentParams): Promise<KBDo
   formData.append('title', params.title);
   formData.append('document_type', params.document_type);
 
+  if (params.category) formData.append('category', params.category);
   if (params.tags) formData.append('tags', params.tags);
   if (params.source_url) formData.append('source_url', params.source_url);
   if (params.description) formData.append('description', params.description);

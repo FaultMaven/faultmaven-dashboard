@@ -62,7 +62,7 @@ export async function handleAPIResponse(
 ): Promise<void> {
   if (!response.ok) {
     // Try to parse error response
-    let errorData: { detail?: string; message?: string; error?: string } | null = null;
+    let errorData: { detail?: string; message?: string; error?: string; error_code?: string } | null = null;
     try {
       errorData = await response.json();
     } catch {
@@ -70,11 +70,15 @@ export async function handleAPIResponse(
     }
 
     const message = errorData?.detail || errorData?.message || errorData?.error || defaultMessage;
+    // Prefer the machine-readable code the backend sends in the body; the HTTP
+    // statusText ("Bad Request") is a reason phrase, not an error code, and is
+    // often blank over HTTP/2.
+    const errorCode = errorData?.error_code || response.statusText || undefined;
 
     throw new APIError(
       message,
       response.status,
-      response.statusText,
+      errorCode,
       errorData ? (errorData as Record<string, unknown>) : undefined
     );
   }

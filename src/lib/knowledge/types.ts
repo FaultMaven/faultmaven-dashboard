@@ -60,6 +60,7 @@ export interface UploadDocumentParams {
   file: File;
   title: string;
   document_type: string;
+  category?: string;
   tags?: string;
   source_url?: string;
   description?: string;

@@ -69,11 +69,25 @@ export async function getOAuthConsent(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error_description || 'Failed to fetch OAuth consent data');
+    throw new Error((await readErrorDescription(response)) || 'Failed to fetch OAuth consent data');
   }
 
   return response.json();
+}
+
+/**
+ * Best-effort read of the OAuth `error_description` from an error response.
+ * The body may be empty or non-JSON (gateway/proxy errors), so parsing is
+ * guarded — an unguarded `response.json()` would throw and mask the real
+ * HTTP failure with a "Unexpected end of JSON input" error.
+ */
+async function readErrorDescription(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { error_description?: string } | null;
+    return body?.error_description;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -105,8 +119,7 @@ export async function submitOAuthApproval(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error_description || 'Failed to submit OAuth approval');
+    throw new Error((await readErrorDescription(response)) || 'Failed to submit OAuth approval');
   }
 
   return response.json();

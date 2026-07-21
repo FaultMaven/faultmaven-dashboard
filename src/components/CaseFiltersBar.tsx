@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { CaseFilters, Team } from '../types/cases';
 import type { CaseState } from '../types/cases';
 import { debounce } from '../utils/debounce';
@@ -38,8 +38,7 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
   // `filters` is in the dependency list so the debounced search callback always
   // closes over the *current* filters. Memoizing on `[onChange]` alone captured
   // the first-render filters, so typing in search wiped the active state/archived
-  // chips. (Cancelling a pending debounce when other filters change is a
-  // separate follow-up — debounce has no cancel() yet.)
+  // chips.
   const debouncedSearch = useMemo(
     () =>
       debounce((value: string) => {
@@ -47,6 +46,11 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
       }, 300),
     [onChange, filters]
   );
+
+  // Cancel any pending fire when the debounced callback is replaced (filters or
+  // onChange changed) or the bar unmounts — otherwise a queued search built on
+  // now-stale filters could land after the change that superseded it.
+  useEffect(() => () => debouncedSearch.cancel(), [debouncedSearch]);
 
   const searchRef = useRef<HTMLInputElement>(null);
 

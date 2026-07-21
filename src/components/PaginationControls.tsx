@@ -9,11 +9,13 @@ export function PaginationControls({ page, pageSize, total, onPageChange }: Pagi
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const canPrev = page > 0;
   const canNext = page + 1 < pageCount;
+  const rangeStart = total === 0 ? 0 : page * pageSize + 1;
+  const rangeEnd = Math.min((page + 1) * pageSize, total);
 
   return (
     <div className="flex items-center justify-between text-sm text-fm-text-tertiary mt-4">
       <div>
-        Page {page + 1} of {pageCount} · Showing {Math.min((page + 1) * pageSize, total)} of {total}
+        Page {page + 1} of {pageCount} · Showing {rangeStart}–{rangeEnd} of {total}
       </div>
       <div className="flex gap-2">
         <button

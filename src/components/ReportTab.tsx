@@ -55,6 +55,7 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<CaseReport | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
   const isTerminal = caseDetail.is_terminal;
@@ -242,15 +243,22 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
                   // report_id is optional on the generated contract; a report
                   // without an id has no download route.
                   if (!selectedReport.report_id) return;
-                  const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
-                  const res = await makeAuthenticatedRequest(url);
-                  if (!res.ok) return;
-                  const blob = await res.blob();
-                  const a = document.createElement('a');
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `${selectedReport.report_type}_${caseId}.md`;
-                  a.click();
-                  URL.revokeObjectURL(a.href);
+                  setDownloadError(null);
+                  try {
+                    const url = `${config.apiUrl}${getCaseReportDownloadUrl(caseId, selectedReport.report_id)}`;
+                    const res = await makeAuthenticatedRequest(url);
+                    if (!res.ok) {
+                      throw new Error(`Download failed (${res.status})`);
+                    }
+                    const blob = await res.blob();
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${selectedReport.report_type}_${caseId}.md`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  } catch (err) {
+                    setDownloadError(err instanceof Error ? err.message : 'Download failed');
+                  }
                 }}
                 className="text-xs text-fm-accent hover:underline cursor-pointer"
               >
@@ -258,6 +266,10 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
               </button>
             </div>
           </div>
+
+          {downloadError && (
+            <p className="text-xs text-fm-critical mb-2 text-right">{downloadError}</p>
+          )}
 
           <div className="bg-fm-surface-alt border border-fm-border rounded-fm-card p-4">
             <div className={proseClasses}>
