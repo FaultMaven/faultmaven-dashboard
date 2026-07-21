@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -23,15 +23,25 @@ interface ProtectedRouteProps {
  * 7. User sees OAuth consent page
  */
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
-  if (!isAuthenticated) {
-    // Save current URL with query params for post-login redirect
-    const currentUrl = `${location.pathname}${location.search}`;
-    sessionStorage.setItem('oauth_redirect_after_login', currentUrl);
+  // Save the intended destination (with query params) for post-login redirect.
+  // Done in an effect rather than during render so it does not double-write
+  // under StrictMode's double-invoked render.
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      const currentUrl = `${location.pathname}${location.search}`;
+      sessionStorage.setItem('oauth_redirect_after_login', currentUrl);
+    }
+  }, [loading, isAuthenticated, location.pathname, location.search]);
 
-    // Redirect to login
+  // Auth state hydrates asynchronously (AuthContext). Render nothing until it
+  // resolves so a valid session is not bounced to /login on a hard refresh —
+  // matches AdminProtectedRoute / LLMConfigRoute / AllCasesRoute.
+  if (loading) return null;
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 

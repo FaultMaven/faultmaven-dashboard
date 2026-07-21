@@ -28,10 +28,27 @@ export interface CaseSummary {
   is_archived: boolean;
   is_stuck: boolean;
   is_terminal: boolean;
+  /**
+   * Ids of the Teams this case is shared with (ADR-013 §D4). Empty in standalone
+   * (team sharing is a Cloud collaboration feature — unwired there) and for a
+   * case shared with no Team. Resolve ids to names via `GET /api/v1/teams`.
+   */
+  shared_team_ids: string[];
 }
 
 /** Case origin (ADR-012), derived from the creator's account kind. */
 export type CaseSource = 'copilot' | 'slack' | 'api';
+
+/**
+ * A Team the caller belongs to (ADR-013 §D4), from `GET /api/v1/teams`.
+ * Read-only here — team management is the Cloud admin surface.
+ */
+export interface Team {
+  team_id: string;
+  name: string;
+  description?: string | null;
+  organization_id: string;
+}
 
 export interface CaseDetail extends Omit<CaseSummary, 'milestones_completed'> {
   turns_without_progress: number;
@@ -60,6 +77,12 @@ export interface CaseFilters {
   date_to?: string;
   search?: string;
   include_archived?: boolean;
+  /**
+   * Restrict to cases shared with this Team (ADR-013 §D4). Only Teams the caller
+   * belongs to yield results; ignored in standalone. Doubles as the "team case
+   * view" — selecting a team narrows the list to that team's shared cases.
+   */
+  team_id?: string;
 }
 
 export interface CaseAnnotation {

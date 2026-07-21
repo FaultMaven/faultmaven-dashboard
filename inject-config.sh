@@ -21,9 +21,33 @@ set -e
 #
 # Note: API_URL must be an origin (scheme://host[:port]) or ""; never a path like
 # "/api" — the app already appends "/api/v1/...", so a path prefix would double it.
+#
+# SECURITY: the value is written verbatim into a JS string literal below. A value
+# containing a double-quote, backslash, or newline could break out of the string
+# and execute arbitrary JS in every user's session. We therefore validate that a
+# SET, non-empty value is a bare origin (scheme://host[:port]) — a character set
+# that cannot escape the string — and refuse to inject anything else.
 echo "Injecting runtime configuration..."
+
+# POSIX-safe origin check: http/https scheme, host of [A-Za-z0-9._-], optional
+# :port of 1-5 digits, and nothing else. Anchored, so no path/query/fragment and
+# no quote/backslash/whitespace can slip through. `printf %s` avoids a trailing
+# newline that would otherwise defeat the `$` anchor.
+is_valid_origin() {
+  printf '%s' "$1" | grep -Eq '^https?://[A-Za-z0-9._-]+(:[0-9]{1,5})?$'
+}
+
 if [ -n "${VITE_API_URL+x}" ]; then
-  # SET (possibly empty) — emit the key verbatim.
+  # SET (possibly empty).
+  if [ -z "${VITE_API_URL}" ]; then
+    : # Empty string is allowed — same-origin (relative /api/v1/...) model.
+  elif ! is_valid_origin "${VITE_API_URL}"; then
+    echo "ERROR: VITE_API_URL is not a valid origin (scheme://host[:port]) or empty." >&2
+    echo "  Got: '${VITE_API_URL}'" >&2
+    echo "  Refusing to inject — a malformed value could break out of the JS string." >&2
+    exit 1
+  fi
+
   echo "  API_URL: \"${VITE_API_URL}\" (explicit)"
   cat > /usr/share/nginx/html/config.js <<EOF
 // Runtime configuration injected at container startup

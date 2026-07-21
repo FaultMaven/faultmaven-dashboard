@@ -6,7 +6,7 @@
 **The Command Center for Your Knowledge Engine**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://hub.docker.com/r/faultmaven/faultmaven-dashboard)
+[![Docker](https://img.shields.io/badge/Docker-GHCR-blue.svg)](https://github.com/FaultMaven/faultmaven-dashboard/pkgs/container/faultmaven-dashboard)
 
 > **FaultMaven Dashboard** is the web application for managing your [FaultMaven](https://github.com/FaultMaven/faultmaven) knowledge base, viewing case history, and configuring AI agents.
 
@@ -87,10 +87,15 @@ Access at `http://localhost:5173`.
 ### Docker Standalone
 
 ```bash
-docker run -p 3000:80 \
-  -e API_URL=http://localhost:8090 \
-  faultmaven/faultmaven-dashboard:latest
+# VITE_API_URL is read at container startup (inject-config.sh → window.ENV.API_URL).
+# Omit it for the self-hosted default: the dashboard auto-detects the API on the
+# same host at :8090.
+docker run -p 3333:80 \
+  -e VITE_API_URL=http://localhost:8090 \
+  ghcr.io/faultmaven/faultmaven-dashboard:latest
 ```
+
+The image is published to GHCR only: `ghcr.io/faultmaven/faultmaven-dashboard`.
 
 For the full stack (API + Dashboard), use the [main FaultMaven deployment](https://github.com/FaultMaven/faultmaven#quick-start).
 

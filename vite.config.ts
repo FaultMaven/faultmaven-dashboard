@@ -23,5 +23,16 @@ export default defineConfig({
     globals: true,
     environment: 'happy-dom',
     setupFiles: './src/test/setup.ts',
+    coverage: {
+      provider: 'v8',
+      // Ratchet floors set just below current coverage so it can't silently sink.
+      // Raise these as coverage improves; never lower them to make a PR pass.
+      thresholds: {
+        statements: 30,
+        branches: 24,
+        functions: 22,
+        lines: 32,
+      },
+    },
   },
 });

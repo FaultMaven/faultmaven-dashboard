@@ -86,11 +86,16 @@ export async function devLogin(username: string): Promise<AuthState> {
 /**
  * Logout and clear authentication state
  *
- * Attempts to call logout endpoint and always clears local auth state.
+ * Attempts to call the logout endpoint best-effort and always clears local auth
+ * state. Reads the RAW stored token (peekAccessToken) rather than
+ * getAccessToken: the latter would silently refresh a near-expired session,
+ * minting a rotated refresh token only to discard it on logout and leaving a
+ * live token orphaned server-side. Sending a possibly-expired token is fine —
+ * server-side logout is best-effort and the local state is cleared regardless.
  */
 export async function logoutAuth(): Promise<void> {
   try {
-    const token = await authManager.getAccessToken();
+    const token = await authManager.peekAccessToken();
     if (token) {
       await fetch(`${config.apiUrl}/api/v1/auth/logout`, {
         method: 'POST',

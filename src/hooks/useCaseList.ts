@@ -52,7 +52,7 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
       setError(null);
       try {
         if (filters.search) {
-          const results = await searchCases(filters.search, SEARCH_LIMIT);
+          const results = await searchCases(filters.search, SEARCH_LIMIT, filters.team_id);
           if (reqId !== reqIdRef.current || !mountedRef.current) return;
           setCases(results);
           // Not the grand total — just the count of matches we can show. The
