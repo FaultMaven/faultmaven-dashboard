@@ -50,6 +50,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Run ESLint
+        # --max-warnings 0 makes warnings blocking in CI (locally `pnpm lint`
+        # stays lenient). Keeps the tree at zero lint problems; this gate is what
+        # catches classes like react-hooks/rules-of-hooks before they reach main.
+        run: pnpm lint --max-warnings 0
+
       - name: Run TypeScript type check
         run: pnpm typecheck
 

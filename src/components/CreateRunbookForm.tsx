@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -72,18 +72,16 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
   const [symptomInput, setSymptomInput] = useState('');
   const [tagsInput, setTagsInput] = useState('');
 
-  // If the picker re-fetches and the previously-selected scope is no longer
-  // available (e.g. user lost team membership), fall back to personal.
-  useEffect(() => {
-    if (!availableScopes.includes(form.scope as never)) {
-      setForm((prev) => ({ ...prev, scope: 'personal' }));
-    }
-  }, [availableScopes, form.scope]);
+  // Derive the effective scope during render rather than syncing invalid state in
+  // an effect: if the picker re-fetches and the previously-selected scope is no
+  // longer available (e.g. user lost team membership), fall back to personal.
+  const effectiveScope = availableScopes.includes(form.scope as never) ? form.scope : 'personal';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const data = {
       ...form,
+      scope: effectiveScope,
       symptom_class: symptomInput.split(',').map((s) => s.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean),
       tags: tagsInput.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
     };
@@ -172,7 +170,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
         </div>
         <div>
           <label className="block text-sm font-medium text-fm-text-secondary mb-1">KB Scope</label>
-          <select value={form.scope} onChange={(e) => update('scope', e.target.value)} className={inputClass}>
+          <select value={effectiveScope} onChange={(e) => update('scope', e.target.value)} className={inputClass}>
             {availableScopes.map((s) => (
               <option key={s} value={s}>{SCOPE_LABELS[s] ?? s}</option>
             ))}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { UploadZone } from './UploadZone';
 import type { ConversionErrorInfo } from '../lib/knowledge/conversion';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
@@ -21,16 +21,15 @@ export function ConvertUpload({ onConvert, onCancel, loading, error }: ConvertUp
   const [file, setFile] = useState<File | null>(null);
   const [scope, setScope] = useState<string>('personal');
 
-  useEffect(() => {
-    if (!availableScopes.includes(scope as never)) {
-      setScope('personal');
-    }
-  }, [availableScopes, scope]);
+  // Derive the effective scope during render rather than syncing invalid state in
+  // an effect: if the picker re-fetches and the selected scope is no longer
+  // available (e.g. user lost team membership), fall back to personal.
+  const effectiveScope = availableScopes.includes(scope as never) ? scope : 'personal';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
-    await onConvert(file, scope);
+    await onConvert(file, effectiveScope);
   };
 
   const handleFileSelect = (f: File) => {
@@ -92,7 +91,7 @@ export function ConvertUpload({ onConvert, onCancel, loading, error }: ConvertUp
                     type="radio"
                     name="scope"
                     value={s}
-                    checked={scope === s}
+                    checked={effectiveScope === s}
                     onChange={() => setScope(s)}
                     className="accent-fm-accent"
                   />

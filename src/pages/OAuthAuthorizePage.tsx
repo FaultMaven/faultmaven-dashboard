@@ -45,6 +45,10 @@ export default function OAuthAuthorizePage() {
       hasLoadedRef.current = true;
       loadConsentData();
     }
+    // Intentionally keyed on authState only: this consent flow must fire exactly
+    // once when auth resolves (guarded by hasLoadedRef). loadConsentData/navigate/
+    // searchParams are stable for this render and must not re-trigger the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState]);
 
   async function loadConsentData() {
