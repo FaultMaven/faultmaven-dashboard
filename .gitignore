@@ -42,10 +42,6 @@ lerna-debug.log*
 .env.local
 .env.*.local
 
-# PNPM
-pnpm-lock.yaml # Or add this if you prefer not to commit the lockfile, though committing it is usually recommended for consistency.
-                 # For libraries it's often not committed, for applications it often is. Your call.
-
 # Temporary files
 *.tmp
 *.swp
