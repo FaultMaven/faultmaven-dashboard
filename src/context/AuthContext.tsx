@@ -60,13 +60,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (res.ok) {
           const authConfig: {
             auth_mode?: string;
-            oauth?: { authorize_url?: string } | null;
+            oauth?: { hosted_login_url?: string; authorize_url?: string } | null;
           } = await res.json();
           dep = authConfig.auth_mode === 'oauth' ? 'cloud' : 'standalone';
-          // Cloud sign-in target comes from the deployment's advertised IdP
-          // authorize URL — never a hardcoded provider. Relative URLs resolve
-          // against the API origin.
-          const advertised = authConfig.oauth?.authorize_url;
+          // The human Sign In target must be a HOSTED LOGIN URL, taken ONLY from
+          // a field explicitly designated for it (`oauth.hosted_login_url`).
+          // Deliberately NOT `oauth.authorize_url`: that is the copilot OAuth-PKCE
+          // authorize endpoint (needs client_id/redirect_uri/PKCE params) — a
+          // machine flow, not a human hosted login; conflating them sends users
+          // to a broken redirect. The WorkOS/OIDC backend workstream will
+          // populate `hosted_login_url` in /auth/config; until then this stays
+          // null and the login page shows an honest "not configured" state. The
+          // redirect remains deployment-config-driven — no hardcoded IdP.
+          const advertised = authConfig.oauth?.hosted_login_url;
           if (dep === 'cloud' && advertised) {
             resolvedLoginUrl = advertised.startsWith('http')
               ? advertised

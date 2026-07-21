@@ -35,7 +35,7 @@ describe('LoginPage', () => {
   it('cloud mode: renders an SSO sign-in with no password OR username field (D3)', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
-      loginUrl: 'https://idp.example/authorize',
+      loginUrl: 'https://idp.example/login',
       setAuthState: vi.fn(),
     });
 
@@ -45,6 +45,23 @@ describe('LoginPage', () => {
     expect(screen.queryByLabelText(/password/i)).toBeNull();
     expect(screen.queryByLabelText(/username/i)).toBeNull();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it('cloud mode: Sign In redirects to the deployment hosted-login URL', () => {
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    // loginUrl comes from AuthContext, sourced from the dedicated hosted-login
+    // field — NOT the copilot PKCE authorize endpoint.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(assignSpy).toHaveBeenCalledWith('https://idp.example/login');
+    assignSpy.mockRestore();
   });
 
   it('standalone mode: passwordless username form, no password field', () => {
@@ -76,6 +93,7 @@ describe('LoginPage', () => {
   });
 
   it('cloud mode without a configured IdP surfaces an honest error, no redirect', () => {
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
       loginUrl: null,
@@ -87,5 +105,7 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(screen.getByText(/single sign-on is not configured/i)).toBeInTheDocument();
+    expect(assignSpy).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
   });
 });
