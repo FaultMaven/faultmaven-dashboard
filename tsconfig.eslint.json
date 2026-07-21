@@ -1,0 +1,15 @@
+{
+  // Typed-linting project for ESLint only. tsconfig.json excludes test files
+  // (they must not ship in the app build), which left every *.test.ts(x) with a
+  // "file not found in project" parse error and therefore unlinted. This project
+  // widens the include to cover tests so ESLint's type-aware rules see them.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  // `exclude` must be restated: an omitted `exclude` inherits the parent's
+  // (which drops every *.test.ts(x)), re-hiding the files this project exists to
+  // lint. List only build artefacts here so tests stay in.
+  "include": ["src", "src/**/*.test.ts", "src/**/*.test.tsx"],
+  "exclude": ["dist", "node_modules"]
+}

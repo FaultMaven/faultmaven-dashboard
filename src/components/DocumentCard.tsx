@@ -55,11 +55,13 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
   const handleToggle = async () => {
     if (editing) return;
     if (expanded) {
-      onToggleExpand ? onToggleExpand() : setInternalExpanded(false);
+      if (onToggleExpand) onToggleExpand();
+      else setInternalExpanded(false);
       return;
     }
     await loadContent();
-    onToggleExpand ? onToggleExpand() : setInternalExpanded(true);
+    if (onToggleExpand) onToggleExpand();
+    else setInternalExpanded(true);
   };
 
   const handleStartEdit = async (e: React.MouseEvent) => {
@@ -69,7 +71,8 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
       setEditContent(loaded);
       setEditing(true);
       if (!expanded) {
-        onToggleExpand ? onToggleExpand() : setInternalExpanded(true);
+        if (onToggleExpand) onToggleExpand();
+        else setInternalExpanded(true);
       }
       setSaveError(null);
       setSaveSuccess(false);

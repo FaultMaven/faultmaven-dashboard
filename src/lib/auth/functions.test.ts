@@ -40,7 +40,7 @@ describe('devLogin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as any;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -221,7 +221,7 @@ describe('logoutAuth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as any;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 

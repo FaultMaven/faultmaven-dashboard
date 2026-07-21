@@ -40,7 +40,7 @@ describe('makeAuthenticatedRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as any;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
   });
 
   afterEach(() => {
