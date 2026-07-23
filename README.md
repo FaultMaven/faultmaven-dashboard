@@ -8,9 +8,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-GHCR-blue.svg)](https://github.com/FaultMaven/faultmaven-dashboard/pkgs/container/faultmaven-dashboard)
 
-> **FaultMaven Dashboard** is the web application for managing your [FaultMaven](https://github.com/FaultMaven/faultmaven) knowledge base, viewing case history, and configuring AI agents.
-
-<!-- TODO: Add screenshot here showing knowledge base view, case history, and configuration interface -->
+> **FaultMaven Dashboard** is the web application for reviewing case investigations, managing your [FaultMaven](https://github.com/FaultMaven/faultmaven) knowledge base, configuring LLM providers, and administering users and teams.
 
 ---
 
@@ -27,17 +25,18 @@ FaultMaven is an AI-powered troubleshooting copilot that reasons a problem to it
 
 ## 🧠 Purpose
 
-While the [Copilot](https://github.com/FaultMaven/faultmaven-copilot) is for *reacting* to incidents, the **Dashboard** is for *proactive* management:
+While the [Copilot](https://github.com/FaultMaven/faultmaven-copilot) is for *reacting* to incidents, the **Dashboard** is the web command center for everything around them:
 
-- **Knowledge Base**: Upload runbooks, edit indexed documents, and manage vectors
-- **Case History**: View, search, and export past troubleshooting sessions
-- **Configuration**: Manage LLM providers (OpenAI/Ollama) and API keys
+- **Case Investigation**: Browse and search past cases; open a case for its full detail — Transcript, Issue, auto-generated Report, Hypotheses, and Evidence tabs — and annotate or archive it
+- **Knowledge Base**: Upload runbooks, edit indexed documents, and manage the 3-tier KB (personal / team / global)
+- **LLM Configuration**: Configure providers and API keys, test connections, and set the fallback chain — hot-reloaded, no restart
+- **User & Team Administration**: Manage users, roles, organizations, and teams
 
 ### Dashboard vs Copilot
 
 | Component | Purpose | When to Use |
 |-----------|---------|-------------|
-| **Dashboard** | Knowledge base management, case history, configuration | Proactive: uploading docs, reviewing past cases |
+| **Dashboard** | Case review, knowledge base management, LLM configuration, user/team admin | Proactive: reviewing past cases, curating docs, configuring the platform |
 | **Copilot** | AI chat, real-time troubleshooting, evidence capture | Reactive: during incidents, debugging |
 
 Both connect to the same FaultMaven backend.
@@ -68,6 +67,8 @@ Access the dashboard at `http://localhost:3333`.
 
 ### Local Development
 
+**Prerequisites:** Node 20+ and [pnpm](https://pnpm.io/) (this repo uses a pnpm lockfile; CI runs Node 20 / pnpm).
+
 To run only this dashboard locally for development:
 
 ```bash
@@ -76,13 +77,18 @@ git clone https://github.com/FaultMaven/faultmaven-dashboard.git
 cd faultmaven-dashboard
 
 # 2. Install & Run
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Access at `http://localhost:5173`.
 
-> **Note**: You need the FaultMaven API running at `http://localhost:8090`. See [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/development/local-setup.md).
+> **Note**: You need the FaultMaven API running at `http://localhost:8090`. See [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/getting-started/local-setup.md).
+
+**Configuration (optional):** The dev server auto-detects the API on the same host at port `8090`, so no config is needed for the common case. To override, copy `.env.example` to `.env.local` and set:
+
+- `VITE_API_URL` — backend API origin (e.g. `https://api.faultmaven.ai`) when it isn't on the same host at `:8090`
+- `VITE_MAX_FILE_SIZE_MB` — max upload size in MB (default `10`)
 
 ### Docker Standalone
 
@@ -106,34 +112,40 @@ For the full stack (API + Dashboard), use the [main FaultMaven deployment](https
 ### Setup
 
 ```bash
-# Clone and install
+# Clone and install (Node 20+, pnpm)
 git clone https://github.com/FaultMaven/faultmaven-dashboard.git
 cd faultmaven-dashboard
-npm install
+pnpm install
 
 # Run dev server (requires backend at localhost:8090)
-npm run dev
+pnpm dev
+
+# Lint and type-check (CI runs both)
+pnpm lint
+pnpm typecheck
 
 # Run tests
-npm run test
+pnpm test
 
 # Build for production
-npm run build
+pnpm build
 
 # Preview production build
-npm run preview
+pnpm preview
 ```
 
 ### Project Structure
 
 ```text
 src/
-├── components/     # Shared UI (Header, UploadModal, ConfirmDialog, etc.)
+├── components/     # Shared UI (PageHeader, CaseTabs, CaseTable, UploadModal, DraftEditor, ...)
 ├── context/        # AuthContext (global auth state)
 ├── hooks/          # Custom hooks (useKBList for KB paging/search/delete)
-├── lib/            # API client, config, storage adapter
-├── pages/          # Route pages (Login, KB, Admin KB)
-└── utils/          # Helpers (debounce)
+├── lib/            # Modular API clients (cases/, knowledge/, llm/, users/, organization/,
+│                   #   teams/, auth/, meta/) + storage adapter and config
+├── pages/          # Route pages: Login, KB, Cases (list + detail), Admin cases,
+│                   #   LLM config, User management, Org/Team management, OAuth, SSO callback
+└── utils/          # Helpers
 ```
 
 ### Tech Stack
@@ -176,7 +188,7 @@ The FaultMaven ecosystem includes:
 
 For local development of both components, see:
 
-- [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/development/local-setup.md)
+- [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/getting-started/local-setup.md)
 - [Dashboard Development](#%EF%B8%8F-development) (this README)
 
 ---

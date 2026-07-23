@@ -1,7 +1,7 @@
 {
   "name": "faultmaven-dashboard",
   "version": "1.0.0",
-  "description": "Knowledge Base management dashboard for FaultMaven",
+  "description": "FaultMaven Dashboard — web app for case investigation review, knowledge base management, LLM configuration, and user administration",
   "type": "module",
   "private": true,
   "scripts": {
