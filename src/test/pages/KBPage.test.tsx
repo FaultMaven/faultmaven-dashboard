@@ -114,9 +114,12 @@ describe('KBPage — scope filter visibility by membership', () => {
   });
 
   it('confirms before batch-removing runbooks and reports a partial failure', async () => {
+    // Batch remove drives `DELETE /knowledge/documents/{id}`, which is
+    // operator-only — the toolbar is not offered to anyone else.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
+      isAdmin: true,
       authState: { user: { user_id: 'u1' } },
       clearAuthState: vi.fn(),
     });
@@ -159,10 +162,12 @@ describe('KBPage — scope filter visibility by membership', () => {
     // Setting overlayMode='upload' re-rendered the same fiber 0→5 hooks, so
     // React threw "Rendered more hooks than during the previous render".
     // canUpload requires standalone or admin.
+    // "Add Runbook" posts to an operator-only route, so it is only offered
+    // to an operator.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
-      isAdmin: false,
+      isAdmin: true,
       authState: { user: { user_id: 'u1' } },
       clearAuthState: vi.fn(),
     });
@@ -181,5 +186,61 @@ describe('KBPage — scope filter visibility by membership', () => {
 
     // The overlay mounted: its heading appears and no crash was thrown.
     expect(screen.getByRole('heading', { name: 'Add Runbook' })).toBeInTheDocument();
+  });
+});
+
+describe('KBPage — authoring affordances match the backend gates', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal', 'global'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  async function renderAs(isAdmin: boolean) {
+    mockUseAuth.mockReturnValue({
+      isAdmin,
+      deployment: 'cloud',
+      role: isAdmin ? 'platform_admin' : 'standard_user',
+      authState: { user: { user_id: 'u-1' } },
+      clearAuthState: vi.fn(),
+    });
+    await act(async () => {
+      renderPage();
+    });
+  }
+
+  it('offers personal-scope authoring to a non-operator', async () => {
+    // Convert and Write go through the conversion routes, which gate only the
+    // GLOBAL scope on the operator role. A cloud org admin lost these entirely
+    // when the operator role stopped being derived from `admin`.
+    await renderAs(false);
+
+    fireEvent.click(screen.getByRole('button', { name: /New/i }));
+
+    expect(screen.getByText('Convert to Runbook')).toBeInTheDocument();
+    expect(screen.getByText('Write Runbook')).toBeInTheDocument();
+  });
+
+  it('hides "Add Runbook" from a non-operator', async () => {
+    // It posts to `POST /knowledge/documents`, which is unconditionally
+    // operator-only and always publishes at global scope — a form a
+    // non-operator could fill in but never submit.
+    await renderAs(false);
+
+    fireEvent.click(screen.getByRole('button', { name: /New/i }));
+
+    expect(screen.queryByText('Add Runbook')).not.toBeInTheDocument();
+  });
+
+  it('offers "Add Runbook" to an operator', async () => {
+    await renderAs(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /New/i }));
+
+    expect(screen.getByText('Add Runbook')).toBeInTheDocument();
   });
 });

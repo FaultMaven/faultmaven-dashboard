@@ -53,13 +53,22 @@ interface NewDropdownProps {
   onUpload: () => void;
   onConvert: () => void;
   onManual: () => void;
+  isAdmin: boolean;
 }
 
-function NewDropdown({ onUpload, onConvert, onManual }: NewDropdownProps) {
+function NewDropdown({ onUpload, onConvert, onManual, isAdmin }: NewDropdownProps) {
   const [open, setOpen] = useState(false);
 
+  // Convert and Write go through the conversion routes, which gate only the
+  // GLOBAL scope on the operator role — every authenticated user can author at
+  // personal scope. "Add Runbook" is different: it posts to
+  // `POST /knowledge/documents`, which is unconditionally operator-only AND
+  // always publishes at global scope, so offering it to a non-operator is a
+  // form they can fill in and can never submit.
   const items = [
-    { label: 'Add Runbook', description: 'Upload a validated runbook file directly', onClick: onUpload },
+    ...(isAdmin
+      ? [{ label: 'Add Runbook', description: 'Upload a validated runbook file directly', onClick: onUpload }]
+      : []),
     { label: 'Convert to Runbook', description: 'AI extracts runbooks from a document', onClick: onConvert },
     { label: 'Write Runbook', description: 'Create from the standard template', onClick: onManual },
   ];
@@ -316,8 +325,11 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
         </div>
       </div>
 
-      {/* Select all + batch action toolbar */}
-      {displayDocuments.length > 0 && (
+      {/* Select all + batch Remove. Gated on the operator role because
+          `DELETE /knowledge/documents/{id}` is unconditionally operator-only —
+          without this a user could select their own personal runbook and get a
+          403 on Remove. */}
+      {isAdmin && displayDocuments.length > 0 && (
         <div className="flex items-center gap-3 mb-3">
           <label className="flex items-center gap-2 text-xs text-fm-text-tertiary">
             <input
@@ -366,8 +378,8 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
         emptyMessage="No runbooks in your knowledge base yet."
         canEditFn={(doc) => canModifyDocument(doc as KBDocument, isAdmin, userId)}
         canRemove={false}
-        selectedIds={selectedIds}
-        onToggleSelect={toggleSelect}
+        selectedIds={isAdmin ? selectedIds : undefined}
+        onToggleSelect={isAdmin ? toggleSelect : undefined}
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
@@ -1173,6 +1185,7 @@ export default function KBPage() {
           </div>
           {!overlayMode && (
             <NewDropdown
+              isAdmin={isAdmin}
               onUpload={() => setOverlayMode('upload')}
               onConvert={() => setOverlayMode('convert')}
               onManual={() => setOverlayMode('manual')}
