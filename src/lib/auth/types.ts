@@ -19,8 +19,10 @@ export interface AuthState {
     display_name: string;
     is_dev_user: boolean;
     is_active: boolean;
+    // Role strings as the backend sends them. `platform_admin` is the
+    // cross-tenant operator role; `admin` is organization-scoped (ADR-012 D9).
+    // There is no `is_admin` boolean — the backend has never sent one.
     roles?: string[];
-    is_admin?: boolean;
     organization_id?: string; // Multi-tenant organization context per backend storage fixes
   };
 }

@@ -25,6 +25,36 @@ export function deriveExpiresAt(expiresInSeconds: unknown): number | null {
   return Date.now() + expiresInSeconds * 1000;
 }
 
+/**
+ * Read the `roles` claim out of an access token, for display gating only.
+ *
+ * The stored `user` object is a login-time snapshot, and refresh replaces only
+ * the tokens — so without this, a session that predates a role change keeps
+ * showing (or hiding) operator UI indefinitely even though the refreshed token
+ * already authorizes it. Neither backend grant path revokes tokens: the
+ * standalone bootstrap self-heal and `promote_to_platform_admin.py` both leave
+ * existing sessions running.
+ *
+ * No signature verification, deliberately: this only decides what the UI
+ * OFFERS. Every request is independently authorized server-side, so a forged
+ * local token buys a broken page, not access. Returns null on anything
+ * malformed, so a bad token can never clear a valid role set.
+ */
+export function readRolesFromAccessToken(token: string): string[] | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    // base64url -> base64, then pad.
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const claims = JSON.parse(atob(padded)) as { roles?: unknown };
+    if (!Array.isArray(claims.roles)) return null;
+    return claims.roles.filter((r): r is string => typeof r === 'string');
+  } catch {
+    return null;
+  }
+}
+
 // Access window.browser directly to avoid module load-time evaluation issues
 // The storage adapter (lib/storage.ts) initializes window.browser as a side-effect
 function getBrowserStorage() {
@@ -265,8 +295,17 @@ export class AuthManager {
         return null;
       }
 
+      // Carry the refreshed token's roles onto the stored user. Without this
+      // the UI keeps gating on whatever the roles were at login; see
+      // readRolesFromAccessToken. Falls back to the existing roles when the
+      // claim is absent or unparseable, so a malformed token cannot silently
+      // strip a user's UI.
+      const refreshedRoles = readRolesFromAccessToken(body.access_token);
       const next: AuthState = {
         ...authState,
+        user: refreshedRoles
+          ? { ...authState.user, roles: refreshedRoles }
+          : authState.user,
         access_token: body.access_token,
         refresh_token: body.refresh_token,
         expires_at: expiresAt,

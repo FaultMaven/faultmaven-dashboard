@@ -53,13 +53,22 @@ interface NewDropdownProps {
   onUpload: () => void;
   onConvert: () => void;
   onManual: () => void;
+  isAdmin: boolean;
 }
 
-function NewDropdown({ onUpload, onConvert, onManual }: NewDropdownProps) {
+function NewDropdown({ onUpload, onConvert, onManual, isAdmin }: NewDropdownProps) {
   const [open, setOpen] = useState(false);
 
+  // Convert and Write go through the conversion routes, which gate only the
+  // GLOBAL scope on the operator role — every authenticated user can author at
+  // personal scope. "Add Runbook" is different: it posts to
+  // `POST /knowledge/documents`, which is unconditionally operator-only AND
+  // always publishes at global scope, so offering it to a non-operator is a
+  // form they can fill in and can never submit.
   const items = [
-    { label: 'Add Runbook', description: 'Upload a validated runbook file directly', onClick: onUpload },
+    ...(isAdmin
+      ? [{ label: 'Add Runbook', description: 'Upload a validated runbook file directly', onClick: onUpload }]
+      : []),
     { label: 'Convert to Runbook', description: 'AI extracts runbooks from a document', onClick: onConvert },
     { label: 'Write Runbook', description: 'Create from the standard template', onClick: onManual },
   ];
@@ -132,7 +141,7 @@ function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, 
   return false;
 }
 
-function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }: { canUpload: boolean; isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
+function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
   const { scopes: availableScopes } = useAvailableScopes();
@@ -316,8 +325,11 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
         </div>
       </div>
 
-      {/* Select all + batch action toolbar */}
-      {canUpload && displayDocuments.length > 0 && (
+      {/* Select all + batch Remove. Gated on the operator role because
+          `DELETE /knowledge/documents/{id}` is unconditionally operator-only —
+          without this a user could select their own personal runbook and get a
+          403 on Remove. */}
+      {isAdmin && displayDocuments.length > 0 && (
         <div className="flex items-center gap-3 mb-3">
           <label className="flex items-center gap-2 text-xs text-fm-text-tertiary">
             <input
@@ -366,8 +378,8 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
         emptyMessage="No runbooks in your knowledge base yet."
         canEditFn={(doc) => canModifyDocument(doc as KBDocument, isAdmin, userId)}
         canRemove={false}
-        selectedIds={canUpload ? selectedIds : undefined}
-        onToggleSelect={canUpload ? toggleSelect : undefined}
+        selectedIds={isAdmin ? selectedIds : undefined}
+        onToggleSelect={isAdmin ? toggleSelect : undefined}
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
@@ -784,9 +796,15 @@ function OverlayPanel(props: OverlayPanelProps) {
 // =============================================================================
 
 export default function KBPage() {
-  const { deployment, role, authState, clearAuthState } = useAuth();
-  const isAdmin = role === 'platform_admin';
-  const canUpload = deployment === 'standalone' || isAdmin;
+  // `isAdmin` comes from the context (the `platform_admin` role) rather than
+  // from `role === 'platform_admin'`: `deriveRole` collapses every standalone
+  // account to `individual`, so the latter is unreachable in standalone and a
+  // standalone operator would be denied global-KB edits the backend allows.
+  //
+  // Authoring itself is NOT on the operator axis — every authenticated user can
+  // create personal-scope runbooks. Global scope is gated by `canModifyDocument`
+  // below and, authoritatively, by the backend.
+  const { isAdmin, authState, clearAuthState } = useAuth();
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link
   // here. The ReportTab in case-detail links to ``/kb?tab=drafts&case=<id>``
@@ -1165,8 +1183,9 @@ export default function KBPage() {
             <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">Knowledge Base</h2>
             <p className="text-fm-text-secondary">Build and maintain your troubleshooting runbooks — the knowledge FaultMaven draws on during investigations.</p>
           </div>
-          {canUpload && !overlayMode && (
+          {!overlayMode && (
             <NewDropdown
+              isAdmin={isAdmin}
               onUpload={() => setOverlayMode('upload')}
               onConvert={() => setOverlayMode('convert')}
               onManual={() => setOverlayMode('manual')}
@@ -1292,7 +1311,7 @@ export default function KBPage() {
 
             <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5">
               <div className={activeTab === 'documents' ? '' : 'hidden'}>
-                <DocumentsTab canUpload={canUpload} isAdmin={isAdmin} userId={authState?.user?.user_id ?? null} refreshKey={docsRefreshKey} onCountChange={setRunbookCount} />
+                <DocumentsTab isAdmin={isAdmin} userId={authState?.user?.user_id ?? null} refreshKey={docsRefreshKey} onCountChange={setRunbookCount} />
               </div>
               {activeTab === 'drafts' && (
                 <DraftsTab
