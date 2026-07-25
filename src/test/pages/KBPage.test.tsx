@@ -45,10 +45,12 @@ function renderPage() {
   );
 }
 
-describe('KBPage — scope filter visibility by membership', () => {
+describe('KBPage — scope filter reflects visible documents, not publish rights', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: only the always-available scopes. Individual tests override.
+    // The publish-capability signal. The scope FILTER no longer reads it —
+    // reading every scope is open, so the filter keys on document counts —
+    // but the authoring UI still does, and other tests in this file override it.
     mockUseAvailableScopes.mockReturnValue({
       scopes: ['personal', 'global'],
       loading: false,
@@ -57,42 +59,55 @@ describe('KBPage — scope filter visibility by membership', () => {
     });
   });
 
-  it('standalone user with no team membership hides Team option', async () => {
+  async function renderWithCounts(scope_counts: {
+    global: number;
+    team: number;
+    personal: number;
+  }) {
     mockUseAuth.mockReturnValue({
-      deployment: 'standalone',
-      role: 'individual',
+      deployment: 'cloud',
+      role: 'standard_user',
+      isAdmin: false,
       clearAuthState: vi.fn(),
     });
-
+    const api = await import('../../lib/api');
+    (api.listDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({
+      documents: [],
+      total_count: 0,
+      limit: 20,
+      offset: 0,
+      scope_counts,
+    });
     await act(async () => {
       renderPage();
     });
+  }
+
+  it('offers a scope only when documents in it are visible', async () => {
+    await renderWithCounts({ global: 3, team: 0, personal: 2 });
 
     expect(screen.getByRole('option', { name: /Global/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Personal/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Team/i })).not.toBeInTheDocument();
   });
 
-  it('user with team membership sees Team option', async () => {
-    mockUseAuth.mockReturnValue({
-      deployment: 'cloud',
-      role: 'standard_user',
-      clearAuthState: vi.fn(),
-    });
-    mockUseAvailableScopes.mockReturnValue({
-      scopes: ['personal', 'team', 'global'],
-      loading: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it('offers Global to a NON-operator when global documents exist', async () => {
+    // Reading global KB is open to every user, and those rows appear under
+    // "All scopes" regardless — so gating this filter on publish capability
+    // hid an option whose data was on screen.
+    await renderWithCounts({ global: 5, team: 0, personal: 0 });
 
-    await act(async () => {
-      renderPage();
-    });
-
-    expect(screen.getByRole('option', { name: /Personal/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Team/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Global/i })).toBeInTheDocument();
+  });
+
+  it('hides a scope with no visible documents', async () => {
+    await renderWithCounts({ global: 0, team: 0, personal: 0 });
+
+    expect(screen.queryByRole('option', { name: /Global/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Team/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Personal/i })).not.toBeInTheDocument();
+    // "All scopes" is unconditional so the control is never empty.
+    expect(screen.getByRole('option', { name: /All scopes/i })).toBeInTheDocument();
   });
 
   it('archive confirm dialog uses Archive wording (not Delete)', async () => {
