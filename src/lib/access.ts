@@ -61,3 +61,18 @@ export function canViewAllCases(
 ): boolean {
   return deployment === 'standalone' && isAdmin;
 }
+
+/**
+ * Single source of truth for "can this user reach LLM configuration?"
+ * (`GET/PUT /api/v1/admin/llm/config`, `GET /api/v1/admin/config/status`).
+ *
+ * Those endpoints are operator-only in both deployments (ADR-012 D9). This
+ * predicate takes `isAdmin` rather than `role` because `deriveRole` collapses
+ * every standalone account to `individual`, so `role === 'platform_admin'` is
+ * unreachable in standalone and a role-based check would have to fall back to
+ * "any standalone user" — which no longer matches the backend and would show
+ * the page to accounts that then 403 on every request behind it.
+ */
+export function canManageLlmConfig(isAdmin: boolean): boolean {
+  return isAdmin;
+}

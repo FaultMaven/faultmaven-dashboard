@@ -15,10 +15,10 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { useCapabilities } from './hooks/useCapabilities';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminProtectedRoute } from './components/AdminProtectedRoute';
-import { canManageConsole, canViewAllCases } from './lib/access';
+import { canManageConsole, canManageLlmConfig, canViewAllCases } from './lib/access';
 
 function LLMConfigRoute({ children }: { children: React.ReactNode }) {
-  const { deployment, role, loading, authState } = useAuth();
+  const { isAdmin, loading, authState } = useAuth();
 
   if (loading) return null;
 
@@ -26,7 +26,9 @@ function LLMConfigRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (deployment === 'standalone' || role === 'platform_admin') {
+  // Same predicate as the nav item, so the two cannot drift and neither can
+  // drift from the backend's operator gate.
+  if (canManageLlmConfig(isAdmin)) {
     return <>{children}</>;
   }
 

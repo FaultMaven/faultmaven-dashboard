@@ -1,6 +1,11 @@
 import { useAuth } from '../context/AuthContext';
 import { useCapabilities } from './useCapabilities';
-import { canManageConsole, canManageUsers, canViewAllCases } from '../lib/access';
+import {
+  canManageConsole,
+  canManageLlmConfig,
+  canManageUsers,
+  canViewAllCases,
+} from '../lib/access';
 
 export interface NavItem {
   label: string;
@@ -28,8 +33,8 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     items.push({ label: 'All Cases', path: '/admin/cases' });
   }
 
-  // LLM Settings: visible to all standalone users and cloud Platform Admins
-  if (deployment === 'standalone' || role === 'platform_admin') {
+  // LLM Settings: operator-only in both deployments — see canManageLlmConfig.
+  if (canManageLlmConfig(isAdmin)) {
     items.push({ label: 'LLM Settings', path: '/settings/llm' });
   }
 

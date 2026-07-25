@@ -24,8 +24,12 @@ describe('useNavigationItems', () => {
     mockUseCapabilities.mockReturnValue({ managementConsole: false });
   });
 
-  it('standalone user sees Cases, Knowledge Base, LLM Settings — no Users', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'standalone', role: 'individual' });
+  it('standalone operator sees Cases, Knowledge Base, LLM Settings — no Users', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: true,
+    });
 
     const { result } = renderHook(() => useNavigationItems('/cases'));
     const labels = result.current.map((i) => i.label);
@@ -36,8 +40,29 @@ describe('useNavigationItems', () => {
     expect(labels).not.toContain('Users');
   });
 
+  it('standalone NON-operator does not see LLM Settings', () => {
+    // LLM configuration is operator-only on the backend (ADR-012 D9). Offering
+    // the nav item to any standalone account would send non-operators to a page
+    // that 403s on every request behind it.
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: false,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    const labels = result.current.map((i) => i.label);
+
+    expect(labels).toContain('Cases');
+    expect(labels).not.toContain('LLM Settings');
+  });
+
   it('cloud standard_user sees Cases, Knowledge Base — no LLM Settings, no Users', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'cloud', role: 'standard_user' });
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'standard_user',
+      isAdmin: false,
+    });
 
     const { result } = renderHook(() => useNavigationItems('/kb'));
     const labels = result.current.map((i) => i.label);
@@ -49,7 +74,11 @@ describe('useNavigationItems', () => {
   });
 
   it('cloud platform_admin sees all four nav items', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'cloud', role: 'platform_admin' });
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'platform_admin',
+      isAdmin: true,
+    });
 
     const { result } = renderHook(() => useNavigationItems('/admin/users'));
     const labels = result.current.map((i) => i.label);
@@ -61,7 +90,11 @@ describe('useNavigationItems', () => {
   });
 
   it('marks item active when currentPath matches exactly', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'standalone', role: 'individual' });
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: true,
+    });
 
     const { result } = renderHook(() => useNavigationItems('/cases'));
     const casesItem = result.current.find((i) => i.path === '/cases');
@@ -141,7 +174,11 @@ describe('useNavigationItems', () => {
   });
 
   it('cloud platform_admin sees "Organization" only when managementConsole is on', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'cloud', role: 'platform_admin' });
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'platform_admin',
+      isAdmin: true,
+    });
 
     // Capability off (standalone / pre-P2 cloud): hidden.
     mockUseCapabilities.mockReturnValue({ managementConsole: false });
@@ -155,7 +192,11 @@ describe('useNavigationItems', () => {
   });
 
   it('cloud standard_user never sees "Organization" even when managementConsole is on', () => {
-    mockUseAuth.mockReturnValue({ deployment: 'cloud', role: 'standard_user' });
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'standard_user',
+      isAdmin: false,
+    });
     mockUseCapabilities.mockReturnValue({ managementConsole: true });
 
     const { result } = renderHook(() => useNavigationItems('/cases'));
