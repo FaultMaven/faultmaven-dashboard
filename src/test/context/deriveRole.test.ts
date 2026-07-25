@@ -2,15 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { deriveRole } from '../../context/AuthContext';
 
 /**
- * ADR-012 D9 split one ambiguous backend role string into two:
- *
- *   platform_admin — deployment operator, cross-tenant reach
- *   admin          — organization-scoped, tenant-bounded
- *
- * The dashboard's `platform_admin` means the FIRST one. These tests pin that,
- * because keying on `admin` again would silently offer the operator UI to every
- * org admin in cloud — the failure mode is a visible-but-403 surface, not a
- * crash, so only a test catches it.
+ * Pins which backend role the dashboard's `platform_admin` means. Keying on the
+ * org-scoped `admin` instead would offer the operator UI to every org admin in
+ * cloud and then 403 behind it — a visible-but-broken surface, not a crash, so
+ * only a test catches it.
  */
 describe('deriveRole', () => {
   it('treats a cloud platform_admin as platform_admin', () => {

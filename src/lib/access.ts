@@ -46,8 +46,8 @@ export function canManageConsole(
  * Single source of truth for "can this user reach the cross-tenant All-Cases
  * admin view?" (ADR-012 D9 — GET /api/v1/admin/cases).
  *
- * Standalone (self-hosted): the single operator, when they hold the `admin`
- * role, can see every user's cases — including Slack-agent-owned cases — in one
+ * Standalone (self-hosted): the single operator, when they hold the
+ * `platform_admin` role, can see every user's cases — including Slack-agent-owned cases — in one
  * place. This is where the backend serves the endpoint.
  *
  * Cloud: cross-tenant reads require an audited break-glass override
