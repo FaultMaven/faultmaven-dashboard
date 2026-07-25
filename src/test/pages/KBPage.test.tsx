@@ -161,7 +161,6 @@ describe('KBPage — scope filter visibility by membership', () => {
     // `if (!mode) return null` early return, and was mounted unconditionally.
     // Setting overlayMode='upload' re-rendered the same fiber 0→5 hooks, so
     // React threw "Rendered more hooks than during the previous render".
-    // canUpload requires standalone or admin.
     // "Add Runbook" posts to an operator-only route, so it is only offered
     // to an operator.
     mockUseAuth.mockReturnValue({
@@ -223,6 +222,14 @@ describe('KBPage — authoring affordances match the backend gates', () => {
 
     expect(screen.getByText('Convert to Runbook')).toBeInTheDocument();
     expect(screen.getByText('Write Runbook')).toBeInTheDocument();
+  });
+
+  it('gives a non-operator no batch-remove selection UI', async () => {
+    // Batch remove drives an operator-only DELETE, so offering the checkboxes
+    // would let a user select their own personal runbook and get a 403.
+    await renderAs(false);
+
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
   it('hides "Add Runbook" from a non-operator', async () => {
