@@ -28,6 +28,12 @@ export function UserTable({ users, onChangeRole, onDeactivate }: UserTableProps)
       <tbody className="divide-y divide-fm-border">
         {users.map((user) => {
           const role: DashboardRoleValue = user.roles.includes('admin') ? 'admin' : 'user';
+          // The backend's role assignment REPLACES the whole role list, and
+          // this control can only express the org-scoped vocabulary — so using
+          // it on an operator would silently strip `platform_admin`. Show the
+          // status and lock the control instead; operator grants belong to the
+          // CLI (ADR-012 D9).
+          const isOperator = user.roles.includes('platform_admin');
           return (
             <tr key={user.user_id} className="hover:bg-fm-elevated/50 transition-colors">
               <td className="px-4 py-3">
@@ -35,16 +41,23 @@ export function UserTable({ users, onChangeRole, onDeactivate }: UserTableProps)
                 <p className="text-xs text-fm-text-tertiary mt-0.5">{user.email}</p>
               </td>
               <td className="px-4 py-3">
-                <select
-                  value={role}
-                  onChange={(e) => onChangeRole(user.user_id, e.target.value as DashboardRoleValue)}
-                  className="px-2 py-1 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors"
-                >
-                  {/* Org-scoped role only; `platform_admin` is granted by
-                      operator CLI, never from this UI (ADR-012 D9). */}
-                  <option value="user">Standard User</option>
-                  <option value="admin">Organization Admin</option>
-                </select>
+                {isOperator ? (
+                  <span
+                    className="inline-flex items-center gap-1 text-sm text-fm-text-secondary"
+                    title="Platform admin (deployment operator). Granted and revoked with scripts/auth/promote_to_platform_admin.py — changing roles here would remove it."
+                  >
+                    👑 Platform Admin
+                  </span>
+                ) : (
+                  <select
+                    value={role}
+                    onChange={(e) => onChangeRole(user.user_id, e.target.value as DashboardRoleValue)}
+                    className="px-2 py-1 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors"
+                  >
+                    <option value="user">Standard User</option>
+                    <option value="admin">Organization Admin</option>
+                  </select>
+                )}
               </td>
               <td className="px-4 py-3 text-fm-text-tertiary">
                 {user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : '—'}

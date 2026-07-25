@@ -132,7 +132,7 @@ function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, 
   return false;
 }
 
-function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }: { canUpload: boolean; isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
+function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
   const { scopes: availableScopes } = useAvailableScopes();
@@ -317,7 +317,7 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
       </div>
 
       {/* Select all + batch action toolbar */}
-      {canUpload && displayDocuments.length > 0 && (
+      {displayDocuments.length > 0 && (
         <div className="flex items-center gap-3 mb-3">
           <label className="flex items-center gap-2 text-xs text-fm-text-tertiary">
             <input
@@ -366,8 +366,8 @@ function DocumentsTab({ canUpload, isAdmin, userId, refreshKey, onCountChange }:
         emptyMessage="No runbooks in your knowledge base yet."
         canEditFn={(doc) => canModifyDocument(doc as KBDocument, isAdmin, userId)}
         canRemove={false}
-        selectedIds={canUpload ? selectedIds : undefined}
-        onToggleSelect={canUpload ? toggleSelect : undefined}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
@@ -784,9 +784,15 @@ function OverlayPanel(props: OverlayPanelProps) {
 // =============================================================================
 
 export default function KBPage() {
-  const { deployment, role, authState, clearAuthState } = useAuth();
-  const isAdmin = role === 'platform_admin';
-  const canUpload = deployment === 'standalone' || isAdmin;
+  // `isAdmin` comes from the context (the `platform_admin` role) rather than
+  // from `role === 'platform_admin'`: `deriveRole` collapses every standalone
+  // account to `individual`, so the latter is unreachable in standalone and a
+  // standalone operator would be denied global-KB edits the backend allows.
+  //
+  // Authoring itself is NOT on the operator axis — every authenticated user can
+  // create personal-scope runbooks. Global scope is gated by `canModifyDocument`
+  // below and, authoritatively, by the backend.
+  const { isAdmin, authState, clearAuthState } = useAuth();
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link
   // here. The ReportTab in case-detail links to ``/kb?tab=drafts&case=<id>``
@@ -1165,7 +1171,7 @@ export default function KBPage() {
             <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">Knowledge Base</h2>
             <p className="text-fm-text-secondary">Build and maintain your troubleshooting runbooks — the knowledge FaultMaven draws on during investigations.</p>
           </div>
-          {canUpload && !overlayMode && (
+          {!overlayMode && (
             <NewDropdown
               onUpload={() => setOverlayMode('upload')}
               onConvert={() => setOverlayMode('convert')}
@@ -1292,7 +1298,7 @@ export default function KBPage() {
 
             <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5">
               <div className={activeTab === 'documents' ? '' : 'hidden'}>
-                <DocumentsTab canUpload={canUpload} isAdmin={isAdmin} userId={authState?.user?.user_id ?? null} refreshKey={docsRefreshKey} onCountChange={setRunbookCount} />
+                <DocumentsTab isAdmin={isAdmin} userId={authState?.user?.user_id ?? null} refreshKey={docsRefreshKey} onCountChange={setRunbookCount} />
               </div>
               {activeTab === 'drafts' && (
                 <DraftsTab
