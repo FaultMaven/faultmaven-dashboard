@@ -32,7 +32,6 @@ import { DraftEditor } from '../components/DraftEditor';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CreateRunbookForm, type RunbookFormData } from '../components/CreateRunbookForm';
 import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
-import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
 
@@ -144,7 +143,6 @@ function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, 
 function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
-  const { scopes: availableScopes } = useAvailableScopes();
 
   // Re-fetch documents when refreshKey changes (e.g., after draft verification)
   useEffect(() => {
@@ -276,14 +274,18 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
           className={`w-40 ${inputClass}`}
           aria-label="Filter by scope"
         >
+          {/* Filter options key on what the user can SEE, not what they can
+              publish to. Reading global KB is open to every user, so gating
+              this on the publish-capability signal hid the option while those
+              same rows kept appearing under "All scopes". */}
           <option value="all">All scopes</option>
-          {availableScopes.includes('global') && (
+          {scopeCounts.global > 0 && (
             <option value="global">Global ({scopeCounts.global})</option>
           )}
-          {availableScopes.includes('team') && (
+          {scopeCounts.team > 0 && (
             <option value="team">Team ({scopeCounts.team})</option>
           )}
-          {availableScopes.includes('personal') && (
+          {scopeCounts.personal > 0 && (
             <option value="personal">Personal ({scopeCounts.personal})</option>
           )}
         </select>
