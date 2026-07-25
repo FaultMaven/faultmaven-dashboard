@@ -7,7 +7,14 @@ interface State {
   error: string | null;
 }
 
-const ALWAYS_AVAILABLE: PublishableScope[] = ['personal', 'global'];
+// The baseline before the server answers, and the fallback if it never does.
+//
+// `personal` alone, deliberately: it is the only scope every authenticated user
+// can publish to. `global` is the platform tier — the backend requires
+// `platform_admin` on every route that writes there — so including it here
+// would offer a target the server refuses, briefly on load and permanently on a
+// fetch error. Under-offering until the truth arrives is the safe direction.
+const BASELINE_SCOPES: PublishableScope[] = ['personal'];
 
 // Process-wide store for the current user's publishable KB scopes.
 //
@@ -15,7 +22,7 @@ const ALWAYS_AVAILABLE: PublishableScope[] = ['personal', 'global'];
 // per-component state so every consumer shares one fetch AND so the cache can be
 // evicted centrally on identity change. `state` is replaced (never mutated) on
 // change, so its reference is a stable snapshot between updates.
-let state: State = { scopes: ALWAYS_AVAILABLE, loading: true, error: null };
+let state: State = { scopes: BASELINE_SCOPES, loading: true, error: null };
 let inFlight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
@@ -47,7 +54,7 @@ async function loadScopes(): Promise<void> {
       setState({ scopes, loading: false, error: null });
     } catch (e) {
       setState({
-        scopes: state.scopes ?? ALWAYS_AVAILABLE,
+        scopes: state.scopes ?? BASELINE_SCOPES,
         loading: false,
         error: e instanceof Error ? e.message : 'Failed to load scopes',
       });
@@ -70,7 +77,7 @@ async function loadScopes(): Promise<void> {
  */
 export function invalidateAvailableScopes(): void {
   inFlight = null;
-  setState({ scopes: ALWAYS_AVAILABLE, loading: true, error: null });
+  setState({ scopes: BASELINE_SCOPES, loading: true, error: null });
 }
 
 // Evict cached scopes whenever auth state is cleared. Registered once at module

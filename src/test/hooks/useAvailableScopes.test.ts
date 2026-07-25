@@ -84,13 +84,17 @@ describe('useAvailableScopes', () => {
     await waitFor(() => expect(result.current.scopes).not.toContain('team'));
   });
 
-  it('falls back to the always-available scopes on fetch error', async () => {
+  it('falls back to personal only on fetch error, never offering global', async () => {
+    // Fail closed. `global` requires `platform_admin` on every route that
+    // writes there, so falling back to it would offer a target the server
+    // refuses — for as long as the fetch keeps failing.
     mockGetScopes.mockRejectedValueOnce(new Error('boom'));
 
     const { result } = renderHook(() => useAvailableScopes());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.scopes).toEqual(['personal', 'global']);
+    expect(result.current.scopes).toEqual(['personal']);
+    expect(result.current.scopes).not.toContain('global');
     expect(result.current.error).toBe('boom');
   });
 });
