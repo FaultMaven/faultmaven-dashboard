@@ -9,9 +9,22 @@ export type Deployment = 'standalone' | 'cloud';
 // Dashboard role: derived from the JWT roles array and deployment
 export type DashboardRole = 'individual' | 'standard_user' | 'platform_admin';
 
-function deriveRole(deployment: Deployment, roles: string[]): DashboardRole {
+/**
+ * The backend distinguishes two roles that both used to read as "admin"
+ * (ADR-012 D9), and only one of them is what this dashboard means by
+ * `platform_admin`:
+ *
+ * - `platform_admin` — the DEPLOYMENT operator; cross-tenant reach.
+ * - `admin`          — ORGANIZATION-scoped; full authority inside one tenant,
+ *                      none outside it.
+ *
+ * This must key on `platform_admin` alone. Keying on `admin` (as it did while
+ * the backend had only the one role string) would light up the operator UI for
+ * every org admin in cloud, then 403 on every request behind it.
+ */
+export function deriveRole(deployment: Deployment, roles: string[]): DashboardRole {
   if (deployment === 'standalone') return 'individual';
-  if (roles.includes('admin')) return 'platform_admin';
+  if (roles.includes('platform_admin')) return 'platform_admin';
   return 'standard_user';
 }
 
@@ -137,7 +150,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         authState,
         loading,
         isAuthenticated: !!authState,
-        isAdmin: !!authState?.user?.roles?.includes('admin') || !!authState?.user?.is_admin,
+        // Operator flag (ADR-012 D9) — the cross-tenant `platform_admin` role,
+        // NOT the org-scoped `admin`. Backs `canViewAllCases`, which gates the
+        // All Cases view served by `GET /api/v1/admin/cases`.
+        isAdmin: !!authState?.user?.roles?.includes('platform_admin'),
         deployment,
         role,
         loginUrl,

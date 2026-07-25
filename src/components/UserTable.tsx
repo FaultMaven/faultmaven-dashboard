@@ -40,8 +40,15 @@ export function UserTable({ users, onChangeRole, onDeactivate }: UserTableProps)
                   onChange={(e) => onChangeRole(user.user_id, e.target.value as DashboardRoleValue)}
                   className="px-2 py-1 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors"
                 >
+                  {/*
+                    This select assigns the ORGANIZATION-scoped `admin` role
+                    (`POST /admin/users/{id}/roles`, validated against the org
+                    Role enum). It is NOT the cross-tenant `platform_admin`
+                    operator role — that one is granted out-of-band by an
+                    operator CLI, never from this UI (ADR-012 D9).
+                  */}
                   <option value="user">Standard User</option>
-                  <option value="admin">Platform Admin</option>
+                  <option value="admin">Organization Admin</option>
                 </select>
               </td>
               <td className="px-4 py-3 text-fm-text-tertiary">
