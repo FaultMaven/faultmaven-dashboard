@@ -109,6 +109,53 @@ export type AdminCaseMetadataListResponse = Omit<
  */
 export type AdminCaseListResult = AdminCaseFullListResponse | AdminCaseMetadataListResponse;
 
+// ==================== Operator break-glass (ADR-012 D9) ====================
+
+/**
+ * One operator's time-boxed license to read ONE case's content
+ * (faultmaven#815).
+ *
+ * `is_live` is computed by the backend and must be used as-is. Approval state,
+ * revocation and expiry are three independent ways for a grant to stop
+ * authorising, and a UI that re-derived that predicate from `expires_at` alone
+ * would disagree with the gate that actually enforces it — showing "active" for
+ * a grant the backend has already revoked.
+ */
+export type BreakGlassGrant = components['schemas']['BreakGlassGrant'];
+
+export type BreakGlassGrantRequest = components['schemas']['BreakGlassGrantRequest'];
+
+/**
+ * How an operator content read was authorised.
+ *
+ * `standing` is the self-hosted posture — the operator and the data controller
+ * are the same party, so the read is recorded but not gated. `break_glass` means
+ * a live grant authorised it, and names that grant.
+ *
+ * Read this off the response rather than inferring it from the deployment, for
+ * the same reason `AdminCaseListResult` is narrowed on `view`: the response says
+ * how it was served, so the UI and the policy cannot drift.
+ */
+export type OperatorContentAccess = AdminCaseContentResponse['access'];
+
+/** Operator-opened case content — `GET /api/v1/admin/cases/{case_id}`. */
+export type AdminCaseContentResponse = Omit<
+  components['schemas']['AdminCaseContentResponse'],
+  'case'
+> & {
+  // Same seam as `CaseListResponse`: the generated `CaseDetail` trails the
+  // backend on fields the `types/cases.ts` aliases already patch.
+  case: CaseDetail;
+};
+
+/** Operator-opened transcript — `GET /api/v1/admin/cases/{case_id}/messages`. */
+export type AdminCaseMessagesResponse = Omit<
+  components['schemas']['AdminCaseMessagesResponse'],
+  'messages'
+> & {
+  messages: CaseMessagesResponse;
+};
+
 // ==================== Frontend-only request / filter shapes ====================
 // (no generated counterpart — these are dashboard query/write bags)
 

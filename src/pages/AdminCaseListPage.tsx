@@ -31,18 +31,29 @@ const SOURCE_OPTIONS: { value: CaseSource | undefined; label: string }[] = [
  * grant (faultmaven#815), not from an ambient list. Narrowing on `view` is what
  * keeps the rendered columns and the served policy from drifting apart.
  *
- * The two arms differ on whether a row links to the case detail, and the
- * asymmetry is deliberate rather than an oversight. `GET /cases/{id}` has no
- * operator bypass, so on the `metadata` arm — where the operator owns none of
- * the listed cases — EVERY link would 404, and the table therefore offers none.
- * On the `full` arm the operator's own cases open normally; unlinking there
- * would break working navigation to fix rows that are already broken today
- * (faultmaven#846, whose fix is the audited single-case operator read that
- * faultmaven#815 introduces). Removing a real affordance is the wrong side to
- * err on; offering one that cannot work is not.
+ * Where a row opens depends on whether the operator OWNS it, not on which arm
+ * it came from:
+ *
+ * - **Own cases** open at `/cases/{id}` — the full experience, with the Issue /
+ *   Report / Hypotheses / Evidence tabs, archive and annotate. Routing those
+ *   through the operator view would strip all of it *and* write an
+ *   operator-access audit row every time someone opened their own data: both a
+ *   downgrade and a polluted trail.
+ * - **Everyone else's** open at `/admin/cases/{id}` — the audited operator read
+ *   (faultmaven#815). `GET /cases/{id}` gates on owner ∪ shared-to-my-teams with
+ *   no operator bypass, so those rows would otherwise 404 (faultmaven#846).
+ *
+ * On the `metadata` arm the operator owns nothing by construction — it only
+ * appears in cloud, where the listed cases belong to tenants — so every row
+ * there takes the operator route anyway.
+ *
+ * The organization travels with the link. Requesting a break-glass grant needs
+ * it, and under multi-tenant cloud it cannot be read from the case itself —
+ * that is what the grant unlocks — so the row has to carry it.
  */
 export default function AdminCaseListPage() {
-  const { clearAuthState } = useAuth();
+  const { clearAuthState, authState } = useAuth();
+  const currentUserId = authState?.user?.user_id;
   const [result, setResult] = useState<AdminCaseListResult | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
@@ -163,7 +174,18 @@ export default function AdminCaseListPage() {
         ) : result?.view === 'metadata' ? (
           <AdminCaseMetadataTable cases={result.cases} loading={loading} />
         ) : (
-          <CaseTable cases={result?.cases ?? []} loading={loading} showOwner />
+          <CaseTable
+            cases={result?.cases ?? []}
+            loading={loading}
+            showOwner
+            // Own cases keep the full case page; everyone else's go through the
+            // audited operator read — see the component docstring above.
+            caseHref={(c) =>
+              c.user_id === currentUserId
+                ? `/cases/${c.case_id}`
+                : `/admin/cases/${c.case_id}?org=${encodeURIComponent(c.organization_id)}`
+            }
+          />
         )}
 
         {!error && (

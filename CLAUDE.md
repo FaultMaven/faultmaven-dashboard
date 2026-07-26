@@ -59,6 +59,7 @@ src/
 │   ├── CaseListPage.tsx      # Paginated case list with filters
 │   ├── CaseDetailPage.tsx    # Case detail with tabs + annotation
 │   ├── AdminCaseListPage.tsx # Cross-tenant "All Cases" list (platform_admin; metadata-only in cloud)
+│   ├── AdminCaseContentPage.tsx # Operator break-glass content view (ADR-012 D9) — audited open of one case's title/description/transcript
 │   ├── UserManagementPage.tsx # Platform admin user management
 │   ├── LLMConfigPage.tsx     # LLM provider configuration
 │   ├── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
@@ -72,7 +73,9 @@ src/
 │   ├── DraftEditor.tsx       # Runbook draft editor with validation/quality display
 │   ├── CaseStatusBadge.tsx   # Status badge with phase colors
 │   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/Status/Progress/Last Activity/[actions]) — used by CaseListPage + AdminCaseListPage (view=full)
-│   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/Status/Progress/Last Activity) — no title column, no content link (ADR-012 D9)
+│   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/Status/Progress/Last Activity) — no title column; "Open content" links to the audited operator route (ADR-012 D9)
+│   ├── BreakGlassRequestDialog.tsx # Request time-boxed access to one case's content (reason + TTL)
+│   ├── TranscriptView.tsx    # Presentational transcript renderer — shared by the owner tab and the operator break-glass page
 │   ├── MilestoneProgress.tsx # Milestone progress indicator
 │   ├── ConfirmDialog.tsx     # Reusable confirmation modal
 │   ├── UploadModal.tsx       # File upload modal for KB
@@ -82,6 +85,7 @@ src/
     ├── api.ts                # Barrel re-exports from modular API clients
     ├── auth/                 # Auth (AuthManager, login/logout, token storage)
     ├── cases/                # Cases API (CRUD, reports, knowledge suggestions)
+    ├── breakGlass/           # Operator break-glass API (grants + audited content/transcript open)
     ├── knowledge/            # KB API (upload, list, delete, client utilities)
     ├── llm/                  # LLM config API
     ├── users/                # User management API
@@ -129,7 +133,8 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
 - **AdminKBPage**: Organization KB management (admin only)
 - **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`. Renders rows via the shared `CaseTable` component.
-- **AdminCaseListPage**: Cross-tenant "All Cases" list (ADR-012 D9) — every user's cases on the server (Copilot- and Slack-agent-originated). Backed by `GET /api/v1/admin/cases`; state/source filters only. Gated by `canViewAllCases(isAdmin)` → **`platform_admin` in both deployments** (route `/admin/cases` + nav item). The response is a union **discriminated on `view`**, and the page narrows on it rather than on the deployment mode, so rendered columns cannot drift from served policy: `view: "full"` (standalone) renders `CaseTable` with titles; `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids/org/state/timestamps/counts, **no title or description** (user free text is content and needs the audited break-glass path, faultmaven#815). The endpoint still 403s under `TENANT_PROVIDER=multi` (RLS would make the list silently partial); the page shows that refusal *instead of* a table.
+- **AdminCaseListPage**: Cross-tenant "All Cases" list (ADR-012 D9) — every user's cases on the server (Copilot- and Slack-agent-originated). Backed by `GET /api/v1/admin/cases`; state/source filters only. Gated by `canViewAllCases(isAdmin)` → **`platform_admin` in both deployments** (route `/admin/cases` + nav item). The response is a union **discriminated on `view`**, and the page narrows on it rather than on the deployment mode, so rendered columns cannot drift from served policy: `view: "full"` (standalone) renders `CaseTable` with titles; `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids/org/state/timestamps/counts, **no title or description** (user free text is content and needs the audited break-glass path, faultmaven#815). The endpoint still 403s under `TENANT_PROVIDER=multi` (RLS would make the list silently partial); the page shows that refusal *instead of* a table. Rows on **both** arms open through `/admin/cases/{id}` (the audited operator read), never `/cases/{id}` — the latter has no operator bypass and 404s on cases the operator does not own (faultmaven#846). The organization travels on the link (`?org=`) because requesting a grant needs it.
+- **AdminCaseContentPage**: Operator break-glass content view (ADR-012 D9, faultmaven#815). Route `/admin/cases/:caseId`, same `canViewAllCases` guard as the list. Reads `GET /api/v1/admin/cases/{id}` + `/messages`; renders the case title/description/state and the transcript via the shared `TranscriptView`. The **response's `access` discriminator** decides the banner — `standing` (standalone: recorded, not gated) vs `break_glass` (cloud: names the grant, its reason and remaining TTL, with "End access now") — never the app's notion of the deployment. Without a live grant the backend refuses and the page shows the refusal plus a `BreakGlassRequestDialog`; content only ever arrives inside a successful response, so there is no state in which the page holds content it should be hiding.
 - **CaseDetailPage**: Case header (title, description, status badge, milestone progress, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.

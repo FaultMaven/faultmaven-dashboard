@@ -34,6 +34,7 @@ vi.mock('../../hooks/useNavigationItems', () => ({
 }));
 
 import { getAdminCases } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 
 const mockGetAdminCases = getAdminCases as ReturnType<typeof vi.fn>;
 
@@ -342,18 +343,39 @@ describe('AdminCaseListPage', () => {
       expect(screen.queryByText('org-acme')).not.toBeInTheDocument();
     });
 
-    it('offers no content-open link — the ambient list has no content path', async () => {
+    it('opens content through the audited operator route, never /cases/{id}', async () => {
       // `GET /cases/{id}` is owner-∪-shared scoped with no operator bypass, so
-      // linking each row would land the operator on 404 "Case not found or
-      // access denied" for a case they can see listed right here. The open-
-      // content affordance arrives with break-glass (faultmaven#815).
+      // a link there would land the operator on 404 "Case not found or access
+      // denied" for a case they can see listed right here (faultmaven#846).
+      // The affordance must point at the audited break-glass route instead.
       await act(async () => {
         renderPage();
       });
 
       await waitFor(() => screen.getByText('case-cloud-1'));
-      expect(screen.queryByRole('link', { name: /case-cloud-1/ })).not.toBeInTheDocument();
-      expect(document.querySelector('a[href*="case-cloud-1"]')).toBeNull();
+
+      const link = screen.getByRole('link', { name: /Open content/i });
+      expect(link).toHaveAttribute(
+        'href',
+        '/admin/cases/case-cloud-1?org=org-acme'
+      );
+      // Nothing on this arm may route into the owner-scoped case page.
+      expect(document.querySelector('a[href^="/cases/"]')).toBeNull();
+    });
+
+    it('carries the organization on the link, since a grant request needs it', async () => {
+      // Under multi-tenant cloud the case's organization cannot be read before
+      // the grant exists — that is precisely what the grant unlocks — so it has
+      // to travel with the navigation rather than be looked up on the far side.
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      expect(screen.getByRole('link', { name: /Open content/i })).toHaveAttribute(
+        'href',
+        expect.stringContaining('org=org-acme')
+      );
     });
 
     it('tells the operator the omission is policy, not missing data', async () => {
@@ -413,6 +435,65 @@ describe('AdminCaseListPage', () => {
       await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
       expect(screen.getByRole('columnheader', { name: 'Title' })).toBeInTheDocument();
       expect(screen.queryByText(/Metadata only/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('where a row opens (ADR-012 D9 + faultmaven#846)', () => {
+    // The operator's OWN cases must keep the full case page. Routing them
+    // through the reduced operator view would strip the Issue/Report/
+    // Hypotheses/Evidence tabs, archive and annotate — and write an
+    // operator-access audit row every time someone opened their own data.
+    // Everyone else's must take the operator route, because `GET /cases/{id}`
+    // has no operator bypass and would 404.
+    function asOperator(userId: string) {
+      (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+        deployment: 'standalone',
+        role: 'individual',
+        isAdmin: true,
+        clearAuthState: vi.fn(),
+        isAuthenticated: true,
+        authState: { user: { user_id: userId } },
+      });
+    }
+
+    it('sends the operator to the full case page for their OWN case', async () => {
+      asOperator('copilot_user'); // owner of `copilotCase`
+      mockGetAdminCases.mockResolvedValue({
+        view: 'full',
+        cases: [copilotCase],
+        total_count: 1,
+        has_more: false,
+      });
+
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('Copilot Case'));
+      expect(screen.getByRole('link', { name: /Copilot Case/ })).toHaveAttribute(
+        'href',
+        '/cases/case-copilot'
+      );
+    });
+
+    it("sends the operator to the audited route for someone ELSE's case", async () => {
+      asOperator('a-different-operator');
+      mockGetAdminCases.mockResolvedValue({
+        view: 'full',
+        cases: [copilotCase],
+        total_count: 1,
+        has_more: false,
+      });
+
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('Copilot Case'));
+      expect(screen.getByRole('link', { name: /Copilot Case/ })).toHaveAttribute(
+        'href',
+        `/admin/cases/case-copilot?org=${encodeURIComponent(copilotCase.organization_id)}`
+      );
     });
   });
 });

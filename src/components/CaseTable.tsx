@@ -16,6 +16,15 @@ interface CaseTableProps {
   /** team_id → name for the team-share badge (ADR-013 §D4). Omit where team
    *  sharing is off; the badge then renders nothing (cases carry no team ids). */
   teamsById?: Map<string, string>;
+  /**
+   * Where a title links. Defaults to the owner's case page.
+   *
+   * The operator All Cases view overrides it, because `GET /cases/{id}` gates on
+   * owner ∪ shared-to-my-teams with no operator arm — so on that view every row
+   * the operator does not own would 404 (faultmaven#846). It points at the
+   * audited operator route instead.
+   */
+  caseHref?: (c: CaseSummary) => string;
 }
 
 /**
@@ -28,7 +37,14 @@ interface CaseTableProps {
  * `AdminCaseMetadataTable` — deliberately not a `showTitle={false}` prop here,
  * so no render path can ever hold a row whose title may or may not exist.
  */
-export function CaseTable({ cases, loading, showOwner = false, renderActions, teamsById }: CaseTableProps) {
+export function CaseTable({
+  cases,
+  loading,
+  showOwner = false,
+  renderActions,
+  teamsById,
+  caseHref = (c) => `/cases/${c.case_id}`,
+}: CaseTableProps) {
   return (
     <div className="bg-fm-surface rounded-fm-card border border-fm-border overflow-hidden">
       {loading ? (
@@ -57,7 +73,7 @@ export function CaseTable({ cases, loading, showOwner = false, renderActions, te
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Link
-                      to={`/cases/${c.case_id}`}
+                      to={caseHref(c)}
                       className="font-medium text-fm-text-primary hover:text-fm-accent transition-colors"
                     >
                       {c.title || 'Untitled Case'}

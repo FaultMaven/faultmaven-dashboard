@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
 import { MilestoneProgress } from './MilestoneProgress';
 import { SourceBadge } from './SourceBadge';
@@ -35,15 +36,20 @@ interface AdminCaseMetadataTableProps {
  * components (`CaseStateBadge`, `MilestoneProgress`, `SourceBadge`), so the two
  * tables cannot drift on how a state or a progress bar looks.
  *
- * The case id is deliberately NOT a link to the detail page. `GET /cases/{id}`
- * is scoped to cases the caller owns or has shared to a team — there is no
- * operator bypass — so for a cloud operator every row would land on 404 "Case
- * not found or access denied", reporting a case they are looking at in this very
- * list as nonexistent. That is the same class of wrong answer the backend's
- * multi-tenant refusal exists to avoid. The id is selectable instead (the
- * convention `CaseDetailPage` already uses for case ids), and the real
- * open-content affordance arrives with the audited break-glass path
- * (faultmaven#815 + faultmaven-dashboard#62).
+ * There IS an open-content affordance now, and it goes to `/admin/cases/{id}`
+ * rather than `/cases/{id}`. The latter is scoped to cases the caller owns or
+ * has shared to a team, with no operator bypass, so for a cloud operator every
+ * such link would land on 404 "Case not found or access denied" — reporting a
+ * case they are looking at in this very list as nonexistent (faultmaven#846).
+ * The operator route is the audited break-glass path (faultmaven#815): in cloud
+ * it refuses until a live grant covers the case, and the refusal explains
+ * itself. The case id stays selectable text; opening is a separate, explicit
+ * action, because reading a tenant's content should not be something a stray
+ * click does.
+ *
+ * The organization travels with the link (`?org=`). Requesting a grant needs it,
+ * and under multi-tenant cloud it cannot be read from the case — that is exactly
+ * what the grant unlocks — so it has to come from the row.
  */
 export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTableProps) {
   return (
@@ -65,6 +71,7 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
                 Last Activity
               </th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-fm-border">
@@ -92,6 +99,14 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
                 </td>
                 <td className="px-4 py-3 text-fm-text-tertiary">
                   {new Date(c.last_activity_at).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    to={`/admin/cases/${c.case_id}?org=${encodeURIComponent(c.organization_id)}`}
+                    className="text-fm-accent hover:underline whitespace-nowrap"
+                  >
+                    Open content
+                  </Link>
                 </td>
               </tr>
             ))}
