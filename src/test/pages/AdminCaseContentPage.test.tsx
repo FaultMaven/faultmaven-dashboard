@@ -228,6 +228,76 @@ describe('AdminCaseContentPage — opened under a live grant', () => {
     await waitFor(() => expect(screen.queryByText(SECRET_TITLE)).not.toBeInTheDocument());
   });
 
+  it('does not reload while the window is still live, however little is left', async () => {
+    // The bug this pins: a rounded countdown reported 0 for the last ~29s of a
+    // live window. The reload it triggered was SERVED (the backend uses the
+    // exact timestamp), which re-rendered the banner, which re-armed the guard,
+    // which fired again — a loop at network speed. Every iteration writes
+    // CONTENT_OPEN rows into an append-only trail that cannot be cleaned up
+    // afterwards, so "harmless, it's still authorised" is not a defence.
+    vi.useFakeTimers();
+    try {
+      const almostOver = {
+        ...liveGrant,
+        expires_at: new Date(Date.now() + 29_000).toISOString(),
+      };
+      mockOpen.mockResolvedValue({ access: 'break_glass', grant: almostOver, case: caseDetail });
+      mockTranscript.mockResolvedValue({ ...emptyTranscript, grant: almostOver });
+
+      await act(async () => {
+        renderPage();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const opensAfterFirstLoad = mockOpen.mock.calls.length;
+      // Several ticks pass, all inside the live window.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+
+      expect(mockOpen.mock.calls.length).toBe(opensAfterFirstLoad);
+      expect(screen.getByText(SECRET_TITLE)).toBeInTheDocument();
+      // …and the label never claims zero while the grant is live.
+      expect(screen.queryByText(/expires in 0 min/i)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reloads only once when the window lapses, even if the reload is served', async () => {
+    // Clock skew makes this reachable: the client believes the window closed
+    // while the server still serves it. One reload is correct — asking the gate
+    // is the whole point — but a second would mean the loop is back.
+    vi.useFakeTimers();
+    try {
+      const shortGrant = {
+        ...liveGrant,
+        expires_at: new Date(Date.now() + 20_000).toISOString(),
+      };
+      // The reload keeps succeeding, as it would under skew.
+      mockOpen.mockResolvedValue({ access: 'break_glass', grant: shortGrant, case: caseDetail });
+      mockTranscript.mockResolvedValue({ ...emptyTranscript, grant: shortGrant });
+
+      await act(async () => {
+        renderPage();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const before = mockOpen.mock.calls.length;
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000); // many ticks past expiry
+      });
+
+      expect(mockOpen.mock.calls.length).toBe(before + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('takes the content off screen when the window lapses', async () => {
     // A break-glass window is minutes long and a page left open outlives it
     // easily. Without a ticker the banner would keep asserting the original

@@ -17,9 +17,22 @@ import type {
   BreakGlassGrant,
 } from '../types/cases';
 
-/** Minutes remaining on a grant, floored at 0. */
+/** Milliseconds left on a grant's window; negative once it has passed. */
+function msRemaining(expiresAt: string): number {
+  return new Date(expiresAt).getTime() - Date.now();
+}
+
+/**
+ * Whole minutes to display, rounded UP.
+ *
+ * Deliberately not `Math.round`: rounding to nearest would display "0 min" for
+ * the last half-minute of a window that is genuinely still live, and — worse —
+ * any lapse check sharing that value would fire while the backend was still
+ * serving. Ceiling keeps the label and the gate on the same side of the
+ * boundary, so "1 min" means "still authorised" right up to the moment it isn't.
+ */
 function minutesRemaining(expiresAt: string): number {
-  return Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 60000));
+  return Math.max(0, Math.ceil(msRemaining(expiresAt) / 60000));
 }
 
 /**
@@ -31,13 +44,19 @@ function minutesRemaining(expiresAt: string): number {
  * still on screen. The tick is what turns "expires in N min" from a label into
  * a statement that stays true.
  *
- * Calls `onLapsed` once when it reaches zero. The caller reloads, the backend
- * refuses, and the content leaves the screen — expiry is enforced by the gate,
- * never by this timer, which only decides *when to ask again*.
+ * `onLapsed` fires on **millisecond-exact** expiry, never on the rounded display
+ * value. Firing early would ask the backend to refuse a grant it still considers
+ * live, and because a reload unmounts this banner and remounts it on success,
+ * the re-armed guard would ask again immediately — a reload loop, every
+ * iteration of which writes `CONTENT_OPEN` rows into an append-only audit trail
+ * that cannot be cleaned up afterwards. The caller is additionally responsible
+ * for firing at most once per grant; see `lapsedGrantRef` below.
+ *
+ * Expiry is enforced by the gate, never by this timer, which only decides *when
+ * to ask again*.
  */
 function useRemainingMinutes(expiresAt: string, onLapsed: () => void): number {
   const [remaining, setRemaining] = useState(() => minutesRemaining(expiresAt));
-  const lapsedRef = useRef(false);
   // Held in a ref, and synced in its own effect rather than during render, so
   // the ticker below can call the latest callback without listing it as a
   // dependency — which would restart the interval on every parent re-render.
@@ -47,12 +66,9 @@ function useRemainingMinutes(expiresAt: string, onLapsed: () => void): number {
   }, [onLapsed]);
 
   useEffect(() => {
-    lapsedRef.current = false;
     const tick = () => {
-      const next = minutesRemaining(expiresAt);
-      setRemaining(next);
-      if (next <= 0 && !lapsedRef.current) {
-        lapsedRef.current = true;
+      setRemaining(minutesRemaining(expiresAt));
+      if (msRemaining(expiresAt) <= 0) {
         onLapsedRef.current();
       }
     };
@@ -75,10 +91,12 @@ function AccessBanner({
   access,
   grant,
   onRevoked,
+  onLapsed,
 }: {
   access: AdminCaseContentResponse['access'];
   grant: BreakGlassGrant | null | undefined;
   onRevoked: () => void;
+  onLapsed: () => void;
 }) {
   if (access === 'standing' || !grant) {
     return (
@@ -88,21 +106,25 @@ function AccessBanner({
     );
   }
 
-  return <BreakGlassBanner grant={grant} onRevoked={onRevoked} />;
+  return <BreakGlassBanner grant={grant} onRevoked={onRevoked} onLapsed={onLapsed} />;
 }
 
 function BreakGlassBanner({
   grant,
   onRevoked,
+  onLapsed,
 }: {
   grant: BreakGlassGrant;
   onRevoked: () => void;
+  onLapsed: () => void;
 }) {
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A lapsed window reloads, the backend refuses, and the content comes off
-  // screen — the same path a revocation takes.
-  const remaining = useRemainingMinutes(grant.expires_at, onRevoked);
+  // screen — the same destination a revocation reaches, but via a handler that
+  // fires at most once per grant (a revoke is a deliberate act and always
+  // reloads; a lapse must not be able to repeat).
+  const remaining = useRemainingMinutes(grant.expires_at, onLapsed);
 
   const handleRevoke = async () => {
     setRevoking(true);
@@ -185,6 +207,18 @@ export default function AdminCaseContentPage() {
   // `AdminCaseListPage` carries, and it matters more here because the loads race
   // by construction (Retry and grant-then-reload are one click apart).
   const reqIdRef = useRef(0);
+  // The grant a lapse-reload has already been fired for.
+  //
+  // This lives on the PAGE, not in the banner, because a reload unmounts the
+  // banner (the `loading` branch replaces it) and remounts it on success — so a
+  // guard held inside the banner is destroyed and re-armed every cycle, which is
+  // no guard at all. If the client's clock runs ahead of the server's, the
+  // reload comes back with the same still-live grant and, without this, would
+  // lapse again immediately: a reload loop writing `CONTENT_OPEN` rows into an
+  // append-only trail nobody can clean up afterwards.
+  //
+  // Keyed on the grant id, so requesting a *new* grant re-arms it as it should.
+  const lapsedGrantRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     const reqId = ++reqIdRef.current;
@@ -214,6 +248,14 @@ export default function AdminCaseContentPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fires the reload at most once per grant — see `lapsedGrantRef`.
+  const handleLapsed = useCallback(() => {
+    const grantId = content?.grant?.grant_id;
+    if (!grantId || lapsedGrantRef.current === grantId) return;
+    lapsedGrantRef.current = grantId;
+    load();
+  }, [content, load]);
 
   const handleLogout = async () => {
     await logoutAuth();
@@ -266,7 +308,12 @@ export default function AdminCaseContentPage() {
           </div>
         ) : content ? (
           <>
-            <AccessBanner access={content.access} grant={content.grant} onRevoked={load} />
+            <AccessBanner
+              access={content.access}
+              grant={content.grant}
+              onRevoked={load}
+              onLapsed={handleLapsed}
+            />
 
             <div className="flex items-center gap-3 mb-1">
               <h2 className="text-fm-heading font-bold text-fm-text-primary">
