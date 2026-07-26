@@ -213,6 +213,9 @@ describe('AdminCaseListPage', () => {
     });
     expect(screen.queryByText('No cases found.')).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // …and no count either: the load never happened, so "0 cases" would assert
+    // something the page does not know.
+    expect(screen.queryByText(/0 cases/)).not.toBeInTheDocument();
   });
 
   describe('cloud metadata view (ADR-012 D9)', () => {
@@ -239,6 +242,20 @@ describe('AdminCaseListPage', () => {
       // The metadata that IS ambient still renders.
       expect(screen.getByText('tenant_user')).toBeInTheDocument();
       expect(screen.getByText('org-acme')).toBeInTheDocument();
+    });
+
+    it('offers no content-open link — the ambient list has no content path', async () => {
+      // `GET /cases/{id}` is owner-∪-shared scoped with no operator bypass, so
+      // linking each row would land the operator on 404 "Case not found or
+      // access denied" for a case they can see listed right here. The open-
+      // content affordance arrives with break-glass (faultmaven#815).
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      expect(screen.queryByRole('link', { name: /case-cloud-1/ })).not.toBeInTheDocument();
+      expect(document.querySelector('a[href*="case-cloud-1"]')).toBeNull();
     });
 
     it('tells the operator the omission is policy, not missing data', async () => {

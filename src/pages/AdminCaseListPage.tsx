@@ -90,9 +90,13 @@ export default function AdminCaseListPage() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-6">
           <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">All Cases</h2>
+          {/* No count under an error: the load that would have produced it did
+              not happen, and "0 cases" next to a refusal banner asserts
+              something the page does not know. */}
           <p className="text-fm-text-secondary text-sm">
-            Every user&apos;s cases on this server — {totalCount} case
-            {totalCount !== 1 ? 's' : ''} (admin view)
+            {error
+              ? "Every user's cases on this server (admin view)"
+              : `Every user's cases on this server — ${totalCount} case${totalCount !== 1 ? 's' : ''} (admin view)`}
           </p>
           {metadataOnly && (
             <p className="text-fm-text-tertiary text-xs mt-1">

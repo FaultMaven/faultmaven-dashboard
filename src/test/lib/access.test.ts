@@ -57,12 +57,10 @@ describe('canViewAllCases', () => {
     expect(canViewAllCases(false)).toBe(false);
   });
 
-  it('does not gate on deployment — that decides the COLUMNS, not the access', () => {
-    // ADR-012 D9: the operator reaches the list in both deployments; cloud just
-    // serves ambient metadata instead of full summaries. Deciding the shape here
-    // would let the rendered columns drift from the served policy, so the page
-    // narrows on the response's `view` discriminator instead. This predicate
-    // takes no deployment at all, which is what makes that drift unexpressible.
-    expect(canViewAllCases.length).toBe(1);
-  });
+  // No deployment case here on purpose: ADR-012 D9 makes deployment decide the
+  // COLUMNS, not the access, so this predicate takes no deployment at all and
+  // there is no deployment-dependent behaviour left to assert. The behavioural
+  // guard against a deployment gate creeping back in lives in
+  // `useNavigationItems.test.ts`, which pins that a cloud platform_admin still
+  // sees the "All Cases" item.
 });

@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
 import { MilestoneProgress } from './MilestoneProgress';
 import { SourceBadge } from './SourceBadge';
@@ -27,9 +26,15 @@ interface AdminCaseMetadataTableProps {
  * components (`CaseStateBadge`, `MilestoneProgress`, `SourceBadge`), so the two
  * tables cannot drift on how a state or a progress bar looks.
  *
- * The case id links to the detail page, which is the operator's honest next
- * step: the backend gates content there, so cloud follow-through is a 403 until
- * break-glass exists rather than a silently different view.
+ * The case id is deliberately NOT a link to the detail page. `GET /cases/{id}`
+ * is scoped to cases the caller owns or has shared to a team — there is no
+ * operator bypass — so for a cloud operator every row would land on 404 "Case
+ * not found or access denied", reporting a case they are looking at in this very
+ * list as nonexistent. That is the same class of wrong answer the backend's
+ * multi-tenant refusal exists to avoid. The id is selectable instead (the
+ * convention `CaseDetailPage` already uses for case ids), and the real
+ * open-content affordance arrives with the audited break-glass path
+ * (faultmaven#815 + faultmaven-dashboard#62).
  */
 export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTableProps) {
   return (
@@ -61,12 +66,9 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
               <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <Link
-                      to={`/cases/${c.case_id}`}
-                      className="font-mono text-xs font-medium text-fm-text-primary hover:text-fm-accent transition-colors"
-                    >
+                    <span className="font-mono text-xs font-medium text-fm-text-primary select-all">
                       {c.case_id}
-                    </Link>
+                    </span>
                     <SourceBadge source={c.source} />
                   </div>
                 </td>
