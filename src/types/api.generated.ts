@@ -3114,6 +3114,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open Case Content
+         * @description Open one case's **content** as an operator (ADR-012 D9).
+         *
+         *     Standalone serves it under standing access, recorded but not gated. Cloud
+         *     requires a live break-glass grant naming this case.
+         *
+         *     This is a separate endpoint from ``GET /api/v1/cases/{case_id}`` rather than
+         *     an operator arm on that route's owner ∪ shared-to-my-teams check. That check
+         *     is the single-case gate transitively guarding reports, exports, analytics and
+         *     messages, and it runs for every ordinary user request — widening it would
+         *     widen all of those at once. Keeping the elevated path separate is also what
+         *     makes the Standalone All Cases view openable (#846) without touching the
+         *     user-facing route.
+         */
+        get: operations["open_case_content_api_v1_admin_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/cases/{case_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open Case Transcript
+         * @description Open one case's **transcript** as an operator (ADR-012 D9).
+         *
+         *     Same gate, same audit action and same envelope as the case-detail read: a
+         *     transcript is content by any reading of D9, and splitting the two surfaces
+         *     across different rules would let one of them drift.
+         */
+        get: operations["open_case_transcript_api_v1_admin_cases__case_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Grants
+         * @description List break-glass grants, newest first.
+         *
+         *     Deliberately **not** scoped to the calling operator. Who holds access to a
+         *     tenant's content, and until when, is the governance question this surface
+         *     exists to answer; an operator who could only see their own grants could not
+         *     review anyone else's. Grants carry no case content — a reason, a case id and
+         *     a window — so reading them needs no grant of its own, the same reasoning
+         *     that lets the audit trail be read in Cloud.
+         */
+        get: operations["list_grants_api_v1_admin_grants_get"];
+        put?: never;
+        /**
+         * Create Grant
+         * @description Mint a break-glass grant over one case (ADR-012 D9).
+         *
+         *     The grant covers exactly the case named, expires after ``ttl_minutes``, and
+         *     cannot be extended — needing longer means minting a new one with a fresh
+         *     reason, so a grant can never converge on standing access.
+         *
+         *     An operator mints their own grant, and it is live immediately. The control
+         *     is the justification, the window, and an immutable trail of every read taken
+         *     under it — not a second party's consent. Customer-initiated approval is the
+         *     stronger posture ADR-012 D9 describes as the ideal; the grant carries the
+         *     ``approval_state`` machine that will drive it, so adding it later is a new
+         *     transition rather than a reshaping of this endpoint or of the read gate.
+         *
+         *     Nothing here touches tenant data: the request is not validated against the
+         *     case it names. See ``build_grant`` for why that is the more secure choice.
+         */
+        post: operations["create_grant_api_v1_admin_grants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{grant_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Grant
+         * @description End a grant before its TTL lapses.
+         *
+         *     Any operator may revoke any grant, including one they do not hold: shortening
+         *     someone's access is the safe direction, and requiring ownership would mean a
+         *     grant could outlive the only person able to withdraw it.
+         *
+         *     Idempotent — revoking an already-revoked grant leaves the original
+         *     ``revoked_at`` in place rather than moving the record of when access ended.
+         */
+        post: operations["revoke_grant_api_v1_admin_grants__grant_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/debug/routes": {
         parameters: {
             query?: never;
@@ -3641,6 +3768,129 @@ export interface components {
             view: "metadata";
             /** Cases */
             cases: components["schemas"]["AdminCaseMetadata"][];
+        };
+        /**
+         * AdminCaseContentResponse
+         * @description One case's content, opened by an operator (ADR-012 D9).
+         */
+        AdminCaseContentResponse: {
+            /**
+             * Access
+             * @enum {string}
+             */
+            access: "standing" | "break_glass";
+            grant?: components["schemas"]["BreakGlassGrant"] | null;
+            case: components["schemas"]["CaseDetail"];
+        };
+        /**
+         * AdminCaseMessagesResponse
+         * @description One case's transcript, opened by an operator (ADR-012 D9).
+         *
+         *     The transcript keeps the exact shape ``GET /cases/{id}/messages`` serves, so
+         *     the dashboard renders an operator-opened transcript with the same component
+         *     as an owner-opened one and the two cannot present differently.
+         */
+        AdminCaseMessagesResponse: {
+            /**
+             * Access
+             * @enum {string}
+             */
+            access: "standing" | "break_glass";
+            grant?: components["schemas"]["BreakGlassGrant"] | null;
+            messages: components["schemas"]["CaseMessagesResponse"];
+        };
+        /**
+         * BreakGlassGrant
+         * @description A grant as the operator surface sees it.
+         *
+         *     ``is_live`` is computed server-side and served alongside the raw fields
+         *     rather than left for the client to derive: approval state, revocation and
+         *     expiry are three independent ways to stop authorising, and a UI that
+         *     reimplements that predicate can disagree with the gate that enforces it.
+         */
+        BreakGlassGrant: {
+            /** Grant Id */
+            grant_id: string;
+            /** Operator User Id */
+            operator_user_id: string;
+            /** Operator Username */
+            operator_username?: string | null;
+            /** Target Case Id */
+            target_case_id: string;
+            /** Target Organization Id */
+            target_organization_id: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Revoked By */
+            revoked_by?: string | null;
+            /** Approval State */
+            approval_state: string;
+            /** Is Live */
+            is_live: boolean;
+            /** Deployment Mode */
+            deployment_mode?: string | null;
+        };
+        /**
+         * BreakGlassGrantListResponse
+         * @description Paginated grants, newest first.
+         */
+        BreakGlassGrantListResponse: {
+            /** Grants */
+            grants: components["schemas"]["BreakGlassGrant"][];
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Has More */
+            has_more: boolean;
+        };
+        /**
+         * BreakGlassGrantRequest
+         * @description Ask for time-boxed access to ONE case's content (ADR-012 D9).
+         *
+         *     The organization is supplied by the caller rather than looked up from the
+         *     case, because under ``TENANT_PROVIDER=multi`` the case row is unreadable
+         *     until the request has already rebound its RLS scope to that organization.
+         *     The operator has both identifiers from the metadata list. A wrong pair fails
+         *     closed on its own — the subsequent read finds nothing and 404s — so the
+         *     endpoint never has to become an existence oracle for other tenants' cases.
+         */
+        BreakGlassGrantRequest: {
+            /**
+             * Case Id
+             * @description The single case this grant covers
+             */
+            case_id: string;
+            /**
+             * Organization Id
+             * @description Organization owning the case; the RLS scope the read rebinds to
+             */
+            organization_id: string;
+            /**
+             * Reason
+             * @description Why this content must be read. Recorded on every access taken.
+             */
+            reason: string;
+            /**
+             * Ttl Minutes
+             * @description How long the grant stays live. Cannot be extended later.
+             * @default 60
+             */
+            ttl_minutes: number;
         };
         /**
          * AdminUserListItem
@@ -12665,6 +12915,189 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminCaseListResponse"] | components["schemas"]["AdminCaseMetadataListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_case_content_api_v1_admin_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCaseContentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_case_transcript_api_v1_admin_cases__case_id__messages_get: {
+        parameters: {
+            query?: {
+                /** @description Messages per page */
+                limit?: number;
+                /** @description Number of messages to skip */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCaseMessagesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_grants_api_v1_admin_grants_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by the operator holding the grant */
+                operator_user_id?: string | null;
+                /** @description Filter by the case granted */
+                case_id?: string | null;
+                /** @description Filter by the organization whose case was granted */
+                organization_id?: string | null;
+                /** @description Only grants that authorise a read right now */
+                live_only?: boolean;
+                /** @description Items per page */
+                limit?: number;
+                /** @description Number of items to skip */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BreakGlassGrantListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_grant_api_v1_admin_grants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BreakGlassGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BreakGlassGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_grant_api_v1_admin_grants__grant_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                grant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BreakGlassGrant"];
                 };
             };
             /** @description Validation Error */

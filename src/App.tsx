@@ -8,6 +8,7 @@ import LLMConfigPage from './pages/LLMConfigPage';
 import UserManagementPage from './pages/UserManagementPage';
 import OrgTeamManagementPage from './pages/OrgTeamManagementPage';
 import AdminCaseListPage from './pages/AdminCaseListPage';
+import AdminCaseContentPage from './pages/AdminCaseContentPage';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
 import SSOCallbackPage from './pages/SSOCallbackPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -142,6 +143,18 @@ export default function App() {
               element={
                 <AllCasesRoute>
                   <AdminCaseListPage />
+                </AllCasesRoute>
+              }
+            />
+            {/* The operator's break-glass content view (ADR-012 D9). Behind the
+                same guard as the list it is reached from: what differs between
+                deployments is not who may reach the page but whether the
+                backend answers without a grant. */}
+            <Route
+              path="/admin/cases/:caseId"
+              element={
+                <AllCasesRoute>
+                  <AdminCaseContentPage />
                 </AllCasesRoute>
               }
             />
