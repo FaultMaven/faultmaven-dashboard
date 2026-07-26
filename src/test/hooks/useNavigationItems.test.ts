@@ -160,11 +160,24 @@ describe('useNavigationItems', () => {
     expect(labels).not.toContain('All Cases');
   });
 
-  it('cloud platform_admin does NOT see "All Cases" yet (break-glass deferred)', () => {
+  it('cloud platform_admin ALSO sees "All Cases" (metadata-only there, ADR-012 D9)', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
       role: 'platform_admin',
       isAdmin: true,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    const labels = result.current.map((i) => i.label);
+
+    expect(labels).toContain('All Cases');
+  });
+
+  it('cloud non-operator does NOT see "All Cases"', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'standard_user',
+      isAdmin: false,
     });
 
     const { result } = renderHook(() => useNavigationItems('/cases'));

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { CaseTable } from '../components/CaseTable';
+import { AdminCaseMetadataTable } from '../components/AdminCaseMetadataTable';
 import { CaseFiltersBar } from '../components/CaseFiltersBar';
 import { PaginationControls } from '../components/PaginationControls';
 import { useAuth } from '../context/AuthContext';
 import { getAdminCases, logoutAuth } from '../lib/api';
 import { chipBase, chipActive, chipInactive } from '../lib/ui/chip';
-import type { CaseSummary, CaseFilters, CaseSource } from '../lib/api';
+import type { AdminCaseListResult, CaseFilters, CaseSource } from '../lib/api';
 
 const PAGE_SIZE = 20;
 
@@ -18,13 +19,31 @@ const SOURCE_OPTIONS: { value: CaseSource | undefined; label: string }[] = [
 
 /**
  * Platform-admin cross-tenant case list (ADR-012 D9) — every user's cases on
- * this server (Copilot- and Slack-agent-originated) in one place. Reachable
- * only for a standalone admin (see `canViewAllCases`); the backend enforces the
- * same and returns 403 in cloud until an audited break-glass path exists.
+ * this server (Copilot- and Slack-agent-originated) in one place. Reachable for
+ * a `platform_admin` in either deployment (see `canViewAllCases`); the backend
+ * enforces the same role.
+ *
+ * What a row contains is the deployment split, and it is read off the RESPONSE,
+ * not off this app's notion of the deployment mode. `GET /api/v1/admin/cases`
+ * returns a union discriminated on `view`: `"full"` (standalone) carries titles,
+ * `"metadata"` (cloud) carries ambient metadata only, because a title is user
+ * free text and therefore content — reachable through the audited break-glass
+ * grant (faultmaven#815), not from an ambient list. Narrowing on `view` is what
+ * keeps the rendered columns and the served policy from drifting apart.
+ *
+ * The two arms differ on whether a row links to the case detail, and the
+ * asymmetry is deliberate rather than an oversight. `GET /cases/{id}` has no
+ * operator bypass, so on the `metadata` arm — where the operator owns none of
+ * the listed cases — EVERY link would 404, and the table therefore offers none.
+ * On the `full` arm the operator's own cases open normally; unlinking there
+ * would break working navigation to fix rows that are already broken today
+ * (faultmaven#846, whose fix is the audited single-case operator read that
+ * faultmaven#815 introduces). Removing a real affordance is the wrong side to
+ * err on; offering one that cannot work is not.
  */
 export default function AdminCaseListPage() {
   const { clearAuthState } = useAuth();
-  const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [result, setResult] = useState<AdminCaseListResult | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
   const [filters, setFilters] = useState<CaseFilters>({});
@@ -33,22 +52,33 @@ export default function AdminCaseListPage() {
   // Monotonic request id: only the latest in-flight load may apply its result,
   // so rapid filter/page changes can't render stale results.
   const reqIdRef = useRef(0);
+  // The page a load was ATTEMPTED for, which `page` deliberately is not — that
+  // only advances on success. Retry must re-request what actually failed, or a
+  // failed jump to page 4 would silently recover onto page 2.
+  const attemptedPageRef = useRef(0);
 
   const loadPage = useCallback(
     async (nextPage: number, activeFilters: CaseFilters) => {
       const reqId = ++reqIdRef.current;
+      attemptedPageRef.current = nextPage;
       setLoading(true);
       setError(null);
       try {
         const res = await getAdminCases(activeFilters, nextPage, PAGE_SIZE);
         if (reqId !== reqIdRef.current) return; // superseded by a newer load
-        setCases(res.cases);
+        setResult(res);
         setTotalCount(res.total_count);
         setPage(nextPage);
       } catch (err) {
         if (reqId !== reqIdRef.current) return;
         setError(err instanceof Error ? err.message : 'Failed to load cases');
-        setCases([]);
+        // Drop the previous page rather than leave it on screen under an error
+        // banner — and see the render below, which shows the message INSTEAD of
+        // a table. The endpoint refuses (403) under multi-tenant cloud because
+        // row-level security would make the list silently partial; an empty
+        // table there would read as "no cases exist", which is the specific
+        // wrong answer that refusal exists to prevent.
+        setResult(null);
         setTotalCount(0);
       } finally {
         if (reqId === reqIdRef.current) setLoading(false);
@@ -66,6 +96,8 @@ export default function AdminCaseListPage() {
     await clearAuthState();
   };
 
+  const metadataOnly = result?.view === 'metadata';
+
   return (
     <div className="min-h-screen bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
@@ -73,9 +105,22 @@ export default function AdminCaseListPage() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-6">
           <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">All Cases</h2>
+          {/* The count is keyed on having a RESULT, not on the absence of an
+              error: it must also stay off during the first load and while a
+              retry is in flight, where `totalCount` is still 0 from the failure
+              that preceded it. "0 cases" is a claim the page cannot make until
+              a load has actually answered. */}
           <p className="text-fm-text-secondary text-sm">
-            Every user&apos;s cases on this server — {totalCount} case{totalCount !== 1 ? 's' : ''} (admin view)
+            {result
+              ? `Every user's cases on this server — ${totalCount} case${totalCount !== 1 ? 's' : ''} (admin view)`
+              : "Every user's cases on this server (admin view)"}
           </p>
+          {metadataOnly && (
+            <p className="text-fm-text-tertiary text-xs mt-1">
+              Metadata only — case titles and content are withheld from this view and require an
+              audited break-glass grant.
+            </p>
+          )}
         </div>
 
         {/* The admin endpoint filters by state only — hide date/search controls. */}
@@ -98,20 +143,37 @@ export default function AdminCaseListPage() {
           })}
         </div>
 
-        {error && (
-          <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
-            {error}
+        {error ? (
+          // Pagination is hidden below (its counts would be nonsense with no
+          // result), so the banner has to carry recovery itself — otherwise a
+          // transient failure is only escapable by reloading the browser.
+          <div className="text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3 flex items-start justify-between gap-4">
+            <span>{error}</span>
+            {/* No pending/disabled state: clearing `error` is batched with
+                setting `loading` at the start of every load, so this banner
+                unmounts the moment a retry begins and can never be observed
+                mid-flight. */}
+            <button
+              onClick={() => loadPage(attemptedPageRef.current, filters)}
+              className="shrink-0 px-3 py-1 border border-fm-critical-border rounded-fm-btn text-fm-critical hover:bg-fm-critical/10 transition-colors"
+            >
+              Retry
+            </button>
           </div>
+        ) : result?.view === 'metadata' ? (
+          <AdminCaseMetadataTable cases={result.cases} loading={loading} />
+        ) : (
+          <CaseTable cases={result?.cases ?? []} loading={loading} showOwner />
         )}
 
-        <CaseTable cases={cases} loading={loading} showOwner />
-
-        <PaginationControls
-          page={page}
-          pageSize={PAGE_SIZE}
-          total={totalCount}
-          onPageChange={(p) => loadPage(p, filters)}
-        />
+        {!error && (
+          <PaginationControls
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={totalCount}
+            onPageChange={(p) => loadPage(p, filters)}
+          />
+        )}
       </main>
     </div>
   );

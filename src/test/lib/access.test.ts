@@ -49,21 +49,18 @@ describe('canManageConsole', () => {
 });
 
 describe('canViewAllCases', () => {
-  it('allows a standalone admin (the single operator)', () => {
-    expect(canViewAllCases('standalone', true)).toBe(true);
+  it('allows the platform_admin operator', () => {
+    expect(canViewAllCases(true)).toBe(true);
   });
 
-  it('denies a standalone non-admin', () => {
-    expect(canViewAllCases('standalone', false)).toBe(false);
+  it('denies a non-operator', () => {
+    expect(canViewAllCases(false)).toBe(false);
   });
 
-  it('denies cloud for now — even an admin (break-glass deferred, backend 403s)', () => {
-    expect(canViewAllCases('cloud', true)).toBe(false);
-    expect(canViewAllCases('cloud', false)).toBe(false);
-  });
-
-  it('denies the loading/unknown state (null deployment)', () => {
-    expect(canViewAllCases(null, true)).toBe(false);
-    expect(canViewAllCases(null, false)).toBe(false);
-  });
+  // No deployment case here on purpose: ADR-012 D9 makes deployment decide the
+  // COLUMNS, not the access, so this predicate takes no deployment at all and
+  // there is no deployment-dependent behaviour left to assert. The behavioural
+  // guard against a deployment gate creeping back in lives in
+  // `useNavigationItems.test.ts`, which pins that a cloud platform_admin still
+  // sees the "All Cases" item.
 });
