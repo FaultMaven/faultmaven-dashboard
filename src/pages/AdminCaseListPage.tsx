@@ -30,6 +30,16 @@ const SOURCE_OPTIONS: { value: CaseSource | undefined; label: string }[] = [
  * free text and therefore content — reachable through the audited break-glass
  * grant (faultmaven#815), not from an ambient list. Narrowing on `view` is what
  * keeps the rendered columns and the served policy from drifting apart.
+ *
+ * The two arms differ on whether a row links to the case detail, and the
+ * asymmetry is deliberate rather than an oversight. `GET /cases/{id}` has no
+ * operator bypass, so on the `metadata` arm — where the operator owns none of
+ * the listed cases — EVERY link would 404, and the table therefore offers none.
+ * On the `full` arm the operator's own cases open normally; unlinking there
+ * would break working navigation to fix rows that are already broken today
+ * (faultmaven#846, whose fix is the audited single-case operator read that
+ * faultmaven#815 introduces). Removing a real affordance is the wrong side to
+ * err on; offering one that cannot work is not.
  */
 export default function AdminCaseListPage() {
   const { clearAuthState } = useAuth();
@@ -42,10 +52,15 @@ export default function AdminCaseListPage() {
   // Monotonic request id: only the latest in-flight load may apply its result,
   // so rapid filter/page changes can't render stale results.
   const reqIdRef = useRef(0);
+  // The page a load was ATTEMPTED for, which `page` deliberately is not — that
+  // only advances on success. Retry must re-request what actually failed, or a
+  // failed jump to page 4 would silently recover onto page 2.
+  const attemptedPageRef = useRef(0);
 
   const loadPage = useCallback(
     async (nextPage: number, activeFilters: CaseFilters) => {
       const reqId = ++reqIdRef.current;
+      attemptedPageRef.current = nextPage;
       setLoading(true);
       setError(null);
       try {
@@ -127,8 +142,18 @@ export default function AdminCaseListPage() {
         </div>
 
         {error ? (
-          <div className="text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
-            {error}
+          // Pagination is hidden below (its counts would be nonsense with no
+          // result), so the banner has to carry recovery itself — otherwise a
+          // transient failure is only escapable by reloading the browser.
+          <div className="text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3 flex items-start justify-between gap-4">
+            <span>{error}</span>
+            <button
+              onClick={() => loadPage(attemptedPageRef.current, filters)}
+              disabled={loading}
+              className="shrink-0 px-3 py-1 border border-fm-critical-border rounded-fm-btn text-fm-critical hover:bg-fm-critical/10 disabled:opacity-50 transition-colors"
+            >
+              {loading ? 'Retrying…' : 'Retry'}
+            </button>
           </div>
         ) : result?.view === 'metadata' ? (
           <AdminCaseMetadataTable cases={result.cases} loading={loading} />

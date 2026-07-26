@@ -218,6 +218,61 @@ describe('AdminCaseListPage', () => {
     expect(screen.queryByText(/0 cases/)).not.toBeInTheDocument();
   });
 
+  it('leaves a way out of an error — Retry re-requests the page that failed', async () => {
+    // Pagination is hidden under an error, so the banner has to carry recovery.
+    // Without it a transient failure is only escapable by reloading the browser.
+    mockGetAdminCases.mockRejectedValueOnce(new Error('API unreachable'));
+
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('API unreachable')).toBeInTheDocument());
+
+    mockGetAdminCases.mockResolvedValue({
+      view: 'full',
+      cases: [copilotCase],
+      total_count: 1,
+      has_more: false,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+
+    await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
+    expect(screen.queryByText('API unreachable')).not.toBeInTheDocument();
+  });
+
+  it('Retry re-requests the ATTEMPTED page, not the last successful one', async () => {
+    // `page` only advances on success, so retrying it would silently recover
+    // onto a different page than the operator asked for.
+    // total_count must exceed PAGE_SIZE or "Next" is disabled and there is no
+    // second page to fail on.
+    mockGetAdminCases.mockResolvedValue({
+      view: 'full',
+      cases: [copilotCase],
+      total_count: 40,
+      has_more: true,
+    });
+
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => screen.getByText('Copilot Case'));
+
+    mockGetAdminCases.mockRejectedValueOnce(new Error('API unreachable'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    await waitFor(() => expect(screen.getByText('API unreachable')).toBeInTheDocument());
+
+    mockGetAdminCases.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+
+    await waitFor(() => expect(mockGetAdminCases).toHaveBeenCalledWith({}, 1, 20));
+  });
+
   describe('cloud metadata view (ADR-012 D9)', () => {
     beforeEach(() => {
       mockGetAdminCases.mockResolvedValue({
@@ -237,11 +292,23 @@ describe('AdminCaseListPage', () => {
         expect(screen.getByText('case-cloud-1')).toBeInTheDocument();
       });
       expect(screen.getByRole('columnheader', { name: 'Case ID' })).toBeInTheDocument();
-      expect(screen.getByRole('columnheader', { name: 'Organization' })).toBeInTheDocument();
       expect(screen.queryByRole('columnheader', { name: 'Title' })).not.toBeInTheDocument();
       // The metadata that IS ambient still renders.
       expect(screen.getByText('tenant_user')).toBeInTheDocument();
-      expect(screen.getByText('org-acme')).toBeInTheDocument();
+    });
+
+    it('omits Organization, which is constant wherever this arm is servable', async () => {
+      // Under TENANT_PROVIDER=single (cloud today) every row carries the
+      // Standalone org; under multi the endpoint 403s. A column with one value
+      // everywhere implies a tenant discrimination this view cannot make. It
+      // returns with the bounded cross-tenant read (faultmaven#815).
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      expect(screen.queryByRole('columnheader', { name: 'Organization' })).not.toBeInTheDocument();
+      expect(screen.queryByText('org-acme')).not.toBeInTheDocument();
     });
 
     it('offers no content-open link — the ambient list has no content path', async () => {

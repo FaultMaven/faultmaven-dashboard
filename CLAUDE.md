@@ -72,7 +72,7 @@ src/
 │   ├── DraftEditor.tsx       # Runbook draft editor with validation/quality display
 │   ├── CaseStatusBadge.tsx   # Status badge with phase colors
 │   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/Status/Progress/Last Activity/[actions]) — used by CaseListPage + AdminCaseListPage (view=full)
-│   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/Org/Status/Progress/Last Activity) — no title column (ADR-012 D9)
+│   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/Status/Progress/Last Activity) — no title column, no content link (ADR-012 D9)
 │   ├── MilestoneProgress.tsx # Milestone progress indicator
 │   ├── ConfirmDialog.tsx     # Reusable confirmation modal
 │   ├── UploadModal.tsx       # File upload modal for KB

@@ -11,10 +11,19 @@ interface AdminCaseMetadataTableProps {
 /**
  * The cloud operator's All Cases table — ambient metadata only (ADR-012 D9).
  *
- * Columns: Case ID / Owner / Organization / Status / Progress / Last Activity.
- * There is no Title and no description line, because in cloud the backend does
- * not send them: user free text is content, reachable only through the audited
+ * Columns: Case ID / Owner / Status / Progress / Last Activity. There is no
+ * Title and no description line, because in cloud the backend does not send
+ * them: user free text is content, reachable only through the audited
  * break-glass grant (faultmaven#815).
+ *
+ * No Organization column either, despite `organization_id` being on the row.
+ * It would be constant in every configuration that can reach this table: under
+ * `TENANT_PROVIDER=single` (what cloud runs today) every case carries the
+ * Standalone org, and under `multi` the endpoint 403s rather than serve a list
+ * RLS has silently narrowed to one tenant. A column with one value everywhere
+ * implies a discrimination between tenants that this view cannot actually make.
+ * It belongs with the bounded cross-tenant read in faultmaven#815, which is
+ * what first makes org vary here.
  *
  * This is a separate component from `CaseTable` rather than a `showTitle={false}`
  * prop on it, mirroring the backend's own choice of a separate response model
@@ -51,9 +60,6 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
             <tr>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Case ID</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
-                Organization
-              </th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Status</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Progress</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
@@ -74,11 +80,6 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
                 </td>
                 <td className="px-4 py-3">
                   <span className="font-mono text-xs text-fm-text-secondary">{c.user_id}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs text-fm-text-secondary">
-                    {c.organization_id}
-                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <CaseStateBadge state={c.state} />
