@@ -64,6 +64,51 @@ export type CaseListResponse = Omit<components['schemas']['CaseListResponse'], '
 
 export type InvestigationStage = components['schemas']['InvestigationStage'];
 
+// ==================== Operator "All Cases" list (ADR-012 D9) ====================
+
+/**
+ * One case as *ambient metadata* — the cloud operator row from
+ * `GET /api/v1/admin/cases` (ADR-012 D9).
+ *
+ * There is no `title` or `description` key here, and that is the point: D9
+ * classifies user free text as **content**, reachable only through an audited
+ * break-glass grant (faultmaven#815). The backend omits the keys rather than
+ * sending them as `null` so a client cannot render "withheld by policy" as an
+ * untitled case — and this type carries that guarantee into the UI, where a
+ * `c.title` on an operator row is a type error rather than "Untitled Case".
+ */
+export type AdminCaseMetadata = components['schemas']['AdminCaseMetadata'] & {
+  /** ADR-012 case origin; narrows the generated `string`. */
+  source?: CaseSource;
+};
+
+/** The standalone arm: full summaries, titles included. */
+export type AdminCaseFullListResponse = Omit<
+  components['schemas']['AdminCaseListResponse'],
+  'cases'
+> & {
+  // Same seam as `CaseListResponse`: the generated `CaseSummary` lacks
+  // `shared_team_ids`, which the backend does return.
+  cases: CaseSummary[];
+};
+
+/** The cloud arm: ambient metadata, no content. */
+export type AdminCaseMetadataListResponse = Omit<
+  components['schemas']['AdminCaseMetadataListResponse'],
+  'cases'
+> & {
+  cases: AdminCaseMetadata[];
+};
+
+/**
+ * What `GET /api/v1/admin/cases` returns — a union discriminated on `view`.
+ *
+ * Which arm arrives is fixed by the deployment, but callers must narrow on
+ * `view`, **not** on their own notion of the deployment mode: the response says
+ * what it is, so the two cannot drift.
+ */
+export type AdminCaseListResult = AdminCaseFullListResponse | AdminCaseMetadataListResponse;
+
 // ==================== Frontend-only request / filter shapes ====================
 // (no generated counterpart — these are dashboard query/write bags)
 

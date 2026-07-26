@@ -24,6 +24,8 @@ export type {
   CaseSource,
   CaseDetail,
   CaseListResponse,
+  AdminCaseMetadata,
+  AdminCaseListResult,
   CaseFilters,
   Team,
   CaseMessagesResponse,

@@ -1,6 +1,7 @@
 import { makeAuthenticatedRequest, buildQueryParams } from '../knowledge/client';
 import { handleAPIResponse } from '../knowledge/errors';
 import type {
+  AdminCaseListResult,
   CaseDetail,
   CaseSummary,
   CaseListResponse,
@@ -50,15 +51,26 @@ export async function listCases(
 
 /**
  * List cases across ALL users/orgs — the platform-admin cross-tenant view
- * (ADR-012 D9, GET /api/v1/admin/cases). Only reachable for an admin on a
- * standalone deployment (see `canViewAllCases`); the backend enforces the same
- * and returns 403 in cloud until an audited break-glass path exists.
+ * (ADR-012 D9, GET /api/v1/admin/cases). Reachable for a `platform_admin` in
+ * either deployment (see `canViewAllCases`); the backend enforces the same role.
+ *
+ * The response is a union discriminated on `view`, and the *deployment* decides
+ * which arm arrives: `"full"` (standalone) carries complete summaries including
+ * titles, `"metadata"` (cloud) carries ambient metadata with no title or
+ * description keys at all — titles are content and need the audited break-glass
+ * path (faultmaven#815). Callers must narrow on `view` rather than on their own
+ * notion of the deployment mode, so the two cannot drift.
+ *
+ * Still 403s under `TENANT_PROVIDER=multi`: row-level security would scope the
+ * list to the operator's own organization, so an "all tenants" answer would be
+ * silently partial. The backend refuses rather than mislead, and the `detail` it
+ * returns is the message worth showing.
  */
 export async function getAdminCases(
   filters: CaseFilters = {},
   page = 0,
   pageSize = 20
-): Promise<CaseListResponse> {
+): Promise<AdminCaseListResult> {
   // The admin endpoint paginates by limit/offset (not page/page_size).
   const params: Record<string, string | number | undefined> = {
     limit: pageSize,

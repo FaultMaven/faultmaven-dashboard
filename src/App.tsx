@@ -55,7 +55,7 @@ function ManagementConsoleRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AllCasesRoute({ children }: { children: React.ReactNode }) {
-  const { deployment, isAdmin, loading, authState } = useAuth();
+  const { isAdmin, loading, authState } = useAuth();
 
   if (loading) return null;
 
@@ -63,7 +63,7 @@ function AllCasesRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (canViewAllCases(deployment, isAdmin)) {
+  if (canViewAllCases(isAdmin)) {
     return <>{children}</>;
   }
 

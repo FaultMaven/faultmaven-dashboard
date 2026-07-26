@@ -3091,6 +3091,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Cases
+         * @description List cases across all users/orgs for a platform-admin (ADR-012 D9).
+         *
+         *     Standalone serves full summaries; cloud serves metadata-only rows. See the
+         *     module docstring for why the split falls where it does.
+         */
+        get: operations["list_all_cases_api_v1_admin_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/debug/routes": {
         parameters: {
             query?: never;
@@ -3512,6 +3535,112 @@ export interface components {
              * @default 0
              */
             compliance_confidence: number;
+        };
+        /**
+         * AdminCaseListResponse
+         * @description The **standalone** operator case list: full summaries, titles included.
+         *
+         *     Self-hosted content reads are audited but not gated (ADR-012 D9) — the
+         *     operator and the data controller are the same party.
+         */
+        AdminCaseListResponse: {
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Has More */
+            has_more: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            view: "full";
+            /** Cases */
+            cases: components["schemas"]["CaseSummary"][];
+        };
+        /**
+         * AdminCaseMetadata
+         * @description One case as *ambient metadata* — everything except its content.
+         *
+         *     The cloud operator row (ADR-012 D9). It answers "which tenant has cases
+         *     stuck in INVESTIGATING, and since when" without disclosing what any case is
+         *     about. Every field here is either system-assigned (ids, timestamps, counts)
+         *     or drawn from a closed vocabulary (``state``, ``source``,
+         *     ``closure_reason``), so no field can carry text a user typed.
+         *
+         *     This is a separate model rather than ``CaseSummary`` with ``title=None`` on
+         *     purpose: the omission is then structural. There is no code path that can
+         *     populate a title here, and a client cannot confuse "withheld by policy"
+         *     with "this case has no title".
+         */
+        AdminCaseMetadata: {
+            /** Case Id */
+            case_id: string;
+            state: components["schemas"]["CaseState"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** User Id */
+            user_id: string;
+            /** Organization Id */
+            organization_id: string;
+            /**
+             * Source
+             * @default copilot
+             */
+            source: string;
+            /** Closure Reason */
+            closure_reason: string | null;
+            /** Current Turn */
+            current_turn: number;
+            /** Milestones Completed */
+            milestones_completed: number;
+            /**
+             * Total Milestones
+             * @default 8
+             */
+            total_milestones: number;
+            /** Is Terminal */
+            is_terminal: boolean;
+        };
+        /**
+         * AdminCaseMetadataListResponse
+         * @description The **cloud** operator case list: ambient metadata, no content.
+         */
+        AdminCaseMetadataListResponse: {
+            /** Total Count */
+            total_count: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Has More */
+            has_more: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            view: "metadata";
+            /** Cases */
+            cases: components["schemas"]["AdminCaseMetadata"][];
         };
         /**
          * AdminUserListItem
@@ -12496,6 +12625,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnvConfigStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_cases_api_v1_admin_cases_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by state */
+                state?: components["schemas"]["CaseState"] | null;
+                /** @description Filter by case source */
+                source?: ("copilot" | "slack" | "api") | null;
+                /** @description Items per page */
+                limit?: number;
+                /** @description Number of items to skip */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCaseListResponse"] | components["schemas"]["AdminCaseMetadataListResponse"];
                 };
             };
             /** @description Validation Error */

@@ -27,9 +27,10 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     { label: 'Knowledge Base', path: '/kb' },
   ];
 
-  // All Cases (cross-tenant admin view): standalone admin only — see
-  // canViewAllCases (ADR-012 D9; cloud deferred to break-glass).
-  if (canViewAllCases(deployment, isAdmin)) {
+  // All Cases (cross-tenant admin view): operator-only in both deployments —
+  // see canViewAllCases. Cloud serves ambient metadata; titles need break-glass
+  // (ADR-012 D9).
+  if (canViewAllCases(isAdmin)) {
     items.push({ label: 'All Cases', path: '/admin/cases' });
   }
 

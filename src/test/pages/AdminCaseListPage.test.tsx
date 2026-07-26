@@ -74,10 +74,30 @@ function renderPage() {
   );
 }
 
+/** The cloud (ADR-012 D9) row: no `title`/`description` keys at all. */
+const metadataCase = {
+  case_id: 'case-cloud-1',
+  state: 'investigating' as const,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+  last_activity_at: '2024-01-02T00:00:00Z',
+  resolved_at: null,
+  closed_at: null,
+  closure_reason: null,
+  user_id: 'tenant_user',
+  organization_id: 'org-acme',
+  current_turn: 3,
+  milestones_completed: 1,
+  total_milestones: 8,
+  is_terminal: false,
+  source: 'copilot' as const,
+};
+
 describe('AdminCaseListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetAdminCases.mockResolvedValue({
+      view: 'full',
       cases: [copilotCase, slackCase],
       total_count: 2,
       has_more: false,
@@ -145,7 +165,12 @@ describe('AdminCaseListPage', () => {
   });
 
   it('shows empty state when no cases', async () => {
-    mockGetAdminCases.mockResolvedValue({ cases: [], total_count: 0, has_more: false });
+    mockGetAdminCases.mockResolvedValue({
+      view: 'full',
+      cases: [],
+      total_count: 0,
+      has_more: false,
+    });
 
     await act(async () => {
       renderPage();
@@ -165,6 +190,114 @@ describe('AdminCaseListPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('API unreachable')).toBeInTheDocument();
+    });
+  });
+
+  it('shows a refusal message INSTEAD of an empty table (multi-tenant 403)', async () => {
+    // The backend refuses the cross-tenant list under TENANT_PROVIDER=multi
+    // because RLS would scope it to one org and make it silently partial. An
+    // empty table would read as "no cases exist" — precisely the wrong answer
+    // that refusal exists to prevent — so the page must not render one.
+    const detail =
+      'Cross-tenant case listing is not available under multi-tenant cloud: ' +
+      'row-level security would scope the result to a single organization, so ' +
+      'the list would be silently partial (ADR-012 D9).';
+    mockGetAdminCases.mockRejectedValue(new Error(detail));
+
+    await act(async () => {
+      renderPage();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(detail)).toBeInTheDocument();
+    });
+    expect(screen.queryByText('No cases found.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  describe('cloud metadata view (ADR-012 D9)', () => {
+    beforeEach(() => {
+      mockGetAdminCases.mockResolvedValue({
+        view: 'metadata',
+        cases: [metadataCase],
+        total_count: 1,
+        has_more: false,
+      });
+    });
+
+    it('renders metadata columns and no Title column', async () => {
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('case-cloud-1')).toBeInTheDocument();
+      });
+      expect(screen.getByRole('columnheader', { name: 'Case ID' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Organization' })).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Title' })).not.toBeInTheDocument();
+      // The metadata that IS ambient still renders.
+      expect(screen.getByText('tenant_user')).toBeInTheDocument();
+      expect(screen.getByText('org-acme')).toBeInTheDocument();
+    });
+
+    it('tells the operator the omission is policy, not missing data', async () => {
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      expect(screen.getByText(/Metadata only/i)).toBeInTheDocument();
+      // …and never the placeholder that would misreport a withheld title as an
+      // absent one.
+      expect(screen.queryByText('Untitled Case')).not.toBeInTheDocument();
+    });
+
+    it('cannot surface content even if the response carries it', async () => {
+      // The guarantee is that the metadata render path has no way to display
+      // content — not merely that the backend currently omits it. Feed the
+      // arm content anyway (a backend regression, a proxy replaying an old
+      // shape) and it must still not reach the screen.
+      mockGetAdminCases.mockResolvedValue({
+        view: 'metadata',
+        cases: [
+          {
+            ...metadataCase,
+            title: 'payments DB down for ACME',
+            description: 'customer-visible outage since 02:00',
+          },
+        ],
+        total_count: 1,
+        has_more: false,
+      });
+
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      expect(screen.queryByText('payments DB down for ACME')).not.toBeInTheDocument();
+      expect(screen.queryByText('customer-visible outage since 02:00')).not.toBeInTheDocument();
+    });
+
+    it('renders the full table with titles when the response says view=full', async () => {
+      // The same page, same deployment-agnostic code path — only the
+      // discriminator differs. This is what keeps columns tied to the served
+      // policy rather than to the app's guess at the deployment mode.
+      mockGetAdminCases.mockResolvedValue({
+        view: 'full',
+        cases: [copilotCase],
+        total_count: 1,
+        has_more: false,
+      });
+
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
+      expect(screen.getByRole('columnheader', { name: 'Title' })).toBeInTheDocument();
+      expect(screen.queryByText(/Metadata only/i)).not.toBeInTheDocument();
     });
   });
 });

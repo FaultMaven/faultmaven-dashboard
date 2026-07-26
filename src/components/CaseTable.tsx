@@ -22,6 +22,11 @@ interface CaseTableProps {
  * Shared case list table (Title / [Owner] / Status / Progress / Last Activity /
  * [actions]). Used by both the per-user `CaseListPage` and the cross-tenant
  * `AdminCaseListPage` so the two never drift.
+ *
+ * This is the **content-bearing** table: every row carries a title. The cloud
+ * operator list has no titles to show (ADR-012 D9) and uses the separate
+ * `AdminCaseMetadataTable` — deliberately not a `showTitle={false}` prop here,
+ * so no render path can ever hold a row whose title may or may not exist.
  */
 export function CaseTable({ cases, loading, showOwner = false, renderActions, teamsById }: CaseTableProps) {
   return (

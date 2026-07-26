@@ -46,20 +46,26 @@ export function canManageConsole(
  * Single source of truth for "can this user reach the cross-tenant All-Cases
  * admin view?" (ADR-012 D9 — GET /api/v1/admin/cases).
  *
- * Standalone (self-hosted): the single operator, when they hold the
- * `platform_admin` role, can see every user's cases — including Slack-agent-owned cases — in one
- * place. This is where the backend serves the endpoint.
+ * The `platform_admin` operator reaches it in BOTH deployments. What differs is
+ * not access but *what a row contains* — the D9 metadata/content split:
  *
- * Cloud: cross-tenant reads require an audited break-glass override
- * (ADR-012 D7/D8) that is not built yet, and the backend returns 403 there, so
- * the view is intentionally deferred for cloud `platform_admin` for now. Both
- * the nav hook and the route guard import this predicate so they cannot drift.
+ * - Standalone: full summaries, titles included. The operator and the data
+ *   controller are the same party, so content reads are audited, not gated.
+ * - Cloud: ambient metadata only (ids, org, state, timestamps, counts). Titles
+ *   and transcripts are content, reachable only through the audited break-glass
+ *   grant (faultmaven#815).
+ *
+ * That split is deliberately NOT decided here. The response is a union
+ * discriminated on `view`, so the page renders the columns the backend actually
+ * served instead of the columns it expects from its own notion of the
+ * deployment — the two therefore cannot drift, and a mode misread cannot
+ * surface a title the policy withheld. This predicate answers only "is this the
+ * operator?", which is why it no longer takes a `deployment`.
+ *
+ * Both the nav hook and the route guard import it so they cannot drift either.
  */
-export function canViewAllCases(
-  deployment: Deployment | null,
-  isAdmin: boolean,
-): boolean {
-  return deployment === 'standalone' && isAdmin;
+export function canViewAllCases(isAdmin: boolean): boolean {
+  return isAdmin;
 }
 
 /**
