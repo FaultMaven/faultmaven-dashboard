@@ -218,6 +218,37 @@ describe('AdminCaseListPage', () => {
     expect(screen.queryByText(/0 cases/)).not.toBeInTheDocument();
   });
 
+  it('does not claim a count while a retry is in flight', async () => {
+    // The failure zeroed `totalCount`, and clearing `error` unmounts the banner
+    // immediately — so a count keyed on `!error` would flash "0 cases" for the
+    // duration of the retry. It is keyed on having a result instead.
+    let release: (v: unknown) => void = () => {};
+    mockGetAdminCases.mockRejectedValueOnce(new Error('API unreachable'));
+
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => screen.getByText('API unreachable'));
+
+    mockGetAdminCases.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+
+    // Mid-flight: banner gone, no result yet, and crucially no count.
+    expect(screen.queryByText('API unreachable')).not.toBeInTheDocument();
+    expect(screen.queryByText(/0 cases/)).not.toBeInTheDocument();
+
+    await act(async () => {
+      release({ view: 'full', cases: [copilotCase], total_count: 1, has_more: false });
+    });
+    await waitFor(() => expect(screen.getByText(/1 case\b/)).toBeInTheDocument());
+  });
+
   it('leaves a way out of an error — Retry re-requests the page that failed', async () => {
     // Pagination is hidden under an error, so the banner has to carry recovery.
     // Without it a transient failure is only escapable by reloading the browser.

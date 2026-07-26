@@ -105,13 +105,15 @@ export default function AdminCaseListPage() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-6">
           <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">All Cases</h2>
-          {/* No count under an error: the load that would have produced it did
-              not happen, and "0 cases" next to a refusal banner asserts
-              something the page does not know. */}
+          {/* The count is keyed on having a RESULT, not on the absence of an
+              error: it must also stay off during the first load and while a
+              retry is in flight, where `totalCount` is still 0 from the failure
+              that preceded it. "0 cases" is a claim the page cannot make until
+              a load has actually answered. */}
           <p className="text-fm-text-secondary text-sm">
-            {error
-              ? "Every user's cases on this server (admin view)"
-              : `Every user's cases on this server — ${totalCount} case${totalCount !== 1 ? 's' : ''} (admin view)`}
+            {result
+              ? `Every user's cases on this server — ${totalCount} case${totalCount !== 1 ? 's' : ''} (admin view)`
+              : "Every user's cases on this server (admin view)"}
           </p>
           {metadataOnly && (
             <p className="text-fm-text-tertiary text-xs mt-1">
@@ -147,12 +149,15 @@ export default function AdminCaseListPage() {
           // transient failure is only escapable by reloading the browser.
           <div className="text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3 flex items-start justify-between gap-4">
             <span>{error}</span>
+            {/* No pending/disabled state: clearing `error` is batched with
+                setting `loading` at the start of every load, so this banner
+                unmounts the moment a retry begins and can never be observed
+                mid-flight. */}
             <button
               onClick={() => loadPage(attemptedPageRef.current, filters)}
-              disabled={loading}
-              className="shrink-0 px-3 py-1 border border-fm-critical-border rounded-fm-btn text-fm-critical hover:bg-fm-critical/10 disabled:opacity-50 transition-colors"
+              className="shrink-0 px-3 py-1 border border-fm-critical-border rounded-fm-btn text-fm-critical hover:bg-fm-critical/10 transition-colors"
             >
-              {loading ? 'Retrying…' : 'Retry'}
+              Retry
             </button>
           </div>
         ) : result?.view === 'metadata' ? (
