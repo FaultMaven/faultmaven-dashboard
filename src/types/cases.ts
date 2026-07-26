@@ -125,9 +125,6 @@ export type BreakGlassGrant = components['schemas']['BreakGlassGrant'];
 
 export type BreakGlassGrantRequest = components['schemas']['BreakGlassGrantRequest'];
 
-export type BreakGlassGrantListResponse =
-  components['schemas']['BreakGlassGrantListResponse'];
-
 /**
  * How an operator content read was authorised.
  *

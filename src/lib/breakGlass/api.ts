@@ -4,7 +4,7 @@ import type {
   AdminCaseContentResponse,
   AdminCaseMessagesResponse,
   BreakGlassGrant,
-  BreakGlassGrantListResponse,
+  CaseMessage,
 } from '../../types/cases';
 
 const GRANTS_BASE = '/api/v1/admin/grants';
@@ -56,27 +56,6 @@ export async function requestBreakGlassGrant(params: {
 }
 
 /**
- * List break-glass grants.
- *
- * Not scoped to the calling operator, by design: who holds access to a tenant's
- * content, and until when, is the governance question this surface answers.
- */
-export async function listBreakGlassGrants(
-  filters: { caseId?: string; organizationId?: string; liveOnly?: boolean } = {}
-): Promise<BreakGlassGrantListResponse> {
-  const queryString = buildQueryParams({
-    ...(filters.caseId && { case_id: filters.caseId }),
-    ...(filters.organizationId && { organization_id: filters.organizationId }),
-    ...(filters.liveOnly && { live_only: 'true' }),
-  });
-  const response = await makeAuthenticatedRequest(
-    `${GRANTS_BASE}${queryString ? `?${queryString}` : ''}`
-  );
-  await handleAPIResponse(response, 'Failed to list break-glass grants');
-  return response.json();
-}
-
-/**
  * End a grant before its TTL lapses.
  *
  * Any operator may revoke any grant: shortening access is the safe direction,
@@ -111,11 +90,53 @@ export async function openAdminCaseContent(caseId: string): Promise<AdminCaseCon
 /**
  * Open one case's transcript as an operator. Same gate as the content read — a
  * transcript is content by any reading of D9.
+ *
+ * Pages through every chunk, exactly as the owner-facing `getCaseMessages`
+ * does. The endpoint defaults to 50 messages and caps a request at 100, so a
+ * single unparameterised call would silently hand an operator the first 50
+ * turns of a long investigation while the owner sees all of them — which would
+ * break the very guarantee the shared `TranscriptView` exists to hold. Reviewing
+ * a truncated transcript is worse than being refused one: it looks complete.
+ *
+ * The envelope (`access`, `grant`) comes from the first page; every page is
+ * gated identically, so it cannot differ between them.
  */
 export async function openAdminCaseTranscript(
   caseId: string
 ): Promise<AdminCaseMessagesResponse> {
-  const response = await makeAuthenticatedRequest(`${ADMIN_CASES_BASE}/${caseId}/messages`);
-  await handleAPIResponse(response, 'Failed to open case transcript');
-  return response.json();
+  const pageSize = 100; // backend per-request cap (le=100)
+  const messages: CaseMessage[] = [];
+  let envelope: AdminCaseMessagesResponse | null = null;
+  let totalCount = 0;
+
+  for (let offset = 0; ; offset += pageSize) {
+    const queryString = buildQueryParams({ limit: pageSize, offset });
+    const response = await makeAuthenticatedRequest(
+      `${ADMIN_CASES_BASE}/${caseId}/messages?${queryString}`
+    );
+    await handleAPIResponse(response, 'Failed to open case transcript');
+    const page: AdminCaseMessagesResponse = await response.json();
+
+    envelope ??= page;
+    messages.push(...page.messages.messages);
+    totalCount = page.messages.total_count;
+
+    // Stop on a short page or once the advertised total is collected. The
+    // short-page guard also prevents an infinite loop if `total_count` is ever
+    // stale or larger than the real message count.
+    if (page.messages.messages.length < pageSize || messages.length >= totalCount) {
+      break;
+    }
+  }
+
+  return {
+    access: envelope!.access,
+    grant: envelope!.grant,
+    messages: {
+      messages,
+      total_count: totalCount,
+      retrieved_count: messages.length,
+      has_more: false,
+    },
+  };
 }

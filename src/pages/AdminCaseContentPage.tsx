@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
@@ -23,6 +23,48 @@ function minutesRemaining(expiresAt: string): number {
 }
 
 /**
+ * A live countdown on a grant's remaining window.
+ *
+ * Computed on a ticker rather than once at render: a break-glass window is
+ * minutes long and a page left open outlives it easily, so a figure captured at
+ * mount would keep asserting the original time indefinitely — with the content
+ * still on screen. The tick is what turns "expires in N min" from a label into
+ * a statement that stays true.
+ *
+ * Calls `onLapsed` once when it reaches zero. The caller reloads, the backend
+ * refuses, and the content leaves the screen — expiry is enforced by the gate,
+ * never by this timer, which only decides *when to ask again*.
+ */
+function useRemainingMinutes(expiresAt: string, onLapsed: () => void): number {
+  const [remaining, setRemaining] = useState(() => minutesRemaining(expiresAt));
+  const lapsedRef = useRef(false);
+  // Held in a ref, and synced in its own effect rather than during render, so
+  // the ticker below can call the latest callback without listing it as a
+  // dependency — which would restart the interval on every parent re-render.
+  const onLapsedRef = useRef(onLapsed);
+  useEffect(() => {
+    onLapsedRef.current = onLapsed;
+  }, [onLapsed]);
+
+  useEffect(() => {
+    lapsedRef.current = false;
+    const tick = () => {
+      const next = minutesRemaining(expiresAt);
+      setRemaining(next);
+      if (next <= 0 && !lapsedRef.current) {
+        lapsedRef.current = true;
+        onLapsedRef.current();
+      }
+    };
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  return remaining;
+}
+
+/**
  * The operator's break-glass banner: how this content was reached.
  *
  * Rendered from the response's own `access` discriminator rather than from the
@@ -38,9 +80,6 @@ function AccessBanner({
   grant: BreakGlassGrant | null | undefined;
   onRevoked: () => void;
 }) {
-  const [revoking, setRevoking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   if (access === 'standing' || !grant) {
     return (
       <div className="mb-6 text-xs text-fm-text-tertiary border border-fm-border rounded-fm-btn px-3 py-2">
@@ -48,6 +87,22 @@ function AccessBanner({
       </div>
     );
   }
+
+  return <BreakGlassBanner grant={grant} onRevoked={onRevoked} />;
+}
+
+function BreakGlassBanner({
+  grant,
+  onRevoked,
+}: {
+  grant: BreakGlassGrant;
+  onRevoked: () => void;
+}) {
+  const [revoking, setRevoking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // A lapsed window reloads, the backend refuses, and the content comes off
+  // screen — the same path a revocation takes.
+  const remaining = useRemainingMinutes(grant.expires_at, onRevoked);
 
   const handleRevoke = async () => {
     setRevoking(true);
@@ -66,7 +121,7 @@ function AccessBanner({
       <div className="flex items-start justify-between gap-4">
         <div className="text-xs text-fm-text-secondary">
           <p className="font-medium text-fm-text-primary">
-            Break-glass access — expires in {minutesRemaining(grant.expires_at)} min
+            Break-glass access — expires in {remaining} min
           </p>
           <p className="mt-0.5">
             Reason: <span className="italic">{grant.reason}</span>
@@ -124,25 +179,35 @@ export default function AdminCaseContentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
+  // Monotonic request id: only the latest load may apply its result. Without it
+  // a slow Retry that rejects *after* a newly-granted load succeeded would wipe
+  // the just-authorised content back to the stale refusal — the same guard
+  // `AdminCaseListPage` carries, and it matters more here because the loads race
+  // by construction (Retry and grant-then-reload are one click apart).
+  const reqIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const opened = await openAdminCaseContent(caseId);
-      setContent(opened);
       // Fetched only after the content read succeeded. Ordering it this way
       // means one refusal, not two: the gate is the same for both, so a failed
       // open has already answered the question for the transcript.
-      setTranscript(await openAdminCaseTranscript(caseId));
+      const messages = await openAdminCaseTranscript(caseId);
+      if (reqId !== reqIdRef.current) return; // superseded by a newer load
+      setContent(opened);
+      setTranscript(messages);
     } catch (err) {
+      if (reqId !== reqIdRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to open case');
       // Drop anything previously loaded. A revoked or lapsed grant must take
       // the content off the screen, not leave it visible under a banner.
       setContent(null);
       setTranscript(null);
     } finally {
-      setLoading(false);
+      if (reqId === reqIdRef.current) setLoading(false);
     }
   }, [caseId]);
 

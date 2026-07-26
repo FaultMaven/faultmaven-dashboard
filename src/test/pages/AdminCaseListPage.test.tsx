@@ -34,6 +34,7 @@ vi.mock('../../hooks/useNavigationItems', () => ({
 }));
 
 import { getAdminCases } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 
 const mockGetAdminCases = getAdminCases as ReturnType<typeof vi.fn>;
 
@@ -434,6 +435,65 @@ describe('AdminCaseListPage', () => {
       await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
       expect(screen.getByRole('columnheader', { name: 'Title' })).toBeInTheDocument();
       expect(screen.queryByText(/Metadata only/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('where a row opens (ADR-012 D9 + faultmaven#846)', () => {
+    // The operator's OWN cases must keep the full case page. Routing them
+    // through the reduced operator view would strip the Issue/Report/
+    // Hypotheses/Evidence tabs, archive and annotate — and write an
+    // operator-access audit row every time someone opened their own data.
+    // Everyone else's must take the operator route, because `GET /cases/{id}`
+    // has no operator bypass and would 404.
+    function asOperator(userId: string) {
+      (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+        deployment: 'standalone',
+        role: 'individual',
+        isAdmin: true,
+        clearAuthState: vi.fn(),
+        isAuthenticated: true,
+        authState: { user: { user_id: userId } },
+      });
+    }
+
+    it('sends the operator to the full case page for their OWN case', async () => {
+      asOperator('copilot_user'); // owner of `copilotCase`
+      mockGetAdminCases.mockResolvedValue({
+        view: 'full',
+        cases: [copilotCase],
+        total_count: 1,
+        has_more: false,
+      });
+
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('Copilot Case'));
+      expect(screen.getByRole('link', { name: /Copilot Case/ })).toHaveAttribute(
+        'href',
+        '/cases/case-copilot'
+      );
+    });
+
+    it("sends the operator to the audited route for someone ELSE's case", async () => {
+      asOperator('a-different-operator');
+      mockGetAdminCases.mockResolvedValue({
+        view: 'full',
+        cases: [copilotCase],
+        total_count: 1,
+        has_more: false,
+      });
+
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('Copilot Case'));
+      expect(screen.getByRole('link', { name: /Copilot Case/ })).toHaveAttribute(
+        'href',
+        `/admin/cases/case-copilot?org=${encodeURIComponent(copilotCase.organization_id)}`
+      );
     });
   });
 });

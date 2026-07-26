@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { requestBreakGlassGrant } from '../lib/breakGlass/api';
 import type { BreakGlassGrant } from '../types/cases';
 
@@ -10,6 +10,13 @@ import type { BreakGlassGrant } from '../types/cases';
  * and this only decides when the submit button lights up.
  */
 const MIN_REASON_LENGTH = 20;
+
+/**
+ * The backend's `MAX_GRANT_REASON_LENGTH`. Bounded here so a pasted log excerpt
+ * is stopped at the keystroke rather than after a submit that 422s — the same
+ * reason the minimum is mirrored.
+ */
+const MAX_REASON_LENGTH = 2000;
 
 /** Windows the backend accepts (its ceiling is 240 minutes). */
 const TTL_OPTIONS = [
@@ -55,6 +62,17 @@ export function BreakGlassRequestDialog({
   // length with whitespace is rejected there, so enabling submit on the raw
   // length would offer a button that can only fail.
   const reasonIsSufficient = reason.trim().length >= MIN_REASON_LENGTH;
+
+  // Escape closes the dialog, but never mid-request: cancelling while a grant is
+  // being minted would leave the operator unsure whether one now exists. Matches
+  // `ConfirmDialog`'s rule.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onCancel();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [submitting, onCancel]);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -102,6 +120,8 @@ export function BreakGlassRequestDialog({
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={3}
+          autoFocus
+          maxLength={MAX_REASON_LENGTH}
           placeholder="e.g. customer reports the investigation is stuck; ticket SUP-4821"
           className="w-full px-3 py-2 bg-fm-canvas border border-fm-border rounded-fm-btn text-sm text-fm-text-primary placeholder:text-fm-text-tertiary focus:outline-none focus:border-fm-accent"
         />

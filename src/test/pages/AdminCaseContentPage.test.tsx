@@ -228,6 +228,41 @@ describe('AdminCaseContentPage — opened under a live grant', () => {
     await waitFor(() => expect(screen.queryByText(SECRET_TITLE)).not.toBeInTheDocument());
   });
 
+  it('takes the content off screen when the window lapses', async () => {
+    // A break-glass window is minutes long and a page left open outlives it
+    // easily. Without a ticker the banner would keep asserting the original
+    // remaining time with the content still displayed — the UI claiming an
+    // authorisation that expired. The timer does not enforce anything; it
+    // decides when to ask the gate again, and the gate refuses.
+    vi.useFakeTimers();
+    try {
+      const shortGrant = {
+        ...liveGrant,
+        expires_at: new Date(Date.now() + 30_000).toISOString(),
+      };
+      mockOpen.mockResolvedValue({ access: 'break_glass', grant: shortGrant, case: caseDetail });
+      mockTranscript.mockResolvedValue({ ...emptyTranscript, grant: shortGrant });
+
+      await act(async () => {
+        renderPage();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText(SECRET_TITLE)).toBeInTheDocument();
+
+      // The window closes, and the reload it triggers is refused.
+      mockOpen.mockRejectedValue(new Error('requires a live break-glass grant'));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(45_000);
+      });
+
+      expect(screen.queryByText(SECRET_TITLE)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('never routes into the owner-scoped case page', async () => {
     // `GET /cases/{id}` has no operator arm; a link there would 404 for every
     // case the operator does not own (faultmaven#846).

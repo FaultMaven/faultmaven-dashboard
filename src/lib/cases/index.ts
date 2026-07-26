@@ -30,7 +30,6 @@ export type {
   AdminCaseMessagesResponse,
   BreakGlassGrant,
   BreakGlassGrantRequest,
-  BreakGlassGrantListResponse,
   OperatorContentAccess,
   CaseFilters,
   Team,

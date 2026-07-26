@@ -122,6 +122,48 @@ describe('BreakGlassRequestDialog', () => {
     expect(screen.getByText(/cannot be edited or deleted/i)).toBeInTheDocument();
   });
 
+  it('bounds the reason at the length the backend accepts', () => {
+    // Without this a pasted log excerpt types happily and 422s on submit — the
+    // failure arriving only after the operator committed to the request.
+    renderDialog();
+    expect(screen.getByLabelText(/Why do you need this/i)).toHaveAttribute(
+      'maxLength',
+      '2000'
+    );
+  });
+
+  it('focuses the reason field on open', () => {
+    renderDialog();
+    expect(screen.getByLabelText(/Why do you need this/i)).toHaveFocus();
+  });
+
+  it('closes on Escape', () => {
+    const { onCancel } = renderDialog();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it('does not close on Escape mid-request', async () => {
+    // Cancelling while a grant is being minted would leave the operator unsure
+    // whether one now exists. Same rule as `ConfirmDialog`.
+    let release: (v: unknown) => void = () => {};
+    mockRequest.mockReturnValue(new Promise((r) => (release = r)));
+    const { onCancel } = renderDialog();
+    fireEvent.change(screen.getByLabelText(/Why do you need this/i), {
+      target: { value: GOOD_REASON },
+    });
+
+    await act(async () => {
+      fireEvent.click(submit());
+    });
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onCancel).not.toHaveBeenCalled();
+    await act(async () => {
+      release({ grant_id: 'grant-1' });
+    });
+  });
+
   it('surfaces a refusal instead of reporting success', async () => {
     mockRequest.mockRejectedValue(new Error('reason must be at least 20 characters'));
     const { onGranted } = renderDialog();
