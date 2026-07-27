@@ -17,46 +17,35 @@ export type { CaseState };
 
 // ==================== Case core (list + detail) ====================
 
-/**
- * Team-sharing seam (U12 / ADR-013 §D4). The backend surfaces `shared_team_ids`
- * on case reads, but openapi-typescript's generated `CaseSummary`/`CaseDetail`
- * do not carry it yet (not published in the OpenAPI schema). This small local
- * extension — same pattern as `ArchiveSeamFields` — keeps the team-sharing UI
- * (badges, team filter, share action) typechecking. Empty in standalone (team
- * sharing is a Cloud collaboration feature — unwired there) and for a case
- * shared with no Team. Resolve ids to names via `GET /api/v1/teams`.
- */
-interface TeamSharingFields {
-  shared_team_ids: string[];
-}
-
 /** Case origin (ADR-012), derived from the creator's account kind. */
 export type CaseSource = 'copilot' | 'slack' | 'api';
 
-export type CaseSummary = components['schemas']['CaseSummary'] &
-  TeamSharingFields & {
-    /** ADR-012 case origin; optional until the backend surfaces it on `CaseSummary`. */
-    source?: CaseSource;
-  };
+/**
+ * `shared_team_ids` (ADR-013 §D4) is now published in the generated schema
+ * (the former `TeamSharingFields` local seam is collapsed, #58). The only
+ * remaining local delta is narrowing the generated `source: string` to the
+ * `CaseSource` union — same pattern as `AdminCaseMetadata` below.
+ */
+export type CaseSummary = components['schemas']['CaseSummary'] & {
+  /** ADR-012 case origin; narrows the generated `string`. */
+  source?: CaseSource;
+};
 
 /**
  * A Team the caller belongs to (ADR-013 §D4), from `GET /api/v1/teams`.
  * Read-only here — team management is the Cloud admin surface.
  */
-export interface Team {
-  team_id: string;
-  name: string;
-  description?: string | null;
-  organization_id: string;
-}
+export type Team = components['schemas']['TeamResponse'];
 
-export type CaseDetail = components['schemas']['CaseDetail'] & TeamSharingFields;
+export type CaseDetail = components['schemas']['CaseDetail'] & {
+  /** ADR-012 case origin; narrows the generated `string`. */
+  source?: CaseSource;
+};
 
 /**
  * The generated `CaseListResponse.cases` is the raw generated `CaseSummary`,
- * which lacks the `TeamSharingFields` seam above. The backend returns those
- * fields on list reads (see `TeamSharingFields`), so the page carries the
- * extended `CaseSummary` — override `cases` to it.
+ * which lacks the `source` narrowing above — override `cases` to the
+ * narrowed alias.
  */
 export type CaseListResponse = Omit<components['schemas']['CaseListResponse'], 'cases'> & {
   cases: CaseSummary[];
@@ -87,8 +76,7 @@ export type AdminCaseFullListResponse = Omit<
   components['schemas']['AdminCaseListResponse'],
   'cases'
 > & {
-  // Same seam as `CaseListResponse`: the generated `CaseSummary` lacks
-  // `shared_team_ids`, which the backend does return.
+  // Same seam as `CaseListResponse`: carry the `source`-narrowed `CaseSummary`.
   cases: CaseSummary[];
 };
 

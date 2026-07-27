@@ -4,7 +4,268 @@
  */
 
 export interface paths {
-    "/api/v1/cases/{case_id}/sessions/{session_id}/execute": {
+    "/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Root
+         * @description Root endpoint with API information.
+         */
+        get: operations["root__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/optimization/trigger-cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trigger System Cleanup
+         * @description Trigger comprehensive system cleanup and optimization.
+         */
+        get: operations["trigger_system_cleanup_admin_optimization_trigger_cleanup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit/operator-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Operator Access Audit
+         * @description Read the operator access trail (ADR-012 D8/D9).
+         *
+         *     The review path over ``operator_access_audit`` — what an internal reviewer
+         *     or a SOC 2 / ISO 27001 auditor reads to answer "who reached tenant data,
+         *     when, and under what justification".
+         *
+         *     Reading the trail is itself operator-only but is deliberately NOT recorded
+         *     as an access: it returns no tenant content, and self-recording every read
+         *     would make the table grow under its own review without adding evidence.
+         *
+         *     Unlike the case list, this is served in cloud as well as standalone. It
+         *     carries identifiers, an action and counts — never case titles or content —
+         *     so no break-glass grant is required to read it, and withholding the trail
+         *     in cloud would remove the governance record precisely where it matters most.
+         */
+        get: operations["list_operator_access_audit_api_v1_admin_audit_operator_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Cases
+         * @description List cases across all users/orgs for a platform-admin (ADR-012 D9).
+         *
+         *     Standalone serves full summaries; cloud serves metadata-only rows. See the
+         *     module docstring for why the split falls where it does.
+         */
+        get: operations["list_all_cases_api_v1_admin_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open Case Content
+         * @description Open one case's **content** as an operator (ADR-012 D9).
+         *
+         *     Standalone serves it under standing access, recorded but not gated. Cloud
+         *     requires a live break-glass grant naming this case.
+         *
+         *     This is a separate endpoint from ``GET /api/v1/cases/{case_id}`` rather than
+         *     an operator arm on that route's owner ∪ shared-to-my-teams check. That check
+         *     is the single-case gate transitively guarding reports, exports, analytics and
+         *     messages, and it runs for every ordinary user request — widening it would
+         *     widen all of those at once. Keeping the elevated path separate is also what
+         *     makes the Standalone All Cases view openable (#846) without touching the
+         *     user-facing route.
+         */
+        get: operations["open_case_content_api_v1_admin_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/cases/{case_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open Case Transcript
+         * @description Open one case's **transcript** as an operator (ADR-012 D9).
+         *
+         *     Same gate, same audit action and same envelope as the case-detail read: a
+         *     transcript is content by any reading of D9, and splitting the two surfaces
+         *     across different rules would let one of them drift.
+         */
+        get: operations["open_case_transcript_api_v1_admin_cases__case_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Env Config Status
+         * @description Get environment configuration status (read-only).
+         *
+         *     Returns the current deployment configuration including auth mode,
+         *     storage backends, and security settings. This is informational only —
+         *     configuration changes require editing environment variables and restarting.
+         *
+         *     Returns:
+         *         EnvConfigStatusResponse with current environment configuration
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         */
+        get: operations["get_env_config_status_api_v1_admin_config_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/debug/llm-routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Routing Health
+         * @description Get LLM provider health and routing status (admin only).
+         *
+         *     Returns detailed health metrics for all LLM providers including:
+         *     - Current health status (HEALTHY, DEGRADED, UNHEALTHY, UNKNOWN)
+         *     - Consecutive failure counts
+         *     - Average latency
+         *     - Sticky routing status
+         *     - Last success/failure timestamps
+         *
+         *     Returns:
+         *         Dict with provider health summary and routing configuration
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role
+         *         503 Service Unavailable: LLM provider not configured
+         */
+        get: operations["get_llm_routing_health_api_v1_admin_debug_llm_routing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Grants
+         * @description List break-glass grants, newest first.
+         *
+         *     Deliberately **not** scoped to the calling operator. Who holds access to a
+         *     tenant's content, and until when, is the governance question this surface
+         *     exists to answer; an operator who could only see their own grants could not
+         *     review anyone else's. Grants carry no case content — a reason, a case id and
+         *     a window — so reading them needs no grant of its own, the same reasoning
+         *     that lets the audit trail be read in Cloud.
+         */
+        get: operations["list_grants_api_v1_admin_grants_get"];
+        put?: never;
+        /**
+         * Create Grant
+         * @description Mint a break-glass grant over one case (ADR-012 D9).
+         *
+         *     The grant covers exactly the case named, expires after ``ttl_minutes``, and
+         *     cannot be extended — needing longer means minting a new one with a fresh
+         *     reason, so a grant can never converge on standing access.
+         *
+         *     An operator mints their own grant, and it is live immediately. The control
+         *     is the justification, the window, and an immutable trail of every read taken
+         *     under it — not a second party's consent. Customer-initiated approval is the
+         *     stronger posture ADR-012 D9 describes as the ideal; the grant carries the
+         *     ``approval_state`` machine that will drive it, so adding it later is a new
+         *     transition rather than a reshaping of this endpoint or of the read gate.
+         *
+         *     Nothing here touches tenant data: the request is not validated against the
+         *     case it names. See ``build_grant`` for why that is the more secure choice.
+         */
+        post: operations["create_grant_api_v1_admin_grants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{grant_id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -14,42 +275,24 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Execute AI agent for troubleshooting investigation
-         * @description Execute an AI agent to analyze the case and generate recommendations.
-         *     Supports streaming (SSE) or non-streaming mode.
+         * Revoke Grant
+         * @description End a grant before its TTL lapses.
          *
-         *     **Authentication:**
-         *     - JWT Bearer token: Authorization: Bearer <token>
+         *     Any operator may revoke any grant, including one they do not hold: shortening
+         *     someone's access is the safe direction, and requiring ownership would mean a
+         *     grant could outlive the only person able to withdraw it.
          *
-         *     **Streaming Mode (stream=true, default):**
-         *     Returns Server-Sent Events (SSE) with real-time updates including:
-         *     - `started`: Execution has begun
-         *     - `thinking`: Agent is reasoning/processing
-         *     - `tool_call`: Tool invocation requested
-         *     - `tool_result`: Tool execution completed
-         *     - `response`: Incremental response chunk
-         *     - `error`: Error occurred
-         *     - `completed`: Execution finished
-         *
-         *     **Non-Streaming Mode (stream=false):**
-         *     Returns complete AgentExecutionResponse when done.
-         *
-         *     The agent will:
-         *     - Analyze case context and previous conversation
-         *     - Use available tools (read evidence, search knowledge)
-         *     - Generate hypotheses and recommendations
-         *     - Stream thinking process in real-time
-         *
-         *     Token usage is tracked and the session will auto-pause if budget is exceeded.
+         *     Idempotent — revoking an already-revoked grant leaves the original
+         *     ``revoked_at`` in place rather than moving the record of when access ended.
          */
-        post: operations["execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post"];
+        post: operations["revoke_grant_api_v1_admin_grants__grant_id__revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions": {
+    "/api/v1/admin/llm/config": {
         parameters: {
             query?: never;
             header?: never;
@@ -57,36 +300,45 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List executions for case
-         * @description List all agent executions for the case.
+         * Get Llm Config
+         * @description Get LLM provider configuration and status.
          *
-         *     **Note**: Executions are stored at the case level, not the session level.
-         *     The session_id in the path is for URL consistency with the execute endpoint,
-         *     but filtering is done by case_id. All executions for the case are returned
-         *     regardless of which session initiated them.
+         *     Returns the current primary provider, fallback chain, and per-provider
+         *     status including health, connectivity, and available models. API keys
+         *     are never exposed — only a boolean indicating whether one is configured.
+         *
+         *     Available to any authenticated user (standalone deployment) or admin (cloud).
+         *     Route-level access control is handled by the dashboard's LLMConfigRoute guard.
+         *
+         *     Returns:
+         *         LLMConfigResponse with provider details and fallback chain
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         503 Service Unavailable: LLM provider not initialized
          */
-        get: operations["list_executions_api_v1_cases__case_id__sessions__session_id__executions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        get: operations["get_llm_config_api_v1_admin_llm_config_get"];
         /**
-         * Get execution by ID
-         * @description Get details of a specific agent execution.
+         * Update Llm Config
+         * @description Update LLM provider configuration.
+         *
+         *     Persists configuration changes to the database as overrides that take
+         *     precedence over environment variables. After saving, the settings
+         *     singleton and provider registry are reset so changes take effect
+         *     immediately without a restart.
+         *
+         *     Accepts partial updates — only provided fields are changed.
+         *
+         *     Returns:
+         *         LLMConfigUpdateResponse with list of updated keys
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: Standalone deployment (config is read-only)
+         *         422 Unprocessable Entity: Invalid provider name
+         *         503 Service Unavailable: LLM provider not initialized
          */
-        get: operations["get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get"];
-        put?: never;
+        put: operations["update_llm_config_api_v1_admin_llm_config_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -94,7 +346,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}/cancel": {
+    "/api/v1/admin/llm/config/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -104,11 +356,242 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Cancel running execution
-         * @description Cancel a running agent execution.
+         * Check Llm Connection
+         * @description Test connectivity to a specific LLM provider.
+         *
+         *     Sends a minimal prompt to the specified provider to verify that:
+         *     1. The API key is valid
+         *     2. The provider endpoint is reachable
+         *     3. The configured model responds
+         *
+         *     This does NOT use the fallback chain — it tests the specific provider directly.
+         *
+         *     Returns:
+         *         LLMConnectionTestResponse with connectivity result and latency
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         422 Unprocessable Entity: Unknown provider name
+         *         503 Service Unavailable: LLM provider not initialized
          */
-        post: operations["cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post"];
+        post: operations["check_llm_connection_api_v1_admin_llm_config_test_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Users
+         * @description List all users in organization (admin only).
+         *
+         *     Returns paginated list of users with filtering options.
+         *     Admin can only see users in their own organization.
+         *
+         *     Query Parameters:
+         *         is_active: Filter by active/inactive status
+         *         role: Filter by role (admin, member, viewer)
+         *         search: Search email or full_name (case-insensitive, partial match)
+         *         limit: Max results per page (default 50, max 100)
+         *         offset: Pagination offset
+         *
+         *     Returns:
+         *         AdminUserListResponse with users, total, limit, offset
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role
+         *         422 Unprocessable Entity: Invalid query parameters
+         */
+        get: operations["list_users_api_v1_admin_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Details
+         * @description Get detailed user information (admin only).
+         *
+         *     Returns complete user information including derived permissions.
+         *     Admin can only view users in their own organization.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to retrieve
+         *
+         *     Returns:
+         *         UserDetailResponse with full user details
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR user belongs to different organization
+         *         404 Not Found: User does not exist
+         */
+        get: operations["get_user_details_api_v1_admin_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate User
+         * @description Activate user account (admin only).
+         *
+         *     Sets user is_active=True. User can log in after activation.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to activate
+         *
+         *     Returns:
+         *         UserStatusResponse confirming activation
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role
+         *         404 Not Found: User does not exist
+         *         409 Conflict: User already active
+         */
+        post: operations["activate_user_api_v1_admin_users__user_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deactivate User
+         * @description Deactivate user account (admin only).
+         *
+         *     Sets user is_active=False and revokes all JWT tokens.
+         *     Admin cannot deactivate themselves.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to deactivate
+         *
+         *     Returns:
+         *         UserStatusResponse confirming deactivation
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR trying to deactivate self
+         *         404 Not Found: User does not exist
+         *         409 Conflict: User already deactivated
+         */
+        post: operations["deactivate_user_api_v1_admin_users__user_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Role
+         * @description Assign role to user (admin only).
+         *
+         *     Replaces existing roles with the new role. Revokes all JWT tokens.
+         *     Admin cannot modify their own roles.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to assign role to
+         *
+         *     Request Body:
+         *         role: Role to assign (admin, member, viewer)
+         *
+         *     Returns:
+         *         RoleAssignmentResponse confirming role assignment
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR trying to modify own roles
+         *         404 Not Found: User does not exist
+         *         409 Conflict: User already has this role
+         *         422 Unprocessable Entity: Invalid role
+         */
+        post: operations["assign_role_api_v1_admin_users__user_id__roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/roles/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Role
+         * @description Remove role from user (admin only).
+         *
+         *     Downgrades user to viewer (minimum privilege). Revokes all JWT tokens.
+         *     Admin cannot remove their own admin role.
+         *
+         *     Path Parameters:
+         *         user_id: User ID to remove role from
+         *         role: Role to remove (admin, member)
+         *
+         *     Returns:
+         *         RoleAssignmentResponse confirming role removal
+         *
+         *     Raises:
+         *         401 Unauthorized: No valid JWT token
+         *         403 Forbidden: User lacks admin role OR trying to remove own admin role
+         *         404 Not Found: User does not exist OR user doesn't have this role
+         *         422 Unprocessable Entity: Invalid role or attempting to remove viewer role
+         */
+        delete: operations["remove_role_api_v1_admin_users__user_id__roles__role__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -150,10 +633,15 @@ export interface paths {
          *         "authorize_url": "/auth/oauth/authorize",
          *         "token_url": "/auth/oauth/token",
          *         "client_id": "faultmaven-copilot",
-         *         "scopes": ["openid", "profile", "email", "cases:read", "cases:write"]
+         *         "scopes": ["openid", "profile", "email", "cases:read", "cases:write"],
+         *         "hosted_login_url": "/api/v1/auth/sso/login"
          *       }
          *     }
          *     ```
+         *
+         *     `hosted_login_url` is the human sign-in entry point (hosted SSO login,
+         *     ADR-015). It is null unless SSO is configured; `authorize_url` remains the
+         *     copilot OAuth-PKCE machine flow.
          */
         get: operations["get_auth_config_api_v1_auth_config_get"];
         put?: never;
@@ -179,6 +667,50 @@ export interface paths {
          * @description Deprecated: Use /login instead
          */
         post: operations["local_login_api_v1_auth_dev_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/dev-register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Local Register
+         * @deprecated
+         * @description Deprecated: Use /register instead
+         */
+        post: operations["local_register_api_v1_auth_dev_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Health Check
+         * @description Authentication system health check
+         *
+         *     Returns the status of authentication services including token management
+         *     and user storage systems.
+         */
+        get: operations["auth_health_check_api_v1_auth_health_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -223,7 +755,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/dev-register": {
+    "/api/v1/auth/logout": {
         parameters: {
             query?: never;
             header?: never;
@@ -233,11 +765,275 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Local Register
-         * @deprecated
-         * @description Deprecated: Use /register instead
+         * Logout
+         * @description Logout current user
+         *
+         *     Revokes the current access token in the deployment-wide revocation store
+         *     (#767), so the request-path revocation check rejects it on every endpoint
+         *     for the remainder of its lifetime. Works in both auth modes — the store
+         *     is keyed by jti, independent of the signing algorithm.
+         *
+         *     **Flow:**
+         *     1. Validate current authentication
+         *     2. Revoke the current token
+         *     3. Return confirmation
          */
-        post: operations["local_register_api_v1_auth_dev_register_post"];
+        post: operations["logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Current User Profile
+         * @description Get current user profile
+         *
+         *     Returns detailed information about the currently authenticated user.
+         */
+        get: operations["get_current_user_profile_api_v1_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me/available-scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Available Scopes
+         * @description Return the scopes the calling user can target for team collaboration.
+         *
+         *     ``personal`` (author-only) is always available.
+         *
+         *     ``team`` is reported only when the deployment is team-enabled
+         *     (``team_service`` is wired — a Cloud collaboration feature, unwired in
+         *     standalone) AND the caller actually belongs to at least one Team, since a
+         *     user with no Team has nothing to target.
+         *
+         *     ``global`` is the platform tier, so it is reported only to a
+         *     ``platform_admin``: every route that publishes at global scope requires
+         *     that role (``POST /knowledge/documents`` unconditionally; the conversion
+         *     routes for ``scope == "global"``). Reporting it to everyone made the
+         *     dashboard offer a target the backend then refused, which is the drift this
+         *     endpoint exists to prevent — its whole point is to reflect the caller's
+         *     real capability rather than a hardcoded assumption.
+         *
+         *     Scopes are returned narrowest-to-widest: ``personal | team | global``.
+         */
+        get: operations["get_available_scopes_api_v1_auth_me_available_scopes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Authorization Request
+         * @description OAuth 2.0 Authorization Endpoint (GET) - Consent Request.
+         *
+         *     Returns authorization request details for user consent screen.
+         *     If oauth_require_consent=false, auto-approves and returns code immediately.
+         *
+         *     Production Flow (oauth_require_consent=true):
+         *     1. User authenticates in Dashboard (dev-login or existing session)
+         *     2. Extension redirects to GET /authorize with PKCE challenge
+         *     3. Dashboard displays consent screen with AuthorizationConsentRequest
+         *     4. User approves/denies → Dashboard POSTs to /authorize
+         *     5. Backend generates code and redirects to Extension
+         *
+         *     Dev/Test Flow (oauth_require_consent=false):
+         *     1-2. Same as production
+         *     3. Backend auto-approves and returns AuthorizationResponse immediately
+         *     4. Dashboard redirects to Extension with code
+         *
+         *     Args:
+         *         response_type: Must be "code" (authorization code flow)
+         *         client_id: OAuth client ID (validated against allowed clients)
+         *         redirect_uri: Extension callback URI (validated against allowed patterns)
+         *         state: Client state for CSRF protection (echoed back)
+         *         code_challenge: PKCE code challenge (SHA256 of code_verifier)
+         *         code_challenge_method: PKCE method (only "S256" supported)
+         *         scope: OAuth scopes requested
+         *         user: Authenticated user from Dashboard session
+         *         oauth_service: OAuth service dependency
+         *         request: FastAPI request object (for accessing settings)
+         *
+         *     Returns:
+         *         - AuthorizationConsentRequest (if consent required) - for Dashboard UI
+         *         - AuthorizationResponse (if auto-approve) - immediate authorization code
+         *
+         *     Raises:
+         *         HTTPException: 400 if request invalid, 401 if user not authenticated
+         */
+        get: operations["get_authorization_request_api_v1_auth_oauth_authorize_get"];
+        put?: never;
+        /**
+         * Post Authorization Approval
+         * @description OAuth 2.0 Authorization Endpoint (POST) - User Approval.
+         *
+         *     Handles user's approval/denial of authorization request after consent screen.
+         *     Generates authorization code if approved, returns error if denied.
+         *
+         *     Flow:
+         *     1. User reviews consent screen (GET /authorize returned AuthorizationConsentRequest)
+         *     2. Dashboard submits user's decision (approved/denied) to this endpoint
+         *     3. If approved: Generate authorization code and return for redirect
+         *     4. If denied: Return error
+         *
+         *     Args:
+         *         approval: User's approval decision and authorization parameters
+         *         user: Authenticated user from Dashboard session
+         *         oauth_service: OAuth service dependency
+         *
+         *     Returns:
+         *         AuthorizationResponse with authorization code and state
+         *
+         *     Raises:
+         *         HTTPException: 400 if denied or invalid, 401 if user not authenticated
+         */
+        post: operations["post_authorization_approval_api_v1_auth_oauth_authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke
+         * @description OAuth 2.0 Token Revocation Endpoint.
+         *
+         *     Revokes access tokens or refresh tokens (for logout).
+         *
+         *     When to revoke:
+         *     - User logs out: Revoke both access and refresh tokens
+         *     - Security event: Revoke all tokens for user
+         *     - Token rotation: Old refresh token revoked automatically
+         *
+         *     Args:
+         *         revoke_request: Token revocation request
+         *         oauth_service: OAuth service dependency
+         *
+         *     Returns:
+         *         Success response (200 OK, no body per RFC 7009)
+         *
+         *     Note: Returns 200 even if token doesn't exist (per RFC 7009)
+         */
+        post: operations["revoke_api_v1_auth_oauth_revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Token
+         * @description OAuth 2.0 Token Endpoint.
+         *
+         *     Handles two grant types:
+         *     1. authorization_code: Exchange authorization code for access/refresh tokens
+         *     2. refresh_token: Refresh access token using refresh token
+         *
+         *     Authorization Code Flow:
+         *     1. Extension calls /authorize and gets authorization code
+         *     2. Extension exchanges code + verifier for tokens
+         *     3. Extension stores tokens securely
+         *     4. Extension uses access token for API requests
+         *
+         *     Refresh Token Flow:
+         *     1. Extension detects access token expiring soon (< 5 minutes)
+         *     2. Extension exchanges refresh token for new access token
+         *     3. Extension gets new access token + rotated refresh token
+         *     4. Extension updates stored tokens
+         *
+         *     Args:
+         *         token_request: Token request (authorization_code or refresh_token)
+         *         oauth_service: OAuth service dependency
+         *
+         *     Returns:
+         *         Access token, refresh token, and user information
+         *
+         *     Raises:
+         *         HTTPException: 400 if request invalid, 401 if grant invalid
+         */
+        post: operations["token_api_v1_auth_oauth_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Tokens
+         * @description Exchange a refresh token for a new access token (both auth modes).
+         *
+         *     The short-lived access token cannot be extended (it is a stateless JWT),
+         *     so an active client must mint a new one before expiry rather than being
+         *     forced to re-login. Refresh tokens rotate: the presented token is revoked
+         *     and a fresh one is returned alongside the new access token.
+         *
+         *     Mode-aware (ADR-015 D6): local mode validates and mints with the HS256
+         *     generator; oauth/cloud mode uses the RS256 generator that issued the
+         *     tokens (dev-login-, OAuth-, and SSO-minted refresh tokens alike), with
+         *     identical rotation and revocation semantics.
+         *
+         *     **Flow:**
+         *     1. Validate the refresh token (signature, expiry, type, revocation)
+         *     2. Load the current user (rejects deactivated/deleted accounts)
+         *     3. Mint a new access + refresh token pair
+         *     4. Revoke the old refresh token (rotation)
+         */
+        post: operations["refresh_tokens_api_v1_auth_refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -300,6 +1096,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/users/{user_id}/revoke-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke User Tokens
+         * @description Revoke all tokens for a user. Platform admin only.
+         *
+         *     Writes a per-user revocation watermark to the shared revocation store; the
+         *     request path and both token generators then reject every token for this
+         *     user issued at or before that instant (#769). A store write failure is a
+         *     500 — an admin must never get a revocation confirmation while the user's
+         *     tokens keep authenticating.
+         *
+         *     Unknown ``user_id`` is a 404 rather than a vacuous success. The watermark
+         *     write would succeed for any string, so an admin who pastes a username (or
+         *     mistypes an id) while containing a compromised account would otherwise get
+         *     a "revoked" confirmation while the real account kept authenticating —
+         *     the same false-confirmation failure this endpoint was fixed for.
+         *
+         *     The revocation happens BEFORE that lookup and is never conditional on it.
+         *     ``DatabaseUserStore.get_user`` swallows its exceptions and returns None, so
+         *     an auth-DB outage is indistinguishable from a genuinely absent user (see
+         *     #703, where exactly that DB froze). Gating on it would let a DB blip answer
+         *     "user not found" to an admin containing a live compromise, having revoked
+         *     nothing. Revocation only needs Redis, so it runs on Redis alone; the lookup
+         *     only shapes the response. A watermark written for an id that turns out not
+         *     to exist is inert and expires on its own.
+         */
+        post: operations["revoke_user_tokens_api_v1_auth_users__user_id__revoke_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/users/{username}": {
         parameters: {
             query?: never;
@@ -315,212 +1152,6 @@ export interface paths {
          * @description Delete a user by username. Admin only.
          */
         delete: operations["delete_user_api_v1_auth_users__username__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Logout
-         * @description Logout current user
-         *
-         *     Revokes the current authentication token. The user will need to login
-         *     again to access protected resources.
-         *
-         *     **Flow:**
-         *     1. Validate current authentication
-         *     2. Revoke the current token
-         *     3. Return confirmation
-         */
-        post: operations["logout_api_v1_auth_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Current User Profile
-         * @description Get current user profile
-         *
-         *     Returns detailed information about the currently authenticated user,
-         *     including profile data and token statistics.
-         */
-        get: operations["get_current_user_profile_api_v1_auth_me_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/me/available-scopes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Available Scopes
-         * @description Return KB scopes the calling user can target when publishing.
-         *
-         *     A standalone (self-hosted) deployment is single-tenant — one implicit
-         *     operator, no teams, no multi-member orgs — so only ``personal`` and
-         *     ``global`` are publishable here. The ``team`` / ``organization`` scopes
-         *     are a Cloud collaboration feature, gated by the org/team management
-         *     surface that ships only in Cloud.
-         */
-        get: operations["get_available_scopes_api_v1_auth_me_available_scopes_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Auth Health Check
-         * @description Authentication system health check
-         *
-         *     Returns the status of authentication services including token management
-         *     and user storage systems.
-         */
-        get: operations["auth_health_check_api_v1_auth_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/users/{user_id}/revoke-tokens": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revoke User Tokens
-         * @description Revoke all tokens for a user. Admin only.
-         */
-        post: operations["revoke_user_tokens_api_v1_auth_users__user_id__revoke_tokens_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/snapshot/{turn_number}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get case snapshot at specific turn
-         * @description Get the full state of a case at a specific turn number.
-         *
-         *     This is a read-only operation that reconstructs the case from the checkpoint.
-         */
-        get: operations["get_case_snapshot"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/diff": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Diff two case states
-         * @description Compute the semantic difference between two turns of a case.
-         *
-         *     Returns a dictionary describing added, removed, and modified fields.
-         */
-        get: operations["diff_case_turns"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Case
-         * @description Get a specific case by ID (v2.0 milestone-based)
-         *
-         *     Returns full case details with milestone progress, investigation stage,
-         *     and completion percentage.
-         */
-        get: operations["get_case_api_v1_cases__case_id__get"];
-        /**
-         * Update Case
-         * @description Update case details
-         *
-         *     Updates case metadata such as title, description, state, priority, and tags.
-         *     Requires edit permissions on the case.
-         */
-        put: operations["update_case_api_v1_cases__case_id__put"];
-        post?: never;
-        /**
-         * Delete Case
-         * @description Permanently delete a case and all associated data.
-         *
-         *     This endpoint provides hard delete functionality. Once deleted,
-         *     the case and all associated data are permanently removed.
-         *
-         *     The operation is idempotent - subsequent requests will return
-         *     204 No Content even if the case has already been deleted.
-         *
-         *     Returns 204 No Content on success.
-         */
-        delete: operations["delete_case_api_v1_cases__case_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -566,7 +1197,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/ui": {
+    "/api/v1/cases/health": {
         parameters: {
             query?: never;
             header?: never;
@@ -574,54 +1205,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Case Ui
-         * @description Get phase-adaptive UI-optimized case response.
+         * Get Case Service Health
+         * @description Get case service health status
          *
-         *     Returns different response schemas based on case status:
-         *     - INQUIRY: Focus on problem understanding, clarifying questions
-         *     - INVESTIGATING: Milestone progress, hypotheses, evidence, working conclusion
-         *     - RESOLVED: Root cause, solution, verification, resolution summary
-         *
-         *     This endpoint eliminates multiple API calls by returning all UI state
-         *     in a single response optimized for the current investigation phase.
+         *     Returns health information about the case persistence system,
+         *     including connectivity and performance metrics.
          */
-        get: operations["get_case_ui_api_v1_cases__case_id__ui_get"];
+        get: operations["get_case_service_health_api_v1_cases_health_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/title": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate Case Title
-         * @description Generate a concise, case-specific title from case messages and metadata.
-         *
-         *     **Request body (optional):**
-         *     - `max_words`: integer (3–12, default 8) - Maximum words in generated title
-         *     - `hint`: string - Optional hint to guide title generation
-         *     - `force`: boolean (default false) - Only overwrite non-default titles when true
-         *
-         *     **Returns:**
-         *     - 200: TitleResponse with X-Correlation-ID header
-         *     - 422: ValidationException body — see ``api/exception_handlers.py``
-         *       and ``docs/architecture/specifications/exception-contract.md``.
-         *       Raised when there is insufficient meaningful context to generate
-         *       a title (pre-LLM length gate, or LLM + fallback both fail).
-         *       Clients SHOULD keep the existing title unchanged and may retry
-         *       later.
-         */
-        post: operations["generate_case_title_api_v1_cases__case_id__title_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -645,50 +1237,6 @@ export interface paths {
          *     for the specified query terms.
          */
         post: operations["search_cases_api_v1_cases_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/analytics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Case Analytics
-         * @description Get case analytics and metrics
-         *
-         *     Returns analytics data including message counts, participant activity,
-         *     resolution time, and other case metrics.
-         */
-        get: operations["get_case_analytics_api_v1_cases__case_id__analytics_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Case Messages Enhanced
-         * @description Retrieve conversation messages for a case with enhanced debugging info.
-         *     Supports pagination and includes metadata about message retrieval status.
-         */
-        get: operations["get_case_messages_enhanced_api_v1_cases__case_id__messages_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -748,51 +1296,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/turns": {
+    "/api/v1/cases/{case_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Submit Turn
-         * @description Submit a turn to a case investigation.
+         * Get Case
+         * @description Get a specific case by ID (v2.0 milestone-based)
          *
-         *     A turn consists of an optional query and/or optional attachments.
-         *     Attachments are preprocessed through Tier 0+1 before the LLM sees them.
-         *     If no query is provided with attachments, an implicit query is generated.
+         *     Returns full case details with milestone progress, investigation stage,
+         *     and completion percentage.
          */
-        post: operations["submit_turn_api_v1_cases__case_id__turns_post"];
-        delete?: never;
+        get: operations["get_case_api_v1_cases__case_id__get"];
+        /**
+         * Update Case
+         * @description Update case details
+         *
+         *     Updates case metadata such as title, description, state, priority, and tags.
+         *     Requires edit permissions on the case.
+         */
+        put: operations["update_case_api_v1_cases__case_id__put"];
+        post?: never;
+        /**
+         * Delete Case
+         * @description Permanently delete a case and all associated data.
+         *
+         *     This endpoint provides hard delete functionality. Once deleted,
+         *     the case and all associated data are permanently removed.
+         *
+         *     The operation is idempotent - subsequent requests will return
+         *     204 No Content even if the case has already been deleted.
+         *
+         *     Returns 204 No Content on success.
+         */
+        delete: operations["delete_case_api_v1_cases__case_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/queries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Submit Case Query Gone
-         * @description DELETED: Use POST /{case_id}/turns instead.
-         */
-        post: operations["submit_case_query_gone_api_v1_cases__case_id__queries_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/health": {
+    "/api/v1/cases/{case_id}/analytics": {
         parameters: {
             query?: never;
             header?: never;
@@ -800,13 +1346,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Case Service Health
-         * @description Get case service health status
+         * Get Case Analytics
+         * @description Get case analytics and metrics
          *
-         *     Returns health information about the case persistence system,
-         *     including connectivity and performance metrics.
+         *     Returns analytics data including message counts, participant activity,
+         *     resolution time, and other case metrics.
          */
-        get: operations["get_case_service_health_api_v1_cases_health_get"];
+        get: operations["get_case_analytics_api_v1_cases__case_id__analytics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -815,7 +1361,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/evidence/{evidence_id}/classification": {
+    "/api/v1/cases/{case_id}/close": {
         parameters: {
             query?: never;
             header?: never;
@@ -824,33 +1370,21 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Close Case
+         * @description Close case and archive with reports.
+         *
+         *     Marks all latest reports as linked to case closure and transitions
+         *     case to CLOSED state.
+         *
+         *     Returns:
+         *         CaseClosureResponse with list of archived reports
+         */
+        post: operations["close_case_api_v1_cases__case_id__close_post"];
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Reclassify Evidence
-         * @description Reclassify an existing evidence row under a user-specified data type.
-         *
-         *     Phase 1.5 — the escape hatch for "the classifier was confidently
-         *     wrong". Re-runs the preprocessing pipeline on the stored raw file
-         *     with ``user_override=data_type``, overwrites the evidence's
-         *     structural index, and appends to its extractor.attempts history.
-         *
-         *     Gated by ``FAULTMAVEN_RECLASSIFY_ENABLED``. Returns 404 when the
-         *     flag is off so the endpoint is invisible in production by default.
-         *
-         *     Error responses (dispatched by ``api/exception_handlers.py``):
-         *
-         *     - ``404`` — feature disabled, case not found, or evidence not in case
-         *       (``NotFoundError``).
-         *     - ``409`` — evidence has no backing file (``ConflictError`` with
-         *       ``conflict_reason="no_backing_file"``).
-         *     - ``403`` — caller does not own the case (``AuthorizationError``).
-         *     - ``422`` — invalid or missing ``data_type`` (``ValidationException``).
-         *     - ``500`` — storage/preprocessing failure (``ServiceException``).
-         */
-        patch: operations["reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch"];
+        patch?: never;
         trace?: never;
     };
     "/api/v1/cases/{case_id}/data": {
@@ -899,6 +1433,167 @@ export interface paths {
          * @description Remove data file from a case. Returns 204 No Content on success.
          */
         delete: operations["delete_case_data_api_v1_cases__case_id__data__data_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff two case states
+         * @description Compute the semantic difference between two turns of a case.
+         *
+         *     Returns a dictionary describing added, removed, and modified fields.
+         */
+        get: operations["diff_case_turns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all evidence for a case
+         * @description Retrieve all evidence records for a case, each with source-file reference and hypothesis linkage.
+         */
+        get: operations["list_case_evidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get evidence details with source file
+         * @description Retrieve detailed evidence information including source file reference and hypothesis linkage.
+         */
+        get: operations["get_evidence_details_api_v1_cases__case_id__evidence__evidence_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence/{evidence_id}/classification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Reclassify Evidence
+         * @description Reclassify an existing evidence row under a user-specified data type.
+         *
+         *     Phase 1.5 — the escape hatch for "the classifier was confidently
+         *     wrong". Re-runs the preprocessing pipeline on the stored raw file
+         *     with ``user_override=data_type``, overwrites the evidence's
+         *     structural index, and appends to its extractor.attempts history.
+         *
+         *     Gated by ``FAULTMAVEN_RECLASSIFY_ENABLED``. Returns 404 when the
+         *     flag is off so the endpoint is invisible in production by default.
+         *
+         *     Error responses (dispatched by ``api/exception_handlers.py``):
+         *
+         *     - ``404`` — feature disabled, case not found, or evidence not in case
+         *       (``NotFoundError``).
+         *     - ``409`` — evidence has no backing file (``ConflictError`` with
+         *       ``conflict_reason="no_backing_file"``).
+         *     - ``403`` — caller does not own the case (``AuthorizationError``).
+         *     - ``422`` — invalid or missing ``data_type`` (``ValidationException``).
+         *     - ``500`` — storage/preprocessing failure (``ServiceException``).
+         */
+        patch: operations["reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch"];
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/extract-knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extract Knowledge from Case
+         * @description Extract reusable knowledge from a case into a suggestion for the knowledge base.
+         */
+        post: operations["extract_knowledge_from_case_api_v1_cases__case_id__extract_knowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Case Messages Enhanced
+         * @description Retrieve conversation messages for a case with enhanced debugging info.
+         *     Supports pagination and includes metadata about message retrieval status.
+         */
+        get: operations["get_case_messages_enhanced_api_v1_cases__case_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/queries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Case Query Gone
+         * @description DELETED: Use POST /{case_id}/turns instead.
+         */
+        post: operations["submit_case_query_gone_api_v1_cases__case_id__queries_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1013,215 +1708,6 @@ export interface paths {
         get: operations["download_case_report_api_v1_cases__case_id__reports__report_id__download_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/close": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Close Case
-         * @description Close case and archive with reports.
-         *
-         *     Marks all latest reports as linked to case closure and transitions
-         *     case to CLOSED state.
-         *
-         *     Returns:
-         *         CaseClosureResponse with list of archived reports
-         */
-        post: operations["close_case_api_v1_cases__case_id__close_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/uploaded-files": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Uploaded Files
-         * @description List uploaded files for a case with pagination.
-         *
-         *     Returns:
-         *         Paginated list of file metadata with AI analysis status
-         */
-        get: operations["list_uploaded_files"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/uploaded-files/{file_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get uploaded file details with derived evidence
-         * @description Retrieve detailed information about an uploaded file including all evidence derived from it and hypothesis linkage.
-         */
-        get: operations["get_uploaded_file_details"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/evidence": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all evidence for a case
-         * @description Retrieve all evidence records for a case, each with source-file reference and hypothesis linkage.
-         */
-        get: operations["list_case_evidence"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/evidence/{evidence_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get evidence details with source file
-         * @description Retrieve detailed evidence information including source file reference and hypothesis linkage.
-         */
-        get: operations["get_evidence_details_api_v1_cases__case_id__evidence__evidence_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/share": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Share Case
-         * @description Share a case with another user. Requires owner or collaborator permission.
-         */
-        post: operations["share_case_api_v1_cases__case_id__share_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/share/{target_user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Unshare Case
-         * @description Unshare a case from a user. Requires owner permission.
-         */
-        delete: operations["unshare_case_api_v1_cases__case_id__share__target_user_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/participants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Case Participants
-         * @description Get all participants who have access to this case.
-         */
-        get: operations["get_case_participants_api_v1_cases__case_id__participants_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/access-check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Check Case Access
-         * @description Check if current user has access to this case.
-         */
-        get: operations["check_case_access_api_v1_cases__case_id__access_check_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/extract-knowledge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Extract Knowledge from Case
-         * @description Extract reusable knowledge from a case into a suggestion for the knowledge base.
-         */
-        post: operations["extract_knowledge_from_case_api_v1_cases__case_id__extract_knowledge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1400,6 +1886,161 @@ export interface paths {
         patch: operations["update_session_api_v1_cases__case_id__sessions__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/sessions/{session_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Session
+         * @description Complete session with findings.
+         *
+         *     Completes an investigation session with a findings summary.
+         *     This is a terminal action - completed sessions cannot be modified.
+         *
+         *     Authentication:
+         *         - JWT Bearer token: Authorization: Bearer <token>
+         *
+         *     Body:
+         *         findings_summary: Summary of investigation findings
+         *
+         *     Args:
+         *         case_id: Case the session belongs to
+         *         session_id: Unique session identifier
+         *         findings_summary: Summary of investigation findings
+         *         current_user: Authenticated user from JWT
+         *         session_service: Injected session service
+         *
+         *     Returns:
+         *         Updated session with completed status
+         *
+         *     Raises:
+         *         401: Authentication required
+         *         404: Session not found
+         *         400: Session already in terminal state
+         *         422: Missing findings summary
+         */
+        post: operations["complete_session_api_v1_cases__case_id__sessions__session_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/sessions/{session_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute AI agent for troubleshooting investigation
+         * @description Execute an AI agent to analyze the case and generate recommendations.
+         *     Supports streaming (SSE) or non-streaming mode.
+         *
+         *     **Authentication:**
+         *     - JWT Bearer token: Authorization: Bearer <token>
+         *
+         *     **Streaming Mode (stream=true, default):**
+         *     Returns Server-Sent Events (SSE) with real-time updates including:
+         *     - `started`: Execution has begun
+         *     - `thinking`: Agent is reasoning/processing
+         *     - `tool_call`: Tool invocation requested
+         *     - `tool_result`: Tool execution completed
+         *     - `response`: Incremental response chunk
+         *     - `error`: Error occurred
+         *     - `completed`: Execution finished
+         *
+         *     **Non-Streaming Mode (stream=false):**
+         *     Returns complete AgentExecutionResponse when done.
+         *
+         *     The agent will:
+         *     - Analyze case context and previous conversation
+         *     - Use available tools (read evidence, search knowledge)
+         *     - Generate hypotheses and recommendations
+         *     - Stream thinking process in real-time
+         *
+         *     Token usage is tracked and the session will auto-pause if budget is exceeded.
+         */
+        post: operations["execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/sessions/{session_id}/executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List executions for case
+         * @description List all agent executions for the case.
+         *
+         *     **Note**: Executions are stored at the case level, not the session level.
+         *     The session_id in the path is for URL consistency with the execute endpoint,
+         *     but filtering is done by case_id. All executions for the case are returned
+         *     regardless of which session initiated them.
+         */
+        get: operations["list_executions_api_v1_cases__case_id__sessions__session_id__executions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get execution by ID
+         * @description Get details of a specific agent execution.
+         */
+        get: operations["get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel running execution
+         * @description Cancel a running agent execution.
+         */
+        post: operations["cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/sessions/{session_id}/pause": {
         parameters: {
             query?: never;
@@ -1480,7 +2121,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/complete": {
+    "/api/v1/cases/{case_id}/snapshot/{turn_number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get case snapshot at specific turn
+         * @description Get the full state of a case at a specific turn number.
+         *
+         *     This is a read-only operation that reconstructs the case from the checkpoint.
+         */
+        get: operations["get_case_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/team-shares": {
         parameters: {
             query?: never;
             header?: never;
@@ -1490,35 +2153,314 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Complete Session
-         * @description Complete session with findings.
+         * Share Case With Team
+         * @description Share a case with a Team (ADR-013 §D4). Owner-only; the Team must be one the caller belongs to. Idempotent.
+         */
+        post: operations["share_case_with_team_api_v1_cases__case_id__team_shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/team-shares/{team_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unshare Case From Team
+         * @description Remove a case's share to a Team (ADR-013 §D4). Owner-only.
+         */
+        delete: operations["unshare_case_from_team_api_v1_cases__case_id__team_shares__team_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/title": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Case Title
+         * @description Generate a concise, case-specific title from case messages and metadata.
          *
-         *     Completes an investigation session with a findings summary.
-         *     This is a terminal action - completed sessions cannot be modified.
+         *     **Request body (optional):**
+         *     - `max_words`: integer (3–12, default 8) - Maximum words in generated title
+         *     - `hint`: string - Optional hint to guide title generation
+         *     - `force`: boolean (default false) - Only overwrite non-default titles when true
          *
-         *     Authentication:
-         *         - JWT Bearer token: Authorization: Bearer <token>
+         *     **Returns:**
+         *     - 200: TitleResponse with X-Correlation-ID header
+         *     - 422: ValidationException body — see ``api/exception_handlers.py``
+         *       and ``docs/architecture/specifications/exception-contract.md``.
+         *       Raised when there is insufficient meaningful context to generate
+         *       a title (pre-LLM length gate, or LLM + fallback both fail).
+         *       Clients SHOULD keep the existing title unchanged and may retry
+         *       later.
+         */
+        post: operations["generate_case_title_api_v1_cases__case_id__title_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Turn
+         * @description Submit a turn to a case investigation.
          *
-         *     Body:
-         *         findings_summary: Summary of investigation findings
+         *     A turn consists of an optional query and/or optional attachments.
+         *     Attachments are preprocessed through Tier 0+1 before the LLM sees them.
+         *     If no query is provided with attachments, an implicit query is generated.
+         */
+        post: operations["submit_turn_api_v1_cases__case_id__turns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/ui": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Case Ui
+         * @description Get phase-adaptive UI-optimized case response.
          *
-         *     Args:
-         *         case_id: Case the session belongs to
-         *         session_id: Unique session identifier
-         *         findings_summary: Summary of investigation findings
-         *         current_user: Authenticated user from JWT
-         *         session_service: Injected session service
+         *     Returns different response schemas based on case status:
+         *     - INQUIRY: Focus on problem understanding, clarifying questions
+         *     - INVESTIGATING: Milestone progress, hypotheses, evidence, working conclusion
+         *     - RESOLVED: Root cause, solution, verification, resolution summary
+         *
+         *     This endpoint eliminates multiple API calls by returning all UI state
+         *     in a single response optimized for the current investigation phase.
+         */
+        get: operations["get_case_ui_api_v1_cases__case_id__ui_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/uploaded-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Uploaded Files
+         * @description List uploaded files for a case with pagination.
          *
          *     Returns:
-         *         Updated session with completed status
-         *
-         *     Raises:
-         *         401: Authentication required
-         *         404: Session not found
-         *         400: Session already in terminal state
-         *         422: Missing findings summary
+         *         Paginated list of file metadata with AI analysis status
          */
-        post: operations["complete_session_api_v1_cases__case_id__sessions__session_id__complete_post"];
+        get: operations["list_uploaded_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/uploaded-files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get uploaded file details with derived evidence
+         * @description Retrieve detailed information about an uploaded file including all evidence derived from it and hypothesis linkage.
+         */
+        get: operations["get_uploaded_file_details"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/analytics/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Search Analytics
+         * @description Get search analytics and insights.
+         */
+        get: operations["get_search_analytics_api_v1_knowledge_analytics_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversions
+         * @description List the current user's conversion jobs.
+         */
+        get: operations["list_conversions_api_v1_knowledge_conversions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/by-case/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversion By Case
+         * @description Get the conversion job and drafts for a specific case.
+         */
+        get: operations["get_conversion_by_case_api_v1_knowledge_conversions_by_case__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/{conversion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversion
+         * @description Get conversion job details with all drafts.
+         */
+        get: operations["get_conversion_api_v1_knowledge_conversions__conversion_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/{conversion_id}/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Draft
+         * @description Update draft content. Re-runs validation and quality scoring.
+         */
+        put: operations["update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put"];
+        post?: never;
+        /**
+         * Delete Draft
+         * @description Delete a conversion draft.
+         */
+        delete: operations["delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/conversions/{conversion_id}/drafts/{draft_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Draft
+         * @description Promote draft to verified status and trigger ingestion into ChromaDB.
+         *
+         *     Verifying a draft publishes it into the KB at the job's scope; a global
+         *     draft is the platform corpus, so the service refuses (AuthorizationError →
+         *     403) unless the caller may author global scope (admin single-tenant; never
+         *     a tenant session under multi, #770).
+         *
+         *     Service-layer typed exceptions (AuthorizationError, NotFoundError,
+         *     ConflictError, ValidationException) propagate to the global handlers in
+         *     api/exception_handlers.py for canonical translation to 403 / 404 / 409 /
+         *     422 respectively. The route no longer catches ValueError; see
+         *     docs/architecture/specifications/exception-contract.md.
+         */
+        post: operations["verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert Document
+         * @description Upload a document and convert it to one or more runbook drafts.
+         */
+        post: operations["convert_document_api_v1_knowledge_convert_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1563,6 +2505,114 @@ export interface paths {
          *         Upload job information
          */
         post: operations["upload_document_api_v1_knowledge_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/documents/bulk-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Documents
+         * @description Bulk delete documents.
+         */
+        post: operations["bulk_delete_documents_api_v1_knowledge_documents_bulk_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/documents/bulk-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Update Documents
+         * @description Bulk update document metadata.
+         */
+        post: operations["bulk_update_documents_api_v1_knowledge_documents_bulk_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/documents/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fulltext Search Documents
+         * @description Full-text search for knowledge base documents (Microservices Parity)
+         *
+         *     Implements full-text search complementing the semantic search at /knowledge/search.
+         *     This endpoint provides simple keyword-based text matching across document titles
+         *     and content, useful when semantic understanding is not required.
+         *
+         *     **Differences from /knowledge/search:**
+         *     - `/knowledge/search` - Semantic vector search using embeddings (similarity-based)
+         *     - `/documents/search` - Full-text keyword search (exact/partial word matching)
+         *
+         *     **Use Cases:**
+         *     - Searching for specific error codes or identifiers
+         *     - Finding documents with exact phrases
+         *     - Faster search when semantic understanding not needed
+         *     - Filtering by document_type, category, tags
+         *
+         *     **Request Body:**
+         *     ```json
+         *     {
+         *         "query": "PostgreSQL connection timeout",
+         *         "document_type": "kb_article",
+         *         "category": "database",
+         *         "tags": "postgresql,timeout",
+         *         "limit": 20,
+         *         "similarity_threshold": 0.5
+         *     }
+         *     ```
+         *
+         *     **Returns:**
+         *     ```json
+         *     {
+         *         "query": "...",
+         *         "total_results": 5,
+         *         "results": [
+         *             {
+         *                 "document_id": "...",
+         *                 "content": "...",
+         *                 "metadata": {
+         *                     "title": "...",
+         *                     "document_type": "...",
+         *                     "category": "...",
+         *                     "tags": [...],
+         *                     "priority": "..."
+         *                 },
+         *                 "similarity_score": 0.85
+         *             }
+         *         ]
+         *     }
+         *     ```
+         */
+        post: operations["fulltext_search_documents_api_v1_knowledge_documents_search_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1644,6 +2694,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Drafts
+         * @description List all non-deleted drafts across all conversion jobs.
+         */
+        get: operations["list_all_drafts_api_v1_knowledge_drafts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/drafts/verify-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Batch
+         * @description Activate multiple drafts sequentially (verify + ingest into KB).
+         */
+        post: operations["verify_batch_api_v1_knowledge_drafts_verify_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/runbooks/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Runbook Manually
+         * @description Create a runbook manually from template fields. Returns a draft for review.
+         */
+        post: operations["create_runbook_manually_api_v1_knowledge_runbooks_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan For Runbooks
+         * @description Scan data/knowledge/ for .md files not tracked in the database.
+         *
+         *     Discovers runbooks created by the KB Toolkit or placed on disk manually.
+         *     Creates draft records so they appear in the Drafts tab for review.
+         *
+         *     Global-scope files (the platform corpus) are minted into drafts only for a
+         *     platform operator — an admin in single-tenant, and never a tenant session
+         *     under multi (#770). Non-global (personal/team) discovery is unaffected.
+         */
+        post: operations["scan_for_runbooks_api_v1_knowledge_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/search": {
         parameters: {
             query?: never;
@@ -1670,114 +2807,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/knowledge/documents/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Fulltext Search Documents
-         * @description Full-text search for knowledge base documents (Microservices Parity)
-         *
-         *     Implements full-text search complementing the semantic search at /knowledge/search.
-         *     This endpoint provides simple keyword-based text matching across document titles
-         *     and content, useful when semantic understanding is not required.
-         *
-         *     **Differences from /knowledge/search:**
-         *     - `/knowledge/search` - Semantic vector search using embeddings (similarity-based)
-         *     - `/documents/search` - Full-text keyword search (exact/partial word matching)
-         *
-         *     **Use Cases:**
-         *     - Searching for specific error codes or identifiers
-         *     - Finding documents with exact phrases
-         *     - Faster search when semantic understanding not needed
-         *     - Filtering by document_type, category, tags
-         *
-         *     **Request Body:**
-         *     ```json
-         *     {
-         *         "query": "PostgreSQL connection timeout",
-         *         "document_type": "kb_article",
-         *         "category": "database",
-         *         "tags": "postgresql,timeout",
-         *         "limit": 20,
-         *         "similarity_threshold": 0.5
-         *     }
-         *     ```
-         *
-         *     **Returns:**
-         *     ```json
-         *     {
-         *         "query": "...",
-         *         "total_results": 5,
-         *         "results": [
-         *             {
-         *                 "document_id": "...",
-         *                 "content": "...",
-         *                 "metadata": {
-         *                     "title": "...",
-         *                     "document_type": "...",
-         *                     "category": "...",
-         *                     "tags": [...],
-         *                     "priority": "..."
-         *                 },
-         *                 "similarity_score": 0.85
-         *             }
-         *         ]
-         *     }
-         *     ```
-         */
-        post: operations["fulltext_search_documents_api_v1_knowledge_documents_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/documents/bulk-update": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Bulk Update Documents
-         * @description Bulk update document metadata.
-         */
-        post: operations["bulk_update_documents_api_v1_knowledge_documents_bulk_update_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/documents/bulk-delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Bulk Delete Documents
-         * @description Bulk delete documents.
-         */
-        post: operations["bulk_delete_documents_api_v1_knowledge_documents_bulk_delete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/knowledge/stats": {
         parameters: {
             query?: never;
@@ -1790,26 +2819,6 @@ export interface paths {
          * @description Get knowledge base statistics.
          */
         get: operations["get_knowledge_stats_api_v1_knowledge_stats_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/analytics/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Search Analytics
-         * @description Get search analytics and insights.
-         */
-        get: operations["get_search_analytics_api_v1_knowledge_analytics_search_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1981,27 +2990,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/knowledge/convert": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Convert Document
-         * @description Upload a document and convert it to one or more runbook drafts.
-         */
-        post: operations["convert_document_api_v1_knowledge_convert_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/conversions": {
+    "/api/v1/reports/case/{case_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2009,206 +2998,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Conversions
-         * @description List the current user's conversion jobs.
+         * List reports for case
+         * @description Get all reports associated with a specific case
          */
-        get: operations["list_conversions_api_v1_knowledge_conversions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/drafts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List All Drafts
-         * @description List all non-deleted drafts across all conversion jobs.
-         */
-        get: operations["list_all_drafts_api_v1_knowledge_drafts_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/scan": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Scan For Runbooks
-         * @description Scan data/knowledge/ for .md files not tracked in the database.
-         *
-         *     Discovers runbooks created by the KB Toolkit or placed on disk manually.
-         *     Creates draft records so they appear in the Drafts tab for review.
-         */
-        post: operations["scan_for_runbooks_api_v1_knowledge_scan_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/conversions/{conversion_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Conversion
-         * @description Get conversion job details with all drafts.
-         */
-        get: operations["get_conversion_api_v1_knowledge_conversions__conversion_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/conversions/{conversion_id}/drafts/{draft_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Update Draft
-         * @description Update draft content. Re-runs validation and quality scoring.
-         */
-        put: operations["update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put"];
-        post?: never;
-        /**
-         * Delete Draft
-         * @description Delete a conversion draft.
-         */
-        delete: operations["delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/drafts/verify-batch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify Batch
-         * @description Activate multiple drafts sequentially (verify + ingest into KB).
-         */
-        post: operations["verify_batch_api_v1_knowledge_drafts_verify_batch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/conversions/{conversion_id}/drafts/{draft_id}/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify Draft
-         * @description Promote draft to verified status and trigger ingestion into ChromaDB.
-         *
-         *     Service-layer typed exceptions (NotFoundError, ConflictError,
-         *     ValidationException) propagate to the global handlers in
-         *     api/exception_handlers.py for canonical translation to 404 / 409 /
-         *     422 respectively. The route no longer catches ValueError; see
-         *     docs/architecture/specifications/exception-contract.md.
-         */
-        post: operations["verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/runbooks/create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Runbook Manually
-         * @description Create a runbook manually from template fields. Returns a draft for review.
-         */
-        post: operations["create_runbook_manually_api_v1_knowledge_runbooks_create_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/convert-from-case": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Convert From Case
-         * @description Generate a runbook draft from a resolved case using the canonical template.
-         *
-         *     The generated runbook enters the same draft workflow as document-driven
-         *     conversions: edit → verify → ingest into KB.
-         */
-        post: operations["convert_from_case_api_v1_knowledge_convert_from_case_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/knowledge/conversions/by-case/{case_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Conversion By Case
-         * @description Get the conversion job and drafts for a specific case.
-         */
-        get: operations["get_conversion_by_case_api_v1_knowledge_conversions_by_case__case_id__get"];
+        get: operations["list_reports_for_case_api_v1_reports_case__case_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2285,20 +3078,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/reports/case/{case_id}": {
+    "/api/v1/reports/{report_id}/link-case": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * List reports for case
-         * @description Get all reports associated with a specific case
-         */
-        get: operations["list_reports_for_case_api_v1_reports_case__case_id__get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Link report to case closure
+         * @description Mark case as closed and link final report
+         */
+        post: operations["link_report_to_case_closure_api_v1_reports__report_id__link_case_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2319,26 +3112,6 @@ export interface paths {
         get: operations["get_report_versions_api_v1_reports__report_id__versions_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/reports/{report_id}/link-case": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Link report to case closure
-         * @description Mark case as closed and link final report
-         */
-        post: operations["link_report_to_case_closure_api_v1_reports__report_id__link_case_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2406,6 +3179,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cleanup Expired Sessions
+         * @description Clean up expired sessions (admin/testing endpoint).
+         *
+         *     This endpoint triggers immediate cleanup of expired sessions.
+         *     In production, this runs automatically every 30 minutes.
+         *
+         *     Returns:
+         *         Number of sessions cleaned up
+         */
+        post: operations["cleanup_expired_sessions_v2"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Sessions
+         * @description Search user's sessions with filters.
+         *
+         *     Implements microservices parity with fm-session-service.
+         *     Searches only the authenticated user's sessions.
+         *
+         *     Request body:
+         *         {
+         *             "query": "optional text search",
+         *             "status": "optional status filter (active, archived)",
+         *             "limit": 50
+         *         }
+         *
+         *     Returns:
+         *         {
+         *             "sessions": [...],
+         *             "total": int
+         *         }
+         */
+        post: operations["search_sessions_api_v1_sessions_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -2461,6 +3296,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Session
+         * @description Archive a session.
+         *
+         *     Implements microservices parity with fm-session-service.
+         *     Sets session status to 'archived' while preserving all data.
+         *
+         *     Args:
+         *         session_id: Session identifier
+         *
+         *     Returns:
+         *         {
+         *             "session_id": str,
+         *             "status": "archived",
+         *             "message": "Session archived successfully"
+         *         }
+         *
+         *     Raises:
+         *         404: Session not found
+         *         403: User not authorized to archive this session
+         */
+        post: operations["archive_session_api_v1_sessions__session_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{session_id}/cases": {
         parameters: {
             query?: never;
@@ -2491,7 +3363,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sessions/cleanup": {
+    "/api/v1/sessions/{session_id}/cleanup": {
         parameters: {
             query?: never;
             header?: never;
@@ -2501,16 +3373,16 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Cleanup Expired Sessions
-         * @description Clean up expired sessions (admin/testing endpoint).
+         * Cleanup Session
+         * @description Clean up session data and temporary files.
          *
-         *     This endpoint triggers immediate cleanup of expired sessions.
-         *     In production, this runs automatically every 30 minutes.
+         *     Args:
+         *         session_id: Session identifier
          *
          *     Returns:
-         *         Number of sessions cleaned up
+         *         Cleanup confirmation
          */
-        post: operations["cleanup_expired_sessions_v2"];
+        post: operations["cleanup_session_api_v1_sessions__session_id__cleanup_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2537,58 +3409,6 @@ export interface paths {
          *         Heartbeat confirmation
          */
         post: operations["session_heartbeat_api_v1_sessions__session_id__heartbeat_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sessions/{session_id}/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Session Stats
-         * @description Get session statistics and activity summary.
-         *
-         *     Args:
-         *         session_id: Session identifier
-         *
-         *     Returns:
-         *         Session statistics
-         */
-        get: operations["get_session_stats_api_v1_sessions__session_id__stats_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sessions/{session_id}/cleanup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cleanup Session
-         * @description Clean up session data and temporary files.
-         *
-         *     Args:
-         *         session_id: Session identifier
-         *
-         *     Returns:
-         *         Cleanup confirmation
-         */
-        post: operations["cleanup_session_api_v1_sessions__session_id__cleanup_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2648,109 +3468,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sessions/search": {
+    "/api/v1/sessions/{session_id}/stats": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Search Sessions
-         * @description Search user's sessions with filters.
-         *
-         *     Implements microservices parity with fm-session-service.
-         *     Searches only the authenticated user's sessions.
-         *
-         *     Request body:
-         *         {
-         *             "query": "optional text search",
-         *             "status": "optional status filter (active, archived)",
-         *             "limit": 50
-         *         }
-         *
-         *     Returns:
-         *         {
-         *             "sessions": [...],
-         *             "total": int
-         *         }
-         */
-        post: operations["search_sessions_api_v1_sessions_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sessions/{session_id}/archive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Archive Session
-         * @description Archive a session.
-         *
-         *     Implements microservices parity with fm-session-service.
-         *     Sets session status to 'archived' while preserving all data.
+         * Get Session Stats
+         * @description Get session statistics and activity summary.
          *
          *     Args:
          *         session_id: Session identifier
          *
          *     Returns:
-         *         {
-         *             "session_id": str,
-         *             "status": "archived",
-         *             "message": "Session archived successfully"
-         *         }
-         *
-         *     Raises:
-         *         404: Session not found
-         *         403: User not authorized to archive this session
+         *         Session statistics
          */
-        post: operations["archive_session_api_v1_sessions__session_id__archive_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Users
-         * @description List all users in organization (admin only).
-         *
-         *     Returns paginated list of users with filtering options.
-         *     Admin can only see users in their own organization.
-         *
-         *     Query Parameters:
-         *         is_active: Filter by active/inactive status
-         *         role: Filter by role (admin, member, viewer)
-         *         search: Search email or full_name (case-insensitive, partial match)
-         *         limit: Max results per page (default 50, max 100)
-         *         offset: Pagination offset
-         *
-         *     Returns:
-         *         AdminUserListResponse with users, total, limit, offset
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: User lacks admin role
-         *         422 Unprocessable Entity: Invalid query parameters
-         */
-        get: operations["list_users_api_v1_admin_users_get"];
+        get: operations["get_session_stats_api_v1_sessions__session_id__stats_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2759,7 +3494,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/users/{user_id}": {
+    "/api/v1/teams": {
         parameters: {
             query?: never;
             header?: never;
@@ -2767,607 +3502,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get User Details
-         * @description Get detailed user information (admin only).
+         * List My Teams
+         * @description List the teams the authenticated user belongs to.
          *
-         *     Returns complete user information including derived permissions.
-         *     Admin can only view users in their own organization.
-         *
-         *     Path Parameters:
-         *         user_id: User ID to retrieve
-         *
-         *     Returns:
-         *         UserDetailResponse with full user details
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: User lacks admin role OR user belongs to different organization
-         *         404 Not Found: User does not exist
+         *     Read-only; the dashboard uses it to resolve team ids to names (case share
+         *     badges) and to populate the share-to-team picker. Returns an empty list in
+         *     standalone, where team sharing is unwired (``team_service is None``).
          */
-        get: operations["get_user_details_api_v1_admin_users__user_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/deactivate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Deactivate User
-         * @description Deactivate user account (admin only).
-         *
-         *     Sets user is_active=False and revokes all JWT tokens.
-         *     Admin cannot deactivate themselves.
-         *
-         *     Path Parameters:
-         *         user_id: User ID to deactivate
-         *
-         *     Returns:
-         *         UserStatusResponse confirming deactivation
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: User lacks admin role OR trying to deactivate self
-         *         404 Not Found: User does not exist
-         *         409 Conflict: User already deactivated
-         */
-        post: operations["deactivate_user_api_v1_admin_users__user_id__deactivate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Activate User
-         * @description Activate user account (admin only).
-         *
-         *     Sets user is_active=True. User can log in after activation.
-         *
-         *     Path Parameters:
-         *         user_id: User ID to activate
-         *
-         *     Returns:
-         *         UserStatusResponse confirming activation
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: User lacks admin role
-         *         404 Not Found: User does not exist
-         *         409 Conflict: User already active
-         */
-        post: operations["activate_user_api_v1_admin_users__user_id__activate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/roles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Assign Role
-         * @description Assign role to user (admin only).
-         *
-         *     Replaces existing roles with the new role. Revokes all JWT tokens.
-         *     Admin cannot modify their own roles.
-         *
-         *     Path Parameters:
-         *         user_id: User ID to assign role to
-         *
-         *     Request Body:
-         *         role: Role to assign (admin, member, viewer)
-         *
-         *     Returns:
-         *         RoleAssignmentResponse confirming role assignment
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: User lacks admin role OR trying to modify own roles
-         *         404 Not Found: User does not exist
-         *         409 Conflict: User already has this role
-         *         422 Unprocessable Entity: Invalid role
-         */
-        post: operations["assign_role_api_v1_admin_users__user_id__roles_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/roles/{role}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Role
-         * @description Remove role from user (admin only).
-         *
-         *     Downgrades user to viewer (minimum privilege). Revokes all JWT tokens.
-         *     Admin cannot remove their own admin role.
-         *
-         *     Path Parameters:
-         *         user_id: User ID to remove role from
-         *         role: Role to remove (admin, member)
-         *
-         *     Returns:
-         *         RoleAssignmentResponse confirming role removal
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: User lacks admin role OR trying to remove own admin role
-         *         404 Not Found: User does not exist OR user doesn't have this role
-         *         422 Unprocessable Entity: Invalid role or attempting to remove viewer role
-         */
-        delete: operations["remove_role_api_v1_admin_users__user_id__roles__role__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/debug/llm-routing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Llm Routing Health
-         * @description Get LLM provider health and routing status (admin only).
-         *
-         *     Returns detailed health metrics for all LLM providers including:
-         *     - Current health status (HEALTHY, DEGRADED, UNHEALTHY, UNKNOWN)
-         *     - Consecutive failure counts
-         *     - Average latency
-         *     - Sticky routing status
-         *     - Last success/failure timestamps
-         *
-         *     Returns:
-         *         Dict with provider health summary and routing configuration
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: User lacks admin role
-         *         503 Service Unavailable: LLM provider not configured
-         */
-        get: operations["get_llm_routing_health_api_v1_admin_debug_llm_routing_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/llm/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Llm Config
-         * @description Get LLM provider configuration and status.
-         *
-         *     Returns the current primary provider, fallback chain, and per-provider
-         *     status including health, connectivity, and available models. API keys
-         *     are never exposed — only a boolean indicating whether one is configured.
-         *
-         *     Available to any authenticated user (standalone deployment) or admin (cloud).
-         *     Route-level access control is handled by the dashboard's LLMConfigRoute guard.
-         *
-         *     Returns:
-         *         LLMConfigResponse with provider details and fallback chain
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         503 Service Unavailable: LLM provider not initialized
-         */
-        get: operations["get_llm_config_api_v1_admin_llm_config_get"];
-        /**
-         * Update Llm Config
-         * @description Update LLM provider configuration.
-         *
-         *     Persists configuration changes to the database as overrides that take
-         *     precedence over environment variables. After saving, the settings
-         *     singleton and provider registry are reset so changes take effect
-         *     immediately without a restart.
-         *
-         *     Accepts partial updates — only provided fields are changed.
-         *
-         *     Returns:
-         *         LLMConfigUpdateResponse with list of updated keys
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         403 Forbidden: Standalone deployment (config is read-only)
-         *         422 Unprocessable Entity: Invalid provider name
-         *         503 Service Unavailable: LLM provider not initialized
-         */
-        put: operations["update_llm_config_api_v1_admin_llm_config_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/llm/config/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check Llm Connection
-         * @description Test connectivity to a specific LLM provider.
-         *
-         *     Sends a minimal prompt to the specified provider to verify that:
-         *     1. The API key is valid
-         *     2. The provider endpoint is reachable
-         *     3. The configured model responds
-         *
-         *     This does NOT use the fallback chain — it tests the specific provider directly.
-         *
-         *     Returns:
-         *         LLMConnectionTestResponse with connectivity result and latency
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         *         422 Unprocessable Entity: Unknown provider name
-         *         503 Service Unavailable: LLM provider not initialized
-         */
-        post: operations["check_llm_connection_api_v1_admin_llm_config_test_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/config/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Env Config Status
-         * @description Get environment configuration status (read-only).
-         *
-         *     Returns the current deployment configuration including auth mode,
-         *     storage backends, and security settings. This is informational only —
-         *     configuration changes require editing environment variables and restarting.
-         *
-         *     Returns:
-         *         EnvConfigStatusResponse with current environment configuration
-         *
-         *     Raises:
-         *         401 Unauthorized: No valid JWT token
-         */
-        get: operations["get_env_config_status_api_v1_admin_config_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/cases": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List All Cases
-         * @description List cases across all users/orgs for a platform-admin (ADR-012 D9).
-         *
-         *     Standalone serves full summaries; cloud serves metadata-only rows. See the
-         *     module docstring for why the split falls where it does.
-         */
-        get: operations["list_all_cases_api_v1_admin_cases_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/cases/{case_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Open Case Content
-         * @description Open one case's **content** as an operator (ADR-012 D9).
-         *
-         *     Standalone serves it under standing access, recorded but not gated. Cloud
-         *     requires a live break-glass grant naming this case.
-         *
-         *     This is a separate endpoint from ``GET /api/v1/cases/{case_id}`` rather than
-         *     an operator arm on that route's owner ∪ shared-to-my-teams check. That check
-         *     is the single-case gate transitively guarding reports, exports, analytics and
-         *     messages, and it runs for every ordinary user request — widening it would
-         *     widen all of those at once. Keeping the elevated path separate is also what
-         *     makes the Standalone All Cases view openable (#846) without touching the
-         *     user-facing route.
-         */
-        get: operations["open_case_content_api_v1_admin_cases__case_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/cases/{case_id}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Open Case Transcript
-         * @description Open one case's **transcript** as an operator (ADR-012 D9).
-         *
-         *     Same gate, same audit action and same envelope as the case-detail read: a
-         *     transcript is content by any reading of D9, and splitting the two surfaces
-         *     across different rules would let one of them drift.
-         */
-        get: operations["open_case_transcript_api_v1_admin_cases__case_id__messages_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Grants
-         * @description List break-glass grants, newest first.
-         *
-         *     Deliberately **not** scoped to the calling operator. Who holds access to a
-         *     tenant's content, and until when, is the governance question this surface
-         *     exists to answer; an operator who could only see their own grants could not
-         *     review anyone else's. Grants carry no case content — a reason, a case id and
-         *     a window — so reading them needs no grant of its own, the same reasoning
-         *     that lets the audit trail be read in Cloud.
-         */
-        get: operations["list_grants_api_v1_admin_grants_get"];
-        put?: never;
-        /**
-         * Create Grant
-         * @description Mint a break-glass grant over one case (ADR-012 D9).
-         *
-         *     The grant covers exactly the case named, expires after ``ttl_minutes``, and
-         *     cannot be extended — needing longer means minting a new one with a fresh
-         *     reason, so a grant can never converge on standing access.
-         *
-         *     An operator mints their own grant, and it is live immediately. The control
-         *     is the justification, the window, and an immutable trail of every read taken
-         *     under it — not a second party's consent. Customer-initiated approval is the
-         *     stronger posture ADR-012 D9 describes as the ideal; the grant carries the
-         *     ``approval_state`` machine that will drive it, so adding it later is a new
-         *     transition rather than a reshaping of this endpoint or of the read gate.
-         *
-         *     Nothing here touches tenant data: the request is not validated against the
-         *     case it names. See ``build_grant`` for why that is the more secure choice.
-         */
-        post: operations["create_grant_api_v1_admin_grants_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/grants/{grant_id}/revoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revoke Grant
-         * @description End a grant before its TTL lapses.
-         *
-         *     Any operator may revoke any grant, including one they do not hold: shortening
-         *     someone's access is the safe direction, and requiring ownership would mean a
-         *     grant could outlive the only person able to withdraw it.
-         *
-         *     Idempotent — revoking an already-revoked grant leaves the original
-         *     ``revoked_at`` in place rather than moving the record of when access ended.
-         */
-        post: operations["revoke_grant_api_v1_admin_grants__grant_id__revoke_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/debug/routes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Debug Routes
-         * @description List all registered routes (path + methods).
-         */
-        get: operations["debug_routes_debug_routes_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/debug/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Debug Health
-         * @description Minimal debug health endpoint.
-         */
-        get: operations["debug_health_debug_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/debug/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Debug Config
-         * @description Get current configuration summary including active preset.
-         *
-         *     Returns information about:
-         *     - Active configuration preset (if any)
-         *     - Environment settings
-         *     - Storage backend types
-         *     - LLM provider configuration
-         *     - Protection settings
-         *
-         *     Useful for debugging configuration issues and verifying preset application.
-         */
-        get: operations["debug_config_debug_config_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/debug/llm-providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Debug Llm Providers
-         * @description Get current LLM provider status and fallback chain.
-         */
-        get: operations["debug_llm_providers_debug_llm_providers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Root
-         * @description Root endpoint with API information.
-         */
-        get: operations["root__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/meta/capabilities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Capabilities
-         * @description Return backend capabilities for browser extension configuration.
-         *
-         *     This endpoint is called by the FaultMaven Copilot browser extension
-         *     to detect the deployment mode and configure itself accordingly.
-         *
-         *     Returns:
-         *         Backend capabilities including deployment mode, dashboard URL, and feature flags
-         */
-        get: operations["get_capabilities_v1_meta_capabilities_get"];
+        get: operations["list_my_teams_api_v1_teams_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3396,6 +3538,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/components/{component_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Check Component
+         * @description Get detailed health information for a specific component.
+         */
+        get: operations["health_check_component_health_components__component_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/dependencies": {
         parameters: {
             query?: never;
@@ -3408,26 +3570,6 @@ export interface paths {
          * @description Enhanced detailed health check for all dependencies with SLA metrics
          */
         get: operations["health_check_dependencies_health_dependencies_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/readiness": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Readiness
-         * @description Readiness probe: return unready if Redis or ChromaDB are unavailable.
-         */
-        get: operations["readiness_readiness_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3456,46 +3598,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/health/sla": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health Check Sla
-         * @description Get SLA status and metrics for all components.
-         */
-        get: operations["health_check_sla_health_sla_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health/components/{component_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health Check Component
-         * @description Get detailed health information for a specific component.
-         */
-        get: operations["health_check_component_health_components__component_name__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health/patterns": {
         parameters: {
             query?: never;
@@ -3516,7 +3618,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/metrics/performance": {
+    "/health/sla": {
         parameters: {
             query?: never;
             header?: never;
@@ -3524,30 +3626,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Performance Metrics
-         * @description Get comprehensive performance metrics.
+         * Health Check Sla
+         * @description Get SLA status and metrics for all components.
          */
-        get: operations["get_performance_metrics_metrics_performance_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/metrics/realtime": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Realtime Metrics
-         * @description Get real-time performance metrics.
-         */
-        get: operations["get_realtime_metrics_metrics_realtime_get"];
+        get: operations["health_check_sla_health_sla_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3596,7 +3678,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/optimization/trigger-cleanup": {
+    "/metrics/performance": {
         parameters: {
             query?: never;
             header?: never;
@@ -3604,10 +3686,77 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Trigger System Cleanup
-         * @description Trigger comprehensive system cleanup and optimization.
+         * Get Performance Metrics
+         * @description Get comprehensive performance metrics.
          */
-        get: operations["trigger_system_cleanup_admin_optimization_trigger_cleanup_get"];
+        get: operations["get_performance_metrics_metrics_performance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/metrics/realtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Realtime Metrics
+         * @description Get real-time performance metrics.
+         */
+        get: operations["get_realtime_metrics_metrics_realtime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness
+         * @description Readiness probe: return unready if Redis or ChromaDB are unavailable.
+         */
+        get: operations["readiness_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/meta/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Capabilities
+         * @description Return backend capabilities for browser extension configuration.
+         *
+         *     This endpoint is called by the FaultMaven Copilot browser extension
+         *     and the Dashboard to detect the deployment mode and gate features
+         *     (e.g. team sharing, the org/team management console) accordingly.
+         *
+         *     Returns:
+         *         Backend capabilities including deployment mode, dashboard URL, and feature flags
+         */
+        get: operations["get_capabilities_v1_meta_capabilities_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3630,26 +3779,21 @@ export interface components {
          */
         ActionAttempt: {
             /**
-             * Attempt Id
-             * @description Unique attempt identifier
-             */
-            attempt_id?: string;
-            /**
              * Action Id
              * @description ProposedAction this attempt relates to
              */
             action_id: string;
             /**
-             * User Message
-             * @description The user's message containing attempt results
+             * Attempt Id
+             * @description Unique attempt identifier
              */
-            user_message: string;
+            attempt_id?: string;
             /**
-             * Submitted At
-             * Format: date-time
-             * @description When the attempt was submitted
+             * Compliance Confidence
+             * @description Confidence that user complied with the proposed action
+             * @default 0
              */
-            submitted_at?: string;
+            compliance_confidence: number;
             /**
              * Compliance Detected
              * @description Whether the user appears to have executed the proposed action
@@ -3657,117 +3801,16 @@ export interface components {
              */
             compliance_detected: boolean;
             /**
-             * Compliance Confidence
-             * @description Confidence that user complied with the proposed action
-             * @default 0
-             */
-            compliance_confidence: number;
-        };
-        /**
-         * AdminCaseListResponse
-         * @description The **standalone** operator case list: full summaries, titles included.
-         *
-         *     Self-hosted content reads are audited but not gated (ADR-012 D9) — the
-         *     operator and the data controller are the same party.
-         */
-        AdminCaseListResponse: {
-            /** Total Count */
-            total_count: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /** Has More */
-            has_more: boolean;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            view: "full";
-            /** Cases */
-            cases: components["schemas"]["CaseSummary"][];
-        };
-        /**
-         * AdminCaseMetadata
-         * @description One case as *ambient metadata* — everything except its content.
-         *
-         *     The cloud operator row (ADR-012 D9). It answers "which tenant has cases
-         *     stuck in INVESTIGATING, and since when" without disclosing what any case is
-         *     about. Every field here is either system-assigned (ids, timestamps, counts)
-         *     or drawn from a closed vocabulary (``state``, ``source``,
-         *     ``closure_reason``), so no field can carry text a user typed.
-         *
-         *     This is a separate model rather than ``CaseSummary`` with ``title=None`` on
-         *     purpose: the omission is then structural. There is no code path that can
-         *     populate a title here, and a client cannot confuse "withheld by policy"
-         *     with "this case has no title".
-         */
-        AdminCaseMetadata: {
-            /** Case Id */
-            case_id: string;
-            state: components["schemas"]["CaseState"];
-            /**
-             * Created At
+             * Submitted At
              * Format: date-time
+             * @description When the attempt was submitted
              */
-            created_at: string;
+            submitted_at?: string;
             /**
-             * Updated At
-             * Format: date-time
+             * User Message
+             * @description The user's message containing attempt results
              */
-            updated_at: string;
-            /**
-             * Last Activity At
-             * Format: date-time
-             */
-            last_activity_at: string;
-            /** Resolved At */
-            resolved_at: string | null;
-            /** Closed At */
-            closed_at: string | null;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
-            /**
-             * Source
-             * @default copilot
-             */
-            source: string;
-            /** Closure Reason */
-            closure_reason: string | null;
-            /** Current Turn */
-            current_turn: number;
-            /** Milestones Completed */
-            milestones_completed: number;
-            /**
-             * Total Milestones
-             * @default 8
-             */
-            total_milestones: number;
-            /** Is Terminal */
-            is_terminal: boolean;
-        };
-        /**
-         * AdminCaseMetadataListResponse
-         * @description The **cloud** operator case list: ambient metadata, no content.
-         */
-        AdminCaseMetadataListResponse: {
-            /** Total Count */
-            total_count: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /** Has More */
-            has_more: boolean;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            view: "metadata";
-            /** Cases */
-            cases: components["schemas"]["AdminCaseMetadata"][];
+            user_message: string;
         };
         /**
          * AdminCaseContentResponse
@@ -3779,8 +3822,32 @@ export interface components {
              * @enum {string}
              */
             access: "standing" | "break_glass";
-            grant?: components["schemas"]["BreakGlassGrant"] | null;
             case: components["schemas"]["CaseDetail"];
+            grant?: components["schemas"]["BreakGlassGrant"] | null;
+        };
+        /**
+         * AdminCaseListResponse
+         * @description The **standalone** operator case list: full summaries, titles included.
+         *
+         *     Self-hosted content reads are audited but not gated (ADR-012 D9) — the
+         *     operator and the data controller are the same party.
+         */
+        AdminCaseListResponse: {
+            /** Cases */
+            cases: components["schemas"]["CaseSummary"][];
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total Count */
+            total_count: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            view: "full";
         };
         /**
          * AdminCaseMessagesResponse
@@ -3800,143 +3867,132 @@ export interface components {
             messages: components["schemas"]["CaseMessagesResponse"];
         };
         /**
-         * BreakGlassGrant
-         * @description A grant as the operator surface sees it.
+         * AdminCaseMetadata
+         * @description One case as *ambient metadata* — everything except its content.
          *
-         *     ``is_live`` is computed server-side and served alongside the raw fields
-         *     rather than left for the client to derive: approval state, revocation and
-         *     expiry are three independent ways to stop authorising, and a UI that
-         *     reimplements that predicate can disagree with the gate that enforces it.
+         *     The cloud operator row (ADR-012 D9). It answers "which tenant has cases
+         *     stuck in INVESTIGATING, and since when" without disclosing what any case is
+         *     about. Every field here is either system-assigned (ids, timestamps, counts)
+         *     or drawn from a closed vocabulary (``state``, ``source``,
+         *     ``closure_reason``), so no field can carry text a user typed.
+         *
+         *     This is a separate model rather than ``CaseSummary`` with ``title=None`` on
+         *     purpose: the omission is then structural. There is no code path that can
+         *     populate a title here, and a client cannot confuse "withheld by policy"
+         *     with "this case has no title".
          */
-        BreakGlassGrant: {
-            /** Grant Id */
-            grant_id: string;
-            /** Operator User Id */
-            operator_user_id: string;
-            /** Operator Username */
-            operator_username?: string | null;
-            /** Target Case Id */
-            target_case_id: string;
-            /** Target Organization Id */
-            target_organization_id: string;
-            /** Reason */
-            reason: string;
+        AdminCaseMetadata: {
+            /** Case Id */
+            case_id: string;
+            /** Closed At */
+            closed_at: string | null;
+            /** Closure Reason */
+            closure_reason: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Current Turn */
+            current_turn: number;
+            /** Is Terminal */
+            is_terminal: boolean;
             /**
-             * Expires At
+             * Last Activity At
              * Format: date-time
              */
-            expires_at: string;
-            /** Revoked At */
-            revoked_at?: string | null;
-            /** Revoked By */
-            revoked_by?: string | null;
-            /** Approval State */
-            approval_state: string;
-            /** Is Live */
-            is_live: boolean;
-            /** Deployment Mode */
-            deployment_mode?: string | null;
+            last_activity_at: string;
+            /** Milestones Completed */
+            milestones_completed: number;
+            /** Organization Id */
+            organization_id: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /**
+             * Source
+             * @default copilot
+             */
+            source: string;
+            state: components["schemas"]["CaseState"];
+            /**
+             * Total Milestones
+             * @default 8
+             */
+            total_milestones: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id: string;
         };
         /**
-         * BreakGlassGrantListResponse
-         * @description Paginated grants, newest first.
+         * AdminCaseMetadataListResponse
+         * @description The **cloud** operator case list: ambient metadata, no content.
          */
-        BreakGlassGrantListResponse: {
-            /** Grants */
-            grants: components["schemas"]["BreakGlassGrant"][];
-            /** Total Count */
-            total_count: number;
+        AdminCaseMetadataListResponse: {
+            /** Cases */
+            cases: components["schemas"]["AdminCaseMetadata"][];
+            /** Has More */
+            has_more: boolean;
             /** Limit */
             limit: number;
             /** Offset */
             offset: number;
-            /** Has More */
-            has_more: boolean;
-        };
-        /**
-         * BreakGlassGrantRequest
-         * @description Ask for time-boxed access to ONE case's content (ADR-012 D9).
-         *
-         *     The organization is supplied by the caller rather than looked up from the
-         *     case, because under ``TENANT_PROVIDER=multi`` the case row is unreadable
-         *     until the request has already rebound its RLS scope to that organization.
-         *     The operator has both identifiers from the metadata list. A wrong pair fails
-         *     closed on its own — the subsequent read finds nothing and 404s — so the
-         *     endpoint never has to become an existence oracle for other tenants' cases.
-         */
-        BreakGlassGrantRequest: {
+            /** Total Count */
+            total_count: number;
             /**
-             * Case Id
-             * @description The single case this grant covers
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            case_id: string;
-            /**
-             * Organization Id
-             * @description Organization owning the case; the RLS scope the read rebinds to
-             */
-            organization_id: string;
-            /**
-             * Reason
-             * @description Why this content must be read. Recorded on every access taken.
-             */
-            reason: string;
-            /**
-             * Ttl Minutes
-             * @description How long the grant stays live. Cannot be extended later.
-             * @default 60
-             */
-            ttl_minutes: number;
+            view: "metadata";
         };
         /**
          * AdminUserListItem
          * @description User list item for admin endpoints (with full info).
          */
         AdminUserListItem: {
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Email */
             email: string;
             /** Full Name */
             full_name: string;
-            /** Roles */
-            roles: string[];
             /** Is Active */
             is_active: boolean;
             /** Is Verified */
             is_verified: boolean;
             /** Last Login At */
             last_login_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
+            /** Organization Id */
+            organization_id: string;
+            /** Roles */
+            roles: string[];
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
+            /** User Id */
+            user_id: string;
         };
         /**
          * AdminUserListResponse
          * @description Admin user list response with pagination.
          */
         AdminUserListResponse: {
-            /** Users */
-            users: components["schemas"]["AdminUserListItem"][];
-            /** Total */
-            total: number;
             /** Limit */
             limit: number;
             /** Offset */
             offset: number;
+            /** Total */
+            total: number;
+            /** Users */
+            users: components["schemas"]["AdminUserListItem"][];
         };
         /**
          * AgentExecutionRequest
@@ -3952,11 +4008,6 @@ export interface components {
          */
         AgentExecutionRequest: {
             /**
-             * User Message
-             * @description User's question or request for the agent
-             */
-            user_message: string;
-            /**
              * Agent Type
              * @description Type of agent to execute (investigator, debugger, researcher, validator, reporter)
              * @default investigator
@@ -3968,6 +4019,11 @@ export interface components {
              * @default true
              */
             stream: boolean;
+            /**
+             * User Message
+             * @description User's question or request for the agent
+             */
+            user_message: string;
         };
         /**
          * AgentExecutionResponse
@@ -3976,21 +4032,21 @@ export interface components {
          *     Used when stream=false in the request.
          */
         AgentExecutionResponse: {
-            /** Execution Id */
-            execution_id: string;
-            /** Status */
-            status: string;
             /** Agent Response */
             agent_response: string;
-            /** Tokens Used */
-            tokens_used: number;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Execution Id */
+            execution_id: string;
             /**
              * Started At
              * Format: date-time
              */
             started_at: string;
-            /** Completed At */
-            completed_at?: string | null;
+            /** Status */
+            status: string;
+            /** Tokens Used */
+            tokens_used: number;
             /**
              * Tool Calls
              * @default []
@@ -4010,22 +4066,26 @@ export interface components {
          */
         AttachmentResult: {
             /**
+             * Duplicate Of
+             * @description If set, this attachment was a per-case content-hash duplicate of an earlier upload. No new UploadedFile was created; this field carries the existing file_id. Frontend should render a non-blocking toast.
+             */
+            duplicate_of?: string | null;
+            /**
+             * Duplicate Turn
+             * @description Turn number where the original was uploaded (for toast text).
+             */
+            duplicate_turn?: number | null;
+            /**
              * File Id
              * @description UploadedFile row identifier for this attachment.
              */
             file_id: string;
-            /** Filename */
-            filename: string;
             /** File Size */
             file_size: number;
+            /** Filename */
+            filename: string;
             /** Processing Status */
             processing_status: string;
-            /**
-             * Uploaded At
-             * @description ISO 8601 timestamp of when the attachment was processed
-             * @default
-             */
-            uploaded_at: string;
             /**
              * Source Type
              * @description Data-type classification from preprocessing: logs | metrics | configuration | code | text | image
@@ -4038,15 +4098,11 @@ export interface components {
              */
             upload_source: string;
             /**
-             * Duplicate Of
-             * @description If set, this attachment was a per-case content-hash duplicate of an earlier upload. No new UploadedFile was created; this field carries the existing file_id. Frontend should render a non-blocking toast.
+             * Uploaded At
+             * @description ISO 8601 timestamp of when the attachment was processed
+             * @default
              */
-            duplicate_of?: string | null;
-            /**
-             * Duplicate Turn
-             * @description Turn number where the original was uploaded (for toast text).
-             */
-            duplicate_turn?: number | null;
+            uploaded_at: string;
         };
         /**
          * AuthConfigResponse
@@ -4060,11 +4116,11 @@ export interface components {
             auth_mode: string;
             /** Login Endpoint */
             login_endpoint?: string | null;
+            oauth?: components["schemas"]["OAuthConfigResponse"] | null;
             /** Register Endpoint */
             register_endpoint?: string | null;
             /** Supports Registration */
             supports_registration: boolean;
-            oauth?: components["schemas"]["OAuthConfigResponse"] | null;
         };
         /**
          * AuthSessionCreateRequest
@@ -4076,6 +4132,19 @@ export interface components {
          */
         AuthSessionCreateRequest: {
             /**
+             * Client Id
+             * @description Client/device identifier for session resumption. If provided, existing session for this client will be resumed.
+             * @example 550e8400-e29b-41d4-a716-446655440000
+             */
+            client_id?: string | null;
+            /** Metadata */
+            metadata?: Record<string, never> | null;
+            /**
+             * Session Type
+             * @default troubleshooting
+             */
+            session_type: string | null;
+            /**
              * Timeout Minutes
              * @description Session timeout in minutes. Min: 60 (1 hour), Max: 480 (8 hours), Default: 180 (3 hours)
              * @default 180
@@ -4084,19 +4153,6 @@ export interface components {
              * @example 360
              */
             timeout_minutes: number | null;
-            /**
-             * Session Type
-             * @default troubleshooting
-             */
-            session_type: string | null;
-            /** Metadata */
-            metadata?: Record<string, never> | null;
-            /**
-             * Client Id
-             * @description Client/device identifier for session resumption. If provided, existing session for this client will be resumed.
-             * @example 550e8400-e29b-41d4-a716-446655440000
-             */
-            client_id?: string | null;
         };
         /**
          * AuthSessionStatus
@@ -4115,6 +4171,7 @@ export interface components {
          * @example {
          *       "access_token": "550e8400-e29b-41d4-a716-446655440000",
          *       "expires_in": 86400,
+         *       "refresh_token": "770e8400-e29b-41d4-a716-446655442222",
          *       "session_id": "session-550e8400-e29b-41d4-a716-446655440000",
          *       "token_type": "bearer",
          *       "user": {
@@ -4138,23 +4195,89 @@ export interface components {
              */
             access_token: string;
             /**
-             * Token Type
-             * @description Token type (always 'bearer')
-             * @default bearer
-             */
-            token_type: string;
-            /**
              * Expires In
              * @description Token expiration time in seconds
              */
             expires_in: number;
             /**
+             * Refresh Token
+             * @description Long-lived refresh token used to mint a new access token via POST /auth/refresh without re-authenticating. Issued in local mode; clients should persist it and refresh before the access token expires.
+             */
+            refresh_token?: string | null;
+            /**
              * Session Id
              * @description Session identifier for multi-turn conversations
              */
             session_id: string;
+            /**
+             * Token Type
+             * @description Token type (always 'bearer')
+             * @default bearer
+             */
+            token_type: string;
             /** @description Authenticated user profile */
             user: components["schemas"]["UserProfile"];
+        };
+        /**
+         * AuthorizationApprovalRequest
+         * @description User's approval/denial of authorization request (POST body).
+         *
+         *     Submitted by Dashboard after user reviews consent screen.
+         */
+        AuthorizationApprovalRequest: {
+            /**
+             * Approved
+             * @description True if user approved, False if denied
+             */
+            approved: boolean;
+            /**
+             * Client Id
+             * @description OAuth client ID
+             */
+            client_id: string;
+            /**
+             * Code Challenge
+             * @description PKCE code challenge
+             */
+            code_challenge: string;
+            /**
+             * Code Challenge Method
+             * @default S256
+             */
+            code_challenge_method: "S256" | null;
+            /**
+             * Redirect Uri
+             * @description Callback URI
+             */
+            redirect_uri: string;
+            /**
+             * Scope
+             * @description Requested scopes
+             */
+            scope: string;
+            /**
+             * State
+             * @description Client state
+             */
+            state: string;
+        };
+        /**
+         * AuthorizationResponse
+         * @description OAuth authorization response (redirect parameters).
+         *
+         *     Extension receives this as query parameters after redirect.
+         */
+        AuthorizationResponse: {
+            /**
+             * Code
+             * @description Authorization code (10 minute expiry)
+             */
+            code: string;
+            /**
+             * State
+             * @description Client state (echoed back for verification)
+             */
+            state: string;
         };
         /**
          * AvailableScopesResponse
@@ -4193,59 +4316,146 @@ export interface components {
             /** Team Id */
             team_id?: string | null;
         };
-        /** Body_share_case_api_v1_cases__case_id__share_post */
-        Body_share_case_api_v1_cases__case_id__share_post: {
+        /** Body_share_case_with_team_api_v1_cases__case_id__team_shares_post */
+        Body_share_case_with_team_api_v1_cases__case_id__team_shares_post: {
             /**
-             * Target User Id
-             * @description User ID to share with
+             * Team Id
+             * @description Team ID to share the case with
              */
-            target_user_id: string;
-            /**
-             * Role
-             * @description Participant role: owner, collaborator, viewer
-             * @default viewer
-             */
-            role: string;
+            team_id: string;
         };
         /** Body_submit_turn_api_v1_cases__case_id__turns_post */
         Body_submit_turn_api_v1_cases__case_id__turns_post: {
-            /** Query */
-            query?: string | null;
             /**
              * Files
              * @default []
              */
             files: string[];
-            /** Pasted Content */
-            pasted_content?: string | null;
-            /** Intent Type */
-            intent_type?: string | null;
-            /** Intent Data */
-            intent_data?: string | null;
             /** Input Type */
             input_type?: string | null;
+            /** Intent Data */
+            intent_data?: string | null;
+            /** Intent Type */
+            intent_type?: string | null;
+            /** Pasted Content */
+            pasted_content?: string | null;
+            /** Query */
+            query?: string | null;
             /** Source Url */
             source_url?: string | null;
         };
         /** Body_upload_document_api_v1_knowledge_documents_post */
         Body_upload_document_api_v1_knowledge_documents_post: {
+            /** Category */
+            category?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Document Type */
+            document_type: string;
             /**
              * File
              * Format: binary
              */
             file: string;
-            /** Title */
-            title: string;
-            /** Document Type */
-            document_type: string;
-            /** Category */
-            category?: string | null;
-            /** Tags */
-            tags?: string | null;
             /** Source Url */
             source_url?: string | null;
-            /** Description */
-            description?: string | null;
+            /** Tags */
+            tags?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BreakGlassGrant
+         * @description A grant as the operator surface sees it.
+         *
+         *     ``is_live`` is computed server-side and served alongside the raw fields
+         *     rather than left for the client to derive: approval state, revocation and
+         *     expiry are three independent ways to stop authorising, and a UI that
+         *     reimplements that predicate can disagree with the gate that enforces it.
+         */
+        BreakGlassGrant: {
+            /** Approval State */
+            approval_state: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deployment Mode */
+            deployment_mode?: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Grant Id */
+            grant_id: string;
+            /** Is Live */
+            is_live: boolean;
+            /** Operator User Id */
+            operator_user_id: string;
+            /** Operator Username */
+            operator_username?: string | null;
+            /** Reason */
+            reason: string;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /** Revoked By */
+            revoked_by?: string | null;
+            /** Target Case Id */
+            target_case_id: string;
+            /** Target Organization Id */
+            target_organization_id: string;
+        };
+        /**
+         * BreakGlassGrantListResponse
+         * @description Paginated grants, newest first.
+         */
+        BreakGlassGrantListResponse: {
+            /** Grants */
+            grants: components["schemas"]["BreakGlassGrant"][];
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total Count */
+            total_count: number;
+        };
+        /**
+         * BreakGlassGrantRequest
+         * @description Ask for time-boxed access to ONE case's content (ADR-012 D9).
+         *
+         *     The organization is supplied by the caller rather than looked up from the
+         *     case, because under ``TENANT_PROVIDER=multi`` the case row is unreadable
+         *     until the request has already rebound its RLS scope to that organization.
+         *     The operator has both identifiers from the metadata list. A wrong pair fails
+         *     closed on its own — the subsequent read finds nothing and 404s — so the
+         *     endpoint never has to become an existence oracle for other tenants' cases.
+         */
+        BreakGlassGrantRequest: {
+            /**
+             * Case Id
+             * @description The single case this grant covers
+             */
+            case_id: string;
+            /**
+             * Organization Id
+             * @description Organization owning the case; the RLS scope the read rebinds to
+             */
+            organization_id: string;
+            /**
+             * Reason
+             * @description Why this content must be read. Recorded on every access taken.
+             */
+            reason: string;
+            /**
+             * Ttl Minutes
+             * @description How long the grant stays live. Cannot be extended later.
+             * @default 60
+             */
+            ttl_minutes: number;
         };
         /**
          * Case
@@ -4254,25 +4464,54 @@ export interface components {
          */
         Case: {
             /**
+             * Action Attempts
+             * @description User attempts to execute proposed actions (compliance tracking)
+             */
+            action_attempts?: components["schemas"]["ActionAttempt"][];
+            /**
+             * Action History
+             * @description Complete history of case actions (phase transitions and dispositions)
+             */
+            action_history?: components["schemas"]["CaseAction"][];
+            /**
              * Case Id
              * @description Unique case identifier
              */
             case_id?: string;
             /**
-             * User Id
-             * @description User who created the case. NULL after the originating user is deleted (FK SET NULL). Required to be non-empty at creation time; creation logic enforces this separately from Pydantic validation.
+             * Causal Edges
+             * @description Directed cause->effect edges (and_group marks AND-sets)
              */
-            user_id?: string | null;
+            causal_edges?: components["schemas"]["CausalEdge"][];
             /**
-             * Organization Id
-             * @description Organization this case belongs to
+             * Causal Nodes
+             * @description Causal-graph nodes, keyed by node_id (D + intermediate + roots)
              */
-            organization_id: string;
+            causal_nodes?: {
+                [key: string]: components["schemas"]["CausalNode"];
+            };
             /**
-             * Title
-             * @description Short case title for list views and headers (e.g., 'API Performance Issue')
+             * Closed At
+             * @description When case reached terminal state (RESOLVED or CLOSED)
              */
-            title: string;
+            closed_at?: string | null;
+            /**
+             * Closure Reason
+             * @description Why case was closed: resolved | abandoned | escalated | inquiry_only | duplicate | other
+             */
+            closure_reason?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When case was created
+             */
+            created_at?: string;
+            /**
+             * Current Turn
+             * @description Current turn number (increments with each user-agent exchange)
+             * @default 0
+             */
+            current_turn: number;
             /**
              * Description
              * @description Confirmed problem description - canonical, user-facing, displayed prominently in UI.
@@ -4289,71 +4528,67 @@ export interface components {
              */
             description: string;
             /**
-             * @description Current lifecycle state (phase or disposition)
-             * @default inquiry
-             */
-            state: components["schemas"]["CaseState"];
-            /**
-             * Action History
-             * @description Complete history of case actions (phase transitions and dispositions)
-             */
-            action_history?: components["schemas"]["CaseAction"][];
-            /**
-             * Closure Reason
-             * @description Why case was closed: resolved | abandoned | escalated | inquiry_only | duplicate | other
-             */
-            closure_reason?: string | null;
-            /**
              * Disposition Eligibility
              * @description Per-disposition eligibility view for the case-action dropdown. Denormalized read view maintained at the single chokepoint ``CaseRepository.save()`` via ``derive_disposition_eligibility``. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of ``ready`` / ``needs_info`` / ``not_eligible``. Frontend uses this to gate Resolve/Close affordances on the current case content, not just the structural action graph. Always populated for persisted cases; may be None on in-memory Case objects before the first save.
              */
             disposition_eligibility?: {
                 [key: string]: string;
             } | null;
+            /** @description Generated documentation and lessons learned */
+            documentation?: components["schemas"]["DocumentationData"];
+            /** @description Escalated to human expert */
+            escalation_state?: components["schemas"]["EscalationState"] | null;
             /**
-             * Pending Transition
-             * @description Pending status transition awaiting user confirmation (User-Agent Handshake pattern).
-             *
-             *             Used for terminal transitions that require explicit user confirmation:
-             *             - to_state: Target status (str)
-             *             - reason: Why transition is being proposed (str)
-             *             - summary: Agent's explanation to user (str)
-             *             - evidence_ids: Supporting evidence (List[str])
-             *             - proposed_at: When transition was proposed (str ISO datetime)
-             *             - proposed_by: Who proposed it ("agent" | "user" | user_id)
-             *
-             *             Cleared after transition executes or is cancelled.
+             * Evidence
+             * @description All evidence collected during investigation
              */
-            pending_transition?: Record<string, never> | null;
+            evidence?: components["schemas"]["Evidence"][];
+            /**
+             * Evidence Needs
+             * @description Demand-side pool: verification requirements the investigation has identified. Created by the LLM at problem-statement confirmation (symptom needs) and at hypothesis creation (causal needs). See evidence-needs-design.md.
+             */
+            evidence_needs?: components["schemas"]["EvidenceNeed"][];
+            /**
+             * Hypotheses
+             * @description Generated hypotheses (key = hypothesis_id)
+             */
+            hypotheses?: {
+                [key: string]: components["schemas"]["Hypothesis"];
+            };
+            /** @description Pre-investigation INQUIRY state data */
+            inquiry?: components["schemas"]["InquiryData"];
+            /**
+             * Investigation Journal
+             * @description Structured log of key findings, decisions, and context. Append-only. Always included in full in LLM context.
+             */
+            investigation_journal?: components["schemas"]["JournalEntry"][];
+            /**
+             * @description Investigation approach: ACTIVE_INCIDENT (speed) vs POST_MORTEM (thoroughness)
+             * @default post_mortem
+             */
+            investigation_strategy: components["schemas"]["InvestigationStrategy"];
+            /**
+             * Kb Context
+             * @description Deterministic KB pre-fetch results injected at key transitions. Populated at INQUIRY→INVESTIGATING (symptom search) and when root_cause_identified completes (remediation search). Included in the LLM context as historical suggestions, not absolute truths.
+             */
+            kb_context?: Record<string, never>[] | null;
+            /**
+             * Last Activity At
+             * Format: date-time
+             * @description Most recent user/agent interaction (for 'updated Xm ago' display)
+             */
+            last_activity_at?: string;
             /**
              * Last Suggestions
              * @description DECIDE suggestions with intent metadata from the last agent turn. Used by the intent resolver to match typed responses against offered choices. Updated after each turn; only suggestions carrying intent metadata are stored.
              */
             last_suggestions?: Record<string, never>[] | null;
             /**
-             * Kb Context
-             * @description Deterministic KB pre-fetch results injected at key transitions. Populated at INQUIRY→INVESTIGATING (symptom search) and when root_cause_identified completes (remediation search). Included in the LLM context as historical suggestions, not absolute truths.
-             */
-            kb_context?: Record<string, never>[] | null;
-            /** @description Milestone-based progress tracking */
-            progress?: components["schemas"]["InvestigationProgress"];
-            /**
-             * Current Turn
-             * @description Current turn number (increments with each user-agent exchange)
+             * Message Count
+             * @description Total number of messages (user + agent combined)
              * @default 0
              */
-            current_turn: number;
-            /**
-             * Turns Without Progress
-             * @description Consecutive turns with no milestone advancement (for stuck detection)
-             * @default 0
-             */
-            turns_without_progress: number;
-            /**
-             * Turn History
-             * @description Complete history of all turns
-             */
-            turn_history?: components["schemas"]["TurnProgress"][];
+            message_count: number;
             /**
              * Messages
              * @description Complete conversation history (user queries + agent responses).
@@ -4377,20 +4612,89 @@ export interface components {
              */
             messages?: Record<string, never>[];
             /**
-             * Message Count
-             * @description Total number of messages (user + agent combined)
-             * @default 0
+             * Organization Id
+             * @description Organization this case belongs to
              */
-            message_count: number;
+            organization_id: string;
             /**
-             * @description Investigation approach: ACTIVE_INCIDENT (speed) vs POST_MORTEM (thoroughness)
-             * @default post_mortem
+             * Pending Transition
+             * @description Pending status transition awaiting user confirmation (User-Agent Handshake pattern).
+             *
+             *             Used for terminal transitions that require explicit user confirmation:
+             *             - to_state: Target status (str)
+             *             - reason: Why transition is being proposed (str)
+             *             - summary: Agent's explanation to user (str)
+             *             - evidence_ids: Supporting evidence (List[str])
+             *             - proposed_at: When transition was proposed (str ISO datetime)
+             *             - proposed_by: Who proposed it ("agent" | "user" | user_id)
+             *             - closure_reason: Derived closure categorization for CLOSED
+             *               proposals (str, set by propose_transition)
+             *             - needs_info: RESOLVED proposal parked while the readiness ask is
+             *               outstanding (bool; resolution NEEDS_INFO flow)
+             *             - re_presented: The confirmation was already re-presented once for
+             *               an ambiguous typed reply; the next non-answer withdraws the
+             *               proposal instead of re-asking (bool; pending-gate escape lane)
+             *
+             *             Cleared after transition executes or is cancelled. propose_transition
+             *             rebuilds the dict from scratch, so the per-proposal flags
+             *             (needs_info / re_presented) reset on every new proposal.
              */
-            investigation_strategy: components["schemas"]["InvestigationStrategy"];
-            /** @description Pre-investigation INQUIRY state data */
-            inquiry?: components["schemas"]["InquiryData"];
+            pending_transition?: Record<string, never> | null;
             /** @description Consolidated verification data (symptom, scope, timeline, changes) */
             problem_verification?: components["schemas"]["ProblemVerification"] | null;
+            /** @description Milestone-based progress tracking */
+            progress?: components["schemas"]["InvestigationProgress"];
+            /**
+             * Proposed Actions
+             * @description Actions proposed by agent for user to execute (evidence-driven framework)
+             */
+            proposed_actions?: components["schemas"]["ProposedAction"][];
+            /**
+             * Resolved At
+             * @description When case reached RESOLVED state
+             */
+            resolved_at?: string | null;
+            /** @description Final root cause determination */
+            root_cause_conclusion?: components["schemas"]["RootCauseConclusion"] | null;
+            /**
+             * Solutions
+             * @description Proposed and applied solutions
+             */
+            solutions?: components["schemas"]["Solution"][];
+            /**
+             * Source
+             * @description Case origin (ADR-012), stamped at creation from the creator's account_kind
+             * @default copilot
+             * @enum {string}
+             */
+            source: "copilot" | "slack" | "api";
+            /**
+             * @description Current lifecycle state (phase or disposition)
+             * @default inquiry
+             */
+            state: components["schemas"]["CaseState"];
+            /**
+             * Title
+             * @description Short case title for list views and headers (e.g., 'API Performance Issue')
+             */
+            title: string;
+            /**
+             * Turn History
+             * @description Complete history of all turns
+             */
+            turn_history?: components["schemas"]["TurnProgress"][];
+            /**
+             * Turns Without Progress
+             * @description Consecutive turns with no milestone advancement (for stuck detection)
+             * @default 0
+             */
+            turns_without_progress: number;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last modification timestamp
+             */
+            updated_at?: string;
             /**
              * Uploaded Files
              * @description All files uploaded to this case (raw file metadata).
@@ -4404,84 +4708,18 @@ export interface components {
              */
             uploaded_files?: components["schemas"]["UploadedFile"][];
             /**
-             * Evidence
-             * @description All evidence collected during investigation
+             * User Id
+             * @description User who created the case. NULL after the originating user is deleted (FK SET NULL). Required to be non-empty at creation time; creation logic enforces this separately from Pydantic validation.
              */
-            evidence?: components["schemas"]["Evidence"][];
-            /**
-             * Evidence Needs
-             * @description Demand-side pool: verification requirements the investigation has identified. Created by the LLM at problem-statement confirmation (symptom needs) and at hypothesis creation (causal needs). See evidence-needs-design.md.
-             */
-            evidence_needs?: components["schemas"]["EvidenceNeed"][];
-            /**
-             * Hypotheses
-             * @description Generated hypotheses (key = hypothesis_id)
-             */
-            hypotheses?: {
-                [key: string]: components["schemas"]["Hypothesis"];
-            };
-            /**
-             * Solutions
-             * @description Proposed and applied solutions
-             */
-            solutions?: components["schemas"]["Solution"][];
-            /**
-             * Proposed Actions
-             * @description Actions proposed by agent for user to execute (evidence-driven framework)
-             */
-            proposed_actions?: components["schemas"]["ProposedAction"][];
-            /**
-             * Action Attempts
-             * @description User attempts to execute proposed actions (compliance tracking)
-             */
-            action_attempts?: components["schemas"]["ActionAttempt"][];
-            /** @description Agent current best understanding (updated iteratively) */
-            working_conclusion?: components["schemas"]["WorkingConclusion"] | null;
-            /** @description Final root cause determination */
-            root_cause_conclusion?: components["schemas"]["RootCauseConclusion"] | null;
-            /**
-             * Investigation Journal
-             * @description Structured log of key findings, decisions, and context. Append-only. Always included in full in LLM context.
-             */
-            investigation_journal?: components["schemas"]["JournalEntry"][];
-            /** @description Escalated to human expert */
-            escalation_state?: components["schemas"]["EscalationState"] | null;
-            /** @description Generated documentation and lessons learned */
-            documentation?: components["schemas"]["DocumentationData"];
-            /**
-             * Created At
-             * Format: date-time
-             * @description When case was created
-             */
-            created_at?: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last modification timestamp
-             */
-            updated_at?: string;
-            /**
-             * Last Activity At
-             * Format: date-time
-             * @description Most recent user/agent interaction (for 'updated Xm ago' display)
-             */
-            last_activity_at?: string;
+            user_id?: string | null;
             /**
              * Version
              * @description Optimistic concurrency control token. Incremented on every successful aggregate save. Callers that read-modify-write a case must pass the loaded version back through save(case); `save` raises StaleCaseException on mismatch. Scoped single-row UPDATEs (update_evidence_vectorized, etc.) do NOT bump this field — they operate on child tables.
              * @default 1
              */
             version: number;
-            /**
-             * Resolved At
-             * @description When case reached RESOLVED state
-             */
-            resolved_at?: string | null;
-            /**
-             * Closed At
-             * @description When case reached terminal state (RESOLVED or CLOSED)
-             */
-            closed_at?: string | null;
+            /** @description Agent current best understanding (updated iteratively) */
+            working_conclusion?: components["schemas"]["WorkingConclusion"] | null;
         };
         /**
          * CaseAction
@@ -4491,6 +4729,11 @@ export interface components {
         CaseAction: {
             /** @description Status before the action */
             from_state: components["schemas"]["CaseState"];
+            /**
+             * Reason
+             * @description Human-readable reason for the action
+             */
+            reason: string;
             /** @description Status after the action */
             to_state: components["schemas"]["CaseState"];
             /**
@@ -4504,27 +4747,6 @@ export interface components {
              * @description Who triggered: user_id or 'system' for automatic actions
              */
             triggered_by: string;
-            /**
-             * Reason
-             * @description Human-readable reason for the action
-             */
-            reason: string;
-        };
-        /** CaseConversionAPIRequest */
-        CaseConversionAPIRequest: {
-            /**
-             * Case Id
-             * @description ID of the resolved case
-             */
-            case_id: string;
-            /**
-             * Scope
-             * @description KB scope: global, team, personal
-             * @default global
-             */
-            scope: string;
-            /** Team Id */
-            team_id?: string | null;
         };
         /**
          * CaseCreateRequest
@@ -4534,11 +4756,6 @@ export interface components {
          *     This ensures security and prevents user_id spoofing.
          */
         CaseCreateRequest: {
-            /**
-             * Title
-             * @description Case title (optional, auto-generated if not provided)
-             */
-            title?: string | null;
             /**
              * Description
              * @description Initial problem description
@@ -4555,6 +4772,11 @@ export interface components {
              * @description Session ID for authentication and case association (restored from old implementation)
              */
             session_id?: string | null;
+            /**
+             * Title
+             * @description Case title (optional, auto-generated if not provided)
+             */
+            title?: string | null;
         };
         /**
          * CaseDetail
@@ -4563,55 +4785,62 @@ export interface components {
         CaseDetail: {
             /** Case Id */
             case_id: string;
-            /** Title */
-            title: string;
-            /** Description */
-            description: string;
-            state: components["schemas"]["CaseState"];
+            /** Closed At */
+            closed_at: string | null;
+            /** Closure Reason */
+            closure_reason: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
+            current_stage: components["schemas"]["InvestigationStage"] | null;
+            /** Current Turn */
+            current_turn: number;
+            /** Description */
+            description: string;
+            /** Escalated */
+            escalated: boolean;
+            /** Evidence Count */
+            evidence_count: number;
+            /** Hypothesis Count */
+            hypothesis_count: number;
+            /** Is Terminal */
+            is_terminal: boolean;
             /**
              * Last Activity At
              * Format: date-time
              */
             last_activity_at: string;
-            /** Resolved At */
-            resolved_at: string | null;
-            /** Closed At */
-            closed_at: string | null;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
-            /** Closure Reason */
-            closure_reason: string | null;
-            /** Current Turn */
-            current_turn: number;
-            /** Turns Without Progress */
-            turns_without_progress: number;
-            current_stage: components["schemas"]["InvestigationStage"] | null;
             /** Milestones Completed */
             milestones_completed: string[];
+            /** Organization Id */
+            organization_id: string;
             /** Pending Milestones */
             pending_milestones: string[];
-            /** Evidence Count */
-            evidence_count: number;
-            /** Hypothesis Count */
-            hypothesis_count: number;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Shared Team Ids */
+            shared_team_ids?: string[];
             /** Solution Count */
             solution_count: number;
-            /** Is Terminal */
-            is_terminal: boolean;
-            /** Escalated */
-            escalated: boolean;
+            /**
+             * Source
+             * @default copilot
+             */
+            source: string;
+            state: components["schemas"]["CaseState"];
+            /** Title */
+            title: string;
+            /** Turns Without Progress */
+            turns_without_progress: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id: string;
             /**
              * Valid Next States
              * @description Allowed state transitions from current state for user-initiated changes
@@ -4625,10 +4854,10 @@ export interface components {
         CaseEvidenceListResponse: {
             /** Case Id */
             case_id: string;
-            /** Total Count */
-            total_count: number;
             /** Evidence */
             evidence: components["schemas"]["EvidenceDetailsResponse"][];
+            /** Total Count */
+            total_count: number;
         };
         /**
          * CaseListResponse
@@ -4637,47 +4866,47 @@ export interface components {
         CaseListResponse: {
             /** Cases */
             cases: components["schemas"]["CaseSummary"][];
-            /** Total Count */
-            total_count: number;
+            /** Has More */
+            has_more: boolean;
             /** Limit */
             limit: number;
             /** Offset */
             offset: number;
-            /** Has More */
-            has_more: boolean;
+            /** Total Count */
+            total_count: number;
         };
         /**
          * CaseMessagesResponse
          * @description Enhanced response model for case message retrieval with debugging support.
          */
         CaseMessagesResponse: {
-            /**
-             * Messages
-             * @description Array of conversation messages
-             */
-            messages: components["schemas"]["Message"][];
-            /**
-             * Total Count
-             * @description Total number of messages in the case
-             */
-            total_count: number;
-            /**
-             * Retrieved Count
-             * @description Number of messages successfully retrieved
-             */
-            retrieved_count: number;
+            /** @description Debug information (only when include_debug=true) */
+            debug_info?: components["schemas"]["MessageRetrievalDebugInfo"] | null;
             /**
              * Has More
              * @description Whether more messages are available for pagination
              */
             has_more: boolean;
             /**
+             * Messages
+             * @description Array of conversation messages
+             */
+            messages: components["schemas"]["Message"][];
+            /**
              * Next Offset
              * @description Offset for next page (null if no more pages)
              */
             next_offset?: number | null;
-            /** @description Debug information (only when include_debug=true) */
-            debug_info?: components["schemas"]["MessageRetrievalDebugInfo"] | null;
+            /**
+             * Retrieved Count
+             * @description Number of messages successfully retrieved
+             */
+            retrieved_count: number;
+            /**
+             * Total Count
+             * @description Total number of messages in the case
+             */
+            total_count: number;
         };
         /**
          * CaseReport
@@ -4688,22 +4917,16 @@ export interface components {
          */
         CaseReport: {
             /**
-             * Report Id
-             * @description Unique report identifier (UUID v4)
+             * Auto Generated
+             * @description True for auto-generated terminal summaries, False for user-requested reports
+             * @default false
              */
-            report_id?: string;
+            auto_generated: boolean;
             /**
              * Case Id
              * @description Foreign key to parent case (or 'doc-derived' for document-driven)
              */
             case_id: string;
-            /** @description Type of report */
-            report_type: components["schemas"]["ReportType"];
-            /**
-             * Title
-             * @description Human-readable title
-             */
-            title: string;
             /**
              * Content
              * @description Full report content in Markdown format
@@ -4717,18 +4940,13 @@ export interface components {
              * @enum {string}
              */
             format: "markdown";
-            /** @description Generation status */
-            generation_status: components["schemas"]["ReportStatus"];
             /**
              * Generated At
              * @description ISO 8601 timestamp when report was first generated
              */
             generated_at?: string;
-            /**
-             * Updated At
-             * @description ISO 8601 timestamp when report was last updated (None for new reports, set on update)
-             */
-            updated_at?: string | null;
+            /** @description Generation status */
+            generation_status: components["schemas"]["ReportStatus"];
             /**
              * Generation Time Ms
              * @description Generation time (ms)
@@ -4741,25 +4959,36 @@ export interface components {
              */
             is_current: boolean;
             /**
-             * Version
-             * @description Version number
-             * @default 1
-             */
-            version: number;
-            /**
              * Linked To Closure
              * @description Linked to case closure
              * @default false
              */
             linked_to_closure: boolean;
-            /**
-             * Auto Generated
-             * @description True for auto-generated terminal summaries, False for user-requested reports
-             * @default false
-             */
-            auto_generated: boolean;
             /** @description Runbook-specific metadata */
             metadata?: components["schemas"]["RunbookMetadata"] | null;
+            /**
+             * Report Id
+             * @description Unique report identifier (UUID v4)
+             */
+            report_id?: string;
+            /** @description Type of report */
+            report_type: components["schemas"]["ReportType"];
+            /**
+             * Title
+             * @description Human-readable title
+             */
+            title: string;
+            /**
+             * Updated At
+             * @description ISO 8601 timestamp when report was last updated (None for new reports, set on update)
+             */
+            updated_at?: string | null;
+            /**
+             * Version
+             * @description Version number
+             * @default 1
+             */
+            version: number;
         };
         /**
          * CaseSearchRequest
@@ -4767,28 +4996,33 @@ export interface components {
          */
         CaseSearchRequest: {
             /**
-             * Query
-             * @description Search query
-             */
-            query: string;
-            /**
-             * User Id
-             * @description Limit to user's cases
-             */
-            user_id?: string | null;
-            /**
-             * Organization Id
-             * @description Limit to organization's cases
-             */
-            organization_id?: string | null;
-            /** @description Filter by state */
-            state?: components["schemas"]["CaseState"] | null;
-            /**
              * Limit
              * @description Maximum results
              * @default 20
              */
             limit: number;
+            /**
+             * Organization Id
+             * @description Limit to organization's cases
+             */
+            organization_id?: string | null;
+            /**
+             * Query
+             * @description Search query
+             */
+            query: string;
+            /** @description Filter by state */
+            state?: components["schemas"]["CaseState"] | null;
+            /**
+             * Team Id
+             * @description Filter to cases shared with this Team (ADR-013 §D4). Only Teams the caller belongs to yield results; ignored in standalone (no teams).
+             */
+            team_id?: string | null;
+            /**
+             * User Id
+             * @description Limit to user's cases
+             */
+            user_id?: string | null;
         };
         /**
          * CaseState
@@ -4801,7 +5035,7 @@ export interface components {
          *     Case Actions (phase transitions and dispositions):
          *       INQUIRY → INVESTIGATING  (phase transition)
          *       INQUIRY → CLOSED         (disposition)
-         *       INVESTIGATING → RESOLVED (disposition; includes the same-turn KB-resolution variant)
+         *       INVESTIGATING → RESOLVED (disposition; includes the KB-resolution milestone-collapse variant)
          *       INVESTIGATING → CLOSED   (disposition)
          *
          *     v3: INQUIRY → RESOLVED edge removed. KB-driven cases collapse INVESTIGATING
@@ -4818,47 +5052,54 @@ export interface components {
         CaseSummary: {
             /** Case Id */
             case_id: string;
-            /** Title */
-            title: string;
-            /** Description */
-            description: string;
-            state: components["schemas"]["CaseState"];
+            /** Closed At */
+            closed_at: string | null;
+            /** Closure Reason */
+            closure_reason: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
+            /** Current Turn */
+            current_turn: number;
+            /** Description */
+            description: string;
+            /** Is Terminal */
+            is_terminal: boolean;
             /**
              * Last Activity At
              * Format: date-time
              */
             last_activity_at: string;
-            /** Resolved At */
-            resolved_at: string | null;
-            /** Closed At */
-            closed_at: string | null;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
-            /** Closure Reason */
-            closure_reason: string | null;
-            /** Current Turn */
-            current_turn: number;
             /** Milestones Completed */
             milestones_completed: number;
+            /** Organization Id */
+            organization_id: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Shared Team Ids */
+            shared_team_ids?: string[];
+            /**
+             * Source
+             * @default copilot
+             */
+            source: string;
+            state: components["schemas"]["CaseState"];
+            /** Title */
+            title: string;
             /**
              * Total Milestones
              * @default 8
              */
             total_milestones: number;
-            /** Is Terminal */
-            is_terminal: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id: string;
             /**
              * Valid Next States
              * @description Allowed state transitions from current state for user-initiated changes
@@ -4879,6 +5120,32 @@ export interface components {
              */
             case_id: string;
             /**
+             * Created At
+             * Format: date-time
+             * @description When case was created
+             */
+            created_at: string;
+            /**
+             * Current Turn
+             * @description Current turn counter
+             */
+            current_turn: number;
+            /**
+             * Disposition Eligibility
+             * @description Per-disposition eligibility for UI affordance gating. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
+             *     - ``ready`` — disposition is appropriate; render the affordance enabled with the default 'click to confirm' UX.
+             *     - ``needs_info`` — disposition is allowed but the case is partial; user must ADD information (root cause / solution) before transitioning. UX: prompt the user for the missing data. Currently only the Resolve side surfaces this.
+             *     - ``suggests_alternative`` — disposition is allowed but the system recommends the OTHER disposition for this case. UX: warn and offer the alternative; if the user confirms anyway, proceed. Distinct from ``needs_info`` — no data is missing; the user is asked to RE-DIRECT, not to add. Currently only the Close side surfaces this (when the case has root cause + solution → resolving preserves attribution).
+             *     - ``not_eligible`` — disposition is not available; hide the affordance entirely.
+             *
+             *     Different from ``valid_next_states`` — that field is the structural action graph (which edges exist), this field is the content-readiness layer on top.
+             */
+            disposition_eligibility?: {
+                [key: string]: string;
+            } | null;
+            /** @description Nested inquiry phase data */
+            inquiry: components["schemas"]["InquiryResponseData"];
+            /**
              * @description Always 'inquiry' for this response type (enum property replaced by openapi-typescript)
              * @enum {string}
              */
@@ -4888,17 +5155,6 @@ export interface components {
              * @description Case title
              */
             title: string;
-            /**
-             * Current Turn
-             * @description Current turn counter
-             */
-            current_turn: number;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When case was created
-             */
-            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -4915,6 +5171,41 @@ export interface components {
              * @description Allowed state transitions from current state for user-initiated changes
              */
             valid_next_states?: string[];
+        };
+        /**
+         * CaseUIResponse_Investigating
+         * @description UI response for INVESTIGATING phase.
+         *
+         *     Focus: Active investigation, milestone progress, hypothesis testing.
+         *     User has committed to investigation and agent is working through milestones.
+         */
+        CaseUIResponse_Investigating: {
+            /**
+             * Active Hypotheses
+             * @description Hypotheses currently being tested
+             */
+            active_hypotheses?: components["schemas"]["HypothesisSummary"][];
+            /**
+             * Agent Status
+             * @description What agent is currently doing
+             */
+            agent_status: string;
+            /**
+             * Case Id
+             * @description Case identifier
+             */
+            case_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When case was created
+             */
+            created_at: string;
+            /**
+             * Current Turn
+             * @description Current turn counter
+             */
+            current_turn: number;
             /**
              * Disposition Eligibility
              * @description Per-disposition eligibility for UI affordance gating. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
@@ -4928,22 +5219,27 @@ export interface components {
             disposition_eligibility?: {
                 [key: string]: string;
             } | null;
-            /** @description Nested inquiry phase data */
-            inquiry: components["schemas"]["InquiryResponseData"];
-        };
-        /**
-         * CaseUIResponse_Investigating
-         * @description UI response for INVESTIGATING phase.
-         *
-         *     Focus: Active investigation, milestone progress, hypothesis testing.
-         *     User has committed to investigation and agent is working through milestones.
-         */
-        CaseUIResponse_Investigating: {
             /**
-             * Case Id
-             * @description Case identifier
+             * Latest Evidence
+             * @description Most recent evidence collected (last 5)
              */
-            case_id: string;
+            latest_evidence?: components["schemas"]["EvidenceSummary"][];
+            /**
+             * Next Actions
+             * @description Suggested next steps for investigation
+             */
+            next_actions?: string[];
+            /**
+             * Problem Statement
+             * @description Confirmed problem statement carried over from INQUIRY (sourced from case.description).
+             */
+            problem_statement?: string | null;
+            /** @description Problem verification details (urgency, severity, impact) */
+            problem_verification?: components["schemas"]["ProblemVerificationData"] | null;
+            /** @description Milestone-based progress tracking */
+            progress: components["schemas"]["InvestigationProgressSummary"];
+            /** @description Progress transparency state. Present when investigation has stalled and agent is surfacing milestone dependencies. */
+            progress_transparency?: components["schemas"]["ProgressTransparencyInfo"] | null;
             /**
              * @description Always 'investigating' for this response type (enum property replaced by openapi-typescript)
              * @enum {string}
@@ -4954,17 +5250,6 @@ export interface components {
              * @description Case title
              */
             title: string;
-            /**
-             * Current Turn
-             * @description Current turn counter
-             */
-            current_turn: number;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When case was created
-             */
-            created_at: string;
             /**
              * Updated At
              * Format: date-time
@@ -4982,52 +5267,8 @@ export interface components {
              * @description Allowed state transitions from current state for user-initiated changes
              */
             valid_next_states?: string[];
-            /**
-             * Disposition Eligibility
-             * @description Per-disposition eligibility for UI affordance gating. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
-             *     - ``ready`` — disposition is appropriate; render the affordance enabled with the default 'click to confirm' UX.
-             *     - ``needs_info`` — disposition is allowed but the case is partial; user must ADD information (root cause / solution) before transitioning. UX: prompt the user for the missing data. Currently only the Resolve side surfaces this.
-             *     - ``suggests_alternative`` — disposition is allowed but the system recommends the OTHER disposition for this case. UX: warn and offer the alternative; if the user confirms anyway, proceed. Distinct from ``needs_info`` — no data is missing; the user is asked to RE-DIRECT, not to add. Currently only the Close side surfaces this (when the case has root cause + solution → resolving preserves attribution).
-             *     - ``not_eligible`` — disposition is not available; hide the affordance entirely.
-             *
-             *     Different from ``valid_next_states`` — that field is the structural action graph (which edges exist), this field is the content-readiness layer on top.
-             */
-            disposition_eligibility?: {
-                [key: string]: string;
-            } | null;
-            /**
-             * Problem Statement
-             * @description Confirmed problem statement carried over from INQUIRY (sourced from case.description).
-             */
-            problem_statement?: string | null;
             /** @description Agent's current understanding of the problem */
             working_conclusion?: components["schemas"]["WorkingConclusionSummary"] | null;
-            /** @description Milestone-based progress tracking */
-            progress: components["schemas"]["InvestigationProgressSummary"];
-            /**
-             * Active Hypotheses
-             * @description Hypotheses currently being tested
-             */
-            active_hypotheses?: components["schemas"]["HypothesisSummary"][];
-            /**
-             * Latest Evidence
-             * @description Most recent evidence collected (last 5)
-             */
-            latest_evidence?: components["schemas"]["EvidenceSummary"][];
-            /**
-             * Next Actions
-             * @description Suggested next steps for investigation
-             */
-            next_actions?: string[];
-            /**
-             * Agent Status
-             * @description What agent is currently doing
-             */
-            agent_status: string;
-            /** @description Problem verification details (urgency, severity, impact) */
-            problem_verification?: components["schemas"]["ProblemVerificationData"] | null;
-            /** @description Progress transparency state. Present when investigation has stalled and agent is surfacing milestone dependencies. */
-            progress_transparency?: components["schemas"]["ProgressTransparencyInfo"] | null;
         };
         /**
          * CaseUIResponse_Resolved
@@ -5043,49 +5284,16 @@ export interface components {
              */
             case_id: string;
             /**
-             * @description Case terminal state: 'resolved' (with solution) or 'closed' (without investigation) (enum property replaced by openapi-typescript)
-             * @enum {string}
-             */
-            state: "resolved" | "closed";
-            /**
-             * Title
-             * @description Case title
-             */
-            title: string;
-            /**
-             * Current Turn
-             * @description Current turn counter
-             */
-            current_turn: number;
-            /**
              * Created At
              * Format: date-time
              * @description When case was created
              */
             created_at: string;
             /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp
+             * Current Turn
+             * @description Current turn counter
              */
-            updated_at: string;
-            /**
-             * Resolved At
-             * Format: date-time
-             * @description When case was resolved
-             */
-            resolved_at: string;
-            /**
-             * Uploaded Files Count
-             * @description Number of uploaded files
-             * @default 0
-             */
-            uploaded_files_count: number;
-            /**
-             * Valid Next States
-             * @description Allowed state transitions from current state for user-initiated changes
-             */
-            valid_next_states?: string[];
+            current_turn: number;
             /**
              * Disposition Eligibility
              * @description Per-disposition eligibility for UI affordance gating. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
@@ -5104,19 +5312,52 @@ export interface components {
              * @description Confirmed problem statement carried over from INQUIRY (sourced from case.description).
              */
             problem_statement?: string | null;
-            /** @description What caused the problem */
-            root_cause: components["schemas"]["RootCauseSummary"];
-            /** @description Solution that fixed the problem */
-            solution_applied: components["schemas"]["SolutionSummary"];
-            /** @description How solution effectiveness was verified */
-            verification_status: components["schemas"]["VerificationStatus"];
-            /** @description Overall resolution metrics and insights */
-            resolution_summary: components["schemas"]["ResolutionSummary"];
             /**
              * Reports Available
              * @description Available reports (incident report, post-mortem, runbook)
              */
             reports_available?: components["schemas"]["ReportAvailability"][];
+            /** @description Overall resolution metrics and insights */
+            resolution_summary: components["schemas"]["ResolutionSummary"];
+            /**
+             * Resolved At
+             * Format: date-time
+             * @description When case was resolved
+             */
+            resolved_at: string;
+            /** @description What caused the problem */
+            root_cause: components["schemas"]["RootCauseSummary"];
+            /** @description Solution that fixed the problem */
+            solution_applied: components["schemas"]["SolutionSummary"];
+            /**
+             * @description Case terminal state: 'resolved' (with solution) or 'closed' (without investigation) (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            state: "closed" | "resolved";
+            /**
+             * Title
+             * @description Case title
+             */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+            /**
+             * Uploaded Files Count
+             * @description Number of uploaded files
+             * @default 0
+             */
+            uploaded_files_count: number;
+            /**
+             * Valid Next States
+             * @description Allowed state transitions from current state for user-initiated changes
+             */
+            valid_next_states?: string[];
+            /** @description How solution effectiveness was verified */
+            verification_status: components["schemas"]["faultmaven__models__case_ui__VerificationStatus"];
         };
         /**
          * CaseUpdateRequest
@@ -5124,24 +5365,191 @@ export interface components {
          */
         CaseUpdateRequest: {
             /**
-             * Title
-             * @description Updated title
-             */
-            title?: string | null;
-            /**
              * Description
              * @description Updated description
              */
             description?: string | null;
             /** @description Updated state (admin only) */
             state?: components["schemas"]["CaseState"] | null;
+            /**
+             * Title
+             * @description Updated title
+             */
+            title?: string | null;
         };
+        /**
+         * CausalEdge
+         * @description A directed cause -> effect edge in the causal graph (methodology S1).
+         *
+         *     cause_node_id produces effect_node_id. Edges sharing the same
+         *     (effect_node_id, and_group) are co-necessary (an AND-set, M7); a null or
+         *     distinct and_group denotes an independent (OR) alternative cause.
+         */
+        CausalEdge: {
+            /**
+             * And Group
+             * @description AND-set key (M7): edges with the same (effect_node_id, and_group) are co-necessary. Null/distinct = independent OR alternative cause.
+             */
+            and_group?: string | null;
+            /**
+             * Cause Node Id
+             * @description Upstream cause node
+             */
+            cause_node_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Created At Turn
+             * @default 0
+             */
+            created_at_turn: number;
+            /**
+             * Edge Id
+             * @description Unique causal-edge identifier
+             */
+            edge_id?: string;
+            /**
+             * Effect Node Id
+             * @description Downstream effect node (closer to D)
+             */
+            effect_node_id: string;
+            /**
+             * Reasoning
+             * @description Why this causal link holds
+             */
+            reasoning?: string | null;
+        };
+        /**
+         * CausalNode
+         * @description A node in the case's causal graph (methodology §2, §3).
+         *
+         *     A node is the active problem (PROBLEM), an intermediate state, or a
+         *     candidate root cause (ROOT). Its node_state is established only by
+         *     empirical/deductive validation (M4), never by assertion.
+         */
+        CausalNode: {
+            /**
+             * Actionable
+             * @description M1: a ROOT node must be actionable (a performable, independent remediation can be named) before it can be validated/confirmed.
+             * @default false
+             */
+            actionable: boolean;
+            /**
+             * Belief
+             * @description Current belief this node holds (0.0-1.0); propagated by gate type
+             * @default 0.5
+             */
+            belief: number;
+            /** @description Failure family (for anchoring/diversity) */
+            category?: components["schemas"]["HypothesisCategory"] | null;
+            /**
+             * Evidence Links
+             * @description Evidence bearing on this node
+             */
+            evidence_links?: components["schemas"]["NodeEvidenceLink"][];
+            /**
+             * Generated At Turn
+             * @description Turn when this node was first posited
+             */
+            generated_at_turn: number;
+            /**
+             * Iterations Without Progress
+             * @description Stagnation counter for decay/anchoring. Advances ONLY on investigation turns where this node was eligible to progress and didn't (new evidence analyzed, a test result returned, a state transition attempted) — never on clarifying/awaiting-user turns (TurnOutcome.CONVERSATION). Engine-maintained in Phase 2; see methodology §6.1 'Decay counts investigation turns'.
+             * @default 0
+             */
+            iterations_without_progress: number;
+            /**
+             * Last Progress At Turn
+             * @default 0
+             */
+            last_progress_at_turn: number;
+            /**
+             * Last Updated Turn
+             * @default 0
+             */
+            last_updated_turn: number;
+            /** Metadata */
+            metadata?: Record<string, never>;
+            /**
+             * Node Id
+             * @description Unique causal-node identifier
+             */
+            node_id?: string;
+            /**
+             * @description Empirical status of this node
+             * @default candidate
+             */
+            node_state: components["schemas"]["NodeState"];
+            /** @description problem (D) / intermediate / root */
+            node_type: components["schemas"]["NodeType"];
+            /**
+             * Proposed At
+             * Format: date-time
+             */
+            proposed_at?: string;
+            /**
+             * Rationale
+             * @description Why this node was posited
+             */
+            rationale?: string | null;
+            /**
+             * Refutation Reason
+             * @description Why the node was refuted. REQUIRED when node_state=REFUTED.
+             */
+            refutation_reason?: string | null;
+            /**
+             * Signature Consistent
+             * @description F3 signature screening: whether this node's mechanism could produce the observed signature of D. False = screened out at formation.
+             * @default true
+             */
+            signature_consistent: boolean;
+            /**
+             * State Epoch
+             * @description M6/§7.3 contamination epoch — bumped when a state-mutating action may have invalidated evidence collected in a prior epoch.
+             * @default 0
+             */
+            state_epoch: number;
+            /**
+             * Statement
+             * @description The state/cause this node asserts
+             */
+            statement: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+            /**
+             * @description How the node reached VALIDATED (M4). NONE unless validated.
+             * @default none
+             */
+            validation_method: components["schemas"]["ValidationMethod"];
+        };
+        /**
+         * CauseAssuranceGrade
+         * @description The assurance behind a case's identified cause, as one of three mutually
+         *     exclusive grades — the M2 confirmation ladder (two-dimensional-hypothesis-
+         *     methodology §0/§7.2) read off the causal graph.
+         *
+         *     Computed by ``core.investigation.cause_assurance.grade_cause_assurance``
+         *     (which imports this enum from contracts, the same direction as
+         *     ``VerificationStatus``) and persisted on ``InvestigationProgress`` each turn.
+         *     ``CONFIRMED`` is the §7 bar for auto-seeding reusable knowledge and the only
+         *     grade whose conclusion may read "verified"; the other two are held back, for
+         *     different user-facing reasons.
+         * @enum {string}
+         */
+        CauseAssuranceGrade: "no_root" | "mechanistic" | "confirmed";
         /**
          * CauseState
          * @description Engine-derived knowledge state of the root cause (assessment variable).
          *
          *     Recomputed every turn from the LLM's grounded cause-identification signal
-         *     plus the active-hypothesis count (see investigation-flow-redesign.md R1).
+         *     plus the active-hypothesis count (R1 cause_state gate, recorded in
+         *     investigation-invariants.md's INV-17/19/20/21 flow-redesign retirement note).
          *     NEVER path-stripped — recording a cause the engine legitimately knows is a
          *     truth signal, not an earned process milestone. Drives whether the diagnostic
          *     machinery (hypothesis formulation + evidence-needs) runs this turn.
@@ -5154,17 +5562,6 @@ export interface components {
          */
         Change: {
             /**
-             * Description
-             * @description What changed
-             */
-            description: string;
-            /**
-             * Occurred At
-             * Format: date-time
-             * @description When the change occurred
-             */
-            occurred_at: string;
-            /**
              * Change Type
              * @description Type of change: deployment | config | scaling | code | infrastructure | data | other
              */
@@ -5175,10 +5572,21 @@ export interface components {
              */
             changed_by?: string | null;
             /**
+             * Description
+             * @description What changed
+             */
+            description: string;
+            /**
              * Details
              * @description Additional structured details (version numbers, config values, etc.)
              */
             details?: Record<string, never> | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             * @description When the change occurred
+             */
+            occurred_at: string;
         };
         /**
          * ConfidenceLevel
@@ -5198,11 +5606,6 @@ export interface components {
              */
             change_description: string;
             /**
-             * Timing Description
-             * @description Temporal relationship: '2 minutes before', 'immediately after', 'coincides with', etc.
-             */
-            timing_description: string;
-            /**
              * Confidence
              * @description Confidence in this correlation (0.0 = weak, 1.0 = strong)
              */
@@ -5217,16 +5620,17 @@ export interface components {
              * @description Evidence supporting this correlation
              */
             evidence?: string | null;
+            /**
+             * Timing Description
+             * @description Temporal relationship: '2 minutes before', 'immediately after', 'coincides with', etc.
+             */
+            timing_description: string;
         };
         /**
          * DerivedEvidenceSummary
          * @description Summary of evidence derived from an uploaded file.
          */
         DerivedEvidenceSummary: {
-            /** Evidence Id */
-            evidence_id: string;
-            /** Summary */
-            summary: string;
             /**
              * Category
              * @description SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE | OTHER
@@ -5234,15 +5638,19 @@ export interface components {
             category: string;
             /** Collected At Turn */
             collected_at_turn: number;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Primary Purpose */
+            primary_purpose?: string | null;
+            /** Related Hypothesis Ids */
+            related_hypothesis_ids?: string[];
             /**
              * Source Type
              * @description LOGS | METRICS | CONFIGURATION | CODE | TEXT | IMAGE
              */
             source_type: string;
-            /** Primary Purpose */
-            primary_purpose?: string | null;
-            /** Related Hypothesis Ids */
-            related_hypothesis_ids?: string[];
+            /** Summary */
+            summary: string;
         };
         /**
          * DevLoginRequest
@@ -5258,20 +5666,20 @@ export interface components {
          */
         DevLoginRequest: {
             /**
-             * Username
-             * @description Username or email address (3-50 chars)
+             * Display Name
+             * @description Optional display name (will auto-generate if not provided)
              */
-            username: string;
+            display_name?: string | null;
             /**
              * Email
              * @description Optional email address (will auto-generate if not provided)
              */
             email?: string | null;
             /**
-             * Display Name
-             * @description Optional display name (will auto-generate if not provided)
+             * Username
+             * @description Username or email address (3-50 chars)
              */
-            display_name?: string | null;
+            username: string;
         };
         /**
          * DocumentSnippetResponse
@@ -5282,32 +5690,32 @@ export interface components {
         DocumentSnippetResponse: {
             /** Document Id */
             document_id: string;
-            /** Title */
-            title: string;
-            /** Snippet */
-            snippet: string;
+            /** Document Type */
+            document_type: string;
             /** Line Range */
             line_range?: [
                 number,
                 number
             ] | null;
+            /** Relevance Score */
+            relevance_score?: number | null;
+            /** Snippet */
+            snippet: string;
+            /** Title */
+            title: string;
             /** Total Lines */
             total_lines: number;
-            /** Document Type */
-            document_type: string;
+            /**
+             * Verification Level
+             * @default 0
+             */
+            verification_level: number;
             /**
              * Verification Status
              * @default experimental
              * @enum {string}
              */
             verification_status: "verified" | "community" | "experimental";
-            /**
-             * Verification Level
-             * @default 0
-             */
-            verification_level: number;
-            /** Relevance Score */
-            relevance_score?: number | null;
         };
         /**
          * DocumentType
@@ -5327,36 +5735,6 @@ export interface components {
              */
             documents_generated?: components["schemas"]["GeneratedDocument"][];
             /**
-             * Runbook Entry
-             * @description Runbook entry created from this case
-             */
-            runbook_entry?: string | null;
-            /**
-             * Lessons Learned
-             * @description Key takeaways from investigation
-             */
-            lessons_learned?: string[];
-            /**
-             * What Went Well
-             * @description Positive aspects of investigation
-             */
-            what_went_well?: string[];
-            /**
-             * What Could Improve
-             * @description Areas for improvement
-             */
-            what_could_improve?: string[];
-            /**
-             * Preventive Measures
-             * @description How to prevent recurrence
-             */
-            preventive_measures?: string[];
-            /**
-             * Monitoring Recommendations
-             * @description Monitoring/alerts to add
-             */
-            monitoring_recommendations?: string[];
-            /**
              * Generated At
              * @description When documentation was generated
              */
@@ -5367,6 +5745,36 @@ export interface components {
              * @default agent
              */
             generated_by: string;
+            /**
+             * Lessons Learned
+             * @description Key takeaways from investigation
+             */
+            lessons_learned?: string[];
+            /**
+             * Monitoring Recommendations
+             * @description Monitoring/alerts to add
+             */
+            monitoring_recommendations?: string[];
+            /**
+             * Preventive Measures
+             * @description How to prevent recurrence
+             */
+            preventive_measures?: string[];
+            /**
+             * Runbook Entry
+             * @description Runbook entry created from this case
+             */
+            runbook_entry?: string | null;
+            /**
+             * What Could Improve
+             * @description Areas for improvement
+             */
+            what_could_improve?: string[];
+            /**
+             * What Went Well
+             * @description Positive aspects of investigation
+             */
+            what_went_well?: string[];
         };
         /** DraftUpdateRequest */
         DraftUpdateRequest: {
@@ -5387,25 +5795,22 @@ export interface components {
              */
             auth_mode: string;
             /**
-             * Deployment
-             * @description 'standalone' or 'cloud' — from DEPLOYMENT_MODE (ADR-004)
-             */
-            deployment: string;
-            /**
              * Db Backend
              * @description 'sqlite' or 'postgresql'
              */
             db_backend: string;
             /**
-             * Session Storage
-             * @description 'inmemory' or 'redis'
+             * Deployment
+             * @description 'standalone' or 'cloud' — from DEPLOYMENT_MODE (ADR-004)
              */
-            session_storage: string;
+            deployment: string;
             /**
-             * Vector Storage
-             * @description 'inmemory' or 'chromadb'
+             * Features
+             * @description Optional features and their configuration status
              */
-            vector_storage: string;
+            features?: {
+                [key: string]: components["schemas"]["FeatureStatus"];
+            };
             /**
              * Llm Provider
              * @description Primary LLM provider name
@@ -5416,17 +5821,20 @@ export interface components {
             /** Rate Limit Enabled */
             rate_limit_enabled: boolean;
             /**
-             * Features
-             * @description Optional features and their configuration status
+             * Session Storage
+             * @description 'inmemory' or 'redis'
              */
-            features?: {
-                [key: string]: components["schemas"]["FeatureStatus"];
-            };
+            session_storage: string;
             /**
              * Timestamp
              * Format: date-time
              */
             timestamp: string;
+            /**
+             * Vector Storage
+             * @description 'inmemory' or 'chromadb'
+             */
+            vector_storage: string;
         };
         /**
          * EscalationState
@@ -5434,18 +5842,11 @@ export interface components {
          *     Tracks escalation lifecycle.
          */
         EscalationState: {
-            /** @description Why escalation was needed */
-            escalation_type: components["schemas"]["EscalationType"];
             /**
-             * Reason
-             * @description Detailed explanation of escalation reason
+             * Context Summary
+             * @description Summary of investigation so far for escalation recipient
              */
-            reason: string;
-            /**
-             * Escalated To
-             * @description Team or person escalated to
-             */
-            escalated_to?: string | null;
+            context_summary: string;
             /**
              * Escalated At
              * Format: date-time
@@ -5453,15 +5854,22 @@ export interface components {
              */
             escalated_at?: string;
             /**
-             * Context Summary
-             * @description Summary of investigation so far for escalation recipient
+             * Escalated To
+             * @description Team or person escalated to
              */
-            context_summary: string;
+            escalated_to?: string | null;
+            /** @description Why escalation was needed */
+            escalation_type: components["schemas"]["EscalationType"];
             /**
              * Key Findings
              * @description Key findings to communicate to expert
              */
             key_findings?: string[];
+            /**
+             * Reason
+             * @description Detailed explanation of escalation reason
+             */
+            reason: string;
             /**
              * Resolution
              * @description How escalation was resolved
@@ -5499,44 +5907,53 @@ export interface components {
          */
         Evidence: {
             /**
-             * Evidence Id
-             * @description Unique evidence identifier
+             * Advances Milestones
+             * @description Which milestones this evidence helped complete
              */
-            evidence_id?: string;
-            /** @description Claim-anchored category declared by the LLM (verification quartet): SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE */
-            category: components["schemas"]["EvidenceCategory"];
-            /**
-             * Primary Purpose
-             * @description What this evidence validates (milestone name or hypothesis ID)
-             */
-            primary_purpose: string;
-            /**
-             * Summary
-             * @description Short label (≤500 chars) the LLM wrote when declaring this evidence via ``evidence_to_add``. ALWAYS present — use it for UI list views, headers, and quick scanning. The optional ``extract`` field carries the verbatim slice that supports the summary.
-             */
-            summary: string;
-            /**
-             * Extract
-             * @description Optional verbatim quote that supports the ``summary``. The LLM populates this when grounding the finding in a specific system-output slice (a log line, a metric reading, a config snippet). Distinct from ``summary`` (short label) and from ``uploaded_files.storage_ref`` (file pointer). May be NULL when the summary is self-contained. File-level preprocessing artifacts (structural index, file summary) live on ``uploaded_files``, never here — this field is for claim-relevant quotes only.
-             */
-            extract?: string | null;
+            advances_milestones?: string[];
             /**
              * Analysis
              * @description Agent analysis of this evidence and its significance to the investigation
              */
             analysis?: string | null;
+            /** @description Claim-anchored category declared by the LLM (verification quartet): SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE */
+            category: components["schemas"]["EvidenceCategory"];
             /**
-             * Processing Mode
-             * @description Processing mode: triage | directed_analysis | semantic_search
+             * Collected At
+             * Format: date-time
+             * @description When evidence was collected
              */
-            processing_mode?: string | null;
-            /** @description Type of evidence source */
-            source_type: components["schemas"]["EvidenceSourceType"];
+            collected_at?: string;
             /**
-             * Source File Id
-             * @description FK to the UploadedFile this extract came from. Required unless ``source_type=USER_DESCRIPTION`` (the narrow case where the LLM extracted a verbatim system-output quote from the user's short chat message — no file involved). Enforced by the ``evidence_source_invariant`` CHECK constraint at the DB level and by the ``_source_requires_file_unless_user_description`` validator at the Pydantic level.
+             * Collected At Turn
+             * @description Turn number when evidence was collected
              */
-            source_file_id?: string | null;
+            collected_at_turn: number;
+            /**
+             * Collected By
+             * @description Who collected: user_id or 'system' for automated collection
+             */
+            collected_by: string;
+            /**
+             * Coverage End Ts
+             * @description Latest timestamp parsed from the evidence's content. None when the content has no parseable timestamps.
+             */
+            coverage_end_ts?: string | null;
+            /**
+             * Coverage Start Ts
+             * @description Earliest timestamp parsed from the evidence's content. None when the content has no parseable timestamps.
+             */
+            coverage_start_ts?: string | null;
+            /**
+             * Evidence Id
+             * @description Unique evidence identifier
+             */
+            evidence_id?: string;
+            /**
+             * Extract
+             * @description Optional verbatim quote that supports the ``summary``. The LLM populates this when grounding the finding in a specific system-output slice (a log line, a metric reading, a config snippet). Distinct from ``summary`` (short label) and from ``uploaded_files.storage_ref`` (file pointer). May be NULL when the summary is self-contained. File-level preprocessing artifacts (structural index, file summary) live on ``uploaded_files``, never here — this field is for claim-relevant quotes only.
+             */
+            extract?: string | null;
             /**
              * Is Primary
              * @description True for the principal evidence row in this case (the one that anchors the investigation summary). list_evidence_tool uses this for surface-level dashboards.
@@ -5544,10 +5961,37 @@ export interface components {
              */
             is_primary: boolean;
             /**
+             * Metadata
+             * @description Structured diagnostic metadata from the preprocessing pipeline. Top-level keys are namespaced — see docs/architecture/data-and-storage/schemas/case-schema.md §4.3 'evidence.metadata JSON contract'. Canonical shape in faultmaven/core/preprocessing/evidence_metadata.py::EvidenceMetadata. Optional — chat-quoted Evidence rows have no preprocessing trace.
+             */
+            metadata?: Record<string, never> | null;
+            /**
+             * Primary Purpose
+             * @description What this evidence validates (milestone name or hypothesis ID)
+             */
+            primary_purpose: string;
+            /**
+             * Processing Mode
+             * @description Processing mode: triage | directed_analysis | semantic_search
+             */
+            processing_mode?: string | null;
+            /**
              * Reliability Score
              * @description LLM-assessed reliability of this evidence (0.0-1.0). NULL when the agent has not scored the evidence.
              */
             reliability_score?: number | null;
+            /**
+             * Source File Id
+             * @description FK to the UploadedFile this extract came from. Required unless ``source_type=USER_DESCRIPTION`` (the narrow case where the LLM extracted a verbatim system-output quote from the user's short chat message — no file involved). Enforced by the ``evidence_source_invariant`` CHECK constraint at the DB level and by the ``_source_requires_file_unless_user_description`` validator at the Pydantic level.
+             */
+            source_file_id?: string | null;
+            /** @description Type of evidence source */
+            source_type: components["schemas"]["EvidenceSourceType"];
+            /**
+             * Summary
+             * @description Short label (≤500 chars) the LLM wrote when declaring this evidence via ``evidence_to_add``. ALWAYS present — use it for UI list views, headers, and quick scanning. The optional ``extract`` field carries the verbatim slice that supports the summary.
+             */
+            summary: string;
             /**
              * Tags
              * @description Free-form tag list for evidence classification. Tag values must not contain commas (the SQLite serializer uses comma-separation; the comma-ban keeps round-trip lossless).
@@ -5559,42 +6003,6 @@ export interface components {
              * @default false
              */
             vectorized: boolean;
-            /**
-             * Advances Milestones
-             * @description Which milestones this evidence helped complete
-             */
-            advances_milestones?: string[];
-            /**
-             * Collected At
-             * Format: date-time
-             * @description When evidence was collected
-             */
-            collected_at?: string;
-            /**
-             * Collected By
-             * @description Who collected: user_id or 'system' for automated collection
-             */
-            collected_by: string;
-            /**
-             * Collected At Turn
-             * @description Turn number when evidence was collected
-             */
-            collected_at_turn: number;
-            /**
-             * Metadata
-             * @description Structured diagnostic metadata from the preprocessing pipeline. Top-level keys are namespaced — see docs/architecture/data-and-storage/schemas/case-schema.md §4.3 'evidence.metadata JSON contract'. Canonical shape in faultmaven/core/preprocessing/evidence_metadata.py::EvidenceMetadata. Optional — chat-quoted Evidence rows have no preprocessing trace.
-             */
-            metadata?: Record<string, never> | null;
-            /**
-             * Coverage Start Ts
-             * @description Earliest timestamp parsed from the evidence's content. None when the content has no parseable timestamps.
-             */
-            coverage_start_ts?: string | null;
-            /**
-             * Coverage End Ts
-             * @description Latest timestamp parsed from the evidence's content. None when the content has no parseable timestamps.
-             */
-            coverage_end_ts?: string | null;
         };
         /**
          * EvidenceCategory
@@ -5627,36 +6035,36 @@ export interface components {
          * @description Detailed evidence information with source and hypothesis linkage.
          */
         EvidenceDetailsResponse: {
-            /** Evidence Id */
-            evidence_id: string;
+            /** Analysis */
+            analysis?: string | null;
             /** Case Id */
             case_id: string;
-            /** Summary */
-            summary: string;
             /** Category */
             category: string;
-            /** Primary Purpose */
-            primary_purpose: string;
-            /** Collected At Turn */
-            collected_at_turn: number;
             /**
              * Collected At
              * Format: date-time
              */
             collected_at: string;
+            /** Collected At Turn */
+            collected_at_turn: number;
             /** Collected By */
             collected_by: string;
-            /** @description Source file this evidence was derived from. NULL only when the evidence is a verbatim quote extracted from the user's chat message (source_type=USER_DESCRIPTION). */
-            source_file?: components["schemas"]["SourceFileReference"] | null;
-            /** Related Hypotheses */
-            related_hypotheses?: components["schemas"]["RelatedHypothesis"][];
+            /** Evidence Id */
+            evidence_id: string;
             /**
              * Extract
              * @description Optional verbatim quote backing the summary. NULL when the LLM omitted it (the summary is self-contained).
              */
             extract?: string | null;
-            /** Analysis */
-            analysis?: string | null;
+            /** Primary Purpose */
+            primary_purpose: string;
+            /** Related Hypotheses */
+            related_hypotheses?: components["schemas"]["RelatedHypothesis"][];
+            /** @description Source file this evidence was derived from. NULL only when the evidence is a verbatim quote extracted from the user's chat message (source_type=USER_DESCRIPTION). */
+            source_file?: components["schemas"]["SourceFileReference"] | null;
+            /** Summary */
+            summary: string;
         };
         /**
          * EvidenceNeed
@@ -5676,71 +6084,77 @@ export interface components {
          *       creation (causal needs).
          *     - Updated by the LLM as evidence arrives (state, fulfilling
          *       evidence linkage, motivating hypothesis IDs).
-         *     - Auto-superseded by the engine on hypothesis retirement when the
-         *       motivating list becomes empty AND purpose is CAUSAL_VERIFICATION
-         *       AND state is not FULFILLED. Symptom needs (empty motivating
-         *       list by design) are exempt — they're motivated by the problem
-         *       statement, not by a hypothesis.
+         *     - Auto-superseded by the engine when a motivating hypothesis goes
+         *       TERMINAL (REFUTED or RETIRED) and the motivating list becomes
+         *       empty AND purpose is CAUSAL_VERIFICATION AND state is not
+         *       FULFILLED. Symptom needs (empty motivating list by design) are
+         *       exempt — they're motivated by the problem statement, not by a
+         *       hypothesis.
          */
         EvidenceNeed: {
-            /**
-             * Need Id
-             * @description Unique evidence-need identifier
-             */
-            need_id?: string;
             /**
              * Case Id
              * @description Case this need belongs to
              */
             case_id: string;
-            /** @description Why this need exists: symptom_verification (motivated by the problem statement) or causal_verification (motivated by one or more hypotheses). */
-            purpose: components["schemas"]["NeedPurpose"];
-            /**
-             * Request Text
-             * @description What data would fulfill this need, in a form suitable for surfacing to the user as an EVIDENCE-type suggestion. Example: 'kubectl get pods -n production showing current restart counts'.
-             */
-            request_text: string;
-            /**
-             * Rationale
-             * @description Why this data would advance the investigation. Used in the LLM's <evidence_needs> context block to remind the LLM why the need was created. Example: 'confirms whether the pod-level OOMKill pattern is still active after the memory-limit increase'.
-             */
-            rationale: string;
-            /**
-             * @description LLM hint for surfacing-order on the suggestion side.
-             * @default medium
-             */
-            priority: components["schemas"]["NeedPriority"];
-            /**
-             * @description Lifecycle state — see NeedState.
-             * @default pending
-             */
-            state: components["schemas"]["NeedState"];
-            /**
-             * Motivating Hypothesis Ids
-             * @description Hypothesis IDs that motivated this need's existence. Empty list means the need is motivated by the problem statement (symptom needs). Engine appends/removes IDs as hypotheses share needs (cross-hypothesis evaluation per evidence-needs-design.md §5.2) and as hypotheses are retired (engine auto-supersession rule).
-             */
-            motivating_hypothesis_ids?: string[];
-            /**
-             * Fulfilling Evidence Ids
-             * @description Evidence rows that fulfill this need. Multiple entries may accumulate across stages: presence evidence collected during DIAGNOSIS plus absence evidence collected during MITIGATION/TREATMENT. The list is append-only in practice — the need's state stays FULFILLED once fulfilled even when post-fix absence evidence is added.
-             */
-            fulfilling_evidence_ids?: string[];
-            /**
-             * Superseded Reason
-             * @description Human-readable explanation when state=SUPERSEDED. Set by engine auto-supersession ('all motivating hypotheses retired') or by LLM emission ('superseded by refined problem statement'). Required when state=SUPERSEDED, must be None otherwise.
-             */
-            superseded_reason?: string | null;
-            /**
-             * Created At Turn
-             * @description Turn number when the need was created.
-             */
-            created_at_turn: number;
             /**
              * Created At
              * Format: date-time
              * @description Wall-clock creation time.
              */
             created_at?: string;
+            /**
+             * Created At Turn
+             * @description Turn number when the need was created.
+             */
+            created_at_turn: number;
+            /**
+             * Fulfilling Evidence Ids
+             * @description Evidence rows that fulfill this need. Multiple entries may accumulate across stages: presence evidence collected during DIAGNOSIS plus absence evidence collected during MITIGATION/TREATMENT. The list is append-only in practice — the need's state stays FULFILLED once fulfilled even when post-fix absence evidence is added.
+             */
+            fulfilling_evidence_ids?: string[];
+            /**
+             * Motivating Hypothesis Ids
+             * @description Hypothesis IDs that motivated this need's existence. Empty list means the need is motivated by the problem statement (symptom needs). Engine appends/removes IDs as hypotheses share needs (cross-hypothesis evaluation per evidence-needs-design.md §5.2) and as hypotheses are retired (engine auto-supersession rule).
+             */
+            motivating_hypothesis_ids?: string[];
+            /**
+             * Need Id
+             * @description Unique evidence-need identifier
+             */
+            need_id?: string;
+            /**
+             * @description Whether the discriminating data can be gathered at all — the one judgment the engine cannot compute (insufficient-evidence §5.3). Model-declared, opt-in; UNKNOWN default is fail-safe (keep-engaging). Scoped to causal_verification needs; auto-revoked to UNKNOWN once the need is FULFILLED or SUPERSEDED (the question is moot). Only UNOBTAINABLE moves the case toward INSUFFICIENT_EVIDENCE — never back toward safety.
+             * @default unknown
+             */
+            obtainability: components["schemas"]["NeedObtainability"];
+            /**
+             * @description LLM hint for surfacing-order on the suggestion side.
+             * @default medium
+             */
+            priority: components["schemas"]["NeedPriority"];
+            /** @description Why this need exists: symptom_verification (motivated by the problem statement) or causal_verification (motivated by one or more hypotheses). */
+            purpose: components["schemas"]["NeedPurpose"];
+            /**
+             * Rationale
+             * @description Why this data would advance the investigation. Used in the LLM's <evidence_needs> context block to remind the LLM why the need was created. Example: 'confirms whether the pod-level OOMKill pattern is still active after the memory-limit increase'.
+             */
+            rationale: string;
+            /**
+             * Request Text
+             * @description What data would fulfill this need, in a form suitable for surfacing to the user as an EVIDENCE-type suggestion. Example: 'kubectl get pods -n production showing current restart counts'.
+             */
+            request_text: string;
+            /**
+             * @description Lifecycle state — see NeedState.
+             * @default pending
+             */
+            state: components["schemas"]["NeedState"];
+            /**
+             * Superseded Reason
+             * @description Human-readable explanation when state=SUPERSEDED. Set by engine auto-supersession ('all motivating hypotheses are terminal') or by LLM emission ('superseded by refined problem statement'). Required when state=SUPERSEDED, must be None otherwise.
+             */
+            superseded_reason?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -5773,15 +6187,32 @@ export interface components {
          */
         EvidenceSummary: {
             /**
+             * Category
+             * @description Evidence purpose: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE | OTHER
+             * @default OTHER
+             */
+            category: string;
+            /**
+             * Collected At Turn
+             * @description Turn number when evidence was collected
+             * @default 0
+             */
+            collected_at_turn: number;
+            /**
              * Evidence Id
              * @description Evidence identifier
              */
             evidence_id: string;
             /**
-             * Type
-             * @description Evidence type: log_file | metrics_data | config_file | etc.
+             * Relevance Score
+             * @description Relevance to current investigation (0.0-1.0)
              */
-            type: string;
+            relevance_score: number;
+            /**
+             * Source Filename
+             * @description Original filename of the source file, if evidence originated from an attachment.
+             */
+            source_filename?: string | null;
             /**
              * Summary
              * @description Brief summary of evidence content
@@ -5794,33 +6225,28 @@ export interface components {
              */
             timestamp: string;
             /**
-             * Relevance Score
-             * @description Relevance to current investigation (0.0-1.0)
+             * Type
+             * @description Evidence type: log_file | metrics_data | config_file | etc.
              */
-            relevance_score: number;
-            /**
-             * Collected At Turn
-             * @description Turn number when evidence was collected
-             * @default 0
-             */
-            collected_at_turn: number;
-            /**
-             * Category
-             * @description Evidence purpose: SYMPTOM_EVIDENCE | CAUSAL_EVIDENCE | SYMPTOM_ABSENCE_EVIDENCE | CAUSAL_ABSENCE_EVIDENCE | OTHER
-             * @default OTHER
-             */
-            category: string;
-            /**
-             * Source Filename
-             * @description Original filename of the source file, if evidence originated from an attachment.
-             */
-            source_filename?: string | null;
+            type: string;
         };
         /**
          * FeatureStatus
          * @description Status of an optional feature that depends on configuration.
          */
         FeatureStatus: {
+            /**
+             * Config Hint
+             * @description What the user needs to set to enable this feature
+             * @default
+             */
+            config_hint: string;
+            /**
+             * Description
+             * @description Brief explanation of the feature
+             * @default
+             */
+            description: string;
             /**
              * Enabled
              * @description Feature is active and usable
@@ -5832,24 +6258,17 @@ export interface components {
              * @default false
              */
             has_api_key: boolean;
-            /**
-             * Description
-             * @description Brief explanation of the feature
-             * @default
-             */
-            description: string;
-            /**
-             * Config Hint
-             * @description What the user needs to set to enable this feature
-             * @default
-             */
-            config_hint: string;
         };
         /**
          * GeneratedDocument
          * @description A generated document artifact.
          */
         GeneratedDocument: {
+            /**
+             * Content Ref
+             * @description Reference to document content (S3 URI, file path, etc.)
+             */
+            content_ref: string;
             /**
              * Document Id
              * @description Unique document identifier
@@ -5858,15 +6277,10 @@ export interface components {
             /** @description Type of document */
             document_type: components["schemas"]["DocumentType"];
             /**
-             * Title
-             * @description Document title
+             * Format
+             * @description Document format: markdown | pdf | html | json | other
              */
-            title: string;
-            /**
-             * Content Ref
-             * @description Reference to document content (S3 URI, file path, etc.)
-             */
-            content_ref: string;
+            format: string;
             /**
              * Generated At
              * Format: date-time
@@ -5874,15 +6288,15 @@ export interface components {
              */
             generated_at?: string;
             /**
-             * Format
-             * @description Document format: markdown | pdf | html | json | other
-             */
-            format: string;
-            /**
              * Size Bytes
              * @description Document size in bytes
              */
             size_bytes?: number | null;
+            /**
+             * Title
+             * @description Document title
+             */
+            title: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -5898,35 +6312,13 @@ export interface components {
          *     - OR generate hypotheses for systematic testing (when unclear)
          */
         Hypothesis: {
-            /**
-             * Hypothesis Id
-             * @description Unique hypothesis identifier
-             */
-            hypothesis_id?: string;
-            /**
-             * Statement
-             * @description Hypothesis statement (what we think caused the problem)
-             */
-            statement: string;
             /** @description Hypothesis category (for anchoring detection) */
             category: components["schemas"]["HypothesisCategory"];
             /**
-             * @description Current hypothesis state
-             * @default captured
+             * Concluded At
+             * @description When hypothesis was validated/refuted/retired
              */
-            state: components["schemas"]["HypothesisState"];
-            /**
-             * Likelihood
-             * @description Estimated likelihood this hypothesis is correct (0.0-1.0)
-             * @default 0.5
-             */
-            likelihood: number;
-            /**
-             * Initial Likelihood
-             * @description Original likelihood when hypothesis was generated
-             * @default 0.5
-             */
-            initial_likelihood: number;
+            concluded_at?: string | null;
             /**
              * Evidence Links
              * @description Relationship rows from the hypothesis_evidence junction table.
@@ -5946,12 +6338,24 @@ export interface components {
              * @description Turn number when hypothesis was generated
              */
             generated_at_turn: number;
+            generation_mode: components["schemas"]["HypothesisGenerationMode"];
             /**
-             * Last Updated Turn
-             * @description Turn number when hypothesis was last updated
+             * Hypothesis Id
+             * @description Unique hypothesis identifier
+             */
+            hypothesis_id?: string;
+            /**
+             * Initial Likelihood
+             * @description Original likelihood when hypothesis was generated
+             * @default 0.5
+             */
+            initial_likelihood: number;
+            /**
+             * Iterations Without Progress
+             * @description Count of consecutive iterations without progress
              * @default 0
              */
-            last_updated_turn: number;
+            iterations_without_progress: number;
             /**
              * Last Progress At Turn
              * @description Turn number when hypothesis last showed progress
@@ -5959,37 +6363,57 @@ export interface components {
              */
             last_progress_at_turn: number;
             /**
-             * Iterations Without Progress
-             * @description Count of consecutive iterations without progress
+             * Last Updated Turn
+             * @description Turn number when hypothesis was last updated
              * @default 0
              */
-            iterations_without_progress: number;
-            generation_mode: components["schemas"]["HypothesisGenerationMode"];
+            last_updated_turn: number;
             /**
-             * Retirement Reason
-             * @description Reason if hypothesis was retired
+             * Likelihood
+             * @description Estimated likelihood this hypothesis is correct (0.0-1.0)
+             * @default 0.5
              */
-            retirement_reason?: string | null;
+            likelihood: number;
             /**
-             * Refutation Reason
-             * @description Evidence or reasoning that disproves the hypothesis. REQUIRED when state=REFUTED (enforced via model validator). Not used for other statuses. state=REFUTED and refutation_reason travel together — an update carrying one without the other is rejected at the orchestration layer.
+             * Path
+             * @description Ordered node_ids root -> ... -> D (the active problem). path[0] is the root node, path[-1] is the PROBLEM node. Empty until the chain is materialized.
              */
-            refutation_reason?: string | null;
+            path?: string[];
             /**
              * Rationale
              * @description Why this hypothesis was generated
              */
             rationale: string;
             /**
+             * Refutation Reason
+             * @description Evidence or reasoning that disproves the hypothesis. REQUIRED when state=REFUTED (enforced via model validator). Not used for other statuses. state=REFUTED and refutation_reason travel together — an update carrying one without the other is rejected at the orchestration layer.
+             */
+            refutation_reason?: string | null;
+            /**
+             * Retirement Reason
+             * @description Reason if hypothesis was retired
+             */
+            retirement_reason?: string | null;
+            /**
+             * Root Node Id
+             * @description The chain's ROOT causal node (its candidate root cause). NULL while the chain is still being expanded backward toward a root (lazy expansion). When set, must equal path[0].
+             */
+            root_node_id?: string | null;
+            /**
+             * @description Current hypothesis state
+             * @default captured
+             */
+            state: components["schemas"]["HypothesisState"];
+            /**
+             * Statement
+             * @description Hypothesis statement (what we think caused the problem)
+             */
+            statement: string;
+            /**
              * Tested At
              * @description When hypothesis testing began
              */
             tested_at?: string | null;
-            /**
-             * Concluded At
-             * @description When hypothesis was validated/refuted/retired
-             */
-            concluded_at?: string | null;
         };
         /**
          * HypothesisCategory
@@ -6014,33 +6438,33 @@ export interface components {
          */
         HypothesisEvidenceLink: {
             /**
-             * Hypothesis Id
-             * @description Hypothesis being evaluated
-             */
-            hypothesis_id: string;
-            /**
-             * Evidence Id
-             * @description Evidence being evaluated
-             */
-            evidence_id: string;
-            /** @description How this evidence relates to THIS hypothesis (including IRRELEVANT) */
-            stance: components["schemas"]["EvidenceStance"];
-            /**
-             * Reasoning
-             * @description LLM's explanation of the relationship
-             */
-            reasoning: string;
-            /**
-             * Stance Confidence
-             * @description Confidence in the stance assessment (0.0-1.0). Use for granularity instead of STRONGLY_ variants.
-             */
-            stance_confidence: number;
-            /**
              * Analyzed At
              * Format: date-time
              * @description When this relationship was established
              */
             analyzed_at?: string;
+            /**
+             * Evidence Id
+             * @description Evidence being evaluated
+             */
+            evidence_id: string;
+            /**
+             * Hypothesis Id
+             * @description Hypothesis being evaluated
+             */
+            hypothesis_id: string;
+            /**
+             * Reasoning
+             * @description LLM's explanation of the relationship
+             */
+            reasoning: string;
+            /** @description How this evidence relates to THIS hypothesis (including IRRELEVANT) */
+            stance: components["schemas"]["EvidenceStance"];
+            /**
+             * Stance Confidence
+             * @description Confidence in the stance assessment (0.0-1.0). Use for granularity instead of STRONGLY_ variants.
+             */
+            stance_confidence: number;
         };
         /**
          * HypothesisGenerationMode
@@ -6060,38 +6484,43 @@ export interface components {
          */
         HypothesisSummary: {
             /**
-             * Hypothesis Id
-             * @description Hypothesis identifier
-             */
-            hypothesis_id: string;
-            /**
-             * Text
-             * @description Hypothesis statement
-             */
-            text: string;
-            /**
-             * Likelihood
-             * @description Likelihood score (0.0-1.0)
-             */
-            likelihood: number;
-            /** @description Status: CAPTURED | ACTIVE | VALIDATED | REFUTED | INCONCLUSIVE | RETIRED */
-            state: components["schemas"]["HypothesisState"];
-            /**
              * Evidence Count
              * @description Number of evidence items related to this hypothesis
              */
             evidence_count: number;
             /**
+             * Hypothesis Id
+             * @description Hypothesis identifier
+             */
+            hypothesis_id: string;
+            /**
+             * Likelihood
+             * @description Likelihood score (0.0-1.0)
+             */
+            likelihood: number;
+            /**
              * Refutation Reason
              * @description Reason the hypothesis was refuted. Populated only when status=REFUTED; None otherwise. Mirrors the domain model's pair-integrity invariant.
              */
             refutation_reason?: string | null;
+            /** @description Status: CAPTURED | ACTIVE | VALIDATED | REFUTED | INCONCLUSIVE | RETIRED */
+            state: components["schemas"]["HypothesisState"];
+            /**
+             * Text
+             * @description Hypothesis statement
+             */
+            text: string;
         };
         /**
          * ImpactData
          * @description Impact assessment for problem scope.
          */
         ImpactData: {
+            /**
+             * Affected Regions
+             * @description List of affected geographical regions
+             */
+            affected_regions?: string[] | null;
             /**
              * Affected Services
              * @description List of affected services
@@ -6102,11 +6531,6 @@ export interface components {
              * @description User impact description (e.g., 'All users in US region')
              */
             affected_users?: string | null;
-            /**
-             * Affected Regions
-             * @description List of affected geographical regions
-             */
-            affected_regions?: string[] | null;
         };
         /**
          * InquiryData
@@ -6114,8 +6538,50 @@ export interface components {
          *     Captures early problem exploration before formal investigation commitment.
          */
         InquiryData: {
+            /**
+             * Decided To Investigate
+             * @description Whether user committed to formal investigation
+             * @default false
+             */
+            decided_to_investigate: boolean;
+            /**
+             * Decision Made At
+             * @description When user decided to investigate (or not)
+             */
+            decision_made_at?: string | null;
+            /**
+             * Handshake Deferred At Turn
+             * @description Turn number on which the same-turn-confirmation guard fired. When current_turn == this+1, context_builder injects HANDSHAKE_DEFERRED (re-present + ask) instead of NOT_YET_CONFIRMED, and the engine deterministically emits confirmation suggestions. Self-clears by becoming stale on subsequent turns.
+             */
+            handshake_deferred_at_turn?: number | null;
+            /**
+             * Inquiry Turns
+             * @description Number of turns spent in INQUIRY state
+             * @default 0
+             */
+            inquiry_turns: number;
+            /**
+             * Knowledge Matches
+             * @description Potential solutions found in KB
+             */
+            knowledge_matches?: components["schemas"]["KnowledgeMatch"][];
+            /** @description Resolution details if fixed via KB match */
+            knowledge_resolution?: components["schemas"]["KnowledgeResolution"] | null;
+            /** @description Early urgency assessment */
+            preliminary_urgency?: components["schemas"]["PreliminaryUrgency"] | null;
             /** @description Agent initial understanding of the problem */
             problem_confirmation?: components["schemas"]["ProblemConfirmation"] | null;
+            /**
+             * Problem Statement Confirmed
+             * @description User confirmed the formalized problem statement
+             * @default false
+             */
+            problem_statement_confirmed: boolean;
+            /**
+             * Problem Statement Confirmed At
+             * @description When user confirmed the problem statement
+             */
+            problem_statement_confirmed_at?: string | null;
             /**
              * Proposed Problem Statement
              * @description Agent formalized problem statement (clear, specific, actionable) - ITERATIVE REFINEMENT pattern.
@@ -6133,65 +6599,12 @@ export interface components {
              *             Pattern: Iterative Refinement - refine until user confirms without reservation
              */
             proposed_problem_statement?: string | null;
-            /**
-             * Problem Statement Confirmed
-             * @description User confirmed the formalized problem statement
-             * @default false
-             */
-            problem_statement_confirmed: boolean;
-            /**
-             * Problem Statement Confirmed At
-             * @description When user confirmed the problem statement
-             */
-            problem_statement_confirmed_at?: string | null;
-            /**
-             * Handshake Deferred At Turn
-             * @description Turn number on which the same-turn-confirmation guard fired. When current_turn == this+1, context_builder injects HANDSHAKE_DEFERRED (re-present + ask) instead of NOT_YET_CONFIRMED, and the engine deterministically emits confirmation suggestions. Self-clears by becoming stale on subsequent turns.
-             */
-            handshake_deferred_at_turn?: number | null;
-            /**
-             * Decided To Investigate
-             * @description Whether user committed to formal investigation
-             * @default false
-             */
-            decided_to_investigate: boolean;
-            /**
-             * Decision Made At
-             * @description When user decided to investigate (or not)
-             */
-            decision_made_at?: string | null;
-            /**
-             * Inquiry Turns
-             * @description Number of turns spent in INQUIRY state
-             * @default 0
-             */
-            inquiry_turns: number;
-            /**
-             * Knowledge Matches
-             * @description Potential solutions found in KB
-             */
-            knowledge_matches?: components["schemas"]["KnowledgeMatch"][];
-            /** @description Resolution details if fixed via KB match */
-            knowledge_resolution?: components["schemas"]["KnowledgeResolution"] | null;
-            /** @description Early urgency assessment */
-            preliminary_urgency?: components["schemas"]["PreliminaryUrgency"] | null;
         };
         /**
          * InquiryResponseData
          * @description Nested inquiry data for INQUIRY phase response.
          */
         InquiryResponseData: {
-            /**
-             * Proposed Problem Statement
-             * @description Agent's formalized problem statement (if ready)
-             */
-            proposed_problem_statement?: string | null;
-            /**
-             * Problem Statement Confirmed
-             * @description Whether user confirmed the problem statement
-             * @default false
-             */
-            problem_statement_confirmed: boolean;
             /**
              * Decided To Investigate
              * @description Whether agent has enough info to start investigation
@@ -6209,7 +6622,24 @@ export interface components {
              * @description Problem type and severity guess
              */
             problem_confirmation?: Record<string, never> | null;
+            /**
+             * Problem Statement Confirmed
+             * @description Whether user confirmed the problem statement
+             * @default false
+             */
+            problem_statement_confirmed: boolean;
+            /**
+             * Proposed Problem Statement
+             * @description Agent's formalized problem statement (if ready)
+             */
+            proposed_problem_statement?: string | null;
         };
+        /**
+         * InterventionQuadrant
+         * @description Where × how-durable an intervention acts (methodology §7.4).
+         * @enum {string}
+         */
+        InterventionQuadrant: "remediation" | "defensive_fix" | "mitigation" | "loop_break";
         /**
          * InvestigationActionType
          * @description Type of action proposed during investigation.
@@ -6237,14 +6667,79 @@ export interface components {
          *        Set by LLM in structured output. Do NOT drive stage transitions.
          */
         InvestigationProgress: {
+            /**
+             * @description Engine-derived assurance grade behind the identified cause — the M2 confirmation ladder (NO_ROOT | MECHANISTIC | CONFIRMED). Recomputed each turn from the causal graph alongside cause_state (never path-stripped) and persisted in the progress blob so the grade × conclusion-confidence seam is queryable per turn (#656). CONFIRMED (counterfactual, gone⇒gone) is the sole harvest authority and the only grade whose conclusion reads 'verified'.
+             * @default no_root
+             */
+            cause_assurance: components["schemas"]["CauseAssuranceGrade"];
+            /**
+             * Cause Identification Contested
+             * @description Whether cause identification is MECE-contested (§7.1.2, #656): >=2 simultaneously-validated DISTINCT standing chain roots (duplicate emissions and same-live-causal-line roots collapse to one cause; a counterfactually confirmed root settles the contest). While contested, cause_state never reads IDENTIFIED and the engine conclusion mirror is withheld, until discriminating evidence resolves the contest. Recomputed each turn; persisted so the WARNING and the hold counter are edge-triggered and the standing contest is queryable per case.
+             * @default false
+             */
+            cause_identification_contested: boolean;
+            /**
+             * Cause Overclaim
+             * @description Whether the recorded RootCauseConclusion currently claims 'verified' while cause_assurance is below CONFIRMED — the M2 over-claim seam. Derived each recompute from the same predicate as the seam trace; persisted so the WARNING is edge-triggered (warn on the transition into over-claim, not once per turn) and the standing seam is queryable per case.
+             * @default false
+             */
+            cause_overclaim: boolean;
+            /**
+             * @description Engine-derived knowledge state of the root cause (UNKNOWN | CANDIDATES | IDENTIFIED). Replaces the boolean root_cause_identified. IDENTIFIED is the grounded cause-known signal; CANDIDATES is derived from >=2 ACTIVE hypotheses. Drives whether the diagnostic machinery runs. Recomputed each turn by the engine; never path-stripped.
+             * @default unknown
+             */
+            cause_state: components["schemas"]["CauseState"];
+            /**
+             * Investigation Completed At
+             * @description When root cause was identified
+             */
+            investigation_completed_at?: string | null;
+            /**
+             * Last Anti Anchoring Turn
+             * @description Turn the anti-anchoring intervention last fired (0 = never). Drives its cooldown so a detected fixation is acted on at most once per few turns rather than churning the differential every turn.
+             * @default 0
+             */
+            last_anti_anchoring_turn: number;
             /** @description Mitigation insert record (redesign R2). Materialized by the engine from the LLM's mitigation accept/verify gate signals plus the workaround ProposedAction. Replaces the legacy path-coupled mitigation gates. */
             mitigation?: components["schemas"]["MitigationRecord"] | null;
+            /**
+             * Resolution Completed At
+             * @description When solution was verified
+             */
+            resolution_completed_at?: string | null;
+            /**
+             * Root Cause Likelihood
+             * @description Likelihood in root cause identification (0.0 = unknown, 1.0 = certain)
+             * @default 0
+             */
+            root_cause_likelihood: number;
+            /**
+             * Root Cause Method
+             * @description How root cause was identified: direct_analysis | hypothesis_validation | single_shot_validation | correlation | user_provided | other
+             */
+            root_cause_method?: string | null;
             /**
              * Solution Accepted
              * @description User complied with proposed solution (inferred from submission). Triggers DIAGNOSIS → TREATMENT transition.
              * @default false
              */
             solution_accepted: boolean;
+            /**
+             * @description Whether the SELECTED solution can be applied this session (NOW | DEFERRED). DEFERRED routes to CLOSE-with-documented-solution.
+             * @default now
+             */
+            solution_feasible: components["schemas"]["SolutionFeasible"];
+            /**
+             * Solution Proposed
+             * @description Engine-derived at the assessment recompute (INV-32): True iff a LIVE ProposedAction with action_type=SOLUTION stands (state pending/accepted) or the gate ladder advanced (solution_accepted/solution_verified). Not set by LLM; not a write-once latch — a superseded or license-lost offer drops it.
+             * @default false
+             */
+            solution_proposed: boolean;
+            /**
+             * @description Knowledge state of the fix (UNKNOWN | SELECTED). CANDIDATES (multi-solution deliberation) is reserved for a follow-on and not produced this round.
+             * @default unknown
+             */
+            solution_state: components["schemas"]["SolutionState"];
             /**
              * Solution Verified
              * @description Solution effectiveness verified via User-Agent Handshake. NOT directly settable by LLM — requires explicit user confirmation. Triggers TREATMENT → RESOLVED transition.
@@ -6258,52 +6753,21 @@ export interface components {
              */
             symptom_verified: boolean;
             /**
-             * Solution Proposed
-             * @description Set programmatically when ProposedAction with action_type=SOLUTION is created. Not directly set by LLM.
-             * @default false
-             */
-            solution_proposed: boolean;
-            /**
-             * @description Engine-derived knowledge state of the root cause (UNKNOWN | CANDIDATES | IDENTIFIED). Replaces the boolean root_cause_identified. IDENTIFIED is the grounded cause-known signal; CANDIDATES is derived from >=2 ACTIVE hypotheses. Drives whether the diagnostic machinery runs. Recomputed each turn by the engine; never path-stripped.
-             * @default unknown
-             */
-            cause_state: components["schemas"]["CauseState"];
-            /**
-             * @description Knowledge state of the fix (UNKNOWN | SELECTED). CANDIDATES (multi-solution deliberation) is reserved for a follow-on and not produced this round.
-             * @default unknown
-             */
-            solution_state: components["schemas"]["SolutionState"];
-            /**
-             * @description Whether the SELECTED solution can be applied this session (NOW | DEFERRED). DEFERRED routes to CLOSE-with-documented-solution.
-             * @default now
-             */
-            solution_feasible: components["schemas"]["SolutionFeasible"];
-            /**
-             * Root Cause Likelihood
-             * @description Likelihood in root cause identification (0.0 = unknown, 1.0 = certain)
-             * @default 0
-             */
-            root_cause_likelihood: number;
-            /**
-             * Root Cause Method
-             * @description How root cause was identified: direct_analysis | hypothesis_validation | single_shot_validation | correlation | user_provided | other
-             */
-            root_cause_method?: string | null;
-            /**
              * Verification Completed At
              * @description When symptom verification milestone was completed
              */
             verification_completed_at?: string | null;
             /**
-             * Investigation Completed At
-             * @description When root cause was identified
+             * @description Engine-derived verification status — the grounding × progress join (HEALTHY | TREATMENT_BLOCKED | OPEN | NOT_YET_PRODUCTIVE | INSUFFICIENT_EVIDENCE). Recomputed each turn from case state alongside cause_state (never path-stripped) and persisted in the progress blob, so the model-declared obtainability signal it reads survives across turns. Drives the code-guarded insufficient-evidence handoff and the terminal capture-on-close. Default NOT_YET_PRODUCTIVE (too little work to judge). See insufficient-evidence-handling.md §5.4.
+             * @default not_yet_productive
              */
-            investigation_completed_at?: string | null;
+            verification_status: components["schemas"]["VerificationStatus"];
             /**
-             * Resolution Completed At
-             * @description When solution was verified
+             * Work Gate Crossed
+             * @description Once-per-case latch (DF-6 / INV-39): whether this case has EVER crossed the §5.2 work gate (work_gate_passed — >=2 hypotheses across >=2 categories with >=2 evidence). Set True at the first crossing during INVESTIGATING and never reset (a later drop below the gate does not clear it). Drives the per-provider provider-floor metric (work_gate_crossed_total) exactly once so a mis-provisioned model that never crosses is observable as a fleet-health fact, not re-counted per turn. Recomputed each turn; persisted in the progress blob (migration-free).
+             * @default false
              */
-            resolution_completed_at?: string | null;
+            work_gate_crossed: boolean;
         };
         /**
          * InvestigationProgressSummary
@@ -6314,6 +6778,12 @@ export interface components {
          *     from current_stage if needed.
          */
         InvestigationProgressSummary: {
+            /**
+             * Active Hypotheses
+             * @description Number of hypotheses currently being tested
+             * @default 0
+             */
+            active_hypotheses: number;
             /**
              * Completed Indicators
              * @description Completed progress indicators (e.g. symptom_verified, root_cause_identified)
@@ -6327,72 +6797,66 @@ export interface components {
             /** @description Current stage: DIAGNOSIS | MITIGATION | TREATMENT */
             current_stage: components["schemas"]["InvestigationStage"];
             /**
-             * Turns Without Progress
-             * @description Consecutive turns without milestone, evidence, or hypothesis progress
-             * @default 0
-             */
-            turns_without_progress: number;
-            /**
              * Total Evidence
              * @description Total evidence items collected
              * @default 0
              */
             total_evidence: number;
             /**
-             * Active Hypotheses
-             * @description Number of hypotheses currently being tested
+             * Turns Without Progress
+             * @description Consecutive turns without milestone, evidence, or hypothesis progress
              * @default 0
              */
-            active_hypotheses: number;
+            turns_without_progress: number;
         };
         /**
          * InvestigationSessionResponse
          * @description Response model for investigation session.
          */
         InvestigationSessionResponse: {
-            /** Session Id */
-            session_id: string;
             /** Case Id */
             case_id: string;
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
-            state: components["schemas"]["SessionState"];
-            /**
-             * Started At
-             * Format: date-time
-             */
-            started_at: string;
-            /** Ended At */
-            ended_at?: string | null;
-            /**
-             * Last Activity At
-             * Format: date-time
-             */
-            last_activity_at: string;
-            /** Total Duration Ms */
-            total_duration_ms?: number | null;
-            /** Session Goal */
-            session_goal?: string | null;
-            /** Findings Summary */
-            findings_summary?: string | null;
-            /** Total Token Usage */
-            total_token_usage: number;
-            /** Total Agent Executions */
-            total_agent_executions: number;
-            /** Token Budget Limit */
-            token_budget_limit?: number | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Findings Summary */
+            findings_summary?: string | null;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Organization Id */
+            organization_id: string;
+            /** Session Goal */
+            session_goal?: string | null;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            state: components["schemas"]["SessionState"];
+            /** Token Budget Limit */
+            token_budget_limit?: number | null;
+            /** Total Agent Executions */
+            total_agent_executions: number;
+            /** Total Duration Ms */
+            total_duration_ms?: number | null;
+            /** Total Token Usage */
+            total_token_usage: number;
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
+            /** User Id */
+            user_id: string;
         };
         /**
          * InvestigationStage
@@ -6429,21 +6893,16 @@ export interface components {
          */
         JournalEntry: {
             /**
-             * Turn
-             * @description Turn number when this entry was created
+             * Content
+             * @description The distilled insight (max 200 chars)
              */
-            turn: number;
+            content: string;
             /**
              * Entry Type
              * @description Type of journal entry
              * @enum {string}
              */
             entry_type: "finding" | "decision" | "user_context" | "ruled_out" | "blocker" | "milestone";
-            /**
-             * Content
-             * @description The distilled insight (max 200 chars)
-             */
-            content: string;
             /**
              * Evidence Id
              * @description Evidence ID this entry relates to, if any
@@ -6454,22 +6913,40 @@ export interface components {
              * @description Hypothesis ID this entry relates to, if any
              */
             hypothesis_id?: string | null;
+            /**
+             * Turn
+             * @description Turn number when this entry was created
+             */
+            turn: number;
         };
         /**
          * KnowledgeBaseDocument
          * @description Response model for knowledge base document operations.
          */
         KnowledgeBaseDocument: {
-            /** Document Id */
-            document_id: string;
-            /** Title */
-            title: string;
-            /** Content */
-            content: string;
-            /** Document Type */
-            document_type: string;
             /** Category */
             category?: string | null;
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at: string;
+            /** Document Id */
+            document_id: string;
+            /** Document Type */
+            document_type: string;
+            /** Metadata */
+            metadata?: Record<string, never> | null;
+            /** Owner Id */
+            owner_id?: string | null;
+            /**
+             * Scope
+             * @default global
+             */
+            scope: string;
+            /** Source Suggestion Id */
+            source_suggestion_id?: string | null;
+            /** Source Url */
+            source_url?: string | null;
             /**
              * Status
              * @default processed
@@ -6477,37 +6954,22 @@ export interface components {
             status: string;
             /** Tags */
             tags?: string[];
-            /** Source Url */
-            source_url?: string | null;
-            /**
-             * Scope
-             * @default global
-             */
-            scope: string;
-            /** Owner Id */
-            owner_id?: string | null;
-            /** Team Id */
-            team_id?: string | null;
-            /** Created At */
-            created_at: string;
+            /** Title */
+            title: string;
             /** Updated At */
             updated_at: string;
-            /** Metadata */
-            metadata?: Record<string, never> | null;
             /**
              * Verification Level
              * @default 0
              */
             verification_level: number;
+            /** Verification Reason */
+            verification_reason?: string | null;
             /**
              * Verification Status
              * @default experimental
              */
             verification_status: ("verified" | "community" | "experimental") | null;
-            /** Verification Reason */
-            verification_reason?: string | null;
-            /** Source Suggestion Id */
-            source_suggestion_id?: string | null;
         };
         /**
          * KnowledgeMatch
@@ -6518,12 +6980,12 @@ export interface components {
             match_id: string;
             /** Match Type */
             match_type: string;
+            /** Potential Solution */
+            potential_solution?: string | null;
             /** Relevance Score */
             relevance_score: number;
             /** Summary */
             summary: string;
-            /** Potential Solution */
-            potential_solution?: string | null;
         };
         /**
          * KnowledgeResolution
@@ -6534,12 +6996,12 @@ export interface components {
             match_id: string;
             /** Match Type */
             match_type: string;
+            /** Resolution Turn */
+            resolution_turn: number;
             /** Solution Applied */
             solution_applied: string;
             /** User Confirmation */
             user_confirmation: string;
-            /** Resolution Turn */
-            resolution_turn: number;
         };
         /**
          * LLMConfigResponse
@@ -6547,25 +7009,10 @@ export interface components {
          */
         LLMConfigResponse: {
             /**
-             * Deployment
-             * @description Deployment mode: 'standalone' or 'cloud'
-             */
-            deployment: string;
-            /**
              * Config Readonly
              * @description True in standalone mode (config managed via .env file)
              */
             config_readonly: boolean;
-            /** Primary Provider */
-            primary_provider: string;
-            /** Strict Mode */
-            strict_mode: boolean;
-            /** Fallback Chain */
-            fallback_chain: string[];
-            /** Providers */
-            providers: {
-                [key: string]: components["schemas"]["LLMProviderDetail"];
-            };
             /**
              * Config Sources
              * @description Provenance per overridable setting key: 'admin-override' (set via the dashboard, stored in the DB) or 'env-default' (.env / seed). Always 'env-default' in standalone (no DB overrides).
@@ -6573,6 +7020,21 @@ export interface components {
             config_sources?: {
                 [key: string]: string;
             };
+            /**
+             * Deployment
+             * @description Deployment mode: 'standalone' or 'cloud'
+             */
+            deployment: string;
+            /** Fallback Chain */
+            fallback_chain: string[];
+            /** Primary Provider */
+            primary_provider: string;
+            /** Providers */
+            providers: {
+                [key: string]: components["schemas"]["LLMProviderDetail"];
+            };
+            /** Strict Mode */
+            strict_mode: boolean;
             /**
              * Timestamp
              * Format: date-time
@@ -6585,41 +7047,36 @@ export interface components {
          */
         LLMConfigUpdateRequest: {
             /**
-             * Primary Provider
-             * @description New primary provider name
+             * Api Key
+             * @description New API key value for the specified provider
              */
-            primary_provider?: string | null;
+            api_key?: string | null;
             /**
              * Fallback Chain
              * @description New fallback chain order
              */
             fallback_chain?: string[] | null;
             /**
-             * Provider Name
-             * @description Provider to update API key or model for
-             */
-            provider_name?: string | null;
-            /**
-             * Api Key
-             * @description New API key value for the specified provider
-             */
-            api_key?: string | null;
-            /**
              * Model
              * @description Model to use for the specified provider (requires provider_name)
              */
             model?: string | null;
+            /**
+             * Primary Provider
+             * @description New primary provider name
+             */
+            primary_provider?: string | null;
+            /**
+             * Provider Name
+             * @description Provider to update API key or model for
+             */
+            provider_name?: string | null;
         };
         /**
          * LLMConfigUpdateResponse
          * @description Response after updating LLM configuration.
          */
         LLMConfigUpdateResponse: {
-            /**
-             * Updated Keys
-             * @description Config keys that were updated
-             */
-            updated_keys: string[];
             /** Message */
             message: string;
             /**
@@ -6627,6 +7084,11 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
+            /**
+             * Updated Keys
+             * @description Config keys that were updated
+             */
+            updated_keys: string[];
         };
         /**
          * LLMConnectionTestRequest
@@ -6644,19 +7106,19 @@ export interface components {
          * @description Result of an LLM provider connection test.
          */
         LLMConnectionTestResponse: {
-            /** Provider */
-            provider: string;
             /** Connected */
             connected: boolean;
+            /** Error Message */
+            error_message?: string | null;
+            /** Model Used */
+            model_used?: string | null;
+            /** Provider */
+            provider: string;
             /**
              * Response Time Ms
              * @default 0
              */
             response_time_ms: number;
-            /** Error Message */
-            error_message?: string | null;
-            /** Model Used */
-            model_used?: string | null;
             /**
              * Timestamp
              * Format: date-time
@@ -6668,8 +7130,21 @@ export interface components {
          * @description Individual LLM provider status for dashboard display.
          */
         LLMProviderDetail: {
-            /** Name */
-            name: string;
+            /**
+             * Available Models
+             * @description Models the user can choose from for this provider
+             */
+            available_models?: string[];
+            /**
+             * Avg Latency Ms
+             * @default 0
+             */
+            avg_latency_ms: number;
+            /**
+             * Connected
+             * @description Provider responded to last health check
+             */
+            connected: boolean;
             /** Display Name */
             display_name: string;
             /**
@@ -6677,47 +7152,34 @@ export interface components {
              * @description Provider is initialized and in the fallback chain
              */
             enabled: boolean;
-            /**
-             * Connected
-             * @description Provider responded to last health check
-             */
-            connected: boolean;
+            /** Error Message */
+            error_message?: string | null;
             /**
              * Has Api Key
              * @description API key is configured (value never exposed)
              */
             has_api_key: boolean;
             /**
-             * State
-             * @description Provider lifecycle state: not_configured, configured, or active
-             * @default not_configured
+             * Health
+             * @description HEALTHY, DEGRADED, UNHEALTHY, or UNKNOWN
+             * @default unknown
              */
-            state: string;
+            health: string;
             /** Models */
             models?: string[];
+            /** Name */
+            name: string;
             /**
              * Selected Model
              * @description Currently active model for this provider
              */
             selected_model?: string | null;
             /**
-             * Available Models
-             * @description Models the user can choose from for this provider
+             * State
+             * @description Provider lifecycle state: not_configured, configured, or active
+             * @default not_configured
              */
-            available_models?: string[];
-            /** Error Message */
-            error_message?: string | null;
-            /**
-             * Health
-             * @description HEALTHY, DEGRADED, UNHEALTHY, or UNKNOWN
-             * @default unknown
-             */
-            health: string;
-            /**
-             * Avg Latency Ms
-             * @default 0
-             */
-            avg_latency_ms: number;
+            state: string;
         };
         /**
          * LinkCaseRequest
@@ -6732,16 +7194,16 @@ export interface components {
          * @description Response after linking report to case closure.
          */
         LinkCaseResponse: {
-            /** Status */
-            status: string;
-            /** Message */
-            message: string;
-            /** Report Id */
-            report_id: string;
             /** Case Id */
             case_id: string;
             /** Linked At */
             linked_at: string;
+            /** Message */
+            message: string;
+            /** Report Id */
+            report_id: string;
+            /** Status */
+            status: string;
         };
         /**
          * LogoutResponse
@@ -6771,18 +7233,11 @@ export interface components {
          *     Schema matches case-storage-design.md Section 4.7 (case_messages table).
          */
         Message: {
-            /** Message Id */
-            message_id: string;
             /**
-             * Turn Number
-             * @description Turn number in conversation (user messages increment turn)
+             * Author Id
+             * @description User who created the message
              */
-            turn_number: number;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: "user" | "assistant" | "system";
+            author_id?: string | null;
             /** Content */
             content: string;
             /**
@@ -6790,27 +7245,40 @@ export interface components {
              * @description ISO 8601 datetime string (matches SQL schema)
              */
             created_at: string;
+            /** Message Id */
+            message_id: string;
             /**
-             * Author Id
-             * @description User who created the message
+             * Metadata
+             * @description Sources, tools used, etc.
              */
-            author_id?: string | null;
+            metadata?: Record<string, never> | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant" | "system";
             /**
              * Token Count
              * @description Number of tokens in content
              */
             token_count?: number | null;
             /**
-             * Metadata
-             * @description Sources, tools used, etc.
+             * Turn Number
+             * @description Turn number in conversation (user messages increment turn)
              */
-            metadata?: Record<string, never> | null;
+            turn_number: number;
         };
         /**
          * MessageRetrievalDebugInfo
          * @description Debug information for message retrieval operations.
          */
         MessageRetrievalDebugInfo: {
+            /**
+             * Message Parsing Errors
+             * @description Number of messages that failed to parse
+             * @default 0
+             */
+            message_parsing_errors: number;
             /**
              * Redis Key
              * @description Redis key used for message storage
@@ -6826,12 +7294,6 @@ export interface components {
              * @description Any storage-related errors encountered
              */
             storage_errors?: string[];
-            /**
-             * Message Parsing Errors
-             * @description Number of messages that failed to parse
-             * @default 0
-             */
-            message_parsing_errors: number;
         };
         /**
          * MitigationRecord
@@ -6850,28 +7312,49 @@ export interface components {
          */
         MitigationRecord: {
             /**
-             * Proposed At Turn
-             * @description Turn a workaround mitigation was first proposed
-             */
-            proposed_at_turn?: number | null;
-            /**
              * Accepted
              * @description User complied with the proposed mitigation
              * @default false
              */
             accepted: boolean;
             /**
+             * Completed At Turn
+             * @description Turn `verified` flipped True (Gate-3-equivalent boundary)
+             */
+            completed_at_turn?: number | null;
+            /**
+             * Proposed At Turn
+             * @description Turn a workaround mitigation was first proposed
+             */
+            proposed_at_turn?: number | null;
+            /**
              * Verified
              * @description User confirmed the mitigation stabilized the situation
              * @default false
              */
             verified: boolean;
-            /**
-             * Completed At Turn
-             * @description Turn `verified` flipped True (Gate-3-equivalent boundary)
-             */
-            completed_at_turn?: number | null;
         };
+        /**
+         * NeedObtainability
+         * @description Whether the discriminating data a causal_verification need requests can
+         *     be gathered at all — the one judgment the engine cannot compute, so it is
+         *     model-declared (verification-status handling, insufficient-evidence §5.3).
+         *
+         *     UNKNOWN      — default; the model has not declared. Fail-safe: treated as
+         *                    still-obtainable (keep-engaging), never contributes to a wall.
+         *     OBTAINABLE   — the data can be gathered; the need stays a live ask.
+         *     UNOBTAINABLE — the data cannot be gathered (never collected, rotated away,
+         *                    too costly, no access). A causal_verification need declared
+         *                    UNOBTAINABLE is a *declared discriminator wall* for its
+         *                    candidate; it yields its surface slot and stops rotating, and
+         *                    is retained in the insufficient-evidence record as the
+         *                    specific unmet need.
+         *
+         *     Monotonic in effect: only UNOBTAINABLE moves the reading toward
+         *     INSUFFICIENT_EVIDENCE, never back toward safety.
+         * @enum {string}
+         */
+        NeedObtainability: "unknown" | "obtainable" | "unobtainable";
         /**
          * NeedPriority
          * @description Priority hint for surfacing needs as EVIDENCE-type suggestions.
@@ -6907,8 +7390,8 @@ export interface components {
          *     PARTIALLY_MET  — Some evidence collected but insufficient.
          *     FULFILLED      — Sufficient evidence collected (terminal-positive).
          *     SUPERSEDED     — No longer relevant (terminal-negative). Either all
-         *                      motivating hypotheses retired (engine rule) or LLM
-         *                      judged irrelevant (LLM update emission).
+         *                      motivating hypotheses went terminal (engine rule) or
+         *                      LLM judged irrelevant (LLM update emission).
          *
          *     FULFILLED and SUPERSEDED are terminal — a need cannot resurrect from
          *     SUPERSEDED. If the LLM later concludes the underlying data is
@@ -6917,45 +7400,173 @@ export interface components {
          */
         NeedState: "pending" | "partially_met" | "fulfilled" | "superseded";
         /**
+         * NodeEvidenceLink
+         * @description Evidence attached to a specific causal NODE with a stance.
+         *
+         *     Methodology §9.1: evidence links target nodes (rungs), not a whole chain —
+         *     a SUPPORTS/REFUTES stance bears on the specific rung it tests, which is
+         *     what makes step-by-step descent (S3) and AND-validation (S1) computable.
+         */
+        NodeEvidenceLink: {
+            /**
+             * Analyzed At
+             * Format: date-time
+             * @description When this relationship was established
+             */
+            analyzed_at?: string;
+            /**
+             * Evidence Id
+             * @description Evidence bearing on this node
+             */
+            evidence_id: string;
+            /**
+             * Linked At Turn
+             * @description Turn when the link was established
+             * @default 0
+             */
+            linked_at_turn: number;
+            /**
+             * Reasoning
+             * @description Explanation of the relationship
+             */
+            reasoning: string;
+            /** @description How this evidence relates to THIS node (supports/refutes/neutral) */
+            stance: components["schemas"]["EvidenceStance"];
+            /**
+             * Stance Confidence
+             * @description Confidence in the stance assessment (0.0-1.0)
+             * @default 1
+             */
+            stance_confidence: number;
+        };
+        /**
+         * NodeState
+         * @description Empirical status of a single causal node (methodology M4/M7).
+         * @enum {string}
+         */
+        NodeState: "candidate" | "validated" | "refuted" | "inconclusive";
+        /**
+         * NodeType
+         * @description Role of a causal node on the chain (methodology §2).
+         * @enum {string}
+         */
+        NodeType: "problem" | "intermediate" | "root";
+        /**
          * OAuthConfigResponse
          * @description OAuth configuration for cloud mode.
          */
         OAuthConfigResponse: {
             /** Authorize Url */
             authorize_url: string;
-            /** Token Url */
-            token_url: string;
             /** Client Id */
             client_id: string;
+            /** Hosted Login Url */
+            hosted_login_url?: string | null;
             /** Scopes */
             scopes: string[];
+            /** Token Url */
+            token_url: string;
         };
+        /**
+         * OperatorAccessAuditEntry
+         * @description One recorded platform-operator access (ADR-012 D8/D9).
+         *
+         *     Carries identifiers, an action and context counts only — never case titles
+         *     or content, which is what lets the trail be read without a break-glass
+         *     grant.
+         */
+        OperatorAccessAuditEntry: {
+            /** Action */
+            action: string;
+            /** Audit Id */
+            audit_id: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deployment Mode */
+            deployment_mode?: string | null;
+            /** Details */
+            details?: Record<string, never> | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Grant Id */
+            grant_id?: string | null;
+            /** Operator User Id */
+            operator_user_id?: string | null;
+            /** Operator Username */
+            operator_username?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Target Case Id */
+            target_case_id?: string | null;
+            /** Target Organization Id */
+            target_organization_id?: string | null;
+        };
+        /**
+         * OperatorAccessAuditListResponse
+         * @description Paginated operator access trail, newest first.
+         */
+        OperatorAccessAuditListResponse: {
+            /** Entries */
+            entries: components["schemas"]["OperatorAccessAuditEntry"][];
+            /** Has More */
+            has_more: boolean;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total Count */
+            total_count: number;
+        };
+        /**
+         * OperatorAction
+         * @description The metadata/content boundary D8/D9 governs.
+         *
+         *     ``LIST`` is ambient metadata (ids, org, state, timestamps, counts — never
+         *     titles). ``CONTENT_OPEN`` is tenant content: title, transcript, evidence.
+         *     Title counts as content because it is user free-text and leaks.
+         * @enum {string}
+         */
+        OperatorAction: "list" | "content_open";
         /**
          * PreliminaryUrgency
          * @description Early urgency assessment using semantic business impact.
          */
         PreliminaryUrgency: {
-            level: components["schemas"]["UrgencyLevel"];
-            /**
-             * Is Ongoing
-             * @default false
-             */
-            is_ongoing: boolean;
+            /** Assessed At Turn */
+            assessed_at_turn: number;
+            /** Impact Assessment */
+            impact_assessment: string;
             /**
              * Is Incident Report
              * @default false
              */
             is_incident_report: boolean;
-            /** Impact Assessment */
-            impact_assessment: string;
-            /** Assessed At Turn */
-            assessed_at_turn: number;
+            /**
+             * Is Ongoing
+             * @default false
+             */
+            is_ongoing: boolean;
+            level: components["schemas"]["UrgencyLevel"];
         };
         /**
          * ProblemConfirmation
          * @description Agents initial problem understanding during inquiry.
          */
         ProblemConfirmation: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description When this confirmation was created
+             */
+            created_at?: string;
+            /**
+             * Preliminary Guidance
+             * @description Initial guidance or suggestions
+             */
+            preliminary_guidance: string;
             /**
              * Problem Type
              * @description Classified problem type: error | slowness | unavailability | data_issue | other
@@ -6966,17 +7577,6 @@ export interface components {
              * @description Initial severity assessment: critical | high | medium | low | unknown
              */
             severity_guess: string;
-            /**
-             * Preliminary Guidance
-             * @description Initial guidance or suggestions
-             */
-            preliminary_guidance: string;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When this confirmation was created
-             */
-            created_at?: string;
         };
         /**
          * ProblemVerification
@@ -6991,15 +7591,10 @@ export interface components {
          */
         ProblemVerification: {
             /**
-             * Symptom Statement
-             * @description Clear statement of the problem symptom
+             * Affected Regions
+             * @description Geographic regions affected
              */
-            symptom_statement: string;
-            /**
-             * Symptom Indicators
-             * @description Specific metrics/observations confirming symptom (e.g., 'Error rate: 15%', 'P99 latency: 5s')
-             */
-            symptom_indicators?: string[];
+            affected_regions?: string[];
             /**
              * Affected Services
              * @description Services/components affected
@@ -7011,68 +7606,26 @@ export interface components {
              */
             affected_users?: string | null;
             /**
-             * Affected Regions
-             * @description Geographic regions affected
-             */
-            affected_regions?: string[];
-            /**
-             * Severity
-             * @description Assessed severity: CRITICAL | HIGH | MEDIUM | LOW
-             */
-            severity: string;
-            /**
-             * User Impact
-             * @description Description of user-facing impact
-             */
-            user_impact?: string | null;
-            /**
-             * Started At
-             * @description When problem began (best estimate)
-             */
-            started_at?: string | null;
-            /**
-             * Noticed At
-             * @description When problem was noticed/reported
-             */
-            noticed_at?: string | null;
-            /**
-             * Resolved Naturally At
-             * @description If problem resolved on its own, when?
-             */
-            resolved_naturally_at?: string | null;
-            /**
-             * Duration
-             * @description How long problem lasted (for historical problems)
-             */
-            duration?: string | null;
-            /** @description ONGOING | HISTORICAL */
-            temporal_state?: components["schemas"]["TemporalState"] | null;
-            /**
-             * Recent Changes
-             * @description Recent changes that may be relevant (deployments, configs, etc.)
-             */
-            recent_changes?: components["schemas"]["Change"][];
-            /**
-             * Correlations
-             * @description Identified correlations between changes and symptom
-             */
-            correlations?: components["schemas"]["Correlation"][];
-            /**
              * Correlation Confidence
              * @description Confidence in change-symptom correlation (0.0 = no correlation, 1.0 = certain)
              * @default 0
              */
             correlation_confidence: number;
             /**
-             * @description Urgency classification for path routing
-             * @default unknown
+             * Correlations
+             * @description Identified correlations between changes and symptom
              */
-            urgency_level: components["schemas"]["UrgencyLevel"];
+            correlations?: components["schemas"]["Correlation"][];
             /**
-             * Urgency Factors
-             * @description Factors contributing to urgency assessment
+             * Duration
+             * @description How long problem lasted (for historical problems)
              */
-            urgency_factors?: string[];
+            duration?: string | null;
+            /**
+             * Noticed At
+             * @description When problem was noticed/reported
+             */
+            noticed_at?: string | null;
             /**
              * Rca Infeasible
              * @description Advisory signal: root cause analysis is infeasible for this problem. Set by the LLM during verification when the problem involves uncontrollable external dependencies, deprecated/EOL systems, or known intractable conditions where mitigation is the accepted strategy. Influences post-mitigation agent behavior only.
@@ -7085,27 +7638,71 @@ export interface components {
              */
             rca_infeasible_rationale?: string | null;
             /**
-             * Verified At
-             * @description When verification was completed
+             * Recent Changes
+             * @description Recent changes that may be relevant (deployments, configs, etc.)
              */
-            verified_at?: string | null;
+            recent_changes?: components["schemas"]["Change"][];
+            /**
+             * Resolved Naturally At
+             * @description If problem resolved on its own, when?
+             */
+            resolved_naturally_at?: string | null;
+            /**
+             * Severity
+             * @description Assessed severity: CRITICAL | HIGH | MEDIUM | LOW
+             */
+            severity: string;
+            /**
+             * Started At
+             * @description When problem began (best estimate)
+             */
+            started_at?: string | null;
+            /**
+             * Symptom Indicators
+             * @description Specific metrics/observations confirming symptom (e.g., 'Error rate: 15%', 'P99 latency: 5s')
+             */
+            symptom_indicators?: string[];
+            /**
+             * Symptom Statement
+             * @description Clear statement of the problem symptom
+             */
+            symptom_statement: string;
+            /** @description ONGOING | HISTORICAL */
+            temporal_state?: components["schemas"]["TemporalState"] | null;
+            /**
+             * Urgency Factors
+             * @description Factors contributing to urgency assessment
+             */
+            urgency_factors?: string[];
+            /**
+             * @description Urgency classification for path routing
+             * @default unknown
+             */
+            urgency_level: components["schemas"]["UrgencyLevel"];
+            /**
+             * User Impact
+             * @description Description of user-facing impact
+             */
+            user_impact?: string | null;
             /**
              * Verification Confidence
              * @description Overall confidence in verification accuracy
              * @default 0
              */
             verification_confidence: number;
+            /**
+             * Verified At
+             * @description When verification was completed
+             */
+            verified_at?: string | null;
         };
         /**
          * ProblemVerificationData
          * @description Problem verification details for INVESTIGATING phase.
          */
         ProblemVerificationData: {
-            /**
-             * Urgency Level
-             * @description Urgency: critical | high | medium | low | unknown
-             */
-            urgency_level?: string | null;
+            /** @description Scope of impact (services, users, regions) */
+            impact?: components["schemas"]["ImpactData"] | null;
             /**
              * Severity
              * @description Severity: critical | high | medium | low
@@ -7113,8 +7710,11 @@ export interface components {
             severity?: string | null;
             /** @description When the problem occurred and its temporal pattern */
             temporal_state?: components["schemas"]["TemporalStateData"] | null;
-            /** @description Scope of impact (services, users, regions) */
-            impact?: components["schemas"]["ImpactData"] | null;
+            /**
+             * Urgency Level
+             * @description Urgency: critical | high | medium | low | unknown
+             */
+            urgency_level?: string | null;
             /**
              * User Impact
              * @description Human-readable user impact summary
@@ -7139,20 +7739,30 @@ export interface components {
              */
             active: boolean;
             /**
-             * Pending Milestone
-             * @description Milestone that progress is stalled on (e.g., 'root_cause_identified')
+             * Cause Assurance
+             * @description Engine-derived assurance grade behind the identified cause (no_root | mechanistic | confirmed). Lets the frontend label a lower-assurance conclusion — e.g. an identified-but-unconfirmed cause — instead of presenting every conclusion at equal certainty.
              */
-            pending_milestone?: string | null;
+            cause_assurance?: string | null;
             /**
              * Milestone Description
              * @description Human-readable description of what the pending milestone requires
              */
             milestone_description?: string | null;
             /**
+             * Pending Milestone
+             * @description Milestone that progress is stalled on (e.g., 'root_cause_identified')
+             */
+            pending_milestone?: string | null;
+            /**
              * Repair Type
              * @description Agent state repair pattern detected, if any: hypothesis_anchoring, hypothesis_deadlock, exhausted, fix_failure_cycle, action_loop
              */
             repair_type?: string | null;
+            /**
+             * Verification Status
+             * @description Engine-derived verification status this turn — the grounding × progress join (healthy | treatment_blocked | open | not_yet_productive | insufficient_evidence). Lets the frontend show the honest partial outcome (e.g. insufficient_evidence) alongside the stalled-milestone surfacing.
+             */
+            verification_status?: string | null;
         };
         /**
          * ProposedAction
@@ -7168,23 +7778,28 @@ export interface components {
              * @description Unique action identifier
              */
             action_id?: string;
+            /** @description Whether this is a mitigation or solution action */
+            action_type: components["schemas"]["InvestigationActionType"];
             /**
              * Case Id
              * @description Case this action belongs to
              */
             case_id: string;
-            /** @description Whether this is a mitigation or solution action */
-            action_type: components["schemas"]["InvestigationActionType"];
+            /**
+             * Commands
+             * @description Specific commands for the user to execute
+             */
+            commands?: string[];
             /**
              * Description
              * @description Human-readable description of the proposed action
              */
             description: string;
             /**
-             * Commands
-             * @description Specific commands for the user to execute
+             * Downgrade Reason
+             * @description If the engine downgraded action_type from the LLM's intent (e.g. MITIGATION → DIAGNOSTIC because no SYMPTOM_EVIDENCE existed yet), this carries the explanation. Rendered to the LLM via context_builder on the next turn so the agent can recover (gather the missing evidence and re-propose). None when no downgrade occurred.
              */
-            commands?: string[];
+            downgrade_reason?: string | null;
             /**
              * Proposed At
              * Format: date-time
@@ -7203,10 +7818,15 @@ export interface components {
              */
             state: string;
             /**
-             * Downgrade Reason
-             * @description If the engine downgraded action_type from the LLM's intent (e.g. MITIGATION → DIAGNOSTIC because no SYMPTOM_EVIDENCE existed yet), this carries the explanation. Rendered to the LLM via context_builder on the next turn so the agent can recover (gather the missing evidence and re-propose). None when no downgrade occurred.
+             * Superseded In Turn
+             * @description Turn in which this action was superseded (state='superseded'). None while the action is live or if it left liveness another way.
              */
-            downgrade_reason?: string | null;
+            superseded_in_turn?: number | null;
+            /**
+             * Superseded Reason
+             * @description Why the engine superseded this action: 'reproposal' (a newer SOLUTION offer replaced it) or 'license_lost' (the established-cause license that admitted the offer fell — demotion, retraction, MECE hold, or proxy decay) — both SOLUTION-only and feeding the solution_offer_superseded_total metric label; or 'stale_pending' (a shadowed DIAGNOSTIC ask retired when a SOLUTION it predated left pending state — withdrawn or accepted — so it cannot resurface in <pending_action>; feeds pending_action_superseded_stale_total instead; MITIGATION is cause-independent and never retired this way). Closed vocabulary keeps metric-label cardinality bounded. Forensic field; the context builder renders only pending actions.
+             */
+            superseded_reason?: ("reproposal" | "license_lost" | "stale_pending") | null;
         };
         /**
          * RelatedHypothesis
@@ -7215,19 +7835,24 @@ export interface components {
         RelatedHypothesis: {
             /** Hypothesis Id */
             hypothesis_id: string;
-            /** Statement */
-            statement: string;
             /**
              * Stance
              * @description SUPPORTS | REFUTES | NEUTRAL
              */
             stance: string;
+            /** Statement */
+            statement: string;
         };
         /**
          * ReportAvailability
          * @description Report generation availability status for RESOLVED phase.
          */
         ReportAvailability: {
+            /**
+             * Reason
+             * @description Reason for status (e.g., why recommended)
+             */
+            reason?: string | null;
             /**
              * Report Type
              * @description Type: resolution_summary | closure_summary | runbook
@@ -7238,11 +7863,6 @@ export interface components {
              * @description Status: available | recommended | in_progress | not_applicable
              */
             status: string;
-            /**
-             * Reason
-             * @description Reason for status (e.g., why recommended)
-             */
-            reason?: string | null;
         };
         /**
          * ReportGenerationRequest
@@ -7266,37 +7886,37 @@ export interface components {
              */
             case_id: string;
             /**
-             * Reports
-             * @description Generated reports
-             */
-            reports: components["schemas"]["CaseReport"][];
-            /**
              * Remaining Regenerations
              * @description Number of regenerations remaining (max 5 per report type)
              */
             remaining_regenerations: number;
+            /**
+             * Reports
+             * @description Generated reports
+             */
+            reports: components["schemas"]["CaseReport"][];
         };
         /**
          * ReportListResponse
          * @description API response for list of reports.
          */
         ReportListResponse: {
+            /** Case Id */
+            case_id: string;
             /** Reports */
             reports: components["schemas"]["ReportResponse"][];
             /** Total */
             total: number;
-            /** Case Id */
-            case_id: string;
         };
         /**
          * ReportRecommendationResponse
          * @description API response for report recommendations.
          */
         ReportRecommendationResponse: {
-            /** Case Id */
-            case_id: string;
             /** Available For Generation */
             available_for_generation: string[];
+            /** Case Id */
+            case_id: string;
             /** Runbook Recommendation */
             runbook_recommendation: Record<string, never>;
         };
@@ -7305,32 +7925,32 @@ export interface components {
          * @description API response model for a report.
          */
         ReportResponse: {
-            /** Report Id */
-            report_id: string;
             /** Case Id */
             case_id: string;
-            /** Report Type */
-            report_type: string;
-            /** Title */
-            title: string;
             /** Content */
             content: string;
             /** Format */
             format: string;
-            /** Generation Status */
-            generation_status: string;
             /** Generated At */
             generated_at: string;
+            /** Generation Status */
+            generation_status: string;
             /** Generation Time Ms */
             generation_time_ms: number;
             /** Is Current */
             is_current: boolean;
-            /** Version */
-            version: number;
             /** Linked To Closure */
             linked_to_closure: boolean;
             /** Metadata */
             metadata?: Record<string, never> | null;
+            /** Report Id */
+            report_id: string;
+            /** Report Type */
+            report_type: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
         };
         /**
          * ReportStatus
@@ -7349,41 +7969,41 @@ export interface components {
          * @description Request model for updating a report.
          */
         ReportUpdateRequest: {
-            /** Title */
-            title?: string | null;
             /**
              * Content
              * @description Updated report content in markdown
              */
             content?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * ReportVersionListResponse
          * @description List of report versions.
          */
         ReportVersionListResponse: {
-            /** Versions */
-            versions: components["schemas"]["ReportVersionResponse"][];
             /** Total */
             total: number;
+            /** Versions */
+            versions: components["schemas"]["ReportVersionResponse"][];
         };
         /**
          * ReportVersionResponse
          * @description Version history entry for a report.
          */
         ReportVersionResponse: {
-            /** Report Id */
-            report_id: string;
-            /** Version */
-            version: number;
-            /** Title */
-            title: string;
             /** Generated At */
             generated_at: string;
             /** Is Current */
             is_current: boolean;
             /** Linked To Closure */
             linked_to_closure: boolean;
+            /** Report Id */
+            report_id: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
         };
         /**
          * ResolutionSummary
@@ -7391,30 +8011,77 @@ export interface components {
          */
         ResolutionSummary: {
             /**
-             * Total Duration Minutes
-             * @description Total time from case creation to resolution
+             * Evidence Collected
+             * @description Total evidence items collected
              */
-            total_duration_minutes: number;
-            /**
-             * Milestones Completed
-             * @description Total milestones completed (should be 8)
-             */
-            milestones_completed: number;
+            evidence_collected: number;
             /**
              * Hypotheses Tested
              * @description Number of hypotheses tested
              */
             hypotheses_tested: number;
             /**
-             * Evidence Collected
-             * @description Total evidence items collected
-             */
-            evidence_collected: number;
-            /**
              * Key Insights
              * @description Key learnings from this investigation
              */
             key_insights?: string[];
+            /**
+             * Milestones Completed
+             * @description Total milestones completed (should be 8)
+             */
+            milestones_completed: number;
+            /**
+             * Total Duration Minutes
+             * @description Total time from case creation to resolution
+             */
+            total_duration_minutes: number;
+        };
+        /**
+         * RevokeRequest
+         * @description OAuth token revocation request.
+         *
+         *     Supports revoking both access tokens and refresh tokens.
+         */
+        RevokeRequest: {
+            /**
+             * Client Id
+             * @description OAuth client ID
+             */
+            client_id: string;
+            /**
+             * Token
+             * @description Token to revoke (access or refresh)
+             */
+            token: string;
+            /**
+             * Token Type Hint
+             * @description Hint about token type (optional)
+             */
+            token_type_hint?: ("access_token" | "refresh_token") | null;
+        };
+        /**
+         * RevokeUserTokensResponse
+         * @description Per-user token revocation response (#769).
+         *
+         *     Reports the revocation watermark rather than a token count: revocation is
+         *     enforced by rejecting every token issued at or before ``revoked_before``,
+         *     and nothing indexes a user's outstanding JTIs to count.
+         * @example {
+         *       "message": "All tokens revoked for user",
+         *       "revoked_before": "2026-07-25T14:30:00+00:00"
+         *     }
+         */
+        RevokeUserTokensResponse: {
+            /**
+             * Message
+             * @description Revocation confirmation message
+             */
+            message: string;
+            /**
+             * Revoked Before
+             * @description Revocation watermark (ISO 8601). Every token for this user issued at or before this instant is now invalid.
+             */
+            revoked_before: string;
         };
         /**
          * RoleAssignmentRequest
@@ -7432,8 +8099,8 @@ export interface components {
          * @description Role assignment response.
          */
         RoleAssignmentResponse: {
-            /** User Id */
-            user_id: string;
+            /** Message */
+            message: string;
             /** Roles */
             roles: string[];
             /**
@@ -7441,8 +8108,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
-            /** Message */
-            message: string;
+            /** User Id */
+            user_id: string;
         };
         /**
          * RootCauseConclusion
@@ -7450,33 +8117,8 @@ export interface components {
          *     More authoritative than WorkingConclusion.
          */
         RootCauseConclusion: {
-            /**
-             * Root Cause
-             * @description Definitive statement of root cause
-             */
-            root_cause: string;
             /** @description Categorical confidence level */
             confidence_level: components["schemas"]["ConfidenceLevel"];
-            /**
-             * Likelihood
-             * @description Numeric likelihood score (0.0-1.0)
-             */
-            likelihood: number;
-            /**
-             * Mechanism
-             * @description How this root cause led to the symptom
-             */
-            mechanism: string;
-            /**
-             * Evidence Basis
-             * @description Evidence IDs supporting this conclusion
-             */
-            evidence_basis?: string[];
-            /**
-             * Validated Hypothesis Id
-             * @description If identified via hypothesis validation, the hypothesis ID
-             */
-            validated_hypothesis_id?: string | null;
             /**
              * Contributing Factors
              * @description Secondary factors that made the problem worse or more likely
@@ -7494,6 +8136,36 @@ export interface components {
              * @default agent
              */
             determined_by: string;
+            /**
+             * Evidence Basis
+             * @description Evidence IDs supporting this conclusion
+             */
+            evidence_basis?: string[];
+            /**
+             * Likelihood
+             * @description Numeric likelihood score (0.0-1.0)
+             */
+            likelihood: number;
+            /**
+             * Mechanism
+             * @description How this root cause led to the symptom
+             */
+            mechanism: string;
+            /**
+             * Names Root Node Id
+             * @description Attribution hint (INV-35): the cn_ root node the LLM named as this conclusion's cause. Resolved to validated_hypothesis_id by the engine at cause-state recompute (the authoritative link, §7.7); a conclusion without it falls back to the lexical scan.
+             */
+            names_root_node_id?: string | null;
+            /**
+             * Root Cause
+             * @description Definitive statement of root cause
+             */
+            root_cause: string;
+            /**
+             * Validated Hypothesis Id
+             * @description If identified via hypothesis validation, the hypothesis ID
+             */
+            validated_hypothesis_id?: string | null;
         };
         /**
          * RootCauseSummary
@@ -7501,25 +8173,10 @@ export interface components {
          */
         RootCauseSummary: {
             /**
-             * Description
-             * @description What caused the problem
-             */
-            description: string;
-            /**
-             * Root Cause Id
-             * @description Root cause identifier
-             */
-            root_cause_id: string;
-            /**
              * Category
              * @description Category: code | config | environment | network | data | hardware | external | human | other
              */
             category: string;
-            /**
-             * Severity
-             * @description Severity: critical | high | medium | low
-             */
-            severity: string;
             /**
              * Cause Assurance
              * @description Engine-derived assurance grade behind this cause (no_root | mechanistic | confirmed), recomputed from the causal graph. The read-time label #572/INV-28 requires beside the cause text: only 'confirmed' is counterfactually verified; 'mechanistic' is identified but unconfirmed; 'no_root' was stated by the assistant without graph validation.
@@ -7531,43 +8188,58 @@ export interface components {
              * @default false
              */
             cause_overclaim: boolean;
+            /**
+             * Description
+             * @description What caused the problem
+             */
+            description: string;
+            /**
+             * Root Cause Id
+             * @description Root cause identifier
+             */
+            root_cause_id: string;
+            /**
+             * Severity
+             * @description Severity: critical | high | medium | low
+             */
+            severity: string;
         };
         /** RunbookCreateRequest */
         RunbookCreateRequest: {
-            /** Title */
-            title: string;
-            /** Domain */
-            domain: string;
-            /** Service */
-            service: string;
-            /** Symptom Class */
-            symptom_class: string[];
-            /** Severity */
-            severity: string;
-            /** Scope */
-            scope: string;
-            /** Tags */
-            tags?: string[];
-            /**
-             * Difficulty
-             * @default intermediate
-             */
-            difficulty: string;
-            /** Symptom Recognition */
-            symptom_recognition: string;
             /** Applicability */
             applicability: string;
-            /** Diagnostic Steps */
-            diagnostic_steps: string;
             /**
              * Causes
              * @description Pre-formatted markdown with ### Cause N subsections (one ROOT each). Each cause needs Statement, an optional Chain (root->D rungs), Indicators (per-rung, [Step N]-anchored), and quadrant-tagged Interventions (remediation/defensive_fix/mitigation/loop_break). Include ### Cause Z: Unidentified with a [Default] indicator as fallback.
              */
             causes: string;
+            /** Diagnostic Steps */
+            diagnostic_steps: string;
+            /**
+             * Difficulty
+             * @default intermediate
+             */
+            difficulty: string;
+            /** Domain */
+            domain: string;
             /** Prevention */
             prevention: string;
+            /** Scope */
+            scope: string;
+            /** Service */
+            service: string;
+            /** Severity */
+            severity: string;
+            /** Symptom Class */
+            symptom_class: string[];
+            /** Symptom Recognition */
+            symptom_recognition: string;
+            /** Tags */
+            tags?: string[];
             /** Team Id */
             team_id?: string | null;
+            /** Title */
+            title: string;
         };
         /**
          * RunbookMetadata
@@ -7575,8 +8247,6 @@ export interface components {
          *     Tracks origin (incident vs document) for transparency.
          */
         RunbookMetadata: {
-            /** @description Origin of runbook */
-            source: components["schemas"]["RunbookSource"];
             /**
              * Case Context
              * @description Case investigation context (incident-driven only)
@@ -7588,30 +8258,32 @@ export interface components {
              */
             document_title?: string | null;
             /**
-             * Original Document Id
-             * @description Reference to uploaded document (document-driven only)
-             */
-            original_document_id?: string | null;
-            /**
              * Domain
              * @description Technology domain for filtering
              */
             domain: string;
             /**
-             * Tags
-             * @description Classification tags
+             * Embedding Model
+             * @description Embedding model for vector search
              */
-            tags?: string[];
+            embedding_model?: string | null;
             /**
              * Llm Model
              * @description LLM model used for generation
              */
             llm_model?: string | null;
             /**
-             * Embedding Model
-             * @description Embedding model for vector search
+             * Original Document Id
+             * @description Reference to uploaded document (document-driven only)
              */
-            embedding_model?: string | null;
+            original_document_id?: string | null;
+            /** @description Origin of runbook */
+            source: components["schemas"]["RunbookSource"];
+            /**
+             * Tags
+             * @description Classification tags
+             */
+            tags?: string[];
         };
         /**
          * RunbookSource
@@ -7625,64 +8297,72 @@ export interface components {
          */
         SearchRequest: {
             /**
-             * Query
-             * @description Search query
+             * Category
+             * @description Filter by document category
              */
-            query: string;
+            category?: string | null;
             /**
              * Document Type
              * @description Filter by document type
              */
             document_type?: string | null;
             /**
-             * Category
-             * @description Filter by document category
-             */
-            category?: string | null;
-            /**
-             * Tags
-             * @description Filter by tags (comma-separated)
-             */
-            tags?: string | null;
-            /**
              * Filters
              * @description Advanced filters for search
              */
             filters?: Record<string, never> | null;
-            /**
-             * Similarity Threshold
-             * @description Minimum similarity score threshold (0.0-1.0)
-             */
-            similarity_threshold?: number | null;
-            /**
-             * Rank By
-             * @description Field to rank results by (e.g., priority)
-             */
-            rank_by?: string | null;
             /**
              * Limit
              * @description Maximum number of results
              * @default 10
              */
             limit: number;
+            /**
+             * Query
+             * @description Search query
+             */
+            query: string;
+            /**
+             * Rank By
+             * @description Field to rank results by (e.g., priority)
+             */
+            rank_by?: string | null;
+            /**
+             * Similarity Threshold
+             * @description Minimum similarity score threshold (0.0-1.0)
+             */
+            similarity_threshold?: number | null;
+            /**
+             * Tags
+             * @description Filter by tags (comma-separated)
+             */
+            tags?: string | null;
         };
         /**
          * SessionCreateRequest
          * @description Request model for creating investigation session.
          */
         SessionCreateRequest: {
+            /** Metadata */
+            metadata?: Record<string, never> | null;
             /** Session Goal */
             session_goal?: string | null;
             /** Token Budget Limit */
             token_budget_limit?: number | null;
-            /** Metadata */
-            metadata?: Record<string, never> | null;
         };
         /**
          * SessionResponse
          * @description Response payload for auth session operations - API spec compliance.
          */
         SessionResponse: {
+            /** Client Id */
+            client_id?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Metadata */
+            metadata?: Record<string, never> | null;
             /**
              * Schema Version
              * @default 3.1.0
@@ -7692,33 +8372,25 @@ export interface components {
             schema_version: "3.1.0";
             /** Session Id */
             session_id: string;
-            /** User Id */
-            user_id?: string | null;
-            /** Client Id */
-            client_id?: string | null;
-            /** @default active */
-            status: components["schemas"]["AuthSessionStatus"];
-            /** Created At */
-            created_at: string;
-            /** Expires At */
-            expires_at?: string | null;
-            /** Metadata */
-            metadata?: Record<string, never> | null;
             /** Session Resumed */
             session_resumed?: boolean | null;
+            /** @default active */
+            status: components["schemas"]["AuthSessionStatus"];
+            /** User Id */
+            user_id?: string | null;
         };
         /**
          * SessionRestoreRequest
          * @description Request model for session restoration.
          */
         SessionRestoreRequest: {
-            /** Restore Point */
-            restore_point: string;
             /**
              * Include Data
              * @default true
              */
             include_data: boolean;
+            /** Restore Point */
+            restore_point: string;
             /**
              * Type
              * @default full
@@ -7738,18 +8410,77 @@ export interface components {
          * @description Request model for updating session.
          */
         SessionUpdateRequest: {
+            /** Metadata */
+            metadata?: Record<string, never> | null;
             /** Session Goal */
             session_goal?: string | null;
             /** Token Budget Limit */
             token_budget_limit?: number | null;
-            /** Metadata */
-            metadata?: Record<string, never> | null;
         };
         /**
          * Solution
          * @description Proposed or applied solution/mitigation.
          */
         Solution: {
+            /**
+             * Applied At
+             * @description When solution was applied
+             */
+            applied_at?: string | null;
+            /**
+             * Applied By
+             * @description Who applied the solution
+             */
+            applied_by?: string | null;
+            /**
+             * Commands
+             * @description Specific commands to execute
+             */
+            commands?: string[];
+            /**
+             * Effectiveness
+             * @description How well solution worked (0.0 = failed, 1.0 = perfect)
+             */
+            effectiveness?: number | null;
+            /**
+             * Immediate Action
+             * @description Quick fix or mitigation (temporary)
+             */
+            immediate_action?: string | null;
+            /**
+             * Implementation Steps
+             * @description Step-by-step implementation instructions
+             */
+            implementation_steps?: string[];
+            /**
+             * Longterm Fix
+             * @description Permanent solution (comprehensive)
+             */
+            longterm_fix?: string | null;
+            /**
+             * Node Id
+             * @description Causal node this solution remediates or intercepts
+             */
+            node_id?: string | null;
+            /**
+             * Proposed At
+             * Format: date-time
+             * @description When solution was proposed
+             */
+            proposed_at?: string;
+            /**
+             * Proposed By
+             * @description Who proposed: 'agent' or user_id
+             * @default agent
+             */
+            proposed_by: string;
+            /** @description Intervention quadrant (§7.4): remediation (perm@root) / defensive_fix (perm@intermediate) / mitigation (temp@intermediate) / loop_break. */
+            quadrant?: components["schemas"]["InterventionQuadrant"] | null;
+            /**
+             * Risks
+             * @description Risks or side effects of this solution
+             */
+            risks?: string[];
             /**
              * Solution Id
              * @description Unique solution identifier
@@ -7763,72 +8494,20 @@ export interface components {
              */
             title: string;
             /**
-             * Immediate Action
-             * @description Quick fix or mitigation (temporary)
+             * Verification Evidence Id
+             * @description Evidence ID proving solution worked
              */
-            immediate_action?: string | null;
-            /**
-             * Longterm Fix
-             * @description Permanent solution (comprehensive)
-             */
-            longterm_fix?: string | null;
-            /**
-             * Implementation Steps
-             * @description Step-by-step implementation instructions
-             */
-            implementation_steps?: string[];
-            /**
-             * Commands
-             * @description Specific commands to execute
-             */
-            commands?: string[];
-            /**
-             * Risks
-             * @description Risks or side effects of this solution
-             */
-            risks?: string[];
-            /**
-             * Proposed At
-             * Format: date-time
-             * @description When solution was proposed
-             */
-            proposed_at?: string;
-            /**
-             * Proposed By
-             * @description Who proposed: 'agent' or user_id
-             * @default agent
-             */
-            proposed_by: string;
-            /**
-             * Applied At
-             * @description When solution was applied
-             */
-            applied_at?: string | null;
-            /**
-             * Applied By
-             * @description Who applied the solution
-             */
-            applied_by?: string | null;
-            /**
-             * Verified At
-             * @description When solution effectiveness was verified
-             */
-            verified_at?: string | null;
+            verification_evidence_id?: string | null;
             /**
              * Verification Method
              * @description How effectiveness was verified
              */
             verification_method?: string | null;
             /**
-             * Verification Evidence Id
-             * @description Evidence ID proving solution worked
+             * Verified At
+             * @description When solution effectiveness was verified
              */
-            verification_evidence_id?: string | null;
-            /**
-             * Effectiveness
-             * @description How well solution worked (0.0 = failed, 1.0 = perfect)
-             */
-            effectiveness?: number | null;
+            verified_at?: string | null;
         };
         /**
          * SolutionFeasible
@@ -7854,11 +8533,6 @@ export interface components {
          */
         SolutionSummary: {
             /**
-             * Description
-             * @description What was done to fix the problem
-             */
-            description: string;
-            /**
              * Applied At
              * Format: date-time
              * @description When solution was applied
@@ -7869,6 +8543,11 @@ export interface components {
              * @description Who applied the solution (user_id or 'agent')
              */
             applied_by: string;
+            /**
+             * Description
+             * @description What was done to fix the problem
+             */
+            description: string;
         };
         /**
          * SolutionType
@@ -7893,20 +8572,34 @@ export interface components {
          * @description A follow-up suggestion returned with agent responses.
          */
         SuggestedActionResponse: {
-            /** Label */
-            label: string;
-            /** Type */
-            type: string;
-            /** Payload */
-            payload?: string | null;
             /** Body */
             body?: string | null;
+            /** Evidence Need Id */
+            evidence_need_id?: string | null;
             /** Hints */
             hints?: string[] | null;
             /** Intent */
             intent?: Record<string, never> | null;
-            /** Evidence Need Id */
-            evidence_need_id?: string | null;
+            /** Label */
+            label: string;
+            /** Payload */
+            payload?: string | null;
+            /** Type */
+            type: string;
+        };
+        /**
+         * TeamResponse
+         * @description A team the caller belongs to.
+         */
+        TeamResponse: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Organization Id */
+            organization_id: string;
+            /** Team Id */
+            team_id: string;
         };
         /**
          * TemporalState
@@ -7921,15 +8614,15 @@ export interface components {
          */
         TemporalStateData: {
             /**
-             * Started At
-             * @description When the problem started
-             */
-            started_at?: string | null;
-            /**
              * Last Occurrence At
              * @description Most recent occurrence of the problem
              */
             last_occurrence_at?: string | null;
+            /**
+             * Started At
+             * @description When the problem started
+             */
+            started_at?: string | null;
             /**
              * State
              * @description Temporal state: ongoing | historical | intermittent
@@ -7950,20 +8643,147 @@ export interface components {
             title: string;
         };
         /**
+         * TokenRefreshRequest
+         * @description Request body for POST /auth/refresh (local mode).
+         */
+        TokenRefreshRequest: {
+            /**
+             * Refresh Token
+             * @description The refresh token issued at login or a prior refresh
+             */
+            refresh_token: string;
+        };
+        /**
+         * TokenRefreshResponse
+         * @description Response for POST /auth/refresh.
+         *
+         *     A new access token (and rotated refresh token). The session and user are
+         *     unchanged, so they are not re-sent — the client keeps its existing
+         *     session_id and user profile and only swaps the tokens.
+         */
+        TokenRefreshResponse: {
+            /**
+             * Access Token
+             * @description New bearer access token
+             */
+            access_token: string;
+            /**
+             * Expires In
+             * @description Token expiration time in seconds
+             */
+            expires_in: number;
+            /**
+             * Refresh Token
+             * @description New refresh token (the old one is revoked — rotation)
+             */
+            refresh_token: string;
+            /**
+             * Token Type
+             * @description Token type (always 'bearer')
+             * @default bearer
+             */
+            token_type: string;
+        };
+        /**
+         * TokenRequest
+         * @description OAuth token request (authorization_code or refresh_token grant).
+         *
+         *     Two grant types supported:
+         *     1. authorization_code: Exchange code for tokens
+         *     2. refresh_token: Refresh access token using refresh token
+         */
+        TokenRequest: {
+            /**
+             * Client Id
+             * @description OAuth client ID
+             */
+            client_id: string;
+            /**
+             * Code
+             * @description Authorization code (required for authorization_code grant)
+             */
+            code?: string | null;
+            /**
+             * Code Verifier
+             * @description PKCE code verifier (required for authorization_code grant)
+             */
+            code_verifier?: string | null;
+            /**
+             * Grant Type
+             * @description Grant type: 'authorization_code' or 'refresh_token'
+             * @enum {string}
+             */
+            grant_type: "authorization_code" | "refresh_token";
+            /**
+             * Redirect Uri
+             * @description Redirect URI (required for authorization_code grant, must match)
+             */
+            redirect_uri?: string | null;
+            /**
+             * Refresh Token
+             * @description Refresh token (required for refresh_token grant)
+             */
+            refresh_token?: string | null;
+        };
+        /**
+         * TokenResponse
+         * @description OAuth token response (access token + refresh token).
+         *
+         *     Returned for both authorization_code and refresh_token grants.
+         */
+        TokenResponse: {
+            /**
+             * Access Token
+             * @description JWT access token (15 minute expiry)
+             */
+            access_token: string;
+            /**
+             * Expires In
+             * @description Access token expiry in seconds (900)
+             */
+            expires_in: number;
+            /**
+             * Refresh Expires In
+             * @description Refresh token expiry in seconds (604800)
+             */
+            refresh_expires_in: number;
+            /**
+             * Refresh Token
+             * @description JWT refresh token (7 days expiry)
+             */
+            refresh_token: string;
+            /**
+             * Token Type
+             * @description Token type (always Bearer)
+             * @default Bearer
+             */
+            token_type: string;
+            /**
+             * User Id
+             * @description User ID
+             */
+            user_id: string;
+            /**
+             * Username
+             * @description Username
+             */
+            username: string;
+        };
+        /**
          * ToolCallResponse
          * @description Response model for a tool call within an execution.
          */
         ToolCallResponse: {
-            /** Tool Call Id */
-            tool_call_id: string;
-            /** Tool Name */
-            tool_name: string;
             /** Arguments */
             arguments: Record<string, never>;
             /** Result */
             result?: string | null;
             /** Status */
             status: string;
+            /** Tool Call Id */
+            tool_call_id: string;
+            /** Tool Name */
+            tool_name: string;
         };
         /**
          * TurnOutcome
@@ -7984,7 +8804,7 @@ export interface components {
          *     description string.
          * @enum {string}
          */
-        TurnOutcome: "milestone_completed" | "data_provided" | "data_requested" | "data_not_provided" | "hypothesis_tested" | "case_resolved" | "conversation" | "other";
+        TurnOutcome: "milestone_completed" | "data_provided" | "data_requested" | "data_not_provided" | "hypothesis_tested" | "case_resolved" | "conversation" | "other" | "skipped";
         /**
          * TurnProgress
          * @description Record of what happened in one turn.
@@ -7992,21 +8812,15 @@ export interface components {
          */
         TurnProgress: {
             /**
-             * Turn Number
-             * @description Sequential turn number
+             * Agent Response Summary
+             * @description Summary of agent response
              */
-            turn_number: number;
+            agent_response_summary?: string | null;
             /**
-             * Timestamp
-             * Format: date-time
-             * @description When turn occurred
+             * Blocked Reasons
+             * @description Reasons why investigation is blocked or progressing slowly
              */
-            timestamp?: string;
-            /**
-             * Milestones Completed
-             * @description Milestone names completed this turn (e.g., 'symptom_verified')
-             */
-            milestones_completed?: string[];
+            blocked_reasons?: string[];
             /**
              * Evidence Added
              * @description Evidence IDs added this turn
@@ -8023,49 +8837,55 @@ export interface components {
              */
             hypotheses_validated?: string[];
             /**
-             * Solutions Proposed
-             * @description Solution IDs proposed this turn
+             * Milestones Completed
+             * @description Milestone names completed this turn (e.g., 'symptom_verified')
              */
-            solutions_proposed?: string[];
-            /**
-             * Progress Made
-             * @description Did investigation advance this turn?
-             */
-            progress_made: boolean;
-            /** @description Turn outcome classification */
-            outcome: components["schemas"]["TurnOutcome"];
-            /**
-             * User Message Summary
-             * @description Summary of user message
-             */
-            user_message_summary?: string | null;
-            /**
-             * Agent Response Summary
-             * @description Summary of agent response
-             */
-            agent_response_summary?: string | null;
-            /**
-             * System Feedback
-             * @description Instruction or error from system to agent (e.g., 'Invalid evidence ID')
-             */
-            system_feedback?: string | null;
+            milestones_completed?: string[];
             /** @description Investigation momentum indicator for this turn */
             momentum?: components["schemas"]["InvestigationMomentum"] | null;
-            /**
-             * Blocked Reasons
-             * @description Reasons why investigation is blocked or progressing slowly
-             */
-            blocked_reasons?: string[];
             /**
              * Next Steps
              * @description Suggested next steps for the investigation
              */
             next_steps?: string[];
+            /** @description Turn outcome classification */
+            outcome: components["schemas"]["TurnOutcome"];
+            /**
+             * Progress Made
+             * @description Did investigation advance this turn?
+             */
+            progress_made: boolean;
             /**
              * Repair Pattern
              * @description Agent state repair pattern detected this turn: hypothesis_anchoring, hypothesis_deadlock, exhausted, fix_failure_cycle, action_loop
              */
             repair_pattern?: string | null;
+            /**
+             * Solutions Proposed
+             * @description Solution IDs proposed this turn
+             */
+            solutions_proposed?: string[];
+            /**
+             * System Feedback
+             * @description Instruction or error from system to agent (e.g., 'Invalid evidence ID')
+             */
+            system_feedback?: string | null;
+            /**
+             * Timestamp
+             * Format: date-time
+             * @description When turn occurred
+             */
+            timestamp?: string;
+            /**
+             * Turn Number
+             * @description Sequential turn number
+             */
+            turn_number: number;
+            /**
+             * User Message Summary
+             * @description Summary of user message
+             */
+            user_message_summary?: string | null;
             /**
              * Validation Repairs
              * @description State repairs made by StateValidator this turn (e.g., 'Fixed milestone ordering')
@@ -8079,19 +8899,9 @@ export interface components {
         TurnResponse: {
             /** Agent Response */
             agent_response: string;
-            /** Turn Number */
-            turn_number: number;
-            /** Milestones Completed */
-            milestones_completed: string[];
-            case_state: components["schemas"]["CaseState"];
-            /** Progress Made */
-            progress_made: boolean;
             /** Attachments Processed */
             attachments_processed?: components["schemas"]["AttachmentResult"][];
-            /** Suggested Actions */
-            suggested_actions?: components["schemas"]["SuggestedActionResponse"][];
-            /** @description Progress transparency state. Present when investigation has stalled and agent is surfacing milestone dependencies. */
-            progress_transparency?: components["schemas"]["ProgressTransparencyInfo"] | null;
+            case_state: components["schemas"]["CaseState"];
             /**
              * Cause Assurance
              * @description Engine-derived assurance grade behind the case's identified cause (no_root | mechanistic | confirmed), recomputed from the causal graph. Present whenever the case has stated a root cause. Lets a narration-only client (e.g. Slack) show the #572/INV-28 read-time label beside the cause claim carried in agent_response, rather than presenting every conclusion at equal certainty.
@@ -8102,6 +8912,16 @@ export interface components {
              * @description True when the case's conclusion claims 'verified' certainty while the assurance grade is below 'confirmed' (conclusion_overclaims seam). None when no cause is stated.
              */
             cause_overclaim?: boolean | null;
+            /** Milestones Completed */
+            milestones_completed: string[];
+            /** Progress Made */
+            progress_made: boolean;
+            /** @description Progress transparency state. Present when investigation has stalled and agent is surfacing milestone dependencies. */
+            progress_transparency?: components["schemas"]["ProgressTransparencyInfo"] | null;
+            /** Suggested Actions */
+            suggested_actions?: components["schemas"]["SuggestedActionResponse"][];
+            /** Turn Number */
+            turn_number: number;
         };
         /**
          * UploadedFile
@@ -8126,6 +8946,31 @@ export interface components {
          */
         UploadedFile: {
             /**
+             * Content Hash
+             * @description SHA-256 of the raw file content. Used for storage-backend dedup and integrity checks. NULL when the upload is still streaming or hashing was skipped.
+             */
+            content_hash?: string | null;
+            /**
+             * Content Type
+             * @description MIME type as reported on upload (e.g., text/plain, application/pdf).
+             */
+            content_type?: string | null;
+            /**
+             * Coverage End Ts
+             * @description Latest timestamp parsed from the file's content. None when the file has no parseable timestamps.
+             */
+            coverage_end_ts?: string | null;
+            /**
+             * Coverage Start Ts
+             * @description Earliest timestamp parsed from the file's content. None when the file has no parseable timestamps.
+             */
+            coverage_start_ts?: string | null;
+            /**
+             * Data Type
+             * @description Preprocessor's data-type classification of the file's content (e.g., 'logs', 'metrics', 'configuration'). Distinct from evidence.source_type, which classifies an individual extract's source type.
+             */
+            data_type?: string | null;
+            /**
              * File Id
              * @description Unique file identifier (same as data_id in data service)
              */
@@ -8141,31 +8986,20 @@ export interface components {
              */
             size_bytes: number;
             /**
-             * Content Type
-             * @description MIME type as reported on upload (e.g., text/plain, application/pdf).
+             * Storage Ref
+             * @description Opaque key passed to IFileStorageBackend.retrieve_file(). The backend interprets it (local FS path, S3 key, Azure blob name, etc.). May be None if processing pending.
              */
-            content_type?: string | null;
+            storage_ref?: string | null;
             /**
-             * Content Hash
-             * @description SHA-256 of the raw file content. Used for storage-backend dedup and integrity checks. NULL when the upload is still streaming or hashing was skipped.
+             * Structural Index
+             * @description Preprocessing-generated structural index of the file content (file_extract + search_map + file_meta). Read by the LLM in <evidence_collected> when the agent inspects the file. May be None when preprocessing was skipped.
              */
-            content_hash?: string | null;
+            structural_index?: string | null;
             /**
-             * Uploaded At Turn
-             * @description Turn number when file was uploaded
+             * Summary
+             * @description Preprocessing-generated short summary of the file. Used by the investigation agent to orient on file content without loading the whole file. May be None when preprocessing was skipped (e.g., KB-conversion source uploads).
              */
-            uploaded_at_turn: number;
-            /**
-             * Uploaded At
-             * Format: date-time
-             * @description Upload timestamp
-             */
-            uploaded_at?: string;
-            /**
-             * Uploaded By
-             * @description User who uploaded the file. NULL for system-generated uploads or after the originating user is deleted (FK SET NULL).
-             */
-            uploaded_by?: string | null;
+            summary?: string | null;
             /**
              * Upload Source
              * @description Provenance of the upload: how the file got into the system. Values: file_upload, paste, screenshot, page_capture, agent_generated, conversion_source. Distinct from evidence.source_type, which classifies the data shape. page_capture is the marker the rerank-page-sections pass uses to detect Copilot extension page submissions; see context_builder.py.
@@ -8173,41 +9007,41 @@ export interface components {
              */
             upload_source: string;
             /**
-             * Storage Ref
-             * @description Opaque key passed to IFileStorageBackend.retrieve_file(). The backend interprets it (local FS path, S3 key, Azure blob name, etc.). May be None if processing pending.
+             * Uploaded At
+             * Format: date-time
+             * @description Upload timestamp
              */
-            storage_ref?: string | null;
+            uploaded_at?: string;
             /**
-             * Summary
-             * @description Preprocessing-generated short summary of the file. Used by the investigation agent to orient on file content without loading the whole file. May be None when preprocessing was skipped (e.g., KB-conversion source uploads).
+             * Uploaded At Turn
+             * @description Turn number when file was uploaded
              */
-            summary?: string | null;
+            uploaded_at_turn: number;
             /**
-             * Structural Index
-             * @description Preprocessing-generated structural index of the file content (file_extract + search_map + file_meta). Read by the LLM in <evidence_collected> when the agent inspects the file. May be None when preprocessing was skipped.
+             * Uploaded By
+             * @description User who uploaded the file. NULL for system-generated uploads or after the originating user is deleted (FK SET NULL).
              */
-            structural_index?: string | null;
-            /**
-             * Data Type
-             * @description Preprocessor's data-type classification of the file's content (e.g., 'logs', 'metrics', 'configuration'). Distinct from evidence.source_type, which classifies an individual extract's source type.
-             */
-            data_type?: string | null;
-            /**
-             * Coverage Start Ts
-             * @description Earliest timestamp parsed from the file's content. None when the file has no parseable timestamps.
-             */
-            coverage_start_ts?: string | null;
-            /**
-             * Coverage End Ts
-             * @description Latest timestamp parsed from the file's content. None when the file has no parseable timestamps.
-             */
-            coverage_end_ts?: string | null;
+            uploaded_by?: string | null;
         };
         /**
          * UploadedFileDetailsResponse
          * @description Detailed information about an uploaded file with evidence linkage.
          */
         UploadedFileDetailsResponse: {
+            /**
+             * Content Hash
+             * @description SHA-256 of file contents (storage-backend dedup)
+             */
+            content_hash?: string | null;
+            /**
+             * Content Type
+             * @description MIME type as reported on upload
+             */
+            content_type?: string | null;
+            /** Derived Evidence */
+            derived_evidence?: components["schemas"]["DerivedEvidenceSummary"][];
+            /** Evidence Count */
+            evidence_count: number;
             /** File Id */
             file_id: string;
             /** Filename */
@@ -8217,42 +9051,33 @@ export interface components {
             /** Size Display */
             size_display: string;
             /**
-             * Content Type
-             * @description MIME type as reported on upload
+             * Summary
+             * @description File-level preprocessing summary, set by the ingestion pipeline.
              */
-            content_type?: string | null;
-            /**
-             * Content Hash
-             * @description SHA-256 of file contents (storage-backend dedup)
-             */
-            content_hash?: string | null;
-            /** Uploaded At Turn */
-            uploaded_at_turn: number;
-            /**
-             * Uploaded At
-             * Format: date-time
-             */
-            uploaded_at: string;
+            summary?: string | null;
             /**
              * Upload Source
              * @description Provenance: file_upload | paste | screenshot | page_capture | agent_generated | conversion_source
              */
             upload_source: string;
             /**
-             * Summary
-             * @description File-level preprocessing summary, set by the ingestion pipeline.
+             * Uploaded At
+             * Format: date-time
              */
-            summary?: string | null;
-            /** Derived Evidence */
-            derived_evidence?: components["schemas"]["DerivedEvidenceSummary"][];
-            /** Evidence Count */
-            evidence_count: number;
+            uploaded_at: string;
+            /** Uploaded At Turn */
+            uploaded_at_turn: number;
         };
         /**
          * UploadedFileMetadata
          * @description Metadata for uploaded files (evidence) - List view.
          */
         UploadedFileMetadata: {
+            /**
+             * Analysis Status
+             * @description pending | processing | completed | failed
+             */
+            analysis_status: string;
             /**
              * File Id
              * @description Evidence/File identifier
@@ -8274,10 +9099,20 @@ export interface components {
              */
             size_display: string;
             /**
-             * Uploaded At Turn
-             * @description Turn when file was uploaded
+             * Source Metadata
+             * @description Source origin metadata (e.g. page capture URL)
              */
-            uploaded_at_turn: number;
+            source_metadata?: Record<string, never> | null;
+            /**
+             * Source Type
+             * @description file_upload | paste | screenshot | page_injection | agent_generated
+             */
+            source_type: string;
+            /**
+             * Summary
+             * @description AI-generated summary (1-2 sentences)
+             */
+            summary?: string | null;
             /**
              * Uploaded At
              * Format: date-time
@@ -8285,25 +9120,10 @@ export interface components {
              */
             uploaded_at: string;
             /**
-             * Source Type
-             * @description file_upload | paste | screenshot | page_injection | agent_generated
+             * Uploaded At Turn
+             * @description Turn when file was uploaded
              */
-            source_type: string;
-            /**
-             * Analysis Status
-             * @description pending | processing | completed | failed
-             */
-            analysis_status: string;
-            /**
-             * Summary
-             * @description AI-generated summary (1-2 sentences)
-             */
-            summary?: string | null;
-            /**
-             * Source Metadata
-             * @description Source origin metadata (e.g. page capture URL)
-             */
-            source_metadata?: Record<string, never> | null;
+            uploaded_at_turn: number;
         };
         /**
          * UploadedFilesList
@@ -8312,15 +9132,15 @@ export interface components {
         UploadedFilesList: {
             /** Files */
             files: components["schemas"]["UploadedFileMetadata"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
             /**
              * Total Count
              * @description Total number of files
              */
             total_count: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
         };
         /**
          * UrgencyLevel
@@ -8337,36 +9157,36 @@ export interface components {
          * @description Detailed user information (admin only).
          */
         UserDetailResponse: {
-            /** User Id */
-            user_id: string;
-            /** Organization Id */
-            organization_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Email */
             email: string;
             /** Full Name */
             full_name: string;
-            /** Roles */
-            roles: string[];
-            /** Permissions */
-            permissions: string[];
             /** Is Active */
             is_active: boolean;
             /** Is Verified */
             is_verified: boolean;
             /** Last Login At */
             last_login_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
+            /** Metadata */
+            metadata?: Record<string, never>;
+            /** Organization Id */
+            organization_id: string;
+            /** Permissions */
+            permissions: string[];
+            /** Roles */
+            roles: string[];
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
-            /** Metadata */
-            metadata?: Record<string, never>;
+            /** User Id */
+            user_id: string;
         };
         /**
          * UserInfoResponse
@@ -8383,12 +9203,45 @@ export interface components {
          *         "user",
          *         "admin"
          *       ],
-         *       "token_count": 2,
          *       "user_id": "550e8400-e29b-41d4-a716-446655440000",
          *       "username": "john.doe"
          *     }
          */
         UserInfoResponse: {
+            /**
+             * Created At
+             * @description Account creation timestamp (ISO format)
+             */
+            created_at: string;
+            /**
+             * Display Name
+             * @description Display name
+             */
+            display_name: string;
+            /**
+             * Email
+             * @description Email address
+             */
+            email: string;
+            /**
+             * Is Dev User
+             * @description Development user flag
+             * @default true
+             */
+            is_dev_user: boolean;
+            /**
+             * Last Login
+             * @description Last login timestamp (ISO format)
+             */
+            last_login?: string | null;
+            /**
+             * Roles
+             * @description User roles for access control (e.g., ['user'], ['user', 'admin'])
+             * @default [
+             *       "user"
+             *     ]
+             */
+            roles: string[];
             /**
              * User Id
              * @description Unique user identifier
@@ -8399,46 +9252,6 @@ export interface components {
              * @description Username
              */
             username: string;
-            /**
-             * Email
-             * @description Email address
-             */
-            email: string;
-            /**
-             * Display Name
-             * @description Display name
-             */
-            display_name: string;
-            /**
-             * Created At
-             * @description Account creation timestamp (ISO format)
-             */
-            created_at: string;
-            /**
-             * Is Dev User
-             * @description Development user flag
-             * @default true
-             */
-            is_dev_user: boolean;
-            /**
-             * Roles
-             * @description User roles for access control (e.g., ['user'], ['user', 'admin'])
-             * @default [
-             *       "user"
-             *     ]
-             */
-            roles: string[];
-            /**
-             * Last Login
-             * @description Last login timestamp (ISO format)
-             */
-            last_login?: string | null;
-            /**
-             * Token Count
-             * @description Number of active tokens for this user
-             * @default 0
-             */
-            token_count: number;
         };
         /**
          * UserProfile
@@ -8461,30 +9274,20 @@ export interface components {
          */
         UserProfile: {
             /**
-             * User Id
-             * @description Unique user identifier
+             * Created At
+             * @description Account creation timestamp (ISO format)
              */
-            user_id: string;
-            /**
-             * Username
-             * @description Username
-             */
-            username: string;
-            /**
-             * Email
-             * @description Email address
-             */
-            email: string;
+            created_at: string;
             /**
              * Display Name
              * @description Display name
              */
             display_name: string;
             /**
-             * Created At
-             * @description Account creation timestamp (ISO format)
+             * Email
+             * @description Email address
              */
-            created_at: string;
+            email: string;
             /**
              * Is Dev User
              * @description Development user flag
@@ -8499,23 +9302,33 @@ export interface components {
              *     ]
              */
             roles: string[];
+            /**
+             * User Id
+             * @description Unique user identifier
+             */
+            user_id: string;
+            /**
+             * Username
+             * @description Username
+             */
+            username: string;
         };
         /**
          * UserStatusResponse
          * @description User activation/deactivation response.
          */
         UserStatusResponse: {
-            /** User Id */
-            user_id: string;
             /** Is Active */
             is_active: boolean;
+            /** Message */
+            message: string;
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
-            /** Message */
-            message: string;
+            /** User Id */
+            user_id: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -8527,26 +9340,27 @@ export interface components {
             type: string;
         };
         /**
-         * VerificationStatus
-         * @description Solution verification status for RESOLVED phase.
+         * ValidationMethod
+         * @description How a node reached VALIDATED (methodology M4).
+         * @enum {string}
          */
-        VerificationStatus: {
-            /**
-             * Verified
-             * @description Whether solution effectiveness was verified
-             */
-            verified: boolean;
-            /**
-             * Verification Method
-             * @description How verification was done
-             */
-            verification_method: string;
-            /**
-             * Details
-             * @description Verification details and metrics
-             */
-            details: string;
-        };
+        ValidationMethod: "none" | "empirical" | "deductive";
+        /**
+         * VerificationStatus
+         * @description The join of two orthogonal axes — grounding (is a cause grounded?) ×
+         *     progress (has progress stalled?) — plus the below-the-work-gate state
+         *     (assessment variable).
+         *
+         *     Recomputed each turn from case state and persisted in the progress blob;
+         *     NOT a terminal disposition (RESOLVED/CLOSED). The engine's honest reading of
+         *     whether a grounded cause is reachable and, if not, why. Computed by
+         *     ``core.investigation.verification_status.assess_verification_status`` (which
+         *     imports this enum from contracts, the same direction as ``NeedObtainability``
+         *     and ``CauseState``). See
+         *     insufficient-evidence-handling.md §5.1 / §5.4.
+         * @enum {string}
+         */
+        VerificationStatus: "healthy" | "treatment_blocked" | "open" | "not_yet_productive" | "insufficient_evidence";
         /**
          * WorkingConclusion
          * @description Agent current best understanding of the problem.
@@ -8556,10 +9370,10 @@ export interface components {
          */
         WorkingConclusion: {
             /**
-             * Statement
-             * @description Current conclusion statement
+             * Caveats
+             * @description Limitations or uncertainties
              */
-            statement: string;
+            caveats?: string[];
             /**
              * Likelihood
              * @description Likelihood of this conclusion (0.0-1.0)
@@ -8571,37 +9385,32 @@ export interface components {
              */
             reasoning: string;
             /**
+             * Statement
+             * @description Current conclusion statement
+             */
+            statement: string;
+            /**
+             * Supersedes Conclusion At
+             * @description Timestamp of previous conclusion this replaces
+             */
+            supersedes_conclusion_at?: string | null;
+            /**
              * Supporting Evidence Ids
              * @description Evidence IDs supporting this conclusion
              */
             supporting_evidence_ids?: string[];
-            /**
-             * Caveats
-             * @description Limitations or uncertainties
-             */
-            caveats?: string[];
             /**
              * Updated At
              * Format: date-time
              * @description When this conclusion was formed/updated
              */
             updated_at?: string;
-            /**
-             * Supersedes Conclusion At
-             * @description Timestamp of previous conclusion this replaces
-             */
-            supersedes_conclusion_at?: string | null;
         };
         /**
          * WorkingConclusionSummary
          * @description Agent's current understanding during INVESTIGATING phase.
          */
         WorkingConclusionSummary: {
-            /**
-             * Summary
-             * @description Current best theory about the problem
-             */
-            summary: string;
             /**
              * Confidence
              * @description Confidence level (0.0-1.0)
@@ -8613,6 +9422,32 @@ export interface components {
              * @description When this conclusion was last updated
              */
             last_updated: string;
+            /**
+             * Summary
+             * @description Current best theory about the problem
+             */
+            summary: string;
+        };
+        /**
+         * VerificationStatus
+         * @description Solution verification status for RESOLVED phase.
+         */
+        faultmaven__models__case_ui__VerificationStatus: {
+            /**
+             * Details
+             * @description Verification details and metrics
+             */
+            details: string;
+            /**
+             * Verification Method
+             * @description How verification was done
+             */
+            verification_method: string;
+            /**
+             * Verified
+             * @description Whether solution effectiveness was verified
+             */
+            verified: boolean;
         };
     };
     responses: never;
@@ -8623,91 +9458,200 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post: {
+    root__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trigger_system_cleanup_admin_optimization_trigger_cleanup_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_operator_access_audit_api_v1_admin_audit_operator_access_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by the operator who performed the access */
+                operator_user_id?: string | null;
+                /** @description Filter by the organization accessed */
+                target_organization_id?: string | null;
+                /** @description Filter by case accessed */
+                target_case_id?: string | null;
+                /** @description Filter by access kind (list | content_open) */
+                action?: components["schemas"]["OperatorAction"] | null;
+                /** @description Filter to accesses taken under one break-glass grant */
+                grant_id?: string | null;
+                /** @description Items per page */
+                limit?: number;
+                /** @description Number of items to skip */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorAccessAuditListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_cases_api_v1_admin_cases_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by state */
+                state?: components["schemas"]["CaseState"] | null;
+                /** @description Filter by case source */
+                source?: ("copilot" | "slack" | "api") | null;
+                /** @description Items per page */
+                limit?: number;
+                /** @description Number of items to skip */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCaseListResponse"] | components["schemas"]["AdminCaseMetadataListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_case_content_api_v1_admin_cases__case_id__get: {
         parameters: {
             query?: never;
             header?: {
                 Authorization?: string | null;
             };
             path: {
-                /** @description Case ID */
                 case_id: string;
-                /** @description Investigation session ID */
-                session_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentExecutionRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Agent execution completed (non-streaming) or SSE stream (streaming) */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentExecutionResponse"];
-                    /**
-                     * @example event: started
-                     *     data: {"content":"Execution started","metadata":{"execution_id":"exec-123"}}
-                     */
-                    "text/event-stream": string;
+                    "application/json": components["schemas"]["AdminCaseContentResponse"];
                 };
             };
-            /** @description Forbidden - wrong organization */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Session not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict - session not active or budget exceeded */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation error */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description LLM or tool execution error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
-                content?: never;
             };
         };
     };
-    list_executions_api_v1_cases__case_id__sessions__session_id__executions_get: {
+    open_case_transcript_api_v1_admin_cases__case_id__messages_get: {
         parameters: {
             query?: {
+                /** @description Messages per page */
                 limit?: number;
+                /** @description Number of messages to skip */
                 offset?: number;
             };
             header?: {
                 Authorization?: string | null;
             };
             path: {
-                /** @description Case ID */
                 case_id: string;
-                /** @description Session ID (for URL consistency, not used for filtering) */
-                session_id: string;
             };
             cookie?: never;
         };
@@ -8719,7 +9663,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown[];
+                    "application/json": components["schemas"]["AdminCaseMessagesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8733,20 +9677,13 @@ export interface operations {
             };
         };
     };
-    get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get: {
+    get_env_config_status_api_v1_admin_config_status_get: {
         parameters: {
             query?: never;
             header?: {
                 Authorization?: string | null;
             };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency) */
-                session_id: string;
-                /** @description Execution ID */
-                execution_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -8757,7 +9694,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentExecutionResponse"];
+                    "application/json": components["schemas"]["EnvConfigStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8771,20 +9708,13 @@ export interface operations {
             };
         };
     };
-    cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post: {
+    get_llm_routing_health_api_v1_admin_debug_llm_routing_get: {
         parameters: {
             query?: never;
             header?: {
                 Authorization?: string | null;
             };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency) */
-                session_id: string;
-                /** @description Execution ID */
-                execution_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -8809,10 +9739,443 @@ export interface operations {
             };
         };
     };
+    list_grants_api_v1_admin_grants_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by the operator holding the grant */
+                operator_user_id?: string | null;
+                /** @description Filter by the case granted */
+                case_id?: string | null;
+                /** @description Filter by the organization whose case was granted */
+                organization_id?: string | null;
+                /** @description Only grants that authorise a read right now */
+                live_only?: boolean;
+                /** @description Items per page */
+                limit?: number;
+                /** @description Number of items to skip */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BreakGlassGrantListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_grant_api_v1_admin_grants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BreakGlassGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BreakGlassGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_grant_api_v1_admin_grants__grant_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                grant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BreakGlassGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_llm_config_api_v1_admin_llm_config_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_llm_config_api_v1_admin_llm_config_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMConfigUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConfigUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_llm_connection_api_v1_admin_llm_config_test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMConnectionTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConnectionTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_admin_users_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by active/inactive status */
+                is_active?: boolean | null;
+                /** @description Filter by role (admin, member, viewer) */
+                role?: string | null;
+                /** @description Search email or full_name (case-insensitive) */
+                search?: string | null;
+                /** @description Max results per page */
+                limit?: number;
+                /** @description Pagination offset */
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_details_api_v1_admin_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to retrieve */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_user_api_v1_admin_users__user_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to activate */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_user_api_v1_admin_users__user_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to deactivate */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_role_api_v1_admin_users__user_id__roles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to assign role to */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_role_api_v1_admin_users__user_id__roles__role__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description User ID to remove role from */
+                user_id: string;
+                /** @description Role to remove (admin, member) */
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_auth_config_api_v1_auth_config_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8827,30 +10190,6 @@ export interface operations {
                     "application/json": components["schemas"]["AuthConfigResponse"];
                 };
             };
-        };
-    };
-    local_login_api_v1_auth_dev_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DevLoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthTokenResponse"];
-                };
-            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8862,10 +10201,12 @@ export interface operations {
             };
         };
     };
-    local_login_api_v1_auth_login_post: {
+    local_login_api_v1_auth_dev_login_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8898,7 +10239,9 @@ export interface operations {
     local_register_api_v1_auth_dev_register_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8928,10 +10271,43 @@ export interface operations {
             };
         };
     };
-    local_register_api_v1_auth_register_post: {
+    auth_health_check_api_v1_auth_health_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8942,76 +10318,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AuthTokenResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_users_api_v1_auth_users_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_user_api_v1_auth_users__username__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                username: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
                 };
             };
             /** @description Validation Error */
@@ -9118,10 +10430,27 @@ export interface operations {
             };
         };
     };
-    auth_health_check_api_v1_auth_health_get: {
+    get_authorization_request_api_v1_auth_oauth_authorize_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query: {
+                /** @description Must be 'code' */
+                response_type: string;
+                /** @description OAuth client ID */
+                client_id: string;
+                /** @description Extension callback URI */
+                redirect_uri: string;
+                /** @description Client state for CSRF protection */
+                state: string;
+                /** @description PKCE code challenge */
+                code_challenge: string;
+                /** @description PKCE method */
+                code_challenge_method?: string;
+                /** @description OAuth scopes */
+                scope?: string;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -9134,6 +10463,221 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_authorization_approval_api_v1_auth_oauth_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthorizationApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_api_v1_auth_oauth_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    token_api_v1_auth_oauth_token_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_tokens_api_v1_auth_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenRefreshResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_register_api_v1_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_auth_users_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -9157,7 +10701,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LogoutResponse"];
+                    "application/json": components["schemas"]["RevokeUserTokensResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9171,15 +10715,14 @@ export interface operations {
             };
         };
     };
-    get_case_snapshot: {
+    delete_user_api_v1_auth_users__username__delete: {
         parameters: {
             query?: never;
             header?: {
                 Authorization?: string | null;
             };
             path: {
-                case_id: string;
-                turn_number: number;
+                username: string;
             };
             cookie?: never;
         };
@@ -9191,7 +10734,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Case"];
+                    "application/json": Record<string, never>;
                 };
             };
             /** @description Validation Error */
@@ -9205,18 +10748,199 @@ export interface operations {
             };
         };
     };
-    diff_case_turns: {
+    list_cases_api_v1_cases_get: {
         parameters: {
-            query: {
-                /** @description Start turn number */
-                from: number;
-                /** @description End turn number */
-                to: number;
+            query?: {
+                /** @description Filter by state */
+                state?: components["schemas"]["CaseState"] | null;
+                /** @description Filter by case source */
+                source?: ("copilot" | "slack" | "api") | null;
+                /** @description Filter to cases shared with this Team (ADR-013 §D4). Only Teams the caller belongs to yield results; ignored in standalone (no teams). */
+                team_id?: string | null;
+                /** @description Items per page */
+                limit?: number;
+                /** @description Number of items to skip */
+                offset?: number;
+                /** @description Include cases with current_turn == 0 (newly created) */
+                include_empty?: boolean;
+                /** @description Include archived/closed cases */
+                include_archived?: boolean;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_case_api_v1_cases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_service_health_api_v1_cases_health_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_cases_api_v1_cases_search_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_case_for_session_api_v1_cases_sessions__session_id__case_post: {
+        parameters: {
+            query?: {
+                /** @description Case title (optional, auto-generated if not provided) */
+                title?: string | null;
+                /** @description Force creation of new case */
+                force_new?: boolean;
             };
             header?: {
                 Authorization?: string | null;
             };
             path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_case_in_session_api_v1_cases_sessions__session_id__resume__case_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                session_id: string;
                 case_id: string;
             };
             cookie?: never;
@@ -9346,191 +11070,6 @@ export interface operations {
             };
         };
     };
-    list_cases_api_v1_cases_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by state */
-                state?: components["schemas"]["CaseState"] | null;
-                /** @description Items per page */
-                limit?: number;
-                /** @description Number of items to skip */
-                offset?: number;
-                /** @description Include cases with current_turn == 0 (newly created) */
-                include_empty?: boolean;
-                /** @description Include archived/closed cases */
-                include_archived?: boolean;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_case_api_v1_cases_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CaseCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseSummary"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_case_ui_api_v1_cases__case_id__ui_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseUIResponse_Inquiry"] | components["schemas"]["CaseUIResponse_Investigating"] | components["schemas"]["CaseUIResponse_Resolved"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    generate_case_title_api_v1_cases__case_id__title_post: {
-        parameters: {
-            query?: {
-                /** @description Only overwrite non-default titles when true */
-                force?: boolean;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": Record<string, never> | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TitleResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    search_cases_api_v1_cases_search_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CaseSearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseSummary"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_case_analytics_api_v1_cases__case_id__analytics_get: {
         parameters: {
             query?: never;
@@ -9564,119 +11103,7 @@ export interface operations {
             };
         };
     };
-    get_case_messages_enhanced_api_v1_cases__case_id__messages_get: {
-        parameters: {
-            query?: {
-                /** @description Maximum number of messages to return */
-                limit?: number;
-                /** @description Offset for pagination */
-                offset?: number;
-                /** @description Include debug information for troubleshooting */
-                include_debug?: boolean;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseMessagesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_case_for_session_api_v1_cases_sessions__session_id__case_post: {
-        parameters: {
-            query?: {
-                /** @description Case title (optional, auto-generated if not provided) */
-                title?: string | null;
-                /** @description Force creation of new case */
-                force_new?: boolean;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resume_case_in_session_api_v1_cases_sessions__session_id__resume__case_id__post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                session_id: string;
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    submit_turn_api_v1_cases__case_id__turns_post: {
+    close_case_api_v1_cases__case_id__close_post: {
         parameters: {
             query?: never;
             header?: {
@@ -9689,96 +11116,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_submit_turn_api_v1_cases__case_id__turns_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TurnResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    submit_case_query_gone_api_v1_cases__case_id__queries_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_case_service_health_api_v1_cases_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-                evidence_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
+                "application/json": Record<string, never> | null;
             };
         };
         responses: {
@@ -9843,7 +11181,9 @@ export interface operations {
     upload_case_data_gone_api_v1_cases__case_id__data_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 case_id: string;
             };
@@ -9927,6 +11267,263 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_case_turns: {
+        parameters: {
+            query: {
+                /** @description Start turn number */
+                from: number;
+                /** @description End turn number */
+                to: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_case_evidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseEvidenceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_details_api_v1_cases__case_id__evidence__evidence_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+                /** @description Evidence ID */
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceDetailsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_knowledge_from_case_api_v1_cases__case_id__extract_knowledge_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID to extract knowledge from */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never> | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_messages_enhanced_api_v1_cases__case_id__messages_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of messages to return */
+                limit?: number;
+                /** @description Offset for pagination */
+                offset?: number;
+                /** @description Include debug information for troubleshooting */
+                include_debug?: boolean;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseMessagesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_case_query_gone_api_v1_cases__case_id__queries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {
@@ -10068,371 +11665,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    close_case_api_v1_cases__case_id__close_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": Record<string, never> | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_uploaded_files: {
-        parameters: {
-            query?: {
-                /** @description Maximum number of files to return */
-                limit?: number;
-                /** @description Number of files to skip (for pagination) */
-                offset?: number;
-                /** @description Sort field: uploaded_at_turn | filename | size */
-                sort_by?: string;
-                /** @description Sort direction: asc | desc */
-                sort_order?: string;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UploadedFilesList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_uploaded_file_details: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description File ID */
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UploadedFileDetailsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_case_evidence: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseEvidenceListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_evidence_details_api_v1_cases__case_id__evidence__evidence_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Evidence ID */
-                evidence_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceDetailsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    share_case_api_v1_cases__case_id__share_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Body_share_case_api_v1_cases__case_id__share_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    unshare_case_api_v1_cases__case_id__share__target_user_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description User ID to unshare from */
-                target_user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_case_participants_api_v1_cases__case_id__participants_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    check_case_access_api_v1_cases__case_id__access_check_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    extract_knowledge_from_case_api_v1_cases__case_id__extract_knowledge_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID to extract knowledge from */
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": Record<string, never> | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
                 };
             };
             /** @description Validation Error */
@@ -10625,6 +11857,230 @@ export interface operations {
             };
         };
     };
+    complete_session_api_v1_cases__case_id__sessions__session_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_complete_session_api_v1_cases__case_id__sessions__session_id__complete_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestigationSessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+                /** @description Investigation session ID */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentExecutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Agent execution completed (non-streaming) or SSE stream (streaming) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentExecutionResponse"];
+                    /**
+                     * @example event: started
+                     *     data: {"content":"Execution started","metadata":{"execution_id":"exec-123"}}
+                     */
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Forbidden - wrong organization */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict - session not active or budget exceeded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description LLM or tool execution error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_executions_api_v1_cases__case_id__sessions__session_id__executions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+                /** @description Session ID (for URL consistency, not used for filtering) */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+                /** @description Session ID (for URL consistency) */
+                session_id: string;
+                /** @description Execution ID */
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentExecutionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+                /** @description Session ID (for URL consistency) */
+                session_id: string;
+                /** @description Execution ID */
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     pause_session_api_v1_cases__case_id__sessions__session_id__pause_post: {
         parameters: {
             query?: never;
@@ -10693,7 +12149,7 @@ export interface operations {
             };
         };
     };
-    complete_session_api_v1_cases__case_id__sessions__session_id__complete_post: {
+    get_case_snapshot: {
         parameters: {
             query?: never;
             header?: {
@@ -10701,13 +12157,121 @@ export interface operations {
             };
             path: {
                 case_id: string;
-                session_id: string;
+                turn_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Case"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_case_with_team_api_v1_cases__case_id__team_shares_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Body_complete_session_api_v1_cases__case_id__sessions__session_id__complete_post"];
+                "application/json": components["schemas"]["Body_share_case_with_team_api_v1_cases__case_id__team_shares_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unshare_case_from_team_api_v1_cases__case_id__team_shares__team_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+                /** @description Team ID to unshare from */
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_case_title_api_v1_cases__case_id__title_post: {
+        parameters: {
+            query?: {
+                /** @description Only overwrite non-default titles when true */
+                force?: boolean;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never> | null;
             };
         };
         responses: {
@@ -10717,7 +12281,425 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InvestigationSessionResponse"];
+                    "application/json": components["schemas"]["TitleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_turn_api_v1_cases__case_id__turns_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_submit_turn_api_v1_cases__case_id__turns_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_ui_api_v1_cases__case_id__ui_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseUIResponse_Inquiry"] | components["schemas"]["CaseUIResponse_Investigating"] | components["schemas"]["CaseUIResponse_Resolved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_uploaded_files: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of files to return */
+                limit?: number;
+                /** @description Number of files to skip (for pagination) */
+                offset?: number;
+                /** @description Sort field: uploaded_at_turn | filename | size */
+                sort_by?: string;
+                /** @description Sort direction: asc | desc */
+                sort_order?: string;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadedFilesList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_uploaded_file_details: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                /** @description Case ID */
+                case_id: string;
+                /** @description File ID */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadedFileDetailsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_search_analytics_api_v1_knowledge_analytics_search_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversions_api_v1_knowledge_conversions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversion_by_case_api_v1_knowledge_conversions_by_case__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversion_api_v1_knowledge_conversions__conversion_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                conversion_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_document_api_v1_knowledge_convert_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_convert_document_api_v1_knowledge_convert_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -10803,10 +12785,119 @@ export interface operations {
             };
         };
     };
+    bulk_delete_documents_api_v1_knowledge_documents_bulk_delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_update_documents_api_v1_knowledge_documents_bulk_update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fulltext_search_documents_api_v1_knowledge_documents_search_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_v1_knowledge_documents__document_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 document_id: string;
             };
@@ -10914,7 +13005,9 @@ export interface operations {
                 /** @description Query for semantic snippet extraction */
                 query_string?: string | null;
             };
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 document_id: string;
             };
@@ -10929,6 +13022,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentSnippetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_drafts_api_v1_knowledge_drafts_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_batch_api_v1_knowledge_drafts_verify_batch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_runbook_manually_api_v1_knowledge_runbooks_create_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunbookCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_for_runbooks_api_v1_knowledge_scan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -10977,117 +13202,12 @@ export interface operations {
             };
         };
     };
-    fulltext_search_documents_api_v1_knowledge_documents_search_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bulk_update_documents_api_v1_knowledge_documents_bulk_update_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bulk_delete_documents_api_v1_knowledge_documents_bulk_delete_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: string[];
-                };
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_knowledge_stats_api_v1_knowledge_stats_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11102,24 +13222,13 @@ export interface operations {
                     "application/json": Record<string, never>;
                 };
             };
-        };
-    };
-    get_search_analytics_api_v1_knowledge_analytics_search_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -11339,386 +13448,19 @@ export interface operations {
             };
         };
     };
-    convert_document_api_v1_knowledge_convert_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_convert_document_api_v1_knowledge_convert_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_conversions_api_v1_knowledge_conversions_get: {
+    list_reports_for_case_api_v1_reports_case__case_id__get: {
         parameters: {
             query?: {
-                limit?: number;
-                offset?: number;
+                /** @description Include all versions or only current */
+                include_history?: boolean;
+                /** @description Filter by report type */
+                report_type?: string | null;
             };
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_all_drafts_api_v1_knowledge_drafts_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    scan_for_runbooks_api_v1_knowledge_scan_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_conversion_api_v1_knowledge_conversions__conversion_id__get: {
-        parameters: {
-            query?: never;
             header?: {
                 Authorization?: string | null;
             };
             path: {
-                conversion_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                conversion_id: string;
-                draft_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DraftUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                conversion_id: string;
-                draft_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_batch_api_v1_knowledge_drafts_verify_batch_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BatchVerifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                conversion_id: string;
-                draft_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_runbook_manually_api_v1_knowledge_runbooks_create_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RunbookCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    convert_from_case_api_v1_knowledge_convert_from_case_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CaseConversionAPIRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_conversion_by_case_api_v1_knowledge_conversions_by_case__case_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
+                /** @description Case UUID */
                 case_id: string;
             };
             cookie?: never;
@@ -11731,7 +13473,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ReportListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11921,24 +13663,23 @@ export interface operations {
             };
         };
     };
-    list_reports_for_case_api_v1_reports_case__case_id__get: {
+    link_report_to_case_closure_api_v1_reports__report_id__link_case_post: {
         parameters: {
-            query?: {
-                /** @description Include all versions or only current */
-                include_history?: boolean;
-                /** @description Filter by report type */
-                report_type?: string | null;
-            };
+            query?: never;
             header?: {
                 Authorization?: string | null;
             };
             path: {
-                /** @description Case UUID */
-                case_id: string;
+                /** @description Report UUID */
+                report_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LinkCaseRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -11946,7 +13687,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReportListResponse"];
+                    "application/json": components["schemas"]["LinkCaseResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11994,44 +13735,6 @@ export interface operations {
             };
         };
     };
-    link_report_to_case_closure_api_v1_reports__report_id__link_case_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Report UUID */
-                report_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["LinkCaseRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LinkCaseResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_sessions_api_v1_sessions_get: {
         parameters: {
             query?: {
@@ -12040,7 +13743,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -12121,10 +13826,78 @@ export interface operations {
             };
         };
     };
+    cleanup_expired_sessions_v2: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_sessions_api_v1_sessions_search_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_session_api_v1_sessions__session_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 session_id: string;
             };
@@ -12192,7 +13965,9 @@ export interface operations {
     delete_session_api_v1_sessions__session_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 session_id: string;
             };
@@ -12206,6 +13981,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_session_api_v1_sessions__session_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {
@@ -12260,11 +14068,15 @@ export interface operations {
             };
         };
     };
-    cleanup_expired_sessions_v2: {
+    cleanup_session_api_v1_sessions__session_id__cleanup_post: {
         parameters: {
             query?: never;
-            header?: never;
-            path?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -12276,6 +14088,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -12283,69 +14104,9 @@ export interface operations {
     session_heartbeat_api_v1_sessions__session_id__heartbeat_post: {
         parameters: {
             query?: never;
-            header?: never;
-            path: {
-                session_id: string;
+            header?: {
+                Authorization?: string | null;
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_session_stats_api_v1_sessions__session_id__stats_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cleanup_session_api_v1_sessions__session_id__cleanup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
             path: {
                 session_id: string;
             };
@@ -12376,7 +14137,9 @@ export interface operations {
     get_session_recovery_info_api_v1_sessions__session_id__recovery_info_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 session_id: string;
             };
@@ -12407,7 +14170,9 @@ export interface operations {
     restore_session_api_v1_sessions__session_id__restore_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 session_id: string;
             };
@@ -12439,42 +14204,7 @@ export interface operations {
             };
         };
     };
-    search_sessions_api_v1_sessions_search_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    archive_session_api_v1_sessions__session_id__archive_post: {
+    get_session_stats_api_v1_sessions__session_id__stats_get: {
         parameters: {
             query?: never;
             header?: {
@@ -12507,225 +14237,7 @@ export interface operations {
             };
         };
     };
-    list_users_api_v1_admin_users_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by active/inactive status */
-                is_active?: boolean | null;
-                /** @description Filter by role (admin, member, viewer) */
-                role?: string | null;
-                /** @description Search email or full_name (case-insensitive) */
-                search?: string | null;
-                /** @description Max results per page */
-                limit?: number;
-                /** @description Pagination offset */
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_user_details_api_v1_admin_users__user_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description User ID to retrieve */
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    deactivate_user_api_v1_admin_users__user_id__deactivate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description User ID to deactivate */
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    activate_user_api_v1_admin_users__user_id__activate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description User ID to activate */
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assign_role_api_v1_admin_users__user_id__roles_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description User ID to assign role to */
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RoleAssignmentRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RoleAssignmentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_role_api_v1_admin_users__user_id__roles__role__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description User ID to remove role from */
-                user_id: string;
-                /** @description Role to remove (admin, member) */
-                role: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RoleAssignmentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_llm_routing_health_api_v1_admin_debug_llm_routing_get: {
+    list_my_teams_api_v1_teams_get: {
         parameters: {
             query?: never;
             header?: {
@@ -12742,7 +14254,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["TeamResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -12752,481 +14264,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_llm_config_api_v1_admin_llm_config_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_llm_config_api_v1_admin_llm_config_put: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LLMConfigUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMConfigUpdateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    check_llm_connection_api_v1_admin_llm_config_test_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LLMConnectionTestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LLMConnectionTestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_env_config_status_api_v1_admin_config_status_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EnvConfigStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_all_cases_api_v1_admin_cases_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by state */
-                state?: components["schemas"]["CaseState"] | null;
-                /** @description Filter by case source */
-                source?: ("copilot" | "slack" | "api") | null;
-                /** @description Items per page */
-                limit?: number;
-                /** @description Number of items to skip */
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminCaseListResponse"] | components["schemas"]["AdminCaseMetadataListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    open_case_content_api_v1_admin_cases__case_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminCaseContentResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    open_case_transcript_api_v1_admin_cases__case_id__messages_get: {
-        parameters: {
-            query?: {
-                /** @description Messages per page */
-                limit?: number;
-                /** @description Number of messages to skip */
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminCaseMessagesResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_grants_api_v1_admin_grants_get: {
-        parameters: {
-            query?: {
-                /** @description Filter by the operator holding the grant */
-                operator_user_id?: string | null;
-                /** @description Filter by the case granted */
-                case_id?: string | null;
-                /** @description Filter by the organization whose case was granted */
-                organization_id?: string | null;
-                /** @description Only grants that authorise a read right now */
-                live_only?: boolean;
-                /** @description Items per page */
-                limit?: number;
-                /** @description Number of items to skip */
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BreakGlassGrantListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_grant_api_v1_admin_grants_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BreakGlassGrantRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BreakGlassGrant"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_grant_api_v1_admin_grants__grant_id__revoke_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                grant_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BreakGlassGrant"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    debug_routes_debug_routes_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    debug_health_debug_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    debug_config_debug_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    debug_llm_providers_debug_llm_providers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    root__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    get_capabilities_v1_meta_capabilities_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };
@@ -13234,7 +14271,9 @@ export interface operations {
     health_check_health_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -13249,84 +14288,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-        };
-    };
-    health_check_dependencies_health_dependencies_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    readiness_readiness_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    logging_health_check_health_logging_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    health_check_sla_health_sla_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -13334,7 +14302,9 @@ export interface operations {
     health_check_component_health_components__component_name__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path: {
                 component_name: string;
             };
@@ -13362,10 +14332,74 @@ export interface operations {
             };
         };
     };
+    health_check_dependencies_health_dependencies_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logging_health_check_health_logging_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_check_error_patterns_health_patterns_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -13380,34 +14414,23 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    get_performance_metrics_metrics_performance_get: {
+    health_check_sla_health_sla_get: {
         parameters: {
             query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
+            header?: {
+                Authorization?: string | null;
             };
-        };
-    };
-    get_realtime_metrics_metrics_realtime_get: {
-        parameters: {
-            query?: {
-                time_window_minutes?: number;
-            };
-            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13436,7 +14459,9 @@ export interface operations {
     get_alert_status_metrics_alerts_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -13449,6 +14474,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -13456,7 +14490,9 @@ export interface operations {
     get_system_optimization_metrics_metrics_optimization_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -13471,12 +14507,23 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    trigger_system_cleanup_admin_optimization_trigger_cleanup_get: {
+    get_performance_metrics_metrics_performance_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                Authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -13489,6 +14536,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_realtime_metrics_metrics_realtime_get: {
+        parameters: {
+            query?: {
+                time_window_minutes?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readiness_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_capabilities_v1_meta_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

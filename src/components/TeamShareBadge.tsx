@@ -1,6 +1,7 @@
 interface TeamShareBadgeProps {
-  /** The case's `shared_team_ids` (ADR-013 §D4). */
-  teamIds: string[];
+  /** The case's `shared_team_ids` (ADR-013 §D4); optional in the generated
+   *  contract, and absent renders the same as empty. */
+  teamIds?: string[];
   /** team_id → name, from `useTeamSharing`. Ids missing from the map (e.g. a
    *  team the caller no longer belongs to) fall back to a generic label. */
   teamsById?: Map<string, string>;
