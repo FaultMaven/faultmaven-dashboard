@@ -195,7 +195,7 @@ export default function CaseDetailPage() {
       <ShareCaseModal
         isOpen={showShareModal}
         caseId={caseDetail.case_id}
-        sharedTeamIds={caseDetail.shared_team_ids}
+        sharedTeamIds={caseDetail.shared_team_ids ?? []}
         teams={teams}
         onClose={() => setShowShareModal(false)}
         onChanged={() => void loadCase()}
