@@ -44,7 +44,7 @@ export function UserTable({ users, onChangeRole, onDeactivate }: UserTableProps)
                 {isOperator ? (
                   <span
                     className="inline-flex items-center gap-1 text-sm text-fm-text-secondary"
-                    title="Platform admin (deployment operator). Granted and revoked with scripts/auth/promote_to_platform_admin.py — changing roles here would remove it."
+                    title="Platform admin (deployment operator). Granted and revoked with the fm-promote-platform-admin / fm-demote-platform-admin operator commands — changing roles here would remove it."
                   >
                     👑 Platform Admin
                   </span>
