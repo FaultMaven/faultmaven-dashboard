@@ -45,4 +45,25 @@ describe('IssueTab status colour', () => {
     expect(status).not.toHaveClass('text-fm-success');
     expect(status).toHaveClass('text-fm-text-primary');
   });
+
+  it('renders the closure reason as meaning, not as an enum key', () => {
+    // The Dashboard showed the raw value under a "Resolution Notes" heading —
+    // a classification presented as if it were a sentence someone wrote, on a
+    // field only ever set for CLOSED cases.
+    render(
+      <IssueTab
+        caseDetail={makeCaseDetail({
+          state: 'closed',
+          resolved_at: null,
+          closed_at: '2024-01-01T02:00:00Z',
+          closure_reason: 'closed_rca_infeasible',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Closure Reason')).toBeInTheDocument();
+    expect(screen.getByText('Root cause unreachable')).toBeInTheDocument();
+    expect(screen.queryByText('closed_rca_infeasible')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resolution Notes')).not.toBeInTheDocument();
+  });
 });

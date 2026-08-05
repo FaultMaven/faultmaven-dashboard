@@ -1,4 +1,5 @@
 import type { CaseDetail } from '../types/cases';
+import { closureReasonDisplay } from '../lib/cases/closureReason';
 
 interface IssueTabProps {
   caseDetail: CaseDetail;
@@ -126,16 +127,24 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
         </div>
       </section>
 
-      {/* Resolution Notes — read-only display of the case's closure reason.
-          Cases are authored/mutated only in the Copilot (D1); the Dashboard
-          views them. */}
+      {/* Closure Reason — read-only display of the engine-derived
+          classification. Cases are authored/mutated only in the Copilot (D1);
+          the Dashboard views them.
+
+          It was headed "Resolution Notes" and rendered raw, which presented a
+          key like `closed_insufficient_evidence` as if it were a sentence
+          someone wrote — and promised resolution notes on a field that is only
+          ever set for CLOSED cases (RESOLVED carries null). */}
       {caseDetail.closure_reason && (
         <section>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
-            Resolution Notes
+            Closure Reason
           </h3>
-          <p className="text-sm text-fm-text-primary whitespace-pre-wrap">
-            {caseDetail.closure_reason}
+          <p className="text-sm text-fm-text-primary">
+            {closureReasonDisplay(caseDetail.closure_reason).label}
+          </p>
+          <p className="text-sm text-fm-text-secondary">
+            {closureReasonDisplay(caseDetail.closure_reason).description}
           </p>
         </section>
       )}
