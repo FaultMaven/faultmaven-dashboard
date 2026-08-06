@@ -1438,28 +1438,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/diff": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Diff two case states
-         * @description Compute the semantic difference between two turns of a case.
-         *
-         *     Returns a dictionary describing added, removed, and modified fields.
-         */
-        get: operations["diff_case_turns"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/cases/{case_id}/evidence": {
         parameters: {
             query?: never;
@@ -1931,116 +1909,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute AI agent for troubleshooting investigation
-         * @description Execute an AI agent to analyze the case and generate recommendations.
-         *     Supports streaming (SSE) or non-streaming mode.
-         *
-         *     **Authentication:**
-         *     - JWT Bearer token: Authorization: Bearer <token>
-         *
-         *     **Streaming Mode (stream=true, default):**
-         *     Returns Server-Sent Events (SSE) with real-time updates including:
-         *     - `started`: Execution has begun
-         *     - `thinking`: Agent is reasoning/processing
-         *     - `tool_call`: Tool invocation requested
-         *     - `tool_result`: Tool execution completed
-         *     - `response`: Incremental response chunk
-         *     - `error`: Error occurred
-         *     - `completed`: Execution finished
-         *
-         *     **Non-Streaming Mode (stream=false):**
-         *     Returns complete AgentExecutionResponse when done.
-         *
-         *     The agent will:
-         *     - Analyze case context and previous conversation
-         *     - Use available tools (read evidence, search knowledge)
-         *     - Generate hypotheses and recommendations
-         *     - Stream thinking process in real-time
-         *
-         *     Token usage is tracked and the session will auto-pause if budget is exceeded.
-         */
-        post: operations["execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List executions for case
-         * @description List all agent executions for the case.
-         *
-         *     **Note**: Executions are stored at the case level, not the session level.
-         *     The session_id in the path is for URL consistency with the execute endpoint,
-         *     but filtering is done by case_id. All executions for the case are returned
-         *     regardless of which session initiated them.
-         */
-        get: operations["list_executions_api_v1_cases__case_id__sessions__session_id__executions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get execution by ID
-         * @description Get details of a specific agent execution.
-         */
-        get: operations["get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel running execution
-         * @description Cancel a running agent execution.
-         */
-        post: operations["cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/cases/{case_id}/sessions/{session_id}/pause": {
         parameters: {
             query?: never;
@@ -2115,28 +1983,6 @@ export interface paths {
          *         400: Session not paused (cannot resume)
          */
         post: operations["resume_session_api_v1_cases__case_id__sessions__session_id__resume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/snapshot/{turn_number}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get case snapshot at specific turn
-         * @description Get the full state of a case at a specific turn number.
-         *
-         *     This is a read-only operation that reconstructs the case from the checkpoint.
-         */
-        get: operations["get_case_snapshot"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3993,65 +3839,6 @@ export interface components {
             total: number;
             /** Users */
             users: components["schemas"]["AdminUserListItem"][];
-        };
-        /**
-         * AgentExecutionRequest
-         * @description Request model for executing an AI agent.
-         *
-         *     This model defines the input for agent execution requests,
-         *     supporting both streaming and non-streaming modes.
-         * @example {
-         *       "agent_type": "investigator",
-         *       "stream": true,
-         *       "user_message": "What is causing the 500 errors in the API?"
-         *     }
-         */
-        AgentExecutionRequest: {
-            /**
-             * Agent Type
-             * @description Type of agent to execute (investigator, debugger, researcher, validator, reporter)
-             * @default investigator
-             */
-            agent_type: string;
-            /**
-             * Stream
-             * @description Whether to stream response events (SSE)
-             * @default true
-             */
-            stream: boolean;
-            /**
-             * User Message
-             * @description User's question or request for the agent
-             */
-            user_message: string;
-        };
-        /**
-         * AgentExecutionResponse
-         * @description Response model for completed agent execution (non-streaming).
-         *
-         *     Used when stream=false in the request.
-         */
-        AgentExecutionResponse: {
-            /** Agent Response */
-            agent_response: string;
-            /** Completed At */
-            completed_at?: string | null;
-            /** Execution Id */
-            execution_id: string;
-            /**
-             * Started At
-             * Format: date-time
-             */
-            started_at: string;
-            /** Status */
-            status: string;
-            /** Tokens Used */
-            tokens_used: number;
-            /**
-             * Tool Calls
-             * @default []
-             */
-            tool_calls: components["schemas"]["ToolCallResponse"][];
         };
         /**
          * AttachmentResult
@@ -8770,22 +8557,6 @@ export interface components {
             username: string;
         };
         /**
-         * ToolCallResponse
-         * @description Response model for a tool call within an execution.
-         */
-        ToolCallResponse: {
-            /** Arguments */
-            arguments: Record<string, never>;
-            /** Result */
-            result?: string | null;
-            /** Status */
-            status: string;
-            /** Tool Call Id */
-            tool_call_id: string;
-            /** Tool Name */
-            tool_name: string;
-        };
-        /**
          * TurnOutcome
          * @description Turn outcome classification.
          *
@@ -11279,44 +11050,6 @@ export interface operations {
             };
         };
     };
-    diff_case_turns: {
-        parameters: {
-            query: {
-                /** @description Start turn number */
-                from: number;
-                /** @description End turn number */
-                to: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_case_evidence: {
         parameters: {
             query?: never;
@@ -11895,192 +11628,6 @@ export interface operations {
             };
         };
     };
-    execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Investigation session ID */
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentExecutionRequest"];
-            };
-        };
-        responses: {
-            /** @description Agent execution completed (non-streaming) or SSE stream (streaming) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentExecutionResponse"];
-                    /**
-                     * @example event: started
-                     *     data: {"content":"Execution started","metadata":{"execution_id":"exec-123"}}
-                     */
-                    "text/event-stream": string;
-                };
-            };
-            /** @description Forbidden - wrong organization */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Session not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict - session not active or budget exceeded */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description LLM or tool execution error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_executions_api_v1_cases__case_id__sessions__session_id__executions_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency, not used for filtering) */
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency) */
-                session_id: string;
-                /** @description Execution ID */
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentExecutionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency) */
-                session_id: string;
-                /** @description Execution ID */
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     pause_session_api_v1_cases__case_id__sessions__session_id__pause_post: {
         parameters: {
             query?: never;
@@ -12136,40 +11683,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvestigationSessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_case_snapshot: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                case_id: string;
-                turn_number: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Case"];
                 };
             };
             /** @description Validation Error */
