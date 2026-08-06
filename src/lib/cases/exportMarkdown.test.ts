@@ -15,11 +15,16 @@ const caseDetail = {
   case_id: 'case-42',
   title: 'DB Outage',
   description: 'Primary DB unresponsive',
-  state: 'resolved',
+  // CLOSED, not resolved: `closure_reason` is only ever set for CLOSED cases
+  // (RESOLVED carries null), and it is an engine-derived enum key rather than
+  // prose. The previous fixture had it both ways round — a resolved case with a
+  // hand-written sentence — which is why nothing caught the raw key reaching
+  // users under a "Resolution Notes" heading.
+  state: 'closed',
   created_at: '2026-07-01T00:00:00Z',
-  resolved_at: '2026-07-01T01:00:00Z',
-  closed_at: null,
-  closure_reason: 'Restarted the connection pool.',
+  resolved_at: null,
+  closed_at: '2026-07-01T01:00:00Z',
+  closure_reason: 'closed_insufficient_evidence',
   current_turn: 4,
   milestones_completed: ['root_cause_identified', 'solution_verified'],
   pending_milestones: [],
@@ -64,7 +69,11 @@ describe('buildCaseMarkdown', () => {
     expect(md).toContain('ERROR: connection pool exhausted');
     expect(md).toContain('_Source: db.log · turn 2_');
     expect(md).toContain('## Resolution');
-    expect(md).toContain('Restarted the connection pool.');
+    // The exported document carries the MEANING, not the enum key.
+    expect(md).toContain('### Closure Reason');
+    expect(md).toContain('**Insufficient evidence**');
+    expect(md).toContain('without establishing the problem or its cause');
+    expect(md).not.toContain('closed_insufficient_evidence');
     expect(md).toContain('## Transcript');
     expect(md).toContain('#### You · Turn 1');
     expect(md).toContain('#### FaultMaven · Turn 1');
@@ -85,6 +94,6 @@ describe('buildCaseMarkdown', () => {
     expect(md).not.toContain('## Hypotheses');
     expect(md).not.toContain('## Evidence');
     expect(md).not.toContain('## Transcript');
-    expect(md).not.toContain('### Resolution Notes');
+    expect(md).not.toContain('### Closure Reason');
   });
 });

@@ -1,4 +1,5 @@
 import { getCaseMessages, getCaseEvidenceList, getCaseUI } from './api';
+import { closureReasonDisplay } from './closureReason';
 import type {
   CaseDetail,
   CaseMessage,
@@ -116,10 +117,14 @@ export function buildCaseMarkdown({
   lines.push('');
   lines.push(`- **Final state:** ${caseDetail.state}`);
   if (caseDetail.closure_reason) {
+    // A classification, not prose — see lib/cases/closureReason.ts. Exporting
+    // the raw key put `closed_insufficient_evidence` into the document under a
+    // "Resolution Notes" heading, which is neither its meaning nor its shape.
+    const closure = closureReasonDisplay(caseDetail.closure_reason);
     lines.push('');
-    lines.push('### Resolution Notes');
+    lines.push('### Closure Reason');
     lines.push('');
-    lines.push(caseDetail.closure_reason);
+    lines.push(`**${closure.label}** — ${closure.description}`);
   }
   lines.push('');
 
