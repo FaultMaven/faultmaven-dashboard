@@ -6,6 +6,7 @@
  * only ever set for CLOSED cases.
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import {
   CLOSURE_REASON_DISPLAY,
@@ -65,8 +66,7 @@ describe('closureReasonDisplay', () => {
       'src/lib/cases/exportMarkdown.ts',
     ];
     for (const rel of consumers) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const src = require('node:fs').readFileSync(rel, 'utf8');
+      const src = readFileSync(rel, 'utf8');
       expect(
         src.includes('closureReasonDisplay('),
         `${rel} must resolve closure reasons through closureReasonDisplay()`,
