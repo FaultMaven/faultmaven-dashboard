@@ -1076,6 +1076,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/sso/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sso Callback
+         * @description IdP redirect target: verify state, exchange the code, hand off to the dashboard.
+         *
+         *     Never fails with an error page — every outcome is a 302 to the dashboard
+         *     SSO callback, carrying either a completion ``code`` or a sanitized ``error``.
+         *     The state cookie set at /login must accompany and match the ``state`` query
+         *     param (browser binding), and is cleared here either way.
+         */
+        get: operations["sso_callback_api_v1_auth_sso_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sso Exchange
+         * @description Trade the single-use completion code for a FaultMaven session.
+         *
+         *     Any failure (expired, replayed, or unknown code; user removed or
+         *     deactivated since the callback) returns the same 401 — the endpoint must
+         *     not distinguish causes for an unauthenticated caller.
+         */
+        post: operations["sso_exchange_api_v1_auth_sso_exchange_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sso Login
+         * @description Start the hosted-login flow: mint state, redirect to the IdP.
+         */
+        get: operations["sso_login_api_v1_auth_sso_login_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/users": {
         parameters: {
             query?: never;
@@ -1262,9 +1331,6 @@ export interface paths {
          *     **Title Auto-Generation**: If title is not provided or empty, the backend
          *     automatically generates a unique title in the format: Case-MMDD-N
          *     (e.g., Case-1028-1, Case-1028-2). The sequence counter resets daily.
-         *
-         *     Supports idempotency via 'idempotency-key' header to prevent duplicate case
-         *     creation on retry when using force_new=true.
          */
         post: operations["create_case_for_session_api_v1_cases_sessions__session_id__case_post"];
         delete?: never;
@@ -1374,8 +1440,17 @@ export interface paths {
          * Close Case
          * @description Close case and archive with reports.
          *
-         *     Marks all latest reports as linked to case closure and transitions
-         *     case to CLOSED state.
+         *     Transitions the case to CLOSED through the engine's terminal executor
+         *     (CaseService.close_case → execute_user_closure): closure_reason is
+         *     engine-derived, closed_at is stamped, and an action-history entry is
+         *     recorded — the same closure rule as the chat-confirmed flow (#915; the
+         *     previous body set ``case.state`` directly, which the terminal-state
+         *     validator rejects, and then called a service method that didn't exist).
+         *
+         *     Then marks all latest reports as linked to the closure. Close-first
+         *     ordering: a refused close (404 unknown/not-owner, 409 already
+         *     terminal — mapped by the global exception handlers) must never mark
+         *     reports as closure-linked.
          *
          *     Returns:
          *         CaseClosureResponse with list of archived reports
@@ -1931,116 +2006,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Execute AI agent for troubleshooting investigation
-         * @description Execute an AI agent to analyze the case and generate recommendations.
-         *     Supports streaming (SSE) or non-streaming mode.
-         *
-         *     **Authentication:**
-         *     - JWT Bearer token: Authorization: Bearer <token>
-         *
-         *     **Streaming Mode (stream=true, default):**
-         *     Returns Server-Sent Events (SSE) with real-time updates including:
-         *     - `started`: Execution has begun
-         *     - `thinking`: Agent is reasoning/processing
-         *     - `tool_call`: Tool invocation requested
-         *     - `tool_result`: Tool execution completed
-         *     - `response`: Incremental response chunk
-         *     - `error`: Error occurred
-         *     - `completed`: Execution finished
-         *
-         *     **Non-Streaming Mode (stream=false):**
-         *     Returns complete AgentExecutionResponse when done.
-         *
-         *     The agent will:
-         *     - Analyze case context and previous conversation
-         *     - Use available tools (read evidence, search knowledge)
-         *     - Generate hypotheses and recommendations
-         *     - Stream thinking process in real-time
-         *
-         *     Token usage is tracked and the session will auto-pause if budget is exceeded.
-         */
-        post: operations["execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List executions for case
-         * @description List all agent executions for the case.
-         *
-         *     **Note**: Executions are stored at the case level, not the session level.
-         *     The session_id in the path is for URL consistency with the execute endpoint,
-         *     but filtering is done by case_id. All executions for the case are returned
-         *     regardless of which session initiated them.
-         */
-        get: operations["list_executions_api_v1_cases__case_id__sessions__session_id__executions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get execution by ID
-         * @description Get details of a specific agent execution.
-         */
-        get: operations["get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/cases/{case_id}/sessions/{session_id}/executions/{execution_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel running execution
-         * @description Cancel a running agent execution.
-         */
-        post: operations["cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/cases/{case_id}/sessions/{session_id}/pause": {
         parameters: {
             query?: never;
@@ -2322,6 +2287,8 @@ export interface paths {
         /**
          * Get Search Analytics
          * @description Get search analytics and insights.
+         *
+         *     Requires authentication, for the same reason as ``/stats``.
          */
         get: operations["get_search_analytics_api_v1_knowledge_analytics_search_get"];
         put?: never;
@@ -2403,12 +2370,20 @@ export interface paths {
         /**
          * Update Draft
          * @description Update draft content. Re-runs validation and quality scoring.
+         *
+         *     Editing a global-scope draft is platform-corpus authoring, so the service
+         *     applies the global-authoring gate once the job's scope is loaded (#785);
+         *     the resulting AuthorizationError maps to 403 via the global handlers.
          */
         put: operations["update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put"];
         post?: never;
         /**
          * Delete Draft
          * @description Delete a conversion draft.
+         *
+         *     Deleting a global-scope draft is platform-corpus authoring — the service
+         *     applies the global-authoring gate once the job's scope is loaded, same as
+         *     edit (#785) and verify.
          */
         delete: operations["delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete"];
         options?: never;
@@ -2523,6 +2498,12 @@ export interface paths {
         /**
          * Bulk Delete Documents
          * @description Bulk delete documents.
+         *
+         *     Ownership-aware per target (#866): the same gate as
+         *     ``DELETE /documents/{id}``, applied to each target before anything reaches
+         *     the service. Refused targets are reported in ``errors`` and never counted
+         *     as deleted; ``total_requested`` is the de-duplicated batch size (see
+         *     ``_normalize_bulk_document_ids``), so the counts reconcile.
          */
         post: operations["bulk_delete_documents_api_v1_knowledge_documents_bulk_delete_post"];
         delete?: never;
@@ -2543,6 +2524,13 @@ export interface paths {
         /**
          * Bulk Update Documents
          * @description Bulk update document metadata.
+         *
+         *     Ownership-aware per target (#866): this surface is a loop over
+         *     ``PUT /documents/{id}``, so it carries the same gate — any authenticated
+         *     caller may submit a batch, and the per-document write policy decides each
+         *     target. Refused targets are reported in ``errors`` and never counted as
+         *     updated; ``total_requested`` is the de-duplicated batch size (see
+         *     ``_normalize_bulk_document_ids``), so the counts reconcile.
          */
         post: operations["bulk_update_documents_api_v1_knowledge_documents_bulk_update_post"];
         delete?: never;
@@ -2628,7 +2616,17 @@ export interface paths {
         };
         /**
          * Get Document
-         * @description Get a specific knowledge base document
+         * @description Get a specific knowledge base document.
+         *
+         *     Requires authentication and applies the same read-visibility rule as the
+         *     inventory listing (#867): global ∪ own ∪ shared-to-my-teams. A document
+         *     the caller may not see answers 404, identically to an absent id — the
+         *     refusal must not confirm that someone else's runbook exists.
+         *
+         *     Unlike ``GET /documents`` (which stays optionally authenticated so an
+         *     anonymous caller can browse global titles), the id-addressed reads require
+         *     a caller: they return full document content, and no consumer needs them
+         *     anonymously.
          *
          *     Args:
          *         document_id: Document identifier
@@ -2640,12 +2638,22 @@ export interface paths {
         /**
          * Update Document
          * @description Update document metadata and content.
+         *
+         *     Ownership-aware (#834): the owner may edit their own personal/team
+         *     document; global-scope editing is platform-corpus authoring (operator
+         *     only, per the global-tier policy). A refusal over a document the caller
+         *     cannot even see answers 404 rather than 403 (#867).
          */
         put: operations["update_document_api_v1_knowledge_documents__document_id__put"];
         post?: never;
         /**
          * Delete Document
          * @description Delete a knowledge base document
+         *
+         *     Ownership-aware (#834): the owner may delete their own personal/team
+         *     document; global-scope deletion is platform-corpus authoring (operator
+         *     only, per the global-tier policy). A refusal over a document the caller
+         *     cannot even see answers 404 rather than 403 (#867).
          *
          *     Args:
          *         document_id: Document identifier
@@ -2669,6 +2677,10 @@ export interface paths {
         /**
          * Get Document Snippet
          * @description Get a snippet/preview of a knowledge base document for hover cards.
+         *
+         *     Requires authentication and applies the same read-visibility rule as
+         *     ``GET /documents/{document_id}`` (#867): a document the caller may not see
+         *     answers 404, identically to an absent id.
          *
          *     Supports two modes:
          *     1. **Line-based extraction**: Extract lines from line_start to line_end (or max_lines)
@@ -2817,6 +2829,10 @@ export interface paths {
         /**
          * Get Knowledge Stats
          * @description Get knowledge base statistics.
+         *
+         *     Requires authentication (#867): aggregate counts over the corpus are not
+         *     public, and ``docs/architecture/security/rbac.md`` already documented this
+         *     route as "Any authenticated user".
          */
         get: operations["get_knowledge_stats_api_v1_knowledge_stats_get"];
         put?: never;
@@ -2836,10 +2852,13 @@ export interface paths {
         };
         /**
          * List Suggestions
-         * @description List knowledge suggestions with optional filtering.
+         * @description List the caller's organization's knowledge suggestions.
          *
          *     Returns suggestions extracted from cases that are pending review.
          *     Includes lineage information for each suggestion (source case, extractor, timestamp).
+         *
+         *     Scoped to the caller's tenant, resolved fail-closed: the operator role says
+         *     *what* you may do, never *whose* data you may see.
          *
          *     Args:
          *         status: Filter by status (pending_review, approved, rejected)
@@ -2872,6 +2891,10 @@ export interface paths {
          *     Returns full suggestion details including content, PII scan status,
          *     and lineage information.
          *
+         *     Resolved through the tenant-scoped lookup: an id belonging to another
+         *     organization answers 404, identically to an absent id, so the response is
+         *     never an existence oracle.
+         *
          *     Args:
          *         suggestion_id: Suggestion identifier
          *
@@ -2885,6 +2908,9 @@ export interface paths {
          *
          *     Allows editing the suggested title, content, or type before approval.
          *     Content changes trigger a new PII scan.
+         *
+         *     Tenant-scoped: an id outside the caller's organization answers 404 and
+         *     nothing is written.
          *
          *     Args:
          *         suggestion_id: Suggestion to update
@@ -3363,32 +3389,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/sessions/{session_id}/cleanup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cleanup Session
-         * @description Clean up session data and temporary files.
-         *
-         *     Args:
-         *         session_id: Session identifier
-         *
-         *     Returns:
-         *         Cleanup confirmation
-         */
-        post: operations["cleanup_session_api_v1_sessions__session_id__cleanup_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/sessions/{session_id}/heartbeat": {
         parameters: {
             query?: never;
@@ -3630,6 +3630,33 @@ export interface paths {
          * @description Get SLA status and metrics for all components.
          */
         get: operations["health_check_sla_health_sla_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Metrics
+         * @description Prometheus metrics endpoint.
+         *
+         *     Returns metrics in Prometheus text exposition format.
+         *     Only available when METRICS_EXPORTER=prometheus_http.
+         *
+         *     Label cardinality is bounded:
+         *     - Uses route templates (e.g., /api/v1/cases) not actual IDs
+         *     - No user_id, session_id, case_id, or other unbounded values
+         */
+        get: operations["metrics_metrics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3995,65 +4022,6 @@ export interface components {
             users: components["schemas"]["AdminUserListItem"][];
         };
         /**
-         * AgentExecutionRequest
-         * @description Request model for executing an AI agent.
-         *
-         *     This model defines the input for agent execution requests,
-         *     supporting both streaming and non-streaming modes.
-         * @example {
-         *       "agent_type": "investigator",
-         *       "stream": true,
-         *       "user_message": "What is causing the 500 errors in the API?"
-         *     }
-         */
-        AgentExecutionRequest: {
-            /**
-             * Agent Type
-             * @description Type of agent to execute (investigator, debugger, researcher, validator, reporter)
-             * @default investigator
-             */
-            agent_type: string;
-            /**
-             * Stream
-             * @description Whether to stream response events (SSE)
-             * @default true
-             */
-            stream: boolean;
-            /**
-             * User Message
-             * @description User's question or request for the agent
-             */
-            user_message: string;
-        };
-        /**
-         * AgentExecutionResponse
-         * @description Response model for completed agent execution (non-streaming).
-         *
-         *     Used when stream=false in the request.
-         */
-        AgentExecutionResponse: {
-            /** Agent Response */
-            agent_response: string;
-            /** Completed At */
-            completed_at?: string | null;
-            /** Execution Id */
-            execution_id: string;
-            /**
-             * Started At
-             * Format: date-time
-             */
-            started_at: string;
-            /** Status */
-            status: string;
-            /** Tokens Used */
-            tokens_used: number;
-            /**
-             * Tool Calls
-             * @default []
-             */
-            tool_calls: components["schemas"]["ToolCallResponse"][];
-        };
-        /**
          * AttachmentResult
          * @description Result of preprocessing a single attachment.
          *
@@ -4306,10 +4274,7 @@ export interface components {
         };
         /** Body_convert_document_api_v1_knowledge_convert_post */
         Body_convert_document_api_v1_knowledge_convert_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Scope */
             scope: string;
@@ -4337,6 +4302,8 @@ export interface components {
             intent_data?: string | null;
             /** Intent Type */
             intent_type?: string | null;
+            /** Observed At */
+            observed_at?: string | null;
             /** Pasted Content */
             pasted_content?: string | null;
             /** Query */
@@ -4352,10 +4319,7 @@ export interface components {
             description?: string | null;
             /** Document Type */
             document_type: string;
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Source Url */
             source_url?: string | null;
@@ -5357,7 +5321,7 @@ export interface components {
              */
             valid_next_states?: string[];
             /** @description How solution effectiveness was verified */
-            verification_status: components["schemas"]["faultmaven__models__case_ui__VerificationStatus"];
+            verification_status: components["schemas"]["SolutionVerificationData"];
         };
         /**
          * CaseUpdateRequest
@@ -5999,7 +5963,7 @@ export interface components {
             tags?: string[];
             /**
              * Vectorized
-             * @description Whether this evidence's structural index has been persisted into the case vector store. Set to True by the investigation engine after a successful vectorize_file run; persisted across turns so proactive and reactive vectorization paths skip already-indexed evidence instead of re-embedding on every turn.
+             * @description Whether this evidence's structural index has been persisted into the case vector store. Set to True by the investigation engine after a vectorize_file run that actually wrote chunks — NOT after any successful run: a file with no chunkable content, or one seen while the embedder was unavailable, completes successfully and indexes nothing, and is not in the store (#941). Persisted across turns so proactive and reactive vectorization paths skip already-indexed evidence instead of re-embedding on every turn.
              * @default false
              */
             vectorized: boolean;
@@ -7774,6 +7738,11 @@ export interface components {
          */
         ProposedAction: {
             /**
+             * Accepted In Turn
+             * @description Turn in which compliance detection observed the user EXECUTE this action (state='accepted'). Distinct from ``proposed_in_turn``, which is when the action was OFFERED — the user executes it a turn later in the ordinary flow (#987). Anything reasoning about what happened *after the fix* must key on this, not on the proposal turn, or pre-execution evidence from the offering turn reads as a post-fix outcome. None while pending/superseded, and on actions accepted before this field existed.
+             */
+            accepted_in_turn?: number | null;
+            /**
              * Action Id
              * @description Unique action identifier
              */
@@ -8137,6 +8106,11 @@ export interface components {
              */
             determined_by: string;
             /**
+             * Established By
+             * @description PROVENANCE (#987): how this conclusion came to be established, in human-readable form — e.g. 'user-confirmed resolution at turn 11; causal-absence ev_47b2f3337ffc bears on root cn_29ff828f55b3'. Set when the engine PROMOTES a cause from confirmation plus evidence rather than from chain validation alone, so the structured record carries how it was established instead of a bare assertion. None on conclusions the LLM authored directly (their provenance is the transcript) and on the per-turn chain mirror (its provenance is the validated chain itself).
+             */
+            established_by?: string | null;
+            /**
              * Evidence Basis
              * @description Evidence IDs supporting this conclusion
              */
@@ -8291,6 +8265,14 @@ export interface components {
          * @enum {string}
          */
         RunbookSource: "incident_driven" | "document_driven";
+        /**
+         * SSOExchangeRequest
+         * @description Completion-code exchange request from the dashboard.
+         */
+        SSOExchangeRequest: {
+            /** Code */
+            code: string;
+        };
         /**
          * SearchRequest
          * @description Request model for knowledge base search
@@ -8556,6 +8538,27 @@ export interface components {
          */
         SolutionType: "rollback" | "config_change" | "restart" | "scaling" | "code_fix" | "workaround" | "infrastructure" | "data_fix" | "other";
         /**
+         * SolutionVerificationData
+         * @description Solution verification details for RESOLVED phase.
+         */
+        SolutionVerificationData: {
+            /**
+             * Details
+             * @description Verification details and metrics
+             */
+            details: string;
+            /**
+             * Verification Method
+             * @description How verification was done
+             */
+            verification_method: string;
+            /**
+             * Verified
+             * @description Whether solution effectiveness was verified
+             */
+            verified: boolean;
+        };
+        /**
          * SourceFileReference
          * @description Reference to source file that evidence was derived from.
          */
@@ -8768,22 +8771,6 @@ export interface components {
              * @description Username
              */
             username: string;
-        };
-        /**
-         * ToolCallResponse
-         * @description Response model for a tool call within an execution.
-         */
-        ToolCallResponse: {
-            /** Arguments */
-            arguments: Record<string, never>;
-            /** Result */
-            result?: string | null;
-            /** Status */
-            status: string;
-            /** Tool Call Id */
-            tool_call_id: string;
-            /** Tool Name */
-            tool_name: string;
         };
         /**
          * TurnOutcome
@@ -9332,6 +9319,10 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -9379,6 +9370,12 @@ export interface components {
              * @description Likelihood of this conclusion (0.0-1.0)
              */
             likelihood: number;
+            /**
+             * Mirrors Root Cause Conclusion
+             * @description True when this working conclusion is a MIRROR of the case's RootCauseConclusion rather than an independent read of the live hypothesis differential (#987). Load-bearing: the working conclusion is one of `cause_identification_leg`'s BACKSTOP legs, and it is read from the PREVIOUS turn (it regenerates after the recompute). A mirror carries the RCC's likelihood, so without this flag a retracted conclusion would keep satisfying the backstop for one further turn through its own stale mirror — the retraction is supposed to make every consumer see one truth. A mirror is never an independent signal anyway: whenever one exists the `rcc` leg already governs.
+             * @default false
+             */
+            mirrors_root_cause_conclusion: boolean;
             /**
              * Reasoning
              * @description Why agent believes this conclusion
@@ -9428,27 +9425,6 @@ export interface components {
              */
             summary: string;
         };
-        /**
-         * VerificationStatus
-         * @description Solution verification status for RESOLVED phase.
-         */
-        faultmaven__models__case_ui__VerificationStatus: {
-            /**
-             * Details
-             * @description Verification details and metrics
-             */
-            details: string;
-            /**
-             * Verification Method
-             * @description How verification was done
-             */
-            verification_method: string;
-            /**
-             * Verified
-             * @description Whether solution effectiveness was verified
-             */
-            verified: boolean;
-        };
     };
     responses: never;
     parameters: never;
@@ -9461,9 +9437,7 @@ export interface operations {
     root__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9492,9 +9466,7 @@ export interface operations {
     trigger_system_cleanup_admin_optimization_trigger_cleanup_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9538,9 +9510,7 @@ export interface operations {
                 /** @description Number of items to skip */
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9578,9 +9548,7 @@ export interface operations {
                 /** @description Number of items to skip */
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9609,9 +9577,7 @@ export interface operations {
     open_case_content_api_v1_admin_cases__case_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -9647,9 +9613,7 @@ export interface operations {
                 /** @description Number of messages to skip */
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -9680,9 +9644,7 @@ export interface operations {
     get_env_config_status_api_v1_admin_config_status_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9711,9 +9673,7 @@ export interface operations {
     get_llm_routing_health_api_v1_admin_debug_llm_routing_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9755,9 +9715,7 @@ export interface operations {
                 /** @description Number of items to skip */
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9786,9 +9744,7 @@ export interface operations {
     create_grant_api_v1_admin_grants_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9821,9 +9777,7 @@ export interface operations {
     revoke_grant_api_v1_admin_grants__grant_id__revoke_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 grant_id: string;
             };
@@ -9854,9 +9808,7 @@ export interface operations {
     get_llm_config_api_v1_admin_llm_config_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9885,9 +9837,7 @@ export interface operations {
     update_llm_config_api_v1_admin_llm_config_put: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9920,9 +9870,7 @@ export interface operations {
     check_llm_connection_api_v1_admin_llm_config_test_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9966,9 +9914,7 @@ export interface operations {
                 /** @description Pagination offset */
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -9997,9 +9943,7 @@ export interface operations {
     get_user_details_api_v1_admin_users__user_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description User ID to retrieve */
                 user_id: string;
@@ -10031,9 +9975,7 @@ export interface operations {
     activate_user_api_v1_admin_users__user_id__activate_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description User ID to activate */
                 user_id: string;
@@ -10065,9 +10007,7 @@ export interface operations {
     deactivate_user_api_v1_admin_users__user_id__deactivate_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description User ID to deactivate */
                 user_id: string;
@@ -10099,9 +10039,7 @@ export interface operations {
     assign_role_api_v1_admin_users__user_id__roles_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description User ID to assign role to */
                 user_id: string;
@@ -10137,9 +10075,7 @@ export interface operations {
     remove_role_api_v1_admin_users__user_id__roles__role__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description User ID to remove role from */
                 user_id: string;
@@ -10173,9 +10109,7 @@ export interface operations {
     get_auth_config_api_v1_auth_config_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10204,9 +10138,7 @@ export interface operations {
     local_login_api_v1_auth_dev_login_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10239,9 +10171,7 @@ export interface operations {
     local_register_api_v1_auth_dev_register_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10274,9 +10204,7 @@ export interface operations {
     auth_health_check_api_v1_auth_health_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10305,9 +10233,7 @@ export interface operations {
     local_login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10340,9 +10266,7 @@ export interface operations {
     logout_api_v1_auth_logout_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10371,9 +10295,7 @@ export interface operations {
     get_current_user_profile_api_v1_auth_me_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10402,9 +10324,7 @@ export interface operations {
     get_available_scopes_api_v1_auth_me_available_scopes_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10448,9 +10368,7 @@ export interface operations {
                 /** @description OAuth scopes */
                 scope?: string;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10479,9 +10397,7 @@ export interface operations {
     post_authorization_approval_api_v1_auth_oauth_authorize_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10514,9 +10430,7 @@ export interface operations {
     revoke_api_v1_auth_oauth_revoke_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10549,9 +10463,7 @@ export interface operations {
     token_api_v1_auth_oauth_token_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10584,9 +10496,7 @@ export interface operations {
     refresh_tokens_api_v1_auth_refresh_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10619,9 +10529,7 @@ export interface operations {
     local_register_api_v1_auth_register_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10651,12 +10559,104 @@ export interface operations {
             };
         };
     };
+    sso_callback_api_v1_auth_sso_callback_get: {
+        parameters: {
+            query?: {
+                code?: string | null;
+                state?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sso_exchange_api_v1_auth_sso_exchange_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSOExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sso_login_api_v1_auth_sso_login_get: {
+        parameters: {
+            query?: {
+                /** @description Dashboard path to return to after login (same-origin path only) */
+                return_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_api_v1_auth_users_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10685,9 +10685,7 @@ export interface operations {
     revoke_user_tokens_api_v1_auth_users__user_id__revoke_tokens_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 user_id: string;
             };
@@ -10718,9 +10716,7 @@ export interface operations {
     delete_user_api_v1_auth_users__username__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 username: string;
             };
@@ -10766,9 +10762,7 @@ export interface operations {
                 /** @description Include archived/closed cases */
                 include_archived?: boolean;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10797,9 +10791,7 @@ export interface operations {
     create_case_api_v1_cases_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10832,9 +10824,7 @@ export interface operations {
     get_case_service_health_api_v1_cases_health_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10863,9 +10853,7 @@ export interface operations {
     search_cases_api_v1_cases_search_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -10903,9 +10891,7 @@ export interface operations {
                 /** @description Force creation of new case */
                 force_new?: boolean;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -10936,9 +10922,7 @@ export interface operations {
     resume_case_in_session_api_v1_cases_sessions__session_id__resume__case_id__post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
                 case_id: string;
@@ -10970,9 +10954,7 @@ export interface operations {
     get_case_api_v1_cases__case_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11003,9 +10985,7 @@ export interface operations {
     update_case_api_v1_cases__case_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11040,9 +11020,7 @@ export interface operations {
     delete_case_api_v1_cases__case_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11073,9 +11051,7 @@ export interface operations {
     get_case_analytics_api_v1_cases__case_id__analytics_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11106,9 +11082,7 @@ export interface operations {
     close_case_api_v1_cases__case_id__close_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11148,9 +11122,7 @@ export interface operations {
                 /** @description Number of items to skip */
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11181,9 +11153,7 @@ export interface operations {
     upload_case_data_gone_api_v1_cases__case_id__data_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11214,9 +11184,7 @@ export interface operations {
     get_case_data_api_v1_cases__case_id__data__data_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 data_id: string;
@@ -11248,9 +11216,7 @@ export interface operations {
     delete_case_data_api_v1_cases__case_id__data__data_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 data_id: string;
@@ -11287,9 +11253,7 @@ export interface operations {
                 /** @description End turn number */
                 to: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11320,9 +11284,7 @@ export interface operations {
     list_case_evidence: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case ID */
                 case_id: string;
@@ -11354,9 +11316,7 @@ export interface operations {
     get_evidence_details_api_v1_cases__case_id__evidence__evidence_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case ID */
                 case_id: string;
@@ -11390,9 +11350,7 @@ export interface operations {
     reclassify_evidence_api_v1_cases__case_id__evidence__evidence_id__classification_patch: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 evidence_id: string;
@@ -11428,9 +11386,7 @@ export interface operations {
     extract_knowledge_from_case_api_v1_cases__case_id__extract_knowledge_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case ID to extract knowledge from */
                 case_id: string;
@@ -11473,9 +11429,7 @@ export interface operations {
                 /** @description Include debug information for troubleshooting */
                 include_debug?: boolean;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11506,9 +11460,7 @@ export interface operations {
     submit_case_query_gone_api_v1_cases__case_id__queries_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11539,9 +11491,7 @@ export interface operations {
     get_report_recommendations_api_v1_cases__case_id__report_recommendations_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11575,9 +11525,7 @@ export interface operations {
                 include_history?: boolean;
                 report_type?: string | null;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11608,9 +11556,7 @@ export interface operations {
     generate_case_reports_api_v1_cases__case_id__reports_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11647,9 +11593,7 @@ export interface operations {
             query?: {
                 format?: string;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 report_id: string;
@@ -11685,9 +11629,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11718,9 +11660,7 @@ export interface operations {
     create_session_api_v1_cases__case_id__sessions_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11755,9 +11695,7 @@ export interface operations {
     get_active_session_api_v1_cases__case_id__sessions_active_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -11788,9 +11726,7 @@ export interface operations {
     get_session_api_v1_cases__case_id__sessions__session_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 session_id: string;
@@ -11822,9 +11758,7 @@ export interface operations {
     update_session_api_v1_cases__case_id__sessions__session_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 session_id: string;
@@ -11860,9 +11794,7 @@ export interface operations {
     complete_session_api_v1_cases__case_id__sessions__session_id__complete_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 session_id: string;
@@ -11895,198 +11827,10 @@ export interface operations {
             };
         };
     };
-    execute_agent_api_v1_cases__case_id__sessions__session_id__execute_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Investigation session ID */
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentExecutionRequest"];
-            };
-        };
-        responses: {
-            /** @description Agent execution completed (non-streaming) or SSE stream (streaming) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentExecutionResponse"];
-                    /**
-                     * @example event: started
-                     *     data: {"content":"Execution started","metadata":{"execution_id":"exec-123"}}
-                     */
-                    "text/event-stream": string;
-                };
-            };
-            /** @description Forbidden - wrong organization */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Session not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict - session not active or budget exceeded */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description LLM or tool execution error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_executions_api_v1_cases__case_id__sessions__session_id__executions_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-            };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency, not used for filtering) */
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency) */
-                session_id: string;
-                /** @description Execution ID */
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentExecutionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_execution_api_v1_cases__case_id__sessions__session_id__executions__execution_id__cancel_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                /** @description Case ID */
-                case_id: string;
-                /** @description Session ID (for URL consistency) */
-                session_id: string;
-                /** @description Execution ID */
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     pause_session_api_v1_cases__case_id__sessions__session_id__pause_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 session_id: string;
@@ -12118,9 +11862,7 @@ export interface operations {
     resume_session_api_v1_cases__case_id__sessions__session_id__resume_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 session_id: string;
@@ -12152,9 +11894,7 @@ export interface operations {
     get_case_snapshot: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
                 turn_number: number;
@@ -12186,9 +11926,7 @@ export interface operations {
     share_case_with_team_api_v1_cases__case_id__team_shares_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case ID */
                 case_id: string;
@@ -12224,9 +11962,7 @@ export interface operations {
     unshare_case_from_team_api_v1_cases__case_id__team_shares__team_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case ID */
                 case_id: string;
@@ -12261,9 +11997,7 @@ export interface operations {
                 /** @description Only overwrite non-default titles when true */
                 force?: boolean;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -12298,9 +12032,7 @@ export interface operations {
     submit_turn_api_v1_cases__case_id__turns_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -12335,9 +12067,7 @@ export interface operations {
     get_case_ui_api_v1_cases__case_id__ui_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -12377,9 +12107,7 @@ export interface operations {
                 /** @description Sort direction: asc | desc */
                 sort_order?: string;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -12410,9 +12138,7 @@ export interface operations {
     get_uploaded_file_details: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case ID */
                 case_id: string;
@@ -12446,9 +12172,7 @@ export interface operations {
     get_search_analytics_api_v1_knowledge_analytics_search_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12480,9 +12204,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12511,9 +12233,7 @@ export interface operations {
     get_conversion_by_case_api_v1_knowledge_conversions_by_case__case_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -12544,9 +12264,7 @@ export interface operations {
     get_conversion_api_v1_knowledge_conversions__conversion_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 conversion_id: string;
             };
@@ -12577,9 +12295,7 @@ export interface operations {
     update_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 conversion_id: string;
                 draft_id: string;
@@ -12615,9 +12331,7 @@ export interface operations {
     delete_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 conversion_id: string;
                 draft_id: string;
@@ -12647,9 +12361,7 @@ export interface operations {
     verify_draft_api_v1_knowledge_conversions__conversion_id__drafts__draft_id__verify_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 conversion_id: string;
                 draft_id: string;
@@ -12681,9 +12393,7 @@ export interface operations {
     convert_document_api_v1_knowledge_convert_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12722,9 +12432,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12753,9 +12461,7 @@ export interface operations {
     upload_document_api_v1_knowledge_documents_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12788,9 +12494,7 @@ export interface operations {
     bulk_delete_documents_api_v1_knowledge_documents_bulk_delete_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12825,9 +12529,7 @@ export interface operations {
     bulk_update_documents_api_v1_knowledge_documents_bulk_update_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12860,9 +12562,7 @@ export interface operations {
     fulltext_search_documents_api_v1_knowledge_documents_search_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -12895,9 +12595,7 @@ export interface operations {
     get_document_api_v1_knowledge_documents__document_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -12928,9 +12626,7 @@ export interface operations {
     update_document_api_v1_knowledge_documents__document_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -12965,9 +12661,7 @@ export interface operations {
     delete_document_api_v1_knowledge_documents__document_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -13005,9 +12699,7 @@ export interface operations {
                 /** @description Query for semantic snippet extraction */
                 query_string?: string | null;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -13038,9 +12730,7 @@ export interface operations {
     list_all_drafts_api_v1_knowledge_drafts_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13069,9 +12759,7 @@ export interface operations {
     verify_batch_api_v1_knowledge_drafts_verify_batch_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13104,9 +12792,7 @@ export interface operations {
     create_runbook_manually_api_v1_knowledge_runbooks_create_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13139,9 +12825,7 @@ export interface operations {
     scan_for_runbooks_api_v1_knowledge_scan_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13170,9 +12854,7 @@ export interface operations {
     search_documents_api_v1_knowledge_search_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13205,9 +12887,7 @@ export interface operations {
     get_knowledge_stats_api_v1_knowledge_stats_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13243,9 +12923,7 @@ export interface operations {
                 /** @description Pagination offset */
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13274,9 +12952,7 @@ export interface operations {
     get_suggestion_api_v1_knowledge_suggestions__suggestion_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 suggestion_id: string;
             };
@@ -13307,9 +12983,7 @@ export interface operations {
     update_suggestion_api_v1_knowledge_suggestions__suggestion_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 suggestion_id: string;
             };
@@ -13344,9 +13018,7 @@ export interface operations {
     approve_suggestion_api_v1_knowledge_suggestions__suggestion_id__approve_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 suggestion_id: string;
             };
@@ -13381,9 +13053,7 @@ export interface operations {
     reject_suggestion_api_v1_knowledge_suggestions__suggestion_id__reject_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 suggestion_id: string;
             };
@@ -13418,9 +13088,7 @@ export interface operations {
     remediate_pii_api_v1_knowledge_suggestions__suggestion_id__remediate_pii_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 suggestion_id: string;
             };
@@ -13456,9 +13124,7 @@ export interface operations {
                 /** @description Filter by report type */
                 report_type?: string | null;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case UUID */
                 case_id: string;
@@ -13493,9 +13159,7 @@ export interface operations {
                 /** @description Case ID to generate reports for */
                 case_id: string;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13528,9 +13192,7 @@ export interface operations {
     get_report_recommendations_api_v1_reports_recommendations__case_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Case ID */
                 case_id: string;
@@ -13562,9 +13224,7 @@ export interface operations {
     get_report_api_v1_reports__report_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Report UUID */
                 report_id: string;
@@ -13596,9 +13256,7 @@ export interface operations {
     update_report_api_v1_reports__report_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Report UUID */
                 report_id: string;
@@ -13634,9 +13292,7 @@ export interface operations {
     delete_report_api_v1_reports__report_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Report UUID */
                 report_id: string;
@@ -13666,9 +13322,7 @@ export interface operations {
     link_report_to_case_closure_api_v1_reports__report_id__link_case_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Report UUID */
                 report_id: string;
@@ -13704,9 +13358,7 @@ export interface operations {
     get_report_versions_api_v1_reports__report_id__versions_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 /** @description Report UUID */
                 report_id: string;
@@ -13743,9 +13395,7 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13776,9 +13426,7 @@ export interface operations {
             query?: {
                 user_id?: string | null;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13829,9 +13477,7 @@ export interface operations {
     cleanup_expired_sessions_v2: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13860,9 +13506,7 @@ export interface operations {
     search_sessions_api_v1_sessions_search_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -13895,9 +13539,7 @@ export interface operations {
     get_session_api_v1_sessions__session_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -13928,9 +13570,7 @@ export interface operations {
     update_session_api_v1_sessions__session_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -13965,9 +13605,7 @@ export interface operations {
     delete_session_api_v1_sessions__session_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -13996,9 +13634,7 @@ export interface operations {
     archive_session_api_v1_sessions__session_id__archive_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -14038,42 +13674,7 @@ export interface operations {
                 /** @description Include deleted cases (admin only) */
                 include_deleted?: boolean;
             };
-            header?: {
-                Authorization?: string | null;
-            };
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cleanup_session_api_v1_sessions__session_id__cleanup_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -14104,9 +13705,7 @@ export interface operations {
     session_heartbeat_api_v1_sessions__session_id__heartbeat_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -14137,9 +13736,7 @@ export interface operations {
     get_session_recovery_info_api_v1_sessions__session_id__recovery_info_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -14170,9 +13767,7 @@ export interface operations {
     restore_session_api_v1_sessions__session_id__restore_post: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -14207,9 +13802,7 @@ export interface operations {
     get_session_stats_api_v1_sessions__session_id__stats_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 session_id: string;
             };
@@ -14240,9 +13833,7 @@ export interface operations {
     list_my_teams_api_v1_teams_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14271,9 +13862,7 @@ export interface operations {
     health_check_health_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14302,9 +13891,7 @@ export interface operations {
     health_check_component_health_components__component_name__get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path: {
                 component_name: string;
             };
@@ -14335,9 +13922,7 @@ export interface operations {
     health_check_dependencies_health_dependencies_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14366,9 +13951,7 @@ export interface operations {
     logging_health_check_health_logging_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14397,9 +13980,7 @@ export interface operations {
     health_check_error_patterns_health_patterns_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14428,9 +14009,36 @@ export interface operations {
     health_check_sla_health_sla_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    metrics_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14459,9 +14067,7 @@ export interface operations {
     get_alert_status_metrics_alerts_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14490,9 +14096,7 @@ export interface operations {
     get_system_optimization_metrics_metrics_optimization_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14521,9 +14125,7 @@ export interface operations {
     get_performance_metrics_metrics_performance_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14554,9 +14156,7 @@ export interface operations {
             query?: {
                 time_window_minutes?: number;
             };
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14585,9 +14185,7 @@ export interface operations {
     readiness_readiness_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -14616,9 +14214,7 @@ export interface operations {
     get_capabilities_v1_meta_capabilities_get: {
         parameters: {
             query?: never;
-            header?: {
-                Authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
