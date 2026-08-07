@@ -98,7 +98,7 @@ jobs:
       - name: Fetch the API's committed spec
         run: |
           set -euo pipefail
-          curl -fsSL \
+          curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
             https://raw.githubusercontent.com/FaultMaven/faultmaven/main/docs/reference/api/openapi.json \
             -o /tmp/openapi.json
           # A truncated or error-page download would regenerate an empty client
@@ -328,7 +328,7 @@ jobs:
   # ============================================================================
   summary:
     name: Pipeline Summary
-    needs: [lint, build, test, smoke]
+    needs: [lint, api-types-drift, build, test, smoke]
     if: always()
     runs-on: ubuntu-latest
 
@@ -343,6 +343,7 @@ jobs:
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Lint & Type Check | ${{ needs.lint.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Types Drift | ${{ needs['api-types-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Verify | ${{ needs.build.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Tests | ${{ needs.test.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Smoke Test | ${{ needs.smoke.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
@@ -354,3 +355,33 @@ jobs:
           echo "- ✅ Trivy vulnerability scanning" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Publishing:** Images are published by the publish-docker.yml workflow to Docker Hub and GHCR." >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any required stage failed
+        # `summary` runs with `if: always()` so the table is written even when an
+        # earlier stage fails — but without this the job, named "Pipeline
+        # Summary", would still *conclude* success for a failed pipeline. That
+        # is the fail-open shape this table exists to avoid: an aggregate check
+        # announcing success for stages it merely reported on.
+        env:
+          LINT: ${{ needs.lint.result }}
+          API_TYPES_DRIFT: ${{ needs['api-types-drift'].result }}
+          BUILD: ${{ needs.build.result }}
+          TEST: ${{ needs.test.result }}
+          SMOKE: ${{ needs.smoke.result }}
+        run: |
+          rc=0
+          for stage in LINT API_TYPES_DRIFT BUILD TEST SMOKE; do
+            result="${!stage}"
+            # `skipped` is a pass: a stage skipped on purpose (the `skip_tests`
+            # dispatch input) must not fail the pipeline, and a stage skipped
+            # because an upstream one failed is already accounted for — that
+            # upstream stage reports `failure` and is itself in this list.
+            case "$result" in
+              success|skipped) ;;
+              *)
+                echo "::error::$stage did not pass (result: $result)"
+                rc=1
+                ;;
+            esac
+          done
+          exit $rc
