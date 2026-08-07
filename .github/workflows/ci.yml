@@ -355,3 +355,26 @@ jobs:
           echo "- ✅ Trivy vulnerability scanning" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Publishing:** Images are published by the publish-docker.yml workflow to Docker Hub and GHCR." >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any required stage failed
+        # `summary` runs with `if: always()` so the table is written even when an
+        # earlier stage fails — but without this the job, named "Pipeline
+        # Summary", would still *conclude* success for a failed pipeline. That
+        # is the fail-open shape this table exists to avoid: an aggregate check
+        # announcing success for stages it merely reported on.
+        env:
+          LINT: ${{ needs.lint.result }}
+          API_TYPES_DRIFT: ${{ needs['api-types-drift'].result }}
+          BUILD: ${{ needs.build.result }}
+          TEST: ${{ needs.test.result }}
+          SMOKE: ${{ needs.smoke.result }}
+        run: |
+          rc=0
+          for stage in LINT API_TYPES_DRIFT BUILD TEST SMOKE; do
+            result="${!stage}"
+            if [ "$result" != "success" ]; then
+              echo "::error::$stage did not pass (result: $result)"
+              rc=1
+            fi
+          done
+          exit $rc
