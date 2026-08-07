@@ -246,3 +246,28 @@ cannot break out of the injected JS string.
 - **FaultMaven Backend**: AI-powered troubleshooting backend API
 
 This dashboard complements the copilot extension by providing dedicated KB management UI.
+
+## API Types
+
+`src/types/api.generated.ts` is **generated** from faultmaven's committed
+`docs/reference/api/openapi.json` — never edit it by hand.
+
+```bash
+pnpm generate:api-types
+```
+
+By default it reads the spec from `main` on GitHub, which is the same source the
+`api-types-drift` CI job compares against. Point it elsewhere to generate from a
+local checkout or a branch:
+
+```bash
+FM_OPENAPI_SPEC=../faultmaven/docs/reference/api/openapi.json pnpm generate:api-types
+```
+
+⚠️ Do **not** generate from a live server (`http://localhost:8090/openapi.json`).
+Generating against whatever build happens to be running is how this repo and the
+other frontend ended up with different names for the same schema (fm#880).
+
+When faultmaven's spec changes, `api-types-drift` goes red here until the types
+are regenerated and committed. That is the gate working — regenerate in a PR of
+its own rather than folding it into unrelated work.
