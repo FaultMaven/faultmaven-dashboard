@@ -2,7 +2,13 @@
  * Case UI Types
  *
  * Re-exports from OpenAPI generated types with convenient type aliases
- * Source: Generated from FaultMaven/docs/api/openapi.locked.yaml
+ * Source: faultmaven's committed docs/reference/api/openapi.json, which CI
+ * gates against the running app (fm#880).
+ * To regenerate: pnpm generate:api-types
+ *
+ * Do NOT regenerate from a live server. Generating against whatever build
+ * happened to be running is how this repo and the copilot ended up with
+ * different names for the same schema.
  */
 
 import { components } from './api.generated';
@@ -20,7 +26,14 @@ export type CaseUIResponse_Investigating = components['schemas']['CaseUIResponse
 export type InvestigationProgress = components['schemas']['InvestigationProgressSummary'];
 export type ProblemVerification = components['schemas']['ProblemVerificationData'];
 export type WorkingConclusion = components['schemas']['WorkingConclusionSummary'];
-export type InvestigationStrategy = components['schemas']['InvestigationStrategy'];
+// `InvestigationStrategy` alias removed — it pointed at the
+// `InvestigationStrategy` enum, which reached the contract only through the
+// full `Case` graph. fm#1002 retired the replay API, whose snapshot route was
+// the one place `response_model=Case` was declared, so the enum and 57 other
+// schemas left the published spec with it. It still exists server-side in
+// `modules/case/domain/models.py`; it is simply no longer published, and the
+// alias had no consumer. (The copilot dropped its own differently-targeted
+// `InvestigationStrategy` alias earlier — see its case.ts.)
 
 // Resolved Phase Types
 export type CaseUIResponse_Resolved = components['schemas']['CaseUIResponse_Resolved'];
