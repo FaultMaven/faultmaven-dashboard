@@ -271,6 +271,57 @@ describe('#48 cross-tab refresh rotation', () => {
     });
   });
 
+  // A 401 on an API call means the server refused a token the expiry clock
+  // still considers fresh. The refresh path must not answer with that token.
+  describe('reactive 401 retry', () => {
+    it('forces a rotation when the caller reports the stored token was rejected', async () => {
+      seedStore({ ...EXPIRED_SEED, expires_at: Date.now() + 3_600_000 });
+      const { fetchImpl, presented } = rotatingAuthServer('refresh-0');
+      globalThis.fetch = fetchImpl as unknown as typeof fetch;
+
+      const token = await new AuthManager().refreshTokens('access-0');
+
+      expect(presented).toEqual(['refresh-0']);
+      expect(token).toBe('access-1');
+      expect(token).not.toBe('access-0');
+    });
+
+    it('still skips the network when no token was reported rejected', async () => {
+      seedStore({ ...EXPIRED_SEED, expires_at: Date.now() + 3_600_000 });
+      const fetchImpl = vi.fn();
+      globalThis.fetch = fetchImpl as unknown as typeof fetch;
+
+      const token = await new AuthManager().refreshTokens();
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(token).toBe('access-0');
+    });
+  });
+
+  describe('a different user signing in mid-flight', () => {
+    it('neither adopts their token nor destroys their session', async () => {
+      seedStore();
+      globalThis.fetch = vi.fn(async () => {
+        await sharedStorage.set({
+          authState: {
+            ...EXPIRED_SEED,
+            access_token: 'other-users-access',
+            refresh_token: 'other-users-refresh',
+            expires_at: Date.now() + 3_600_000,
+            user: { ...EXPIRED_SEED.user, user_id: 'u2', username: 'someone-else' },
+          },
+        });
+        return { ok: false, status: 401 };
+      }) as unknown as typeof fetch;
+
+      const token = await new AuthManager().getAccessToken();
+
+      expect(token).toBeNull();
+      expect(storedState()).toBeDefined();
+      expect(storedState()?.access_token).toBe('other-users-access');
+    });
+  });
+
   describe('refresh request is bounded so it cannot pin the cross-tab lock', () => {
     it('passes an abort signal to /auth/refresh', async () => {
       seedStore();

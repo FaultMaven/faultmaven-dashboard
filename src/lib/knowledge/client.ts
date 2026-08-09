@@ -38,8 +38,13 @@ export async function makeAuthenticatedRequest(
   // Reactive refresh: the proactive skew in getAccessToken covers the common
   // case, but a 401 can still happen (clock skew, server-side revocation). Try
   // a single silent refresh + retry before surfacing the failure.
+  //
+  // Pass the token that was just refused. The refresh path otherwise judges
+  // staleness by the expiry clock, which still calls this token fresh — it was
+  // rejected for a reason the clock cannot see — and would hand the same dead
+  // token straight back for the retry to re-send.
   if (response.status === 401) {
-    const newToken = await authManager.refreshTokens();
+    const newToken = await authManager.refreshTokens(token);
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`);
       return fetch(fullUrl, { ...options, headers });
