@@ -80,12 +80,29 @@ function nginxScopes(conf: string): Scope[] {
   return [{ label: 'server (top level)', body: serverScope }, ...locations];
 }
 
-/** `add_header Name "value";` occurrences within one scope. */
-function declaredHeaders(body: string): Map<string, string> {
-  const found = new Map<string, string>();
-  const re = /add_header\s+(\S+)\s+"([^"]*)"/g;
+interface DeclaredHeader {
+  value: string;
+  /**
+   * Whether the directive carries nginx's `always` flag.
+   *
+   * Without it nginx applies `add_header` only to a narrow set of success-ish
+   * statuses, so the header is silently dropped on every 4xx/5xx from that
+   * scope. That is not hypothetical: the hashed-asset location genuinely 404s
+   * after a redeploy, and an error page carrying no CSP is exactly where the
+   * policy still needs to hold.
+   */
+  always: boolean;
+}
+
+/** `add_header Name "value" [always];` occurrences within one scope. */
+function declaredHeaders(body: string): Map<string, DeclaredHeader> {
+  const found = new Map<string, DeclaredHeader>();
+  const re = /add_header\s+(\S+)\s+"([^"]*)"([^;]*);/g;
   for (let m = re.exec(body); m !== null; m = re.exec(body)) {
-    found.set(m[1].toLowerCase(), m[2]);
+    found.set(m[1].toLowerCase(), {
+      value: m[2],
+      always: /\balways\b/.test(m[3]),
+    });
   }
   return found;
 }
@@ -138,7 +155,17 @@ const vercelPolicies = vercelRules.flatMap((rule) =>
     })),
 );
 
-const vercelHeaderRule = vercelRules.find((rule) =>
+/**
+ * Every rule that sets a CSP — each one is treated as a security-header rule
+ * and must carry the whole set.
+ *
+ * Checking only the first let a narrow rule inserted ahead of the site-wide one
+ * satisfy the guard while the site-wide rule quietly lost a header. Vercel
+ * would merge them and the narrow rule covers only its own routes, so the loss
+ * ships everywhere else. Requiring the full set on each is slightly stricter
+ * than Vercel demands, and matches the discipline nginx is already held to.
+ */
+const vercelSecurityRules = vercelRules.filter((rule) =>
   rule.headers.some((h) => h.key.toLowerCase() === 'content-security-policy'),
 );
 
@@ -176,7 +203,12 @@ describe('nginx security headers', () => {
   // add_header is not additive — each scope must re-declare the whole set.
   describe.each(scopes)('$label', ({ body }) => {
     it.each(REQUIRED_HEADERS)('declares %s', (header) => {
-      expect(declaredHeaders(body).has(header.toLowerCase())).toBe(true);
+      const declared = declaredHeaders(body).get(header.toLowerCase());
+      expect(declared, `${header} is not declared in this scope`).toBeDefined();
+      // A header without `always` is absent from every error response this
+      // scope produces, which is not a weaker version of the guarantee — it is
+      // no guarantee on exactly the responses that matter.
+      expect(declared?.always, `${header} is declared without the 'always' flag`).toBe(true);
     });
   });
 });
@@ -184,7 +216,7 @@ describe('nginx security headers', () => {
 describe('Content-Security-Policy', () => {
   const nginxPolicies = scopes.map((s) => ({
     label: s.label,
-    csp: declaredHeaders(s.body).get('content-security-policy'),
+    csp: declaredHeaders(s.body).get('content-security-policy')?.value,
   }));
 
   it('is byte-identical everywhere nginx declares it', () => {
@@ -199,10 +231,13 @@ describe('Content-Security-Policy', () => {
     }
   });
 
-  it('has Vercel declaring the same required header set as nginx', () => {
-    const keys = new Set(vercelHeaderRule?.headers.map((h) => h.key.toLowerCase()));
-    for (const header of REQUIRED_HEADERS) {
-      expect(keys.has(header.toLowerCase())).toBe(true);
+  it('has every CSP-bearing Vercel rule declaring the same required set as nginx', () => {
+    expect(vercelSecurityRules.length).toBeGreaterThan(0);
+    for (const rule of vercelSecurityRules) {
+      const keys = new Set(rule.headers.map((h) => h.key.toLowerCase()));
+      for (const header of REQUIRED_HEADERS) {
+        expect(keys.has(header.toLowerCase()), `${rule.source} is missing ${header}`).toBe(true);
+      }
     }
   });
 
