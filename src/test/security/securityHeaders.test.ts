@@ -124,12 +124,19 @@ const vercelRules = vercelJson.headers as VercelRule[];
  * be looked at — and that is the one place a narrowly-targeted widening would
  * be easiest to slip in.
  */
-const vercelPolicies = vercelRules
-  .map((rule) => ({
-    label: `vercel.json [${rule.source}]`,
-    csp: rule.headers.find((h) => h.key.toLowerCase() === 'content-security-policy')?.value,
-  }))
-  .filter((p): p is { label: string; csp: string } => typeof p.csp === 'string');
+const vercelPolicies = vercelRules.flatMap((rule) =>
+  rule.headers
+    // EVERY CSP entry in the rule, not just the first. A rule listing the key
+    // twice — safe value first, permissive second — would otherwise be read
+    // through the safe one alone. Which value Vercel actually applies is not
+    // something this repo can settle, so the guard requires all of them to be
+    // acceptable rather than betting on the resolution order.
+    .filter((h) => h.key.toLowerCase() === 'content-security-policy')
+    .map((h, i) => ({
+      label: `vercel.json [${rule.source}]${i > 0 ? ` #${i + 1}` : ''}`,
+      csp: h.value,
+    })),
+);
 
 const vercelHeaderRule = vercelRules.find((rule) =>
   rule.headers.some((h) => h.key.toLowerCase() === 'content-security-policy'),
