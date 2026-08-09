@@ -333,5 +333,28 @@ describe('#48 cross-tab refresh rotation', () => {
       const init = fetchImpl.mock.calls[0][1] as unknown as { signal?: AbortSignal };
       expect(init.signal).toBeInstanceOf(AbortSignal);
     });
+
+    // Node and modern browsers have AbortSignal.timeout, so the fallback branch
+    // never runs here unless it is forced. Safari 15.4-15.6 is the real case:
+    // Web Locks present, AbortSignal.timeout absent — the one combination where
+    // an unbounded fetch would pin the lock for every other tab.
+    it('still bounds the request where AbortSignal.timeout is unavailable', async () => {
+      seedStore();
+      const { fetchImpl } = rotatingAuthServer('refresh-0');
+      globalThis.fetch = fetchImpl as unknown as typeof fetch;
+
+      const original = AbortSignal.timeout;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (AbortSignal as any).timeout;
+      try {
+        await new AuthManager().getAccessToken();
+      } finally {
+        AbortSignal.timeout = original;
+      }
+
+      const init = fetchImpl.mock.calls[0][1] as unknown as { signal?: AbortSignal };
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal?.aborted).toBe(false);
+    });
   });
 });

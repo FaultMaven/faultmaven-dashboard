@@ -69,10 +69,16 @@ function refreshAbortSignal(): AbortSignal | undefined {
 /**
  * Whether two stored states belong to the same signed-in user.
  *
- * Adoption paths compare this as well as the token, because "storage holds a
- * different token than the one I sent" is also true when the previous user
- * logged out and a new one signed in mid-flight. Adopting there would hand one
- * user's tab another user's credential.
+ * `onCredentialRejected` — the only caller — compares this as well as the
+ * token, because "storage holds a different token than the one I sent" is also
+ * true when the previous user logged out and a new one signed in mid-flight.
+ *
+ * Scope, deliberately stated: this does NOT make the manager identity-pinned.
+ * The adopt path in `refreshIfStillStale` still takes whatever session storage
+ * holds, so a tab whose user was replaced BEFORE it acquired the lock adopts
+ * the new user's token. That is pre-existing, applies equally to every other
+ * read of shared storage, and closing it means pinning an identity per tab —
+ * out of scope here.
  */
 function isSameIdentity(a: AuthState | null, b: AuthState | null): boolean {
   return Boolean(a && b && a.user?.user_id && a.user.user_id === b.user?.user_id);

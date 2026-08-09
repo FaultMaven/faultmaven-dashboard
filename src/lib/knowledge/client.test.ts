@@ -238,6 +238,11 @@ describe('makeAuthenticatedRequest', () => {
     const result = await makeAuthenticatedRequest('/api/test');
 
     expect(mockRefreshTokens).toHaveBeenCalledTimes(1);
+    // The rejected token must be named. Without it the refresh path judges
+    // staleness by the expiry clock, finds this not-yet-expired token
+    // acceptable, and hands the very token the server just refused back for
+    // the retry — no rotation, no recovery (#48 round-2 review).
+    expect(mockRefreshTokens).toHaveBeenCalledWith('stale-token');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     // Retry carries the refreshed bearer token.
     const retryHeaders = fetchSpy.mock.calls[1][1].headers as Headers;
