@@ -100,17 +100,63 @@ function effectiveImageSources(csp: string): string[] {
   for (const clause of csp.split(';')) {
     const parts = clause.trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) continue;
-    directives.set(parts[0].toLowerCase(), parts.slice(1));
+    const name = parts[0].toLowerCase();
+    // FIRST occurrence wins. Per CSP, a directive repeated within one policy is
+    // ignored after its first appearance — so a policy reading
+    // `img-src *; … img-src 'self' data:;` is enforced as `img-src *`. Keeping
+    // the last would have read that as safe while every browser allowed the
+    // remote fetch, which is the exact exposure this file exists to catch.
+    if (directives.has(name)) continue;
+    directives.set(name, parts.slice(1));
   }
   return directives.get('img-src') ?? directives.get('default-src') ?? ['*'];
 }
 
 const scopes = nginxScopes(nginxConf);
 
-const vercelHeaderRule = (vercelJson.headers as Array<{
-  source: string;
-  headers: Array<{ key: string; value: string }>;
-}>).find((rule) => rule.headers.some((h) => h.key.toLowerCase() === 'content-security-policy'));
+type VercelRule = { source: string; headers: Array<{ key: string; value: string }> };
+
+const vercelRules = vercelJson.headers as VercelRule[];
+
+/**
+ * EVERY Vercel rule that sets a CSP, not just the first. A rule appended later
+ * and scoped to a subset of routes (say, the case pages) would otherwise never
+ * be looked at — and that is the one place a narrowly-targeted widening would
+ * be easiest to slip in.
+ */
+const vercelPolicies = vercelRules
+  .map((rule) => ({
+    label: `vercel.json [${rule.source}]`,
+    csp: rule.headers.find((h) => h.key.toLowerCase() === 'content-security-policy')?.value,
+  }))
+  .filter((p): p is { label: string; csp: string } => typeof p.csp === 'string');
+
+const vercelHeaderRule = vercelRules.find((rule) =>
+  rule.headers.some((h) => h.key.toLowerCase() === 'content-security-policy'),
+);
+
+// The parser decides what "the policy allows" means, so it is tested against
+// browser semantics directly rather than only through the configs it reads.
+describe('CSP policy parsing', () => {
+  it('takes the FIRST occurrence of a repeated directive, as browsers do', () => {
+    expect(effectiveImageSources("img-src *; img-src 'self' data:;")).toEqual(['*']);
+    expect(effectiveImageSources("img-src 'self'; img-src *;")).toEqual(["'self'"]);
+  });
+
+  it('falls back to default-src only when img-src is absent', () => {
+    expect(effectiveImageSources("default-src 'self'; script-src 'self';")).toEqual(["'self'"]);
+    expect(effectiveImageSources("default-src *; img-src 'self';")).toEqual(["'self'"]);
+  });
+
+  it('treats a policy governing images by nothing at all as unrestricted', () => {
+    expect(effectiveImageSources("script-src 'self';")).toEqual(['*']);
+    expect(effectiveImageSources('')).toEqual(['*']);
+  });
+
+  it('is case- and whitespace-insensitive about directive names', () => {
+    expect(effectiveImageSources("  IMG-SRC   'self'   data:  ;")).toEqual(["'self'", 'data:']);
+  });
+});
 
 describe('nginx security headers', () => {
   it('finds the server scope and every location block', () => {
@@ -139,11 +185,11 @@ describe('Content-Security-Policy', () => {
     expect([...distinct]).toHaveLength(1);
   });
 
-  it('matches the policy Vercel serves', () => {
-    const vercelCsp = vercelHeaderRule?.headers.find(
-      (h) => h.key.toLowerCase() === 'content-security-policy',
-    )?.value;
-    expect(vercelCsp).toBe(nginxPolicies[0].csp);
+  it('matches the policy Vercel serves, on every rule that sets one', () => {
+    expect(vercelPolicies.length).toBeGreaterThan(0);
+    for (const { label, csp } of vercelPolicies) {
+      expect(`${label}: ${csp}`).toBe(`${label}: ${nginxPolicies[0].csp}`);
+    }
   });
 
   it('has Vercel declaring the same required header set as nginx', () => {
@@ -158,8 +204,9 @@ describe('Content-Security-Policy', () => {
   // react-markdown's URL transform, so the policy is what stops the browser
   // fetching it and disclosing when support opened the case, and from where.
   describe.each(
-    [...nginxPolicies, { label: 'vercel.json', csp: vercelHeaderRule?.headers.find((h) => h.key.toLowerCase() === 'content-security-policy')?.value }]
-      .filter((p): p is { label: string; csp: string } => typeof p.csp === 'string'),
+    [...nginxPolicies, ...vercelPolicies].filter(
+      (p): p is { label: string; csp: string } => typeof p.csp === 'string',
+    ),
   )('$label', ({ csp }) => {
     it('permits no image source that can reach the network', () => {
       const offending = effectiveImageSources(csp).filter((s) => !NON_NETWORK_SOURCES.has(s));
