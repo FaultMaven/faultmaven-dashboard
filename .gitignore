@@ -16,6 +16,10 @@ output/
 # Vite cache
 node_modules/.vite/
 
+# Coverage output. `pnpm test:coverage` is CI's own test command, so anyone
+# reproducing a CI run locally lands an untracked coverage/ in their tree.
+coverage/
+
 # OS-specific
 .DS_Store
 Thumbs.db

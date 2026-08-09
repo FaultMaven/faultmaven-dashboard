@@ -7,6 +7,95 @@ import type { AuthState } from './types';
 // request never races the expiry boundary.
 const EXPIRY_SKEW_MS = 30_000;
 
+// Name of the cross-tab mutex that serializes refresh-token rotation (#48).
+const REFRESH_LOCK_NAME = 'fm-auth-refresh';
+
+// Upper bound on a single /auth/refresh call. This is not about latency: the
+// refresh runs while holding REFRESH_LOCK_NAME, and Web Locks have no timeout
+// of their own, so an unbounded fetch in ONE tab would block every other tab's
+// renewal for as long as the socket stayed open. Bounding the request bounds
+// the lock hold. An abort surfaces as a thrown fetch, i.e. the transient path —
+// state is kept, not cleared.
+const REFRESH_TIMEOUT_MS = 15_000;
+
+/**
+ * Whether an HTTP status means the server definitively rejected the refresh
+ * token we presented, as opposed to failing to answer the question.
+ *
+ * Only a rejection of the credential itself may clear the session. A 500/502/
+ * 429 says the auth service is unwell, NOT that the user's refresh token is
+ * dead — treating those as definitive turned every backend blip into a
+ * forced logout for every open tab.
+ */
+function isCredentialRejection(status: number): boolean {
+  return status === 400 || status === 401 || status === 403;
+}
+
+/**
+ * The Web Locks API, when the browser exposes it.
+ *
+ * Returns undefined rather than assuming presence: Web Locks requires a SECURE
+ * CONTEXT, so a self-hosted dashboard served over plain HTTP on a LAN address
+ * — a first-class deployment for us — has no `navigator.locks` at all. The
+ * lock is therefore an optimization that removes the redundant request; the
+ * correctness guarantee lives in doRefresh's supersession check, which needs
+ * no platform support.
+ */
+function getLockManager(): LockManager | undefined {
+  if (typeof navigator === 'undefined') return undefined;
+  return (navigator as Navigator & { locks?: LockManager }).locks;
+}
+
+/**
+ * Abort signal bounding one refresh request. Prefers `AbortSignal.timeout`,
+ * falls back to an `AbortController` + timer, and returns undefined (an
+ * unbounded fetch, i.e. the pre-existing behaviour) only where neither exists.
+ */
+function refreshAbortSignal(): AbortSignal | undefined {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(REFRESH_TIMEOUT_MS);
+  }
+  // Safari 15.4–15.6 ships Web Locks but NOT AbortSignal.timeout — precisely
+  // the combination where an unbounded fetch would pin the cross-tab lock for
+  // every other tab. Fall back rather than let the bound quietly not apply.
+  if (typeof AbortController !== 'undefined') {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+    return controller.signal;
+  }
+  return undefined;
+}
+
+/**
+ * Whether two stored states demonstrably belong to DIFFERENT signed-in users.
+ *
+ * `onCredentialRejected` — the only caller — asks this as well as comparing
+ * tokens, because "storage holds a different token than the one I sent" is
+ * also true when the previous user logged out and a new one signed in
+ * mid-flight.
+ *
+ * Phrased as "different" rather than "same" so that an unknown identity fails
+ * closed: see the body.
+ *
+ * Scope, deliberately stated: this does NOT make the manager identity-pinned.
+ * The adopt path in `refreshIfStillStale` still takes whatever session storage
+ * holds, so a tab whose user was replaced BEFORE it acquired the lock adopts
+ * the new user's token. That is pre-existing, applies equally to every other
+ * read of shared storage, and closing it means pinning an identity per tab —
+ * out of scope here.
+ */
+function isDifferentIdentity(a: AuthState | null, b: AuthState | null): boolean {
+  const left = a?.user?.user_id;
+  const right = b?.user?.user_id;
+  // Unknown identity is NOT a different identity. Answering "different" when
+  // an id is missing routes a genuine revocation down the leave-it-alone path,
+  // so the dead session survives in storage, no auth-cleared listener fires,
+  // and the bridge copy is left for the extension to re-forward. Absence must
+  // fail closed — fall through and let the token comparison decide.
+  if (!left || !right) return false;
+  return left !== right;
+}
+
 /**
  * Convert the backend's `expires_in` (seconds) into an absolute `expires_at`
  * (epoch ms). Returns null when `expires_in` is missing or not a positive,
@@ -212,10 +301,13 @@ export class AuthManager {
    * Retrieve a valid authentication state.
    *
    * If the access token is still fresh, returns it. If it is at/near expiry but
-   * a refresh token is available, transparently refreshes first. Returns null
-   * (and clears state) only when there is no session and no way to renew it —
-   * the access token is short-lived and CANNOT be extended by activity, so
-   * without this refresh the user is force-logged-out at expiry.
+   * a refresh token is available, transparently refreshes first — the access
+   * token is short-lived and CANNOT be extended by activity, so without this
+   * refresh the user is force-logged-out at expiry.
+   *
+   * Returning null does NOT imply the session was cleared: a refresh that
+   * failed transiently (network down, 5xx) reports failure while deliberately
+   * keeping the stored session, so a later attempt can succeed.
    */
   async getAuthState(): Promise<AuthState | null> {
     const authState = await this.readState();
@@ -234,7 +326,10 @@ export class AuthManager {
       if (refreshed) {
         return this.readState();
       }
-      return null; // refreshTokens already cleared state on failure
+      // Refresh failed. State has been cleared only if the failure was a
+      // rejection of the credential we hold; a transient failure leaves the
+      // session in place for the next attempt.
+      return null;
     }
 
     // No refresh token (legacy session): nothing we can do — log out.
@@ -245,18 +340,85 @@ export class AuthManager {
   /**
    * Exchange the stored refresh token for a new access + refresh token pair.
    *
-   * Concurrent callers share a single in-flight request. Returns the new access
-   * token on success, or null (after clearing auth state) if refresh is not
-   * possible — the caller should then treat the user as logged out.
+   * Concurrent callers share a single in-flight request — within this tab via
+   * `refreshInFlight`, and across tabs via the Web Locks mutex. Returns the new
+   * access token on success, or null if refresh is not possible; auth state is
+   * cleared only when the server rejected the token this session actually
+   * holds (see doRefresh).
    */
-  async refreshTokens(): Promise<string | null> {
-    if (this.refreshInFlight) {
+  async refreshTokens(rejectedAccessToken?: string): Promise<string | null> {
+    const inFlight = this.refreshInFlight;
+    if (inFlight) {
+      const shared = await inFlight;
+      // Sharing is only sound if the answer is usable BY THIS CALLER. A refresh
+      // started for someone else can legitimately resolve to a token that this
+      // caller has just been told the server refuses — then handing it over
+      // reopens the very no-op retry the rejected-token argument exists to
+      // prevent, with zero /auth/refresh calls made. Fall through and get our
+      // own rotation instead.
+      if (!rejectedAccessToken || shared !== rejectedAccessToken) {
+        return shared;
+      }
+    }
+
+    // Deliberately not re-joining another in-flight refresh here: we only reach
+    // this line because a shared result was already unusable for us, and a
+    // second join could hand back the same token again.
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.refreshUnderCrossTabLock(rejectedAccessToken).finally(() => {
+        this.refreshInFlight = null;
+      });
       return this.refreshInFlight;
     }
-    this.refreshInFlight = this.doRefresh().finally(() => {
-      this.refreshInFlight = null;
-    });
-    return this.refreshInFlight;
+    return this.refreshUnderCrossTabLock(rejectedAccessToken);
+  }
+
+  /**
+   * Serialize rotation across tabs, then re-check whether it is still needed.
+   *
+   * Rotation revokes the token it consumes, so two tabs refreshing the same
+   * stored token means the loser presents an already-revoked credential (#48).
+   * Holding a named lock makes the tabs take turns; re-reading storage inside
+   * the lock means the tab that waited discovers the winner's freshly-stored
+   * token and returns it instead of spending a second rotation on it. That is
+   * what reduces N tabs to exactly one /auth/refresh call.
+   *
+   * Storage is the whole channel here — the adapter is localStorage-backed and
+   * therefore already shared between tabs — so no BroadcastChannel or storage
+   * event is needed to hand the new token over.
+   */
+  private async refreshUnderCrossTabLock(rejectedAccessToken?: string): Promise<string | null> {
+    const locks = getLockManager();
+    if (!locks) {
+      return this.refreshIfStillStale(rejectedAccessToken);
+    }
+    return locks.request(REFRESH_LOCK_NAME, () => this.refreshIfStillStale(rejectedAccessToken));
+  }
+
+  /**
+   * Skip the network only when storage already holds a token that is BOTH
+   * usable and not the one the caller just had rejected.
+   *
+   * `rejectedAccessToken` is what makes this safe for the reactive path. A 401
+   * on an API call means the server refused a token that has not expired yet —
+   * revocation, a logout-all watermark, a deactivated account, clock skew.
+   * Judging staleness by expiry alone would look at that same token, call it
+   * fresh, and hand it straight back, so the retry would re-send the token the
+   * server just refused and the tab would sit there erroring but nominally
+   * signed in. Being told a specific token is dead is exactly the evidence the
+   * expiry clock does not have.
+   */
+  private async refreshIfStillStale(rejectedAccessToken?: string): Promise<string | null> {
+    const current = await this.readState();
+    if (
+      current?.access_token &&
+      current.access_token !== rejectedAccessToken &&
+      Date.now() < current.expires_at - EXPIRY_SKEW_MS
+    ) {
+      // Another tab rotated while we queued for the lock — adopt its token.
+      return current.access_token;
+    }
+    return this.doRefresh();
   }
 
   private async doRefresh(): Promise<string | null> {
@@ -266,18 +428,28 @@ export class AuthManager {
       return null;
     }
 
+    // Remember exactly which credential we put on the wire. Every decision to
+    // clear the session below is made against THIS value, never against
+    // whatever storage happens to hold when the response lands.
+    const presented = authState.refresh_token;
+
     try {
       const response = await fetch(`${config.apiUrl}/api/v1/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: authState.refresh_token }),
+        body: JSON.stringify({ refresh_token: presented }),
+        signal: refreshAbortSignal(),
       });
 
       if (!response.ok) {
-        // 401 → refresh token expired/revoked; any other failure is unrecoverable
-        // here. Clear so the app routes back to login.
-        await this.clearAuthState();
-        return null;
+        if (!isCredentialRejection(response.status)) {
+          // The auth service failed to answer, so we learned nothing about the
+          // token. Report this attempt as failed but keep the session: a 502
+          // during a deploy must not log everyone out.
+          console.error('[AuthManager] Token refresh failed with status', response.status);
+          return null;
+        }
+        return this.onCredentialRejected(presented, authState);
       }
 
       const body = (await response.json()) as {
@@ -290,9 +462,10 @@ export class AuthManager {
       if (!body.access_token || expiresAt === null) {
         // Malformed refresh response — storing it would mint a NaN/instantly-
         // stale token and re-enter refresh on the next request forever. Treat
-        // as unrecoverable and route back to login instead of looping.
-        await this.clearAuthState();
-        return null;
+        // as unrecoverable and route back to login instead of looping. Routed
+        // through the supersession check for the same reason a 401 is: if a
+        // rotation already landed, this reply is about a spent token.
+        return this.onCredentialRejected(presented, authState);
       }
 
       // Carry the refreshed token's roles onto the stored user. Without this
@@ -318,6 +491,45 @@ export class AuthManager {
       console.error('[AuthManager] Token refresh failed:', error);
       return null;
     }
+  }
+
+  /**
+   * The server rejected `presented`. Decide whether that condemns the session.
+   *
+   * It only does so if `presented` is still the credential the session holds.
+   * When storage now carries a DIFFERENT refresh token, another tab completed a
+   * rotation while our request was in flight: the server was right to reject
+   * ours — it was spent — but the session is alive and the winner already
+   * stored the successor. Clearing here is what turned a routine rotation into
+   * a logout for every open tab (#48).
+   *
+   * This is the guarantee that does not depend on Web Locks. The lock keeps the
+   * losing request from being sent; this keeps a losing request that WAS sent
+   * (no lock available, or a rotation by some client outside this tab's lock
+   * scope) from destroying a live session.
+   */
+  private async onCredentialRejected(
+    presented: string,
+    sentWith: AuthState,
+  ): Promise<string | null> {
+    const current = await this.readState();
+
+    // Storage no longer holds the session we were refreshing for — a different
+    // user signed in on another tab while our request was in flight. Do not
+    // adopt their token (that would hand this tab someone else's credential)
+    // and do not clear (that session is not ours to destroy). Just fail here.
+    if (isDifferentIdentity(current, sentWith)) {
+      return null;
+    }
+
+    if (current?.refresh_token && current.refresh_token !== presented) {
+      // Superseded, not revoked. Hand back the winner's access token; a caller
+      // that gets null here would route to login on a perfectly good session.
+      return current.access_token || null;
+    }
+
+    await this.clearAuthState();
+    return null;
   }
 
   /**
