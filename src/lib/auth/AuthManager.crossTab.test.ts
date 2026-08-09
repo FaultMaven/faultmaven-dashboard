@@ -343,14 +343,21 @@ describe('#48 cross-tab refresh rotation', () => {
       const { fetchImpl } = rotatingAuthServer('refresh-0');
       globalThis.fetch = fetchImpl as unknown as typeof fetch;
 
-      const original = AbortSignal.timeout;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (AbortSignal as any).timeout;
+      // `timeout` is INHERITED, not an own property of AbortSignal, so
+      // `delete AbortSignal.timeout` is a silent no-op that leaves the native
+      // implementation in place — the fallback would never be entered and this
+      // test would pass without exercising anything. Shadow it with an own
+      // property instead, and remove the shadow to restore.
+      expect(Object.getOwnPropertyNames(AbortSignal)).not.toContain('timeout');
+      Object.defineProperty(AbortSignal, 'timeout', { value: undefined, configurable: true });
+      expect(typeof AbortSignal.timeout).not.toBe('function');
       try {
         await new AuthManager().getAccessToken();
       } finally {
-        AbortSignal.timeout = original;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (AbortSignal as any).timeout;
       }
+      expect(typeof AbortSignal.timeout).toBe('function');
 
       const init = fetchImpl.mock.calls[0][1] as unknown as { signal?: AbortSignal };
       expect(init.signal).toBeInstanceOf(AbortSignal);
