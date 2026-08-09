@@ -74,9 +74,11 @@ function installLocks(available: boolean) {
 // An /auth/refresh that rotates: each accepted refresh token is consumed and
 // revoked, exactly as the backend behaves. Presenting a spent token gets 401.
 // ---------------------------------------------------------------------------
-function rotatingAuthServer(validRefresh: string) {
+// `startGeneration` lets a test seed storage with an already-rotated pair and
+// still have the server mint distinguishable successors.
+function rotatingAuthServer(validRefresh: string, startGeneration = 0) {
   const presented: string[] = [];
-  let generation = 0;
+  let generation = startGeneration;
 
   const fetchImpl = vi.fn(async (_url: string, init: { body: string }) => {
     const token = (JSON.parse(init.body) as { refresh_token: string }).refresh_token;
@@ -235,6 +237,21 @@ describe('#48 cross-tab refresh rotation', () => {
       expect(storedState()).toBeUndefined();
     });
 
+    // Absence of an identity must not read as "someone else's session".
+    it('clears a revoked session even when the stored state carries no user_id', async () => {
+      seedStore({
+        ...EXPIRED_SEED,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        user: { ...EXPIRED_SEED.user, user_id: undefined as any },
+      });
+      globalThis.fetch = vi.fn(async () => ({ ok: false, status: 401 })) as unknown as typeof fetch;
+
+      const token = await new AuthManager().getAccessToken();
+
+      expect(token).toBeNull();
+      expect(storedState()).toBeUndefined();
+    });
+
     it('clears when a 200 response is malformed and the token was not superseded', async () => {
       seedStore();
       globalThis.fetch = vi.fn(async () => ({
@@ -295,6 +312,37 @@ describe('#48 cross-tab refresh rotation', () => {
 
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(token).toBe('access-0');
+    });
+  });
+
+  // The in-tab dedupe must not hand a joining caller an answer that is unusable
+  // FOR THAT CALLER. Sharing a refresh started for a different rejected token
+  // reopens the zero-rotation retry the rejected-token argument exists to stop.
+  describe('in-flight dedupe across different rejected tokens', () => {
+    it('does not hand a joining caller back the token it just had rejected', async () => {
+      // Storage already holds a fresh access-1/refresh-1 pair.
+      seedStore({
+        ...EXPIRED_SEED,
+        access_token: 'access-1',
+        refresh_token: 'refresh-1',
+        expires_at: Date.now() + 3_600_000,
+      });
+      const { fetchImpl } = rotatingAuthServer('refresh-1', 1);
+      globalThis.fetch = fetchImpl as unknown as typeof fetch;
+
+      const manager = new AuthManager();
+      // First caller had the OLD token refused; storage's access-1 is a valid
+      // answer for it, so it returns without any network call.
+      // Second caller had access-1 itself refused — that same answer is useless.
+      const [first, second] = await Promise.all([
+        manager.refreshTokens('access-0'),
+        manager.refreshTokens('access-1'),
+      ]);
+
+      expect(first).toBe('access-1');
+      expect(second).not.toBe('access-1');
+      expect(second).toBe('access-2');
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     });
   });
 

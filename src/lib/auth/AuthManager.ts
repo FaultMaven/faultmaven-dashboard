@@ -67,11 +67,15 @@ function refreshAbortSignal(): AbortSignal | undefined {
 }
 
 /**
- * Whether two stored states belong to the same signed-in user.
+ * Whether two stored states demonstrably belong to DIFFERENT signed-in users.
  *
- * `onCredentialRejected` — the only caller — compares this as well as the
- * token, because "storage holds a different token than the one I sent" is also
- * true when the previous user logged out and a new one signed in mid-flight.
+ * `onCredentialRejected` — the only caller — asks this as well as comparing
+ * tokens, because "storage holds a different token than the one I sent" is
+ * also true when the previous user logged out and a new one signed in
+ * mid-flight.
+ *
+ * Phrased as "different" rather than "same" so that an unknown identity fails
+ * closed: see the body.
  *
  * Scope, deliberately stated: this does NOT make the manager identity-pinned.
  * The adopt path in `refreshIfStillStale` still takes whatever session storage
@@ -80,8 +84,16 @@ function refreshAbortSignal(): AbortSignal | undefined {
  * read of shared storage, and closing it means pinning an identity per tab —
  * out of scope here.
  */
-function isSameIdentity(a: AuthState | null, b: AuthState | null): boolean {
-  return Boolean(a && b && a.user?.user_id && a.user.user_id === b.user?.user_id);
+function isDifferentIdentity(a: AuthState | null, b: AuthState | null): boolean {
+  const left = a?.user?.user_id;
+  const right = b?.user?.user_id;
+  // Unknown identity is NOT a different identity. Answering "different" when
+  // an id is missing routes a genuine revocation down the leave-it-alone path,
+  // so the dead session survives in storage, no auth-cleared listener fires,
+  // and the bridge copy is left for the extension to re-forward. Absence must
+  // fail closed — fall through and let the token comparison decide.
+  if (!left || !right) return false;
+  return left !== right;
 }
 
 /**
@@ -335,13 +347,30 @@ export class AuthManager {
    * holds (see doRefresh).
    */
   async refreshTokens(rejectedAccessToken?: string): Promise<string | null> {
-    if (this.refreshInFlight) {
+    const inFlight = this.refreshInFlight;
+    if (inFlight) {
+      const shared = await inFlight;
+      // Sharing is only sound if the answer is usable BY THIS CALLER. A refresh
+      // started for someone else can legitimately resolve to a token that this
+      // caller has just been told the server refuses — then handing it over
+      // reopens the very no-op retry the rejected-token argument exists to
+      // prevent, with zero /auth/refresh calls made. Fall through and get our
+      // own rotation instead.
+      if (!rejectedAccessToken || shared !== rejectedAccessToken) {
+        return shared;
+      }
+    }
+
+    // Deliberately not re-joining another in-flight refresh here: we only reach
+    // this line because a shared result was already unusable for us, and a
+    // second join could hand back the same token again.
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.refreshUnderCrossTabLock(rejectedAccessToken).finally(() => {
+        this.refreshInFlight = null;
+      });
       return this.refreshInFlight;
     }
-    this.refreshInFlight = this.refreshUnderCrossTabLock(rejectedAccessToken).finally(() => {
-      this.refreshInFlight = null;
-    });
-    return this.refreshInFlight;
+    return this.refreshUnderCrossTabLock(rejectedAccessToken);
   }
 
   /**
@@ -489,7 +518,7 @@ export class AuthManager {
     // user signed in on another tab while our request was in flight. Do not
     // adopt their token (that would hand this tab someone else's credential)
     // and do not clear (that session is not ours to destroy). Just fail here.
-    if (current && !isSameIdentity(current, sentWith)) {
+    if (isDifferentIdentity(current, sentWith)) {
       return null;
     }
 
