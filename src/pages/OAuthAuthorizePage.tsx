@@ -33,6 +33,12 @@ export default function OAuthAuthorizePage() {
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
 
+  // PKCE parameters belong to the extension's authorization request and are
+  // echoed in the URL. The consent response does NOT carry them, so reading
+  // them off `consent` sent `undefined` to the approval endpoint.
+  const codeChallenge = searchParams.get('code_challenge') ?? '';
+  const codeChallengeMethod = searchParams.get('code_challenge_method') ?? 'S256';
+
   useEffect(() => {
     if (!authState) {
       const oauthParams = searchParams.toString();
@@ -84,8 +90,8 @@ export default function OAuthAuthorizePage() {
         approved: true,
         client_id: consent.client_id,
         redirect_uri: consent.redirect_uri,
-        code_challenge: consent.code_challenge,
-        code_challenge_method: consent.code_challenge_method,
+        code_challenge: codeChallenge,
+        code_challenge_method: codeChallengeMethod,
         scope: consent.scope,
         state: consent.state,
       });
@@ -113,8 +119,8 @@ export default function OAuthAuthorizePage() {
         approved: false,
         client_id: consent.client_id,
         redirect_uri: consent.redirect_uri,
-        code_challenge: consent.code_challenge,
-        code_challenge_method: consent.code_challenge_method,
+        code_challenge: codeChallenge,
+        code_challenge_method: codeChallengeMethod,
         scope: consent.scope,
         state: consent.state,
       });
@@ -237,8 +243,12 @@ export default function OAuthAuthorizePage() {
         {/* User Info */}
         <div className="bg-fm-elevated border border-fm-border rounded-fm-btn p-4 mb-6">
           <div className="text-sm text-fm-text-tertiary mb-1">Signing in as:</div>
-          <div className="font-semibold text-fm-text-primary">{consent.user.display_name}</div>
-          <div className="text-sm text-fm-text-secondary">{consent.user.email}</div>
+          <div className="font-semibold text-fm-text-primary">
+            {authState?.user?.display_name || authState?.user?.username || consent.username}
+          </div>
+          {authState?.user?.email && (
+            <div className="text-sm text-fm-text-secondary">{authState.user.email}</div>
+          )}
         </div>
 
         {/* Permissions */}

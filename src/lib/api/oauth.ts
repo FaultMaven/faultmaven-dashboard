@@ -8,19 +8,29 @@
 import config from '../../config';
 import { authManager } from '../auth';
 
+/**
+ * Consent data as the backend ACTUALLY returns it — `AuthorizationConsentRequest`
+ * (faultmaven `modules/auth/api/oauth.py:83`). Flat, and deliberately narrow.
+ *
+ * This previously declared a nested `user: {email, display_name}` plus
+ * `code_challenge` / `code_challenge_method`, none of which that endpoint sends.
+ * Two consequences, both live: `consent.user.display_name` threw on render
+ * ("Cannot read properties of undefined"), and `handleApprove` would have POSTed
+ * `undefined` PKCE values had the render survived (copilot#185).
+ *
+ * The missing pieces come from where they actually live, not from here:
+ * the PKCE parameters are the extension's own request, echoed in the URL; the
+ * display identity comes from the dashboard's authenticated session — the same
+ * session the backend authorized this request with.
+ */
 export interface OAuthConsentData {
   client_id: string;
+  client_name: string;
   redirect_uri: string;
   scope: string;
   state: string;
-  code_challenge: string;
-  code_challenge_method: string;
-  user: {
-    user_id: string;
-    username: string;
-    email: string;
-    display_name: string;
-  };
+  user_id: string;
+  username: string;
 }
 
 export interface OAuthApprovalRequest {
