@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import OAuthAuthorizePage from '../../pages/OAuthAuthorizePage';
+import { getOAuthConsent } from '../../lib/api/oauth';
 
 /**
  * The copilot's OAuth consent screen (copilot#185).
@@ -93,6 +94,67 @@ describe('OAuthAuthorizePage', () => {
     // email come from the dashboard's own authenticated session.
     expect(await screen.findByText('Sterlan Yu')).toBeInTheDocument();
     expect(screen.getByText('sterlan.yu@faultmaven.ai')).toBeInTheDocument();
+  });
+
+  // F1 (review). `redirect_uri` reaches this page unvalidated — the backend
+  // checks it only when minting the code — and Cancel navigated to it
+  // unconditionally, including from the catch branch. A `javascript:` value
+  // would have executed on the dashboard's own origin.
+  it('refuses to navigate to a non-http redirect_uri on Cancel', async () => {
+    const hrefs: string[] = [];
+    const original = Object.getOwnPropertyDescriptor(window, 'location');
+    delete (window as any).location;
+    (window as any).location = {
+      ...(original?.value ?? {}),
+      origin: 'https://app.faultmaven.ai',
+      pathname: '/auth/authorize',
+      set href(v: string) { hrefs.push(v); },
+      get href() { return 'https://app.faultmaven.ai/auth/authorize'; },
+    };
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: 'javascript:alert(document.domain)',
+    } as never);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(mockSubmitOAuthApproval).toHaveBeenCalled());
+    expect(hrefs).toHaveLength(0);
+    expect(await screen.findByText(/unsupported redirect target/i)).toBeInTheDocument();
+
+    if (original) Object.defineProperty(window, 'location', original);
+  });
+
+  // F2 (review). AuthContext snapshots authState on mount and never re-reads it,
+  // while consent/approval read auth fresh — so the screen could name one user
+  // while Authorize minted a code for another.
+  it('refuses to render consent when the session identity differs from the response', async () => {
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      user_id: 'someone-else',
+    } as never);
+
+    renderPage();
+
+    expect(await screen.findByText(/signed-in account changed/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /authorize/i })).not.toBeInTheDocument();
+  });
+
+  // F3 (review). An empty challenge must be refused here; otherwise the screen
+  // reports success and the failure only surfaces at the token exchange.
+  it('refuses an authorization request with an empty code_challenge', async () => {
+    render(
+      <MemoryRouter initialEntries={['/auth/authorize?code_challenge=&state=s&client_id=c']}>
+        <Routes>
+          <Route path="/auth/authorize" element={<OAuthAuthorizePage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText(/missing PKCE code challenge/i)).toBeInTheDocument();
+    expect(getOAuthConsent).not.toHaveBeenCalled();
   });
 
   it('approves with the PKCE parameters from the URL, never undefined', async () => {

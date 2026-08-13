@@ -25,6 +25,21 @@ import { authManager } from '../auth';
  */
 export interface OAuthConsentData {
   client_id: string;
+  /**
+   * Present in the response, but deliberately NOT rendered.
+   *
+   * The backend computes it as `client_names.get(client_id, client_id)` and
+   * GET /auth/oauth/authorize validates neither `client_id` nor `redirect_uri`
+   * — so for any unknown client this is the caller's own raw string. Showing it
+   * would let a crafted `?client_id=` choose the heading on the one screen whose
+   * job is telling the user who is asking. React escapes it, so this is
+   * phishing text rather than injection, but it is still worse than the fixed
+   * heading it would replace.
+   *
+   * The fix belongs server-side (reject unknown client_ids on the GET) and is
+   * filed there; until then the heading stays fixed. Typed here because the
+   * field genuinely is in the response.
+   */
   client_name: string;
   redirect_uri: string;
   scope: string;

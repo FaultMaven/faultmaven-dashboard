@@ -8,6 +8,28 @@ import {
 } from '../lib/api/oauth';
 import { useAuth } from '../context/AuthContext';
 
+// `redirect_uri` reaches this page UNVALIDATED. GET /auth/oauth/authorize checks
+// only `response_type` and echoes the rest back verbatim — the allowed-pattern
+// check runs later, when the code is minted (oauth_service `_is_redirect_uri_allowed`).
+// So a crafted `?redirect_uri=` renders an ordinary consent screen, and Cancel
+// would send this tab wherever the attacker chose; a `javascript:` value would
+// execute on the dashboard's own origin, blocked today only by a CSP header set
+// on another layer rather than by this code.
+//
+// Approve is unaffected — it never navigates off-origin (see redirectToExtension).
+// Only the deny path leaves, so only it needs this. Full pattern validation stays
+// server-side, where the allowlist lives; this is the scheme floor that keeps the
+// dangerous cases off the origin entirely.
+const SAFE_REDIRECT_SCHEMES = ['chrome-extension:', 'moz-extension:', 'https:'];
+
+function isSafeRedirectUri(uri: string): boolean {
+  try {
+    return SAFE_REDIRECT_SCHEMES.includes(new URL(uri).protocol);
+  } catch {
+    return false;
+  }
+}
+
 // Build the OAuth error redirect (RFC 6749 §4.1.2.1). Each value is
 // percent-encoded so a redirect_uri that already carries a query, or a
 // `state` containing reserved characters (&, =, #), can't corrupt the
@@ -36,8 +58,12 @@ export default function OAuthAuthorizePage() {
   // PKCE parameters belong to the extension's authorization request and are
   // echoed in the URL. The consent response does NOT carry them, so reading
   // them off `consent` sent `undefined` to the approval endpoint.
-  const codeChallenge = searchParams.get('code_challenge') ?? '';
-  const codeChallengeMethod = searchParams.get('code_challenge_method') ?? 'S256';
+  // `||` not `??`: an explicitly empty `?code_challenge_method=` must fall back
+  // to the default rather than being forwarded as ''. An empty code_challenge is
+  // refused outright below — minting a code against an empty challenge defeats
+  // PKCE and only surfaces later, at the extension's token exchange.
+  const codeChallenge = searchParams.get('code_challenge') || '';
+  const codeChallengeMethod = searchParams.get('code_challenge_method') || 'S256';
 
   useEffect(() => {
     if (!authState) {
@@ -62,6 +88,11 @@ export default function OAuthAuthorizePage() {
       setLoading(true);
       setError(null);
 
+      if (!codeChallenge) {
+        setError('Invalid authorization request: missing PKCE code challenge');
+        return;
+      }
+
       const data = await getOAuthConsent(searchParams);
 
       if ('code' in data && data.code) {
@@ -70,7 +101,20 @@ export default function OAuthAuthorizePage() {
         return;
       }
 
-      setConsent(data as OAuthConsentData);
+      const consentData = data as OAuthConsentData;
+
+      // F2: the identity shown and the identity the code is minted for must be
+      // the same one. AuthContext snapshots `authState` on mount and has no
+      // storage/BroadcastChannel listener, while the consent and approval calls
+      // read auth fresh from localStorage — so signing in as B in another tab
+      // leaves this screen naming A while Authorize would mint a code for B.
+      // The server-authoritative user_id settles it.
+      if (authState?.user?.user_id && authState.user.user_id !== consentData.user_id) {
+        setError('Your signed-in account changed. Reload this page to continue.');
+        return;
+      }
+
+      setConsent(consentData);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load authorization request';
       setError(message);
@@ -125,10 +169,22 @@ export default function OAuthAuthorizePage() {
         state: consent.state,
       });
 
-      window.location.href = denyRedirectUrl(consent.redirect_uri, consent.state);
+      leaveToDenyRedirect(consent.redirect_uri, consent.state);
     } catch {
-      window.location.href = denyRedirectUrl(consent.redirect_uri, consent.state);
+      // Still return the user to the extension — but the same safety check
+      // applies. The old code navigated here unconditionally, so a refused
+      // request left by exactly the route an attacker had supplied.
+      leaveToDenyRedirect(consent.redirect_uri, consent.state);
     }
+  }
+
+  function leaveToDenyRedirect(redirectUri: string, state: string) {
+    if (!isSafeRedirectUri(redirectUri)) {
+      setError('This authorization request has an unsupported redirect target.');
+      setSubmitting(false);
+      return;
+    }
+    window.location.href = denyRedirectUrl(redirectUri, state);
   }
 
   function redirectToExtension(approval: OAuthApprovalResponse) {
