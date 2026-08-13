@@ -248,6 +248,75 @@ describe('OAuthAuthorizePage', () => {
     expect(getOAuthConsent).not.toHaveBeenCalled();
   });
 
+  // The two halves of the backend disagree: GET /auth/oauth/authorize takes
+  // code_challenge_method as a bare `str` Query, the approval BODY types it
+  // Literal["S256"]. Forwarding it verbatim rendered a normal consent screen and
+  // then 422'd on click. Refuse it up front instead.
+  it('refuses a PKCE method the approval endpoint cannot accept', async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/auth/authorize?code_challenge=challenge-xyz&code_challenge_method=plain' +
+            '&state=state-123&client_id=faultmaven-copilot',
+        ]}
+      >
+        <Routes>
+          <Route path="/auth/authorize" element={<OAuthAuthorizePage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText(/unsupported pkce method "plain"/i)).toBeInTheDocument();
+    // Refused BEFORE the consent round-trip, so nothing is shown and nothing is
+    // submitted — the point is that the failure never reaches the click.
+    expect(getOAuthConsent).not.toHaveBeenCalled();
+    expect(mockSubmitOAuthApproval).not.toHaveBeenCalled();
+  });
+
+  it('still accepts the default method when the parameter is absent entirely', async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/auth/authorize?code_challenge=challenge-xyz&state=state-123&client_id=faultmaven-copilot',
+        ]}
+      >
+        <Routes>
+          <Route path="/auth/authorize" element={<OAuthAuthorizePage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    // Reaches consent: the `|| 'S256'` default is what makes the guard above
+    // narrow rather than a blanket requirement that clients send the parameter.
+    expect(await screen.findByRole('button', { name: /authorize/i })).toBeInTheDocument();
+  });
+
+  // An EXPIRED session is not a changed identity. Folding `null` into the
+  // mismatch branch told the user their account had changed and to reload — on a
+  // screen whose only control is an inert window.close().
+  it('sends an expired session back to sign-in, not to the identity-change error', async () => {
+    mockGetAuthState.mockResolvedValue(null);
+
+    render(
+      <MemoryRouter initialEntries={[`/auth/authorize${QUERY}`]}>
+        <Routes>
+          <Route path="/auth/authorize" element={<OAuthAuthorizePage />} />
+          <Route path="/login" element={<div>login page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+
+    expect(await screen.findByText('login page')).toBeInTheDocument();
+    expect(screen.queryByText(/signed-in account changed/i)).not.toBeInTheDocument();
+    expect(mockSubmitOAuthApproval).not.toHaveBeenCalled();
+    // …and login returns here rather than to the dashboard home.
+    expect(sessionStorage.getItem('oauth_redirect_after_login')).toContain(
+      'code_challenge=challenge-xyz'
+    );
+  });
+
   it('approves with the PKCE parameters from the URL, never undefined', async () => {
     renderPage();
 

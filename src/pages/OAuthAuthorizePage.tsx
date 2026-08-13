@@ -72,11 +72,21 @@ export default function OAuthAuthorizePage() {
   const codeChallenge = searchParams.get('code_challenge') || '';
   const codeChallengeMethod = searchParams.get('code_challenge_method') || 'S256';
 
+  // Send the user to sign in, remembering this authorization request so login
+  // returns them here rather than to the dashboard home. Used from mount (no
+  // session yet) and from the click-time pin (session expired while the consent
+  // screen sat open) — the two cases want identical recovery.
+  function goSignIn() {
+    sessionStorage.setItem(
+      'oauth_redirect_after_login',
+      `/auth/authorize?${searchParams.toString()}`
+    );
+    navigate('/login');
+  }
+
   useEffect(() => {
     if (!authState) {
-      const oauthParams = searchParams.toString();
-      sessionStorage.setItem('oauth_redirect_after_login', `/auth/authorize?${oauthParams}`);
-      navigate('/login');
+      goSignIn();
       return;
     }
 
@@ -100,6 +110,26 @@ export default function OAuthAuthorizePage() {
         return;
       }
 
+      // The two halves of the backend disagree about this parameter, and the
+      // disagreement lands on the user. GET /auth/oauth/authorize takes it as a
+      // bare `str` Query and echoes the request back, so `?code_challenge_method=plain`
+      // renders an ordinary consent screen; the approval BODY types it
+      // `Optional[Literal["S256"]]`, so the same value 422s the moment Authorize
+      // is clicked, surfacing as "Failed to submit OAuth approval" over an
+      // unreadable `{"detail":[...]}`.
+      //
+      // Refused here, before anything is shown. Not normalised to S256: a client
+      // that really asked for `plain` would then have a code minted against a
+      // challenge it will verify differently, turning a legible refusal into a
+      // failure at the token exchange — and silently accepting a plain challenge
+      // as S256 is exactly the downgrade PKCE exists to prevent.
+      if (codeChallengeMethod !== 'S256') {
+        setError(
+          `Unsupported PKCE method "${codeChallengeMethod}". This server supports S256 only.`
+        );
+        return;
+      }
+
       const data = await getOAuthConsent(searchParams);
 
       if ('code' in data && data.code) {
@@ -116,7 +146,16 @@ export default function OAuthAuthorizePage() {
       // read auth fresh from localStorage — so signing in as B in another tab
       // leaves this screen naming A while Authorize would mint a code for B.
       // The server-authoritative user_id settles it.
-      if (authState?.user?.user_id !== consentData.user_id) {
+      //
+      // Same split as handleApprove, for the same reason: a context snapshot with
+      // no user is an absent session, not a changed one. It reaches here only if
+      // the session died between mount and this response.
+      if (!authState?.user) {
+        goSignIn();
+        return;
+      }
+
+      if (authState.user.user_id !== consentData.user_id) {
         setError('Your signed-in account changed. Reload this page to continue.');
         return;
       }
@@ -144,7 +183,18 @@ export default function OAuthAuthorizePage() {
       // someone else in another tab mid-consent would otherwise mint a code for
       // them under a screen still naming the first account.
       const current = await authManager.getAuthState();
-      if (current?.user?.user_id !== consent.user_id) {
+
+      // NO session is not a changed identity. An expired session, a refresh that
+      // failed, or a sign-out in another tab all land here with `current == null`,
+      // and folding them into the mismatch branch below told the user their
+      // ACCOUNT had changed and to reload — on a screen whose only control is an
+      // inert window.close(). Send them to sign in, and back here afterwards.
+      if (!current?.user) {
+        goSignIn();
+        return;
+      }
+
+      if (current.user.user_id !== consent.user_id) {
         setError('Your signed-in account changed. Reload this page to continue.');
         setSubmitting(false);
         return;
