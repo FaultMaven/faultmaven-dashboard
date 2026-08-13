@@ -7,6 +7,7 @@ import {
   OAuthApprovalResponse,
 } from '../lib/api/oauth';
 import { useAuth } from '../context/AuthContext';
+import { authManager } from '../lib/auth';
 
 // `redirect_uri` reaches this page UNVALIDATED. GET /auth/oauth/authorize checks
 // only `response_type` and echoes the rest back verbatim — the allowed-pattern
@@ -17,10 +18,16 @@ import { useAuth } from '../context/AuthContext';
 // on another layer rather than by this code.
 //
 // Approve is unaffected — it never navigates off-origin (see redirectToExtension).
-// Only the deny path leaves, so only it needs this. Full pattern validation stays
-// server-side, where the allowlist lives; this is the scheme floor that keeps the
-// dangerous cases off the origin entirely.
-const SAFE_REDIRECT_SCHEMES = ['chrome-extension:', 'moz-extension:', 'https:'];
+// Only the deny path leaves, so only it needs this.
+//
+// Extension schemes ONLY, deliberately. The server's allowlist
+// (`oauth_redirect_uri_patterns`) is exactly two patterns —
+// chrome-extension://<32>/callback.html and moz-extension://<uuid>/callback.html —
+// so permitting `https:` here would have been strictly wider than the policy this
+// is standing in for, and still an open redirect to any host. A deployment that
+// widens the server patterns degrades to an in-page message rather than a silent
+// navigation, which is the right way round.
+const SAFE_REDIRECT_SCHEMES = ['chrome-extension:', 'moz-extension:'];
 
 function isSafeRedirectUri(uri: string): boolean {
   try {
@@ -109,7 +116,7 @@ export default function OAuthAuthorizePage() {
       // read auth fresh from localStorage — so signing in as B in another tab
       // leaves this screen naming A while Authorize would mint a code for B.
       // The server-authoritative user_id settles it.
-      if (authState?.user?.user_id && authState.user.user_id !== consentData.user_id) {
+      if (authState?.user?.user_id !== consentData.user_id) {
         setError('Your signed-in account changed. Reload this page to continue.');
         return;
       }
@@ -129,6 +136,19 @@ export default function OAuthAuthorizePage() {
     try {
       setSubmitting(true);
       setError(null);
+
+      // Re-pin at click time, against a FRESH read. `authState` is AuthContext's
+      // mount snapshot, and submitOAuthApproval re-reads auth from storage when
+      // it fires — so checking only at load closed a millisecond window while
+      // leaving open the whole time this screen is displayed. Signing in as
+      // someone else in another tab mid-consent would otherwise mint a code for
+      // them under a screen still naming the first account.
+      const current = await authManager.getAuthState();
+      if (current?.user?.user_id !== consent.user_id) {
+        setError('Your signed-in account changed. Reload this page to continue.');
+        setSubmitting(false);
+        return;
+      }
 
       const approval = await submitOAuthApproval({
         approved: true,
@@ -169,11 +189,12 @@ export default function OAuthAuthorizePage() {
         state: consent.state,
       });
 
-      leaveToDenyRedirect(consent.redirect_uri, consent.state);
     } catch {
-      // Still return the user to the extension — but the same safety check
-      // applies. The old code navigated here unconditionally, so a refused
-      // request left by exactly the route an attacker had supplied.
+      // Expected: the backend answers a denial by RAISING 400 ("User denied
+      // authorization request"), so this is the ordinary path, not an error one.
+      // Reporting the denial is best-effort; returning the user to the extension
+      // is what matters, and happens either way below.
+    } finally {
       leaveToDenyRedirect(consent.redirect_uri, consent.state);
     }
   }
@@ -202,7 +223,8 @@ export default function OAuthAuthorizePage() {
       return;
     }
 
-    const callbackUrl = `${window.location.origin}${window.location.pathname}?code=${approval.code}&state=${approval.state}`;
+    const callbackParams = new URLSearchParams({ code: approval.code, state: approval.state });
+    const callbackUrl = `${window.location.origin}${window.location.pathname}?${callbackParams.toString()}`;
     window.history.replaceState({}, '', callbackUrl);
     setRedirectUrl(callbackUrl);
     setLoading(false);

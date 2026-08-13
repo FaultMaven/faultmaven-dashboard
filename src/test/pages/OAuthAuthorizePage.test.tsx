@@ -4,6 +4,11 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import OAuthAuthorizePage from '../../pages/OAuthAuthorizePage';
 import { getOAuthConsent } from '../../lib/api/oauth';
 
+const mockGetAuthState = vi.fn();
+vi.mock('../../lib/auth', () => ({
+  authManager: { getAuthState: () => mockGetAuthState() },
+}));
+
 /**
  * The copilot's OAuth consent screen (copilot#185).
  *
@@ -77,6 +82,16 @@ describe('OAuthAuthorizePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSubmitOAuthApproval.mockResolvedValue({ code: 'auth-code', state: 'state-123' });
+    mockGetAuthState.mockResolvedValue({
+      user: { user_id: 'user-789', username: 'sterlan.yu' },
+    });
+  });
+
+  // F6 (review): the window.location stub must be torn down even when an
+  // assertion throws, or it leaks into every later test in this file.
+  const originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
   });
 
   it('renders the consent screen against the real flat response, without crashing', async () => {
@@ -100,12 +115,14 @@ describe('OAuthAuthorizePage', () => {
   // checks it only when minting the code — and Cancel navigated to it
   // unconditionally, including from the catch branch. A `javascript:` value
   // would have executed on the dashboard's own origin.
-  it('refuses to navigate to a non-http redirect_uri on Cancel', async () => {
+  it('refuses to navigate to a disallowed redirect_uri on Cancel', async () => {
+    // The backend RAISES 400 on a denial, so the POST rejecting is the real
+    // path — mocking it as resolving tested a branch that never runs.
+    mockSubmitOAuthApproval.mockRejectedValueOnce(new Error('User denied authorization request'));
     const hrefs: string[] = [];
-    const original = Object.getOwnPropertyDescriptor(window, 'location');
     delete (window as any).location;
     (window as any).location = {
-      ...(original?.value ?? {}),
+      ...(originalLocation?.value ?? {}),
       origin: 'https://app.faultmaven.ai',
       pathname: '/auth/authorize',
       set href(v: string) { hrefs.push(v); },
@@ -123,8 +140,82 @@ describe('OAuthAuthorizePage', () => {
     await waitFor(() => expect(mockSubmitOAuthApproval).toHaveBeenCalled());
     expect(hrefs).toHaveLength(0);
     expect(await screen.findByText(/unsupported redirect target/i)).toBeInTheDocument();
+  });
 
-    if (original) Object.defineProperty(window, 'location', original);
+  // F2 (review): the guard permitted any https host, which is still an open
+  // redirect. The server's allowlist is extension schemes only.
+  it('refuses an https redirect_uri on Cancel — the server allows extension schemes only', async () => {
+    mockSubmitOAuthApproval.mockRejectedValueOnce(new Error('User denied authorization request'));
+    const hrefs: string[] = [];
+    delete (window as any).location;
+    (window as any).location = {
+      ...(originalLocation?.value ?? {}),
+      origin: 'https://app.faultmaven.ai',
+      pathname: '/auth/authorize',
+      set href(v: string) { hrefs.push(v); },
+      get href() { return 'https://app.faultmaven.ai/auth/authorize'; },
+    };
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: 'https://evil.example/steal',
+    } as never);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(mockSubmitOAuthApproval).toHaveBeenCalled());
+    expect(hrefs).toHaveLength(0);
+  });
+
+  // F5 (review): denyRedirectUrl percent-encodes for exactly this reason; the
+  // approve path interpolated raw, so a `state` carrying & or # would corrupt
+  // the parameters the extension parses back out for its CSRF check.
+  it('percent-encodes code and state into the callback URL', async () => {
+    const replaceState = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+    mockSubmitOAuthApproval.mockResolvedValueOnce({
+      code: 'code&injected=1',
+      state: 'state#frag&x=2',
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+
+    await waitFor(() => expect(replaceState).toHaveBeenCalled());
+    const url = new URL(replaceState.mock.calls[0][2] as string, 'https://app.faultmaven.ai');
+    // Round-trips intact rather than splitting into extra parameters.
+    expect(url.searchParams.get('code')).toBe('code&injected=1');
+    expect(url.searchParams.get('state')).toBe('state#frag&x=2');
+    expect(url.searchParams.get('injected')).toBeNull();
+    replaceState.mockRestore();
+  });
+
+  // F1 (review): the consent screen can sit open for minutes and the approval
+  // call re-reads auth at click time, so the pin must be re-checked THEN.
+  it('re-checks the identity at click time, not only at load', async () => {
+    renderPage();
+    const approve = await screen.findByRole('button', { name: /authorize/i });
+
+    // Another tab signs in as someone else while this screen is open.
+    mockGetAuthState.mockResolvedValue({ user: { user_id: 'someone-else' } });
+    fireEvent.click(approve);
+
+    expect(await screen.findByText(/signed-in account changed/i)).toBeInTheDocument();
+    expect(mockSubmitOAuthApproval).not.toHaveBeenCalled();
+  });
+
+  // F4 (review): a stored session with no user_id must not pass the pin.
+  it('fails closed when the stored session carries no user_id', async () => {
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({ ...CONSENT_RESPONSE } as never);
+    mockGetAuthState.mockResolvedValue({ user: {} });
+
+    renderPage();
+
+    // The load-time pin reads AuthContext's snapshot, which still matches; the
+    // click-time pin reads storage, which does not.
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+    expect(await screen.findByText(/signed-in account changed/i)).toBeInTheDocument();
+    expect(mockSubmitOAuthApproval).not.toHaveBeenCalled();
   });
 
   // F2 (review). AuthContext snapshots authState on mount and never re-reads it,
