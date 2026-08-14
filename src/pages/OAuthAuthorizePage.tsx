@@ -7,6 +7,35 @@ import {
   OAuthApprovalResponse,
 } from '../lib/api/oauth';
 import { useAuth } from '../context/AuthContext';
+import { authManager } from '../lib/auth';
+
+// `redirect_uri` reaches this page UNVALIDATED. GET /auth/oauth/authorize checks
+// only `response_type` and echoes the rest back verbatim — the allowed-pattern
+// check runs later, when the code is minted (oauth_service `_is_redirect_uri_allowed`).
+// So a crafted `?redirect_uri=` renders an ordinary consent screen, and Cancel
+// would send this tab wherever the attacker chose; a `javascript:` value would
+// execute on the dashboard's own origin, blocked today only by a CSP header set
+// on another layer rather than by this code.
+//
+// Approve is unaffected — it never navigates off-origin (see redirectToExtension).
+// Only the deny path leaves, so only it needs this.
+//
+// Extension schemes ONLY, deliberately. The server's allowlist
+// (`oauth_redirect_uri_patterns`) is exactly two patterns —
+// chrome-extension://<32>/callback.html and moz-extension://<uuid>/callback.html —
+// so permitting `https:` here would have been strictly wider than the policy this
+// is standing in for, and still an open redirect to any host. A deployment that
+// widens the server patterns degrades to an in-page message rather than a silent
+// navigation, which is the right way round.
+const SAFE_REDIRECT_SCHEMES = ['chrome-extension:', 'moz-extension:'];
+
+function isSafeRedirectUri(uri: string): boolean {
+  try {
+    return SAFE_REDIRECT_SCHEMES.includes(new URL(uri).protocol);
+  } catch {
+    return false;
+  }
+}
 
 // Build the OAuth error redirect (RFC 6749 §4.1.2.1). Each value is
 // percent-encoded so a redirect_uri that already carries a query, or a
@@ -33,11 +62,31 @@ export default function OAuthAuthorizePage() {
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
 
+  // PKCE parameters belong to the extension's authorization request and are
+  // echoed in the URL. The consent response does NOT carry them, so reading
+  // them off `consent` sent `undefined` to the approval endpoint.
+  // `||` not `??`: an explicitly empty `?code_challenge_method=` must fall back
+  // to the default rather than being forwarded as ''. An empty code_challenge is
+  // refused outright below — minting a code against an empty challenge defeats
+  // PKCE and only surfaces later, at the extension's token exchange.
+  const codeChallenge = searchParams.get('code_challenge') || '';
+  const codeChallengeMethod = searchParams.get('code_challenge_method') || 'S256';
+
+  // Send the user to sign in, remembering this authorization request so login
+  // returns them here rather than to the dashboard home. Used from mount (no
+  // session yet) and from the click-time pin (session expired while the consent
+  // screen sat open) — the two cases want identical recovery.
+  function goSignIn() {
+    sessionStorage.setItem(
+      'oauth_redirect_after_login',
+      `/auth/authorize?${searchParams.toString()}`
+    );
+    navigate('/login');
+  }
+
   useEffect(() => {
     if (!authState) {
-      const oauthParams = searchParams.toString();
-      sessionStorage.setItem('oauth_redirect_after_login', `/auth/authorize?${oauthParams}`);
-      navigate('/login');
+      goSignIn();
       return;
     }
 
@@ -56,6 +105,31 @@ export default function OAuthAuthorizePage() {
       setLoading(true);
       setError(null);
 
+      if (!codeChallenge) {
+        setError('Invalid authorization request: missing PKCE code challenge');
+        return;
+      }
+
+      // The two halves of the backend disagree about this parameter, and the
+      // disagreement lands on the user. GET /auth/oauth/authorize takes it as a
+      // bare `str` Query and echoes the request back, so `?code_challenge_method=plain`
+      // renders an ordinary consent screen; the approval BODY types it
+      // `Optional[Literal["S256"]]`, so the same value 422s the moment Authorize
+      // is clicked, surfacing as "Failed to submit OAuth approval" over an
+      // unreadable `{"detail":[...]}`.
+      //
+      // Refused here, before anything is shown. Not normalised to S256: a client
+      // that really asked for `plain` would then have a code minted against a
+      // challenge it will verify differently, turning a legible refusal into a
+      // failure at the token exchange — and silently accepting a plain challenge
+      // as S256 is exactly the downgrade PKCE exists to prevent.
+      if (codeChallengeMethod !== 'S256') {
+        setError(
+          `Unsupported PKCE method "${codeChallengeMethod}". This server supports S256 only.`
+        );
+        return;
+      }
+
       const data = await getOAuthConsent(searchParams);
 
       if ('code' in data && data.code) {
@@ -64,7 +138,27 @@ export default function OAuthAuthorizePage() {
         return;
       }
 
-      setConsent(data as OAuthConsentData);
+      const consentData = data as OAuthConsentData;
+
+      // F2: the identity shown and the identity the code is minted for must be
+      // the same one. AuthContext snapshots `authState` on mount and has no
+      // storage/BroadcastChannel listener, while the consent and approval calls
+      // read auth fresh from localStorage — so signing in as B in another tab
+      // leaves this screen naming A while Authorize would mint a code for B.
+      // The server-authoritative user_id settles it.
+      //
+      // No absent-session branch here, deliberately, unlike handleApprove. This
+      // reads AuthContext's snapshot and the effect above already returned on a
+      // null one — and a truthy snapshot always carries `user`, because
+      // AuthContext dereferences `state.user.roles` unguarded while loading, so a
+      // state without it throws there and never reaches this page. The equivalent
+      // check at the click site is live only because that one re-reads storage.
+      if (authState?.user?.user_id !== consentData.user_id) {
+        setError('Your signed-in account changed. Reload this page to continue.');
+        return;
+      }
+
+      setConsent(consentData);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load authorization request';
       setError(message);
@@ -80,12 +174,36 @@ export default function OAuthAuthorizePage() {
       setSubmitting(true);
       setError(null);
 
+      // Re-pin at click time, against a FRESH read. `authState` is AuthContext's
+      // mount snapshot, and submitOAuthApproval re-reads auth from storage when
+      // it fires — so checking only at load closed a millisecond window while
+      // leaving open the whole time this screen is displayed. Signing in as
+      // someone else in another tab mid-consent would otherwise mint a code for
+      // them under a screen still naming the first account.
+      const current = await authManager.getAuthState();
+
+      // NO session is not a changed identity. An expired session, a refresh that
+      // failed, or a sign-out in another tab all land here with `current == null`,
+      // and folding them into the mismatch branch below told the user their
+      // ACCOUNT had changed and to reload — on a screen whose only control is an
+      // inert window.close(). Send them to sign in, and back here afterwards.
+      if (!current?.user) {
+        goSignIn();
+        return;
+      }
+
+      if (current.user.user_id !== consent.user_id) {
+        setError('Your signed-in account changed. Reload this page to continue.');
+        setSubmitting(false);
+        return;
+      }
+
       const approval = await submitOAuthApproval({
         approved: true,
         client_id: consent.client_id,
         redirect_uri: consent.redirect_uri,
-        code_challenge: consent.code_challenge,
-        code_challenge_method: consent.code_challenge_method,
+        code_challenge: codeChallenge,
+        code_challenge_method: codeChallengeMethod,
         scope: consent.scope,
         state: consent.state,
       });
@@ -113,16 +231,29 @@ export default function OAuthAuthorizePage() {
         approved: false,
         client_id: consent.client_id,
         redirect_uri: consent.redirect_uri,
-        code_challenge: consent.code_challenge,
-        code_challenge_method: consent.code_challenge_method,
+        code_challenge: codeChallenge,
+        code_challenge_method: codeChallengeMethod,
         scope: consent.scope,
         state: consent.state,
       });
 
-      window.location.href = denyRedirectUrl(consent.redirect_uri, consent.state);
     } catch {
-      window.location.href = denyRedirectUrl(consent.redirect_uri, consent.state);
+      // Expected: the backend answers a denial by RAISING 400 ("User denied
+      // authorization request"), so this is the ordinary path, not an error one.
+      // Reporting the denial is best-effort; returning the user to the extension
+      // is what matters, and happens either way below.
+    } finally {
+      leaveToDenyRedirect(consent.redirect_uri, consent.state);
     }
+  }
+
+  function leaveToDenyRedirect(redirectUri: string, state: string) {
+    if (!isSafeRedirectUri(redirectUri)) {
+      setError('This authorization request has an unsupported redirect target.');
+      setSubmitting(false);
+      return;
+    }
+    window.location.href = denyRedirectUrl(redirectUri, state);
   }
 
   function redirectToExtension(approval: OAuthApprovalResponse) {
@@ -140,7 +271,8 @@ export default function OAuthAuthorizePage() {
       return;
     }
 
-    const callbackUrl = `${window.location.origin}${window.location.pathname}?code=${approval.code}&state=${approval.state}`;
+    const callbackParams = new URLSearchParams({ code: approval.code, state: approval.state });
+    const callbackUrl = `${window.location.origin}${window.location.pathname}?${callbackParams.toString()}`;
     window.history.replaceState({}, '', callbackUrl);
     setRedirectUrl(callbackUrl);
     setLoading(false);
@@ -237,8 +369,12 @@ export default function OAuthAuthorizePage() {
         {/* User Info */}
         <div className="bg-fm-elevated border border-fm-border rounded-fm-btn p-4 mb-6">
           <div className="text-sm text-fm-text-tertiary mb-1">Signing in as:</div>
-          <div className="font-semibold text-fm-text-primary">{consent.user.display_name}</div>
-          <div className="text-sm text-fm-text-secondary">{consent.user.email}</div>
+          <div className="font-semibold text-fm-text-primary">
+            {authState?.user?.display_name || authState?.user?.username || consent.username}
+          </div>
+          {authState?.user?.email && (
+            <div className="text-sm text-fm-text-secondary">{authState.user.email}</div>
+          )}
         </div>
 
         {/* Permissions */}

@@ -8,19 +8,44 @@
 import config from '../../config';
 import { authManager } from '../auth';
 
+/**
+ * Consent data as the backend ACTUALLY returns it — `AuthorizationConsentRequest`
+ * (faultmaven `modules/auth/api/oauth.py:83`). Flat, and deliberately narrow.
+ *
+ * This previously declared a nested `user: {email, display_name}` plus
+ * `code_challenge` / `code_challenge_method`, none of which that endpoint sends.
+ * Two consequences, both live: `consent.user.display_name` threw on render
+ * ("Cannot read properties of undefined"), and `handleApprove` would have POSTed
+ * `undefined` PKCE values had the render survived (copilot#185).
+ *
+ * The missing pieces come from where they actually live, not from here:
+ * the PKCE parameters are the extension's own request, echoed in the URL; the
+ * display identity comes from the dashboard's authenticated session — the same
+ * session the backend authorized this request with.
+ */
 export interface OAuthConsentData {
   client_id: string;
+  /**
+   * Present in the response, but deliberately NOT rendered.
+   *
+   * The backend computes it as `client_names.get(client_id, client_id)` and
+   * GET /auth/oauth/authorize validates neither `client_id` nor `redirect_uri`
+   * — so for any unknown client this is the caller's own raw string. Showing it
+   * would let a crafted `?client_id=` choose the heading on the one screen whose
+   * job is telling the user who is asking. React escapes it, so this is
+   * phishing text rather than injection, but it is still worse than the fixed
+   * heading it would replace.
+   *
+   * The fix belongs server-side (reject unknown client_ids on the GET) and is
+   * filed there; until then the heading stays fixed. Typed here because the
+   * field genuinely is in the response.
+   */
+  client_name: string;
   redirect_uri: string;
   scope: string;
   state: string;
-  code_challenge: string;
-  code_challenge_method: string;
-  user: {
-    user_id: string;
-    username: string;
-    email: string;
-    display_name: string;
-  };
+  user_id: string;
+  username: string;
 }
 
 export interface OAuthApprovalRequest {
