@@ -3,18 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ssoExchange } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
+import { GENERIC_ERROR, ssoErrorMessage } from '../lib/auth/ssoErrors';
 
-// Sanitized error slugs the backend SSO callback may emit — the ONLY error
-// values it sends (sso_login_service.py). Anything else renders the generic
-// message; raw query content is never echoed into the page.
-const ERROR_MESSAGES: Record<string, string> = {
-  sso_access_denied: 'Sign-in was cancelled or denied at the identity provider.',
-  sso_user_inactive: 'Your account is not active. Please contact your administrator.',
-  sso_state_invalid: 'This sign-in attempt expired or was invalid. Please try again.',
-  sso_exchange_failed: 'Sign-in could not be completed. Please try again.',
-  sso_failed: 'Sign-in failed. Please try again.',
-};
-const GENERIC_ERROR = 'Sign-in failed. Please try again.';
 const EXCHANGE_ERROR =
   'Sign-in could not be completed — the sign-in link may have expired. Please try again.';
 
@@ -61,7 +51,7 @@ export default function SSOCallbackPage() {
   const paramError =
     errorSlug || !code
       ? errorSlug
-        ? (ERROR_MESSAGES[errorSlug] ?? GENERIC_ERROR)
+        ? ssoErrorMessage(errorSlug)
         : GENERIC_ERROR
       : null;
   const error = paramError ?? exchangeError;

@@ -145,6 +145,25 @@ describe('SSOCallbackPage', () => {
     expect(mockSetAuthState).not.toHaveBeenCalled();
   });
 
+  it('renders the actionable message for sso_org_unmapped, not the retry copy', async () => {
+    // The one SSO failure retrying can never fix: under TENANT_PROVIDER=multi
+    // the identity carried no organization, or one with no sso_org_mappings
+    // row. It stays broken until an operator provisions the mapping, so the
+    // copy must point at the administrator and must NOT invite a retry
+    // (faultmaven-dashboard#79).
+    renderCallback('/auth/sso/callback?error=sso_org_unmapped');
+
+    expect(
+      await screen.findByText(/organization is not set up for access yet/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/contact your administrator/i)).toBeInTheDocument();
+    // Guards the regression directly: this slug used to fall through to
+    // GENERIC_ERROR, which tells the user to do the one thing that cannot work.
+    expect(screen.queryByText(/try again/i)).toBeNull();
+    expect(mockSsoExchange).not.toHaveBeenCalled();
+    expect(mockSetAuthState).not.toHaveBeenCalled();
+  });
+
   it('renders a generic message for an unknown error slug (never echoes the query)', async () => {
     renderCallback('/auth/sso/callback?error=%3Cscript%3Ealert(1)%3C%2Fscript%3E');
 
