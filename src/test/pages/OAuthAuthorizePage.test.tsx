@@ -102,6 +102,47 @@ describe('OAuthAuthorizePage', () => {
     expect(await screen.findByText(/This application will be able to/i)).toBeInTheDocument();
   });
 
+  // The heading was the literal string "Authorize FaultMaven Copilot", true only
+  // while `oauth_allowed_clients` has one entry. Safe to render the real name
+  // since faultmaven#1053 refuses unknown client_ids on the GET.
+  it('names the application that actually asked, not a hardcoded one', async () => {
+    // Deliberately NOT the copilot: a heading hardcoded to the copilot passes any
+    // test that authorizes the copilot, which is why the fixture is a different
+    // client. This is the assertion that fails if the string is pinned back.
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      client_id: 'faultmaven-cli',
+      client_name: 'FaultMaven CLI Tool',
+    } as never);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Authorize FaultMaven CLI Tool' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Authorize FaultMaven Copilot/)).not.toBeInTheDocument();
+    // The subtitle must not re-assert a specific product either — it named the
+    // browser extension unconditionally.
+    expect(screen.queryByText(/browser extension/i)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the client id when no display name is supplied', async () => {
+    // An operator-added client has no entry in the backend's display-name map, so
+    // `client_name` is the raw id. A blank heading on the screen whose job is
+    // naming the requester would be the failure this change exists to prevent.
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      client_id: 'acme-internal-tool',
+      client_name: '',
+    } as never);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Authorize acme-internal-tool' })
+    ).toBeInTheDocument();
+  });
+
   it('shows the signed-in identity from the session, which is where it actually lives', async () => {
     renderPage();
 
@@ -111,10 +152,12 @@ describe('OAuthAuthorizePage', () => {
     expect(screen.getByText('sterlan.yu@faultmaven.ai')).toBeInTheDocument();
   });
 
-  // F1 (review). `redirect_uri` reaches this page unvalidated — the backend
-  // checks it only when minting the code — and Cancel navigated to it
-  // unconditionally, including from the catch branch. A `javascript:` value
-  // would have executed on the dashboard's own origin.
+  // F1 (review). Cancel navigated to `redirect_uri` unconditionally, including
+  // from the catch branch, and a `javascript:` value would have executed on the
+  // dashboard's own origin. The server now refuses an unlisted redirect_uri on
+  // the GET (faultmaven#1053), so this value no longer arrives in practice —
+  // the check is kept as defence in depth, and this test keeps it honest by
+  // handing the page the value the server would have blocked.
   it('refuses to navigate to a disallowed redirect_uri on Cancel', async () => {
     // The backend RAISES 400 on a denial, so the POST rejecting is the real
     // path — mocking it as resolving tested a branch that never runs.

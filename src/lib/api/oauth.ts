@@ -26,19 +26,23 @@ import { authManager } from '../auth';
 export interface OAuthConsentData {
   client_id: string;
   /**
-   * Present in the response, but deliberately NOT rendered.
+   * The application asking for access, as shown in the consent heading.
    *
-   * The backend computes it as `client_names.get(client_id, client_id)` and
-   * GET /auth/oauth/authorize validates neither `client_id` nor `redirect_uri`
-   * — so for any unknown client this is the caller's own raw string. Showing it
-   * would let a crafted `?client_id=` choose the heading on the one screen whose
-   * job is telling the user who is asking. React escapes it, so this is
-   * phishing text rather than injection, but it is still worse than the fixed
-   * heading it would replace.
+   * The backend computes it as `client_names.get(client_id, client_id)`. That
+   * fallback used to be reachable by ANY string, because GET
+   * /auth/oauth/authorize validated neither `client_id` nor `redirect_uri` — so a
+   * crafted `?client_id=` could choose the heading on the one screen whose job is
+   * telling the user who is asking, and this field was deliberately left
+   * unrendered. The GET now rejects unknown clients with a 400
+   * (faultmaven#1053), so it can only be one of the backend's friendly names or
+   * an id an operator put in `oauth_allowed_clients`.
    *
-   * The fix belongs server-side (reject unknown client_ids on the GET) and is
-   * filed there; until then the heading stays fixed. Typed here because the
-   * field genuinely is in the response.
+   * It is rendered now, and the alternative was not neutral: the heading was the
+   * literal string "Authorize FaultMaven Copilot", which holds only while the
+   * allowlist has one entry. Adding a second client — and `client_names` already
+   * anticipates `faultmaven-cli` — would have had this screen name the browser
+   * extension while authorizing something else. Not naming the requester is a gap;
+   * naming the wrong one is a false statement on a security prompt.
    */
   client_name: string;
   redirect_uri: string;
@@ -94,24 +98,44 @@ export async function getOAuthConsent(
   });
 
   if (!response.ok) {
-    throw new Error((await readErrorDescription(response)) || 'Failed to fetch OAuth consent data');
+    throw new Error(messageForFailure(response, 'Failed to fetch OAuth consent data'));
   }
 
   return response.json();
 }
 
 /**
- * Best-effort read of the OAuth `error_description` from an error response.
- * The body may be empty or non-JSON (gateway/proxy errors), so parsing is
- * guarded — an unguarded `response.json()` would throw and mask the real
- * HTTP failure with a "Unexpected end of JSON input" error.
+ * Turn a failed authorize/approval response into a message worth showing.
+ *
+ * This used to read `error_description` off the body. Nothing ever sets it:
+ * both endpoints raise FastAPI `HTTPException`, so the body is `{"detail": ...}`,
+ * and the routes catch `InvalidRequestError` themselves rather than letting a
+ * handler reshape it into the OAuth `{error, error_description}` form. Every
+ * refusal therefore fell through to the caller's generic fallback — including,
+ * after faultmaven#1053, the precise 400 the server now returns for an unknown
+ * client or an unlisted redirect target.
+ *
+ * The `detail` string is still not surfaced. It interpolates the caller's own
+ * values — `Unknown client_id: <raw>`, `Invalid redirect_uri: <raw>` — so
+ * rendering it would put an attacker-chosen string on the dashboard's origin,
+ * which is precisely why `client_name` stays off the consent screen. React
+ * escapes it, so that is phishing text rather than injection, and a refusal page
+ * is a weaker lure than a consent heading — but the user cannot act on the raw
+ * value either way, so there is nothing to buy with it. The status says what to
+ * do next; the specifics stay in the server log.
  */
-async function readErrorDescription(response: Response): Promise<string | undefined> {
-  try {
-    const body = (await response.json()) as { error_description?: string } | null;
-    return body?.error_description;
-  } catch {
-    return undefined;
+function messageForFailure(response: Response, fallback: string): string {
+  switch (response.status) {
+    case 400:
+      return 'This authorization request was rejected. The application asking for access, or the address it wants to return you to, is not one this FaultMaven deployment recognises.';
+    case 401:
+      return 'Your session is no longer valid. Sign in again to authorize this application.';
+    case 429:
+      return 'Too many authorization attempts. Wait a moment, then try again.';
+    case 503:
+      return 'OAuth is not enabled on this FaultMaven deployment.';
+    default:
+      return fallback;
   }
 }
 
@@ -144,7 +168,7 @@ export async function submitOAuthApproval(
   });
 
   if (!response.ok) {
-    throw new Error((await readErrorDescription(response)) || 'Failed to submit OAuth approval');
+    throw new Error(messageForFailure(response, 'Failed to submit OAuth approval'));
   }
 
   return response.json();

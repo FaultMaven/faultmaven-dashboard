@@ -9,13 +9,18 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { authManager } from '../lib/auth';
 
-// `redirect_uri` reaches this page UNVALIDATED. GET /auth/oauth/authorize checks
-// only `response_type` and echoes the rest back verbatim — the allowed-pattern
-// check runs later, when the code is minted (oauth_service `_is_redirect_uri_allowed`).
-// So a crafted `?redirect_uri=` renders an ordinary consent screen, and Cancel
-// would send this tab wherever the attacker chose; a `javascript:` value would
-// execute on the dashboard's own origin, blocked today only by a CSP header set
-// on another layer rather than by this code.
+// Defence in depth. `redirect_uri` used to reach this page UNVALIDATED — the
+// server checked only `response_type` and echoed the rest back, deferring the
+// allowlist to mint time — so a crafted `?redirect_uri=` rendered an ordinary
+// consent screen and Cancel sent this tab wherever the attacker chose. That
+// hole is closed: GET /auth/oauth/authorize now rejects an unlisted
+// `redirect_uri` (and an unknown `client_id`) with a 400 before any consent
+// screen exists, so a disallowed value no longer reaches this component
+// (faultmaven#1053).
+//
+// This check stays anyway, because the property it protects is local: this page
+// must not navigate the browser somewhere it cannot vouch for, whatever a server
+// hands it. It is now a second opinion rather than the only guard.
 //
 // Approve is unaffected — it never navigates off-origin (see redirectToExtension).
 // Only the deny path leaves, so only it needs this.
@@ -23,10 +28,10 @@ import { authManager } from '../lib/auth';
 // Extension schemes ONLY, deliberately. The server's allowlist
 // (`oauth_redirect_uri_patterns`) is exactly two patterns —
 // chrome-extension://<32>/callback.html and moz-extension://<uuid>/callback.html —
-// so permitting `https:` here would have been strictly wider than the policy this
-// is standing in for, and still an open redirect to any host. A deployment that
-// widens the server patterns degrades to an in-page message rather than a silent
-// navigation, which is the right way round.
+// so permitting `https:` here would be strictly wider than the policy it backs
+// up, and still an open redirect to any host. A deployment that widens the server
+// patterns degrades to an in-page message rather than a silent navigation, which
+// is the right way round.
 const SAFE_REDIRECT_SCHEMES = ['chrome-extension:', 'moz-extension:'];
 
 function isSafeRedirectUri(uri: string): boolean {
@@ -110,19 +115,21 @@ export default function OAuthAuthorizePage() {
         return;
       }
 
-      // The two halves of the backend disagree about this parameter, and the
-      // disagreement lands on the user. GET /auth/oauth/authorize takes it as a
-      // bare `str` Query and echoes the request back, so `?code_challenge_method=plain`
-      // renders an ordinary consent screen; the approval BODY types it
-      // `Optional[Literal["S256"]]`, so the same value 422s the moment Authorize
-      // is clicked, surfacing as "Failed to submit OAuth approval" over an
-      // unreadable `{"detail":[...]}`.
+      // The two halves of the backend used to disagree about this parameter, and
+      // the disagreement landed on the user: GET /auth/oauth/authorize took it as
+      // a bare `str` Query and echoed the request back, so
+      // `?code_challenge_method=plain` rendered an ordinary consent screen, while
+      // the approval BODY typed it `Optional[Literal["S256"]]` and 422'd the
+      // moment Authorize was clicked. They agree now — the GET rejects anything
+      // but S256 up front (faultmaven#1053).
       //
-      // Refused here, before anything is shown. Not normalised to S256: a client
-      // that really asked for `plain` would then have a code minted against a
-      // challenge it will verify differently, turning a legible refusal into a
-      // failure at the token exchange — and silently accepting a plain challenge
-      // as S256 is exactly the downgrade PKCE exists to prevent.
+      // Still refused here, and deliberately: this runs before any network call,
+      // so a plainly malformed request costs nothing and says something specific.
+      // Not normalised to S256 either — a client that really asked for `plain`
+      // would then have a code minted against a challenge it will verify
+      // differently, turning a legible refusal into a failure at the token
+      // exchange, and silently accepting a plain challenge as S256 is exactly the
+      // downgrade PKCE exists to prevent.
       if (codeChallengeMethod !== 'S256') {
         setError(
           `Unsupported PKCE method "${codeChallengeMethod}". This server supports S256 only.`
@@ -341,6 +348,24 @@ export default function OAuthAuthorizePage() {
 
   const scopes = consent.scope.split(' ');
 
+  // Name the application that actually asked. The heading used to be the literal
+  // string "Authorize FaultMaven Copilot", which is true only while
+  // `oauth_allowed_clients` holds nothing else — and the backend's display-name
+  // map already anticipates `faultmaven-cli`. Adding one client would have left
+  // this screen telling the user the browser extension was asking while it minted
+  // a code for something else: a consent screen naming the WRONG requester, with
+  // no error to notice.
+  //
+  // Safe to render since faultmaven#1053: the GET refuses an unknown client_id,
+  // so `client_name` is either one of the backend's friendly names or an id an
+  // operator put in the allowlist — never a caller-chosen string, which is the
+  // reason this was kept off the screen before.
+  //
+  // Falling back to `client_id` rather than to a generic word: the whole point of
+  // this screen is saying who is asking, so a blank or missing name must still
+  // resolve to something identifying.
+  const requester = consent.client_name || consent.client_id;
+
   const ScopeItem = ({ children }: { children: React.ReactNode }) => (
     <li className="flex items-start">
       <svg className="w-5 h-5 text-fm-accent mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -360,9 +385,9 @@ export default function OAuthAuthorizePage() {
         {/* Header */}
         <div className="text-center mb-6">
           <img src="/icon/square-transparent.svg" alt="FaultMaven" className="w-16 h-16 rounded-xl mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-fm-text-primary mb-2">Authorize FaultMaven Copilot</h1>
+          <h1 className="text-2xl font-bold text-fm-text-primary mb-2">Authorize {requester}</h1>
           <p className="text-fm-text-secondary">
-            The FaultMaven browser extension is requesting access to your account.
+            This application is requesting access to your FaultMaven account.
           </p>
         </div>
 
