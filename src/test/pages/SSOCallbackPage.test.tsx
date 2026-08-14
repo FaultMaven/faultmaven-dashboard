@@ -17,7 +17,7 @@ vi.mock('../../hooks/useAvailableScopes', () => ({
   invalidateAvailableScopes: () => mockInvalidateAvailableScopes(),
 }));
 
-import SSOCallbackPage from '../../pages/SSOCallbackPage';
+import SSOCallbackPage, { ERROR_MESSAGES, GENERIC_ERROR } from '../../pages/SSOCallbackPage';
 import { ssoExchange } from '../../lib/api';
 
 const mockSsoExchange = ssoExchange as ReturnType<typeof vi.fn>;
@@ -143,6 +143,63 @@ describe('SSOCallbackPage', () => {
     );
     expect(mockSsoExchange).not.toHaveBeenCalled();
     expect(mockSetAuthState).not.toHaveBeenCalled();
+  });
+
+  it('renders the actionable message for sso_org_unmapped, not the retry copy', async () => {
+    // The one SSO failure retrying can never fix: under TENANT_PROVIDER=multi
+    // the identity carried no organization, or one with no sso_org_mappings
+    // row. It stays broken until an operator provisions the mapping, so the
+    // copy must point at the administrator and must NOT invite a retry
+    // (faultmaven-dashboard#79).
+    renderCallback('/auth/sso/callback?error=sso_org_unmapped');
+
+    expect(
+      await screen.findByText(/organization is not set up for access yet/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/contact your administrator/i)).toBeInTheDocument();
+    // Guards the regression directly: this slug used to fall through to
+    // GENERIC_ERROR, which tells the user to do the one thing that cannot work.
+    expect(screen.queryByText(/try again/i)).toBeNull();
+    expect(mockSsoExchange).not.toHaveBeenCalled();
+    expect(mockSetAuthState).not.toHaveBeenCalled();
+  });
+
+  it('handles exactly the slug set the backend can emit', async () => {
+    // Cross-repo contract pin. The producer is _dashboard_redirect() in
+    // sso_login_service.py, the single writer of `?error=`; its ERROR_*
+    // constants are the whole domain. These slugs are query params on a 302,
+    // so openapi.json does not carry them and api-types-drift cannot catch a
+    // change — this test is the only thing standing between a backend addition
+    // and a silent fallthrough to "please try again".
+    //
+    // Honest about its limit: it fails when THIS map changes, not when the
+    // backend adds a slug. It cannot make that addition red here; it makes the
+    // set explicit so a reviewer sees the coupling at the point of edit.
+    const BACKEND_SLUGS = [
+      'sso_state_invalid',
+      'sso_exchange_failed',
+      'sso_user_inactive',
+      'sso_access_denied',
+      'sso_org_unmapped',
+      'sso_failed',
+    ];
+
+    // Asserting "an alert rendered" would be vacuous — the unknown-slug path
+    // renders one too. The load-bearing check is that each slug produces copy
+    // DISTINCT from the generic fallback, which is exactly what being absent
+    // from the map costs you. sso_failed is the sole exception: its message is
+    // the generic text by design, so it is pinned by the set equality below.
+    for (const slug of BACKEND_SLUGS.filter((s) => s !== 'sso_failed')) {
+      const { unmount } = renderCallback(`/auth/sso/callback?error=${slug}`);
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent?.trim()).not.toBe(GENERIC_ERROR);
+      unmount();
+    }
+
+    // And the map holds these and nothing else — an entry removed or renamed
+    // here fails, rather than quietly degrading to the generic message.
+    const handled = Object.keys(ERROR_MESSAGES).sort();
+    expect(handled).toEqual([...BACKEND_SLUGS].sort());
   });
 
   it('renders a generic message for an unknown error slug (never echoes the query)', async () => {
