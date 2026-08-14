@@ -54,3 +54,8 @@ lerna-debug.log*
 
 # Working/temporary documentation (keep local only)
 docs/working/
+
+# Git worktrees checked out under the repo (git worktree add .worktrees/<name>).
+# Also excluded from vitest in vite.config.ts — .gitignore alone would not stop
+# the test runner collecting a second, stale copy of the suite.
+.worktrees/
