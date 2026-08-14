@@ -147,15 +147,13 @@ export default function OAuthAuthorizePage() {
       // leaves this screen naming A while Authorize would mint a code for B.
       // The server-authoritative user_id settles it.
       //
-      // Same split as handleApprove, for the same reason: a context snapshot with
-      // no user is an absent session, not a changed one. It reaches here only if
-      // the session died between mount and this response.
-      if (!authState?.user) {
-        goSignIn();
-        return;
-      }
-
-      if (authState.user.user_id !== consentData.user_id) {
+      // No absent-session branch here, deliberately, unlike handleApprove. This
+      // reads AuthContext's snapshot and the effect above already returned on a
+      // null one — and a truthy snapshot always carries `user`, because
+      // AuthContext dereferences `state.user.roles` unguarded while loading, so a
+      // state without it throws there and never reaches this page. The equivalent
+      // check at the click site is live only because that one re-reads storage.
+      if (authState?.user?.user_id !== consentData.user_id) {
         setError('Your signed-in account changed. Reload this page to continue.');
         return;
       }
