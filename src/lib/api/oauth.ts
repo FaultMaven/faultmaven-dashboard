@@ -26,20 +26,23 @@ import { authManager } from '../auth';
 export interface OAuthConsentData {
   client_id: string;
   /**
-   * Present in the response, and no longer caller-controlled — but still NOT
-   * rendered, now as a product choice rather than a mitigation.
+   * The application asking for access, as shown in the consent heading.
    *
    * The backend computes it as `client_names.get(client_id, client_id)`. That
    * fallback used to be reachable by ANY string, because GET
-   * /auth/oauth/authorize validated neither `client_id` nor `redirect_uri`, so a
+   * /auth/oauth/authorize validated neither `client_id` nor `redirect_uri` — so a
    * crafted `?client_id=` could choose the heading on the one screen whose job is
-   * telling the user who is asking. The GET now rejects unknown clients with a
-   * 400 (faultmaven#1053), so the fallback can only yield an id an operator put
-   * in `oauth_allowed_clients`.
+   * telling the user who is asking, and this field was deliberately left
+   * unrendered. The GET now rejects unknown clients with a 400
+   * (faultmaven#1053), so it can only be one of the backend's friendly names or
+   * an id an operator put in `oauth_allowed_clients`.
    *
-   * So rendering it would be safe today. It stays off the screen because a fixed
-   * heading is not worse for the two clients that have real names, and turning it
-   * on is a deliberate decision to take rather than a default to drift into.
+   * It is rendered now, and the alternative was not neutral: the heading was the
+   * literal string "Authorize FaultMaven Copilot", which holds only while the
+   * allowlist has one entry. Adding a second client — and `client_names` already
+   * anticipates `faultmaven-cli` — would have had this screen name the browser
+   * extension while authorizing something else. Not naming the requester is a gap;
+   * naming the wrong one is a false statement on a security prompt.
    */
   client_name: string;
   redirect_uri: string;

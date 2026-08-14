@@ -348,6 +348,24 @@ export default function OAuthAuthorizePage() {
 
   const scopes = consent.scope.split(' ');
 
+  // Name the application that actually asked. The heading used to be the literal
+  // string "Authorize FaultMaven Copilot", which is true only while
+  // `oauth_allowed_clients` holds nothing else — and the backend's display-name
+  // map already anticipates `faultmaven-cli`. Adding one client would have left
+  // this screen telling the user the browser extension was asking while it minted
+  // a code for something else: a consent screen naming the WRONG requester, with
+  // no error to notice.
+  //
+  // Safe to render since faultmaven#1053: the GET refuses an unknown client_id,
+  // so `client_name` is either one of the backend's friendly names or an id an
+  // operator put in the allowlist — never a caller-chosen string, which is the
+  // reason this was kept off the screen before.
+  //
+  // Falling back to `client_id` rather than to a generic word: the whole point of
+  // this screen is saying who is asking, so a blank or missing name must still
+  // resolve to something identifying.
+  const requester = consent.client_name || consent.client_id;
+
   const ScopeItem = ({ children }: { children: React.ReactNode }) => (
     <li className="flex items-start">
       <svg className="w-5 h-5 text-fm-accent mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -367,9 +385,9 @@ export default function OAuthAuthorizePage() {
         {/* Header */}
         <div className="text-center mb-6">
           <img src="/icon/square-transparent.svg" alt="FaultMaven" className="w-16 h-16 rounded-xl mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-fm-text-primary mb-2">Authorize FaultMaven Copilot</h1>
+          <h1 className="text-2xl font-bold text-fm-text-primary mb-2">Authorize {requester}</h1>
           <p className="text-fm-text-secondary">
-            The FaultMaven browser extension is requesting access to your account.
+            This application is requesting access to your FaultMaven account.
           </p>
         </div>
 
