@@ -19,6 +19,7 @@ vi.mock('./AuthManager', async () => {
       saveAuthState: vi.fn().mockResolvedValue(undefined),
       getAccessToken: vi.fn().mockResolvedValue('test-token'),
       peekAccessToken: vi.fn().mockResolvedValue('test-token'),
+      peekIdpLogoutUrl: vi.fn().mockResolvedValue(null),
       clearAuthState: vi.fn().mockResolvedValue(undefined),
     },
   };
@@ -412,5 +413,68 @@ describe('ssoExchange', () => {
 
     await expect(ssoExchange('code-net-fail')).rejects.toThrow('Network error');
     expect(mockSaveAuthState).not.toHaveBeenCalled();
+  });
+});
+
+describe('logoutAuth — ending the identity provider session', () => {
+  // Clearing our state does not end the IdP's: it holds its own cookie on its
+  // own domain. Without navigating to the logout URL the next sign-in is
+  // answered silently, the account cannot be switched, and a shared browser is
+  // one click from being signed back in.
+  const mockPeekIdpLogoutUrl = authManager.peekIdpLogoutUrl as ReturnType<typeof vi.fn>;
+  let assignSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch;
+    mockPeekAccessToken.mockResolvedValue('test-token');
+    assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign: assignSpy, href: 'https://app.test/' },
+    });
+  });
+
+  it('navigates to the IdP logout URL after clearing local state', async () => {
+    mockPeekIdpLogoutUrl.mockResolvedValue('https://authkit.test/logout?session=abc');
+
+    await logoutAuth();
+
+    expect(assignSpy).toHaveBeenCalledWith('https://authkit.test/logout?session=abc');
+    // Order matters: navigating first would abandon the teardown mid-flight.
+    expect(mockClearAuthState).toHaveBeenCalled();
+    expect(mockClearAuthState.mock.invocationCallOrder[0]).toBeLessThan(
+      assignSpy.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('reads the URL without triggering a refresh', async () => {
+    // getAuthState would silently refresh a near-expired session — and on one
+    // with no refresh token it CLEARS the state, destroying the URL being read.
+    mockPeekIdpLogoutUrl.mockResolvedValue('https://authkit.test/logout?session=abc');
+
+    await logoutAuth();
+
+    expect(mockPeekIdpLogoutUrl).toHaveBeenCalled();
+    expect(mockGetAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('logs out normally when there is no IdP session', async () => {
+    // Dev/password logins, and sessions stored before the backend sent it.
+    mockPeekIdpLogoutUrl.mockResolvedValue(null);
+
+    await logoutAuth();
+
+    expect(mockClearAuthState).toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('still clears local state when the URL cannot be read', async () => {
+    mockPeekIdpLogoutUrl.mockRejectedValue(new Error('storage unavailable'));
+
+    await expect(logoutAuth()).resolves.toBeUndefined();
+
+    expect(mockClearAuthState).toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 });

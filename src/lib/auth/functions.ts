@@ -137,6 +137,17 @@ export async function ssoExchange(code: string): Promise<AuthState> {
  * server-side logout is best-effort and the local state is cleared regardless.
  */
 export async function logoutAuth(): Promise<void> {
+  // Read before teardown — clearing the state destroys the URL along with it.
+  // peek, not getAuthState: the latter would silently refresh a near-expired
+  // session, and on one with no refresh token it clears the state outright —
+  // destroying the URL this is here to read.
+  let idpLogoutUrl: string | null = null;
+  try {
+    idpLogoutUrl = await authManager.peekIdpLogoutUrl();
+  } catch {
+    // A state we cannot read costs single-logout, not the logout.
+  }
+
   try {
     const token = await authManager.peekAccessToken();
     if (token) {
@@ -151,5 +162,18 @@ export async function logoutAuth(): Promise<void> {
     console.error('Logout error:', error);
   } finally {
     await authManager.clearAuthState();
+  }
+
+  // Only after local state is gone. The IdP holds its own session cookie on its
+  // own domain, which nothing here can clear: revoking our token leaves that
+  // session live, so the next authorization request is answered without a
+  // prompt — the account cannot be switched, and the next person at a shared
+  // browser is one click from being signed back in.
+  //
+  // This navigates away, so it must be last: nothing after it is guaranteed to
+  // run. Absent for dev/password logins and for sessions stored before the
+  // backend sent this field, where the caller's own redirect still applies.
+  if (idpLogoutUrl) {
+    window.location.assign(idpLogoutUrl);
   }
 }

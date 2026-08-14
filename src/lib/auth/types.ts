@@ -12,6 +12,14 @@ export interface AuthState {
   /** Long-lived refresh token used to silently mint a new access token.
    *  Optional: absent for older stored sessions. */
   refresh_token?: string;
+  /** Where to send the browser to end the identity provider's own session.
+   *
+   *  Present only for SSO logins. Clearing our state does NOT end the IdP's
+   *  session, so without navigating here the next sign-in is answered silently:
+   *  the account cannot be switched, and a shared browser is one click from
+   *  being signed back in. Absent for dev/password logins and for sessions
+   *  stored before this field existed — logout then behaves as it always did. */
+  idp_logout_url?: string | null;
   user: {
     user_id: string;
     username: string;

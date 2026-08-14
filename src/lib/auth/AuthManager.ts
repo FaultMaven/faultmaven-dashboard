@@ -281,6 +281,19 @@ export class AuthManager {
   }
 
   /**
+   * Read the stored IdP logout URL verbatim, WITHOUT triggering a refresh.
+   *
+   * Same reason peekAccessToken exists, plus one more: on a session with no
+   * refresh token getAuthState *clears* the state and returns null, which would
+   * destroy the very URL logout is trying to read. Returns null when no session
+   * is stored, or for a login that had no IdP session (dev/password).
+   */
+  async peekIdpLogoutUrl(): Promise<string | null> {
+    const authState = await this.readState();
+    return authState?.idp_logout_url ?? null;
+  }
+
+  /**
    * Read the raw stored auth state without any expiry handling.
    * Internal: callers that need a *valid* token use getAuthState/getAccessToken.
    */
