@@ -111,10 +111,12 @@ describe('OAuthAuthorizePage', () => {
     expect(screen.getByText('sterlan.yu@faultmaven.ai')).toBeInTheDocument();
   });
 
-  // F1 (review). `redirect_uri` reaches this page unvalidated — the backend
-  // checks it only when minting the code — and Cancel navigated to it
-  // unconditionally, including from the catch branch. A `javascript:` value
-  // would have executed on the dashboard's own origin.
+  // F1 (review). Cancel navigated to `redirect_uri` unconditionally, including
+  // from the catch branch, and a `javascript:` value would have executed on the
+  // dashboard's own origin. The server now refuses an unlisted redirect_uri on
+  // the GET (faultmaven#1053), so this value no longer arrives in practice —
+  // the check is kept as defence in depth, and this test keeps it honest by
+  // handing the page the value the server would have blocked.
   it('refuses to navigate to a disallowed redirect_uri on Cancel', async () => {
     // The backend RAISES 400 on a denial, so the POST rejecting is the real
     // path — mocking it as resolving tested a branch that never runs.
