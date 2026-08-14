@@ -2,40 +2,26 @@ import { describe, it, expect } from 'vitest';
 import { ERROR_MESSAGES, GENERIC_ERROR, ssoErrorMessage } from './ssoErrors';
 
 /**
- * The slug set the backend's `_dashboard_redirect()` can emit — the `ERROR_*`
- * constants in `sso_login_service.py`, which is the single writer of `?error=`.
+ * Set equality against the backend is NOT asserted here — it cannot be. This
+ * repo cannot import the backend's Python, and the slugs are absent from
+ * openapi.json (they ride a 302 as query params), so a literal list here would
+ * only ever restate this file's own contents. That is precisely the check that
+ * was missing when faultmaven#869 added a sixth slug.
  *
- * Kept as a literal on purpose: this repo cannot import the backend's Python,
- * and the slugs are absent from `openapi.json` (they ride a 302 as query
- * params), so there is no generated artifact to derive them from.
+ * `scripts/check-sso-error-slugs.mjs` owns it, reading the `ERROR_*` constants
+ * off faultmaven `main` in the `sso-slug-drift` CI job. These tests cover what
+ * is knowable offline: that each slug's copy says the right kind of thing, and
+ * that lookup is safe for arbitrary query content.
  */
-const BACKEND_SLUGS = [
-  'sso_state_invalid',
-  'sso_exchange_failed',
-  'sso_user_inactive',
-  'sso_access_denied',
-  'sso_org_unmapped',
-  'sso_failed',
-];
+const SLUGS = Object.keys(ERROR_MESSAGES);
 
 describe('SSO error slug contract', () => {
-  it('handles exactly the slug set the backend can emit', () => {
-    // An entry removed or renamed fails here rather than quietly degrading to
-    // the generic message at runtime.
-    //
-    // Honest about the limit: this fails when THIS map changes, not when the
-    // backend adds a slug — nothing in this repo can observe that. It makes the
-    // coupling explicit at the point of edit, which is where faultmaven#869
-    // slipped through.
-    expect(Object.keys(ERROR_MESSAGES).sort()).toEqual([...BACKEND_SLUGS].sort());
-  });
-
   it('gives every slug except sso_failed copy distinct from the generic fallback', () => {
     // Asserting "a message exists" would be vacuous — ssoErrorMessage() always
     // returns one. Distinctness from GENERIC_ERROR is what being absent from
     // the map actually costs, so that is what is asserted. sso_failed is the
     // sole legitimate alias for the generic text.
-    for (const slug of BACKEND_SLUGS.filter((s) => s !== 'sso_failed')) {
+    for (const slug of SLUGS.filter((s) => s !== 'sso_failed')) {
       expect(ssoErrorMessage(slug), `${slug} falls through to the generic message`).not.toBe(
         GENERIC_ERROR
       );
@@ -63,5 +49,38 @@ describe('SSO error slug contract', () => {
     expect(ssoErrorMessage('sso_not_a_real_slug')).toBe(GENERIC_ERROR);
     expect(ssoErrorMessage('<script>alert(1)</script>')).toBe(GENERIC_ERROR);
     expect(ssoErrorMessage('')).toBe(GENERIC_ERROR);
+  });
+
+  it('falls back for inherited property names rather than leaking a prototype member', () => {
+    // The slug is attacker-controlled query content and a plain index walks the
+    // prototype chain, where every hit is non-null and so survives `??`.
+    // Rendering consequences, both observed: a function child renders as
+    // nothing (empty error box), and an object child throws "Objects are not
+    // valid as a React child", swapping the sign-in error for the ErrorBoundary.
+    for (const name of [
+      '__proto__',
+      'toString',
+      'constructor',
+      'valueOf',
+      'hasOwnProperty',
+      'isPrototypeOf',
+      'propertyIsEnumerable',
+      'toLocaleString',
+    ]) {
+      const message = ssoErrorMessage(name);
+      expect(message, `${name} leaked a prototype member`).toBe(GENERIC_ERROR);
+      // Belt and braces: whatever comes back must be renderable text.
+      expect(typeof message).toBe('string');
+    }
+  });
+
+  it('exposes only sso_-prefixed slugs', () => {
+    // Cheap shape guard: the backend namespaces every slug it emits, so a key
+    // without the prefix is a typo or a stray entry the drift gate would flag
+    // as unmatched anyway.
+    for (const slug of SLUGS) {
+      expect(slug).toMatch(/^sso_[a-z0-9_]+$/);
+    }
+    expect(SLUGS.length).toBeGreaterThan(0);
   });
 });

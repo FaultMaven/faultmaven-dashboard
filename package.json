@@ -11,6 +11,7 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "generate:api-types": "node scripts/generate-api-types.mjs",
+    "check:sso-slugs": "node scripts/check-sso-error-slugs.mjs",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage"

@@ -71,6 +71,28 @@ jobs:
   # (fm#880). That one keeps the spec honest about the app; this one keeps the
   # generated client honest about the spec.
   # ============================================================================
+  # The SSO error slugs are a cross-repo contract that openapi.json does not
+  # carry — they ride a 302 as `?error=` query params, so api-types-drift is
+  # structurally blind to them. This is the gate that is not blind (dash#79).
+  sso-slug-drift:
+    name: SSO Slug Drift Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No pnpm install: the script is dependency-free by design, so this gate
+      # keeps reporting on the contract even when the lockfile will not resolve.
+      - name: Compare handled slugs against the backend
+        run: node scripts/check-sso-error-slugs.mjs
+
   api-types-drift:
     name: API Types Drift Check
     runs-on: ubuntu-latest
@@ -328,7 +350,7 @@ jobs:
   # ============================================================================
   summary:
     name: Pipeline Summary
-    needs: [lint, api-types-drift, build, test, smoke]
+    needs: [lint, api-types-drift, sso-slug-drift, build, test, smoke]
     if: always()
     runs-on: ubuntu-latest
 
@@ -344,6 +366,7 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Lint & Type Check | ${{ needs.lint.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| API Types Drift | ${{ needs['api-types-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SSO Slug Drift | ${{ needs['sso-slug-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Verify | ${{ needs.build.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Tests | ${{ needs.test.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Smoke Test | ${{ needs.smoke.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
@@ -365,12 +388,13 @@ jobs:
         env:
           LINT: ${{ needs.lint.result }}
           API_TYPES_DRIFT: ${{ needs['api-types-drift'].result }}
+          SSO_SLUG_DRIFT: ${{ needs['sso-slug-drift'].result }}
           BUILD: ${{ needs.build.result }}
           TEST: ${{ needs.test.result }}
           SMOKE: ${{ needs.smoke.result }}
         run: |
           rc=0
-          for stage in LINT API_TYPES_DRIFT BUILD TEST SMOKE; do
+          for stage in LINT API_TYPES_DRIFT SSO_SLUG_DRIFT BUILD TEST SMOKE; do
             result="${!stage}"
             # `skipped` is a pass: a stage skipped on purpose (the `skip_tests`
             # dispatch input) must not fail the pipeline, and a stage skipped

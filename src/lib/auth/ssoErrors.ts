@@ -7,15 +7,20 @@
  * domain; anything else is treated as unknown and renders GENERIC_ERROR. Raw
  * query content is never echoed into the page.
  *
- * This pairing is a hand-maintained cross-repo contract. The slugs travel as
- * query params on a redirect, so they appear nowhere in `openapi.json` and the
- * `api-types-drift` gate cannot see them: a backend-side addition cannot turn
- * this repo red. That is exactly how `sso_org_unmapped` was missed — it was
- * added by faultmaven#869 six days after this flow shipped, and every affected
- * user was told to "try again" until faultmaven-dashboard#79.
+ * The slugs travel as query params on a redirect, so they appear nowhere in
+ * `openapi.json` and `api-types-drift` cannot see them. That blind spot is how
+ * `sso_org_unmapped` was missed — faultmaven#869 added it six days after this
+ * flow shipped, and every affected user was told to "try again" until
+ * faultmaven-dashboard#79.
  *
- * Adding a slug on the backend means adding it here. `ssoErrors.test.ts` pins
- * the set so the change is at least deliberate on this side.
+ * The `sso-slug-drift` CI job closes it: `scripts/check-sso-error-slugs.mjs`
+ * reads the `ERROR_*` constants from `sso_login_service.py` on faultmaven `main`
+ * and fails if this map's keys differ. Adding a slug on the backend therefore
+ * turns this repo red until it is handled here — deliberately unpinned, exactly
+ * as `api-types-drift` resolves the spec from `main` rather than a pinned ref.
+ * Run it locally against a checkout with:
+ *
+ *   pnpm check:sso-slugs --source ../faultmaven
  */
 
 /** Shown for any slug not in ERROR_MESSAGES, and when the URL carries neither `code` nor `error`. */
@@ -37,7 +42,25 @@ export const ERROR_MESSAGES: Record<string, string> = {
   sso_failed: GENERIC_ERROR,
 };
 
-/** Resolve a slug from the callback URL to copy, falling back to the generic message. */
+/**
+ * Resolve a slug from the callback URL to copy, falling back to the generic
+ * message for anything unrecognised.
+ *
+ * `Object.hasOwn`, not `ERROR_MESSAGES[slug] ?? GENERIC_ERROR`: the slug is
+ * attacker-controlled query content, and a plain index walks the prototype
+ * chain. `?error=toString` would resolve to a function — non-null, so `??`
+ * never fires — and React renders a function child as nothing, leaving an empty
+ * error box. `?error=__proto__` resolves to an object and throws "Objects are
+ * not valid as a React child" mid-render, replacing the sign-in error screen
+ * with the app's ErrorBoundary. Own-property lookup is the whole fix.
+ *
+ * Spelled `Object.prototype.hasOwnProperty.call` rather than `Object.hasOwn`:
+ * this project targets ES2020, and `Object.hasOwn` is ES2022. Widening the
+ * whole project's lib for one call would let unrelated code reach for APIs the
+ * build target does not promise.
+ */
 export function ssoErrorMessage(slug: string): string {
-  return ERROR_MESSAGES[slug] ?? GENERIC_ERROR;
+  return Object.prototype.hasOwnProperty.call(ERROR_MESSAGES, slug)
+    ? ERROR_MESSAGES[slug]
+    : GENERIC_ERROR;
 }
