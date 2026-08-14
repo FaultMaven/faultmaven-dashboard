@@ -3,37 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ssoExchange } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
+import { GENERIC_ERROR, ssoErrorMessage } from '../lib/auth/ssoErrors';
 
-// Sanitized error slugs the backend SSO callback may emit. The producer side is
-// the ERROR_* constants in sso_login_service.py, funnelled through its
-// _dashboard_redirect() — the single writer of `?error=`. Anything not listed
-// here renders the generic message; raw query content is never echoed.
-//
-// This pairing is a hand-maintained cross-repo contract: the slugs are query
-// params on a 302, so they appear nowhere in openapi.json and the api-types
-// drift gate does not cover them. A backend-side addition cannot turn this file
-// red — sso_org_unmapped was added by faultmaven#869 six days after this page
-// shipped and went unnoticed until faultmaven-dashboard#79. Adding a slug there
-// means adding it here; SSOCallbackPage.test.tsx pins the set below so the
-// change is at least deliberate on this side.
-// Exported so the contract pin in SSOCallbackPage.test.tsx can assert the
-// handled set exactly, rather than inferring it from rendered copy.
-export const ERROR_MESSAGES: Record<string, string> = {
-  sso_access_denied: 'Sign-in was cancelled or denied at the identity provider.',
-  sso_user_inactive: 'Your account is not active. Please contact your administrator.',
-  sso_state_invalid: 'This sign-in attempt expired or was invalid. Please try again.',
-  sso_exchange_failed: 'Sign-in could not be completed. Please try again.',
-  // Multi-tenant only: the IdP reported no organization, or one this deployment
-  // has no mapping for. Deliberately NOT a "try again" message — retrying is
-  // guaranteed to fail identically until an operator provisions the mapping,
-  // and this is the one SSO failure they can actually fix. Says only that this
-  // deployment does not recognise the organization, matching what the backend
-  // guarantees the slug leaks.
-  sso_org_unmapped:
-    'Your organization is not set up for access yet. Please contact your administrator.',
-  sso_failed: 'Sign-in failed. Please try again.',
-};
-export const GENERIC_ERROR = 'Sign-in failed. Please try again.';
 const EXCHANGE_ERROR =
   'Sign-in could not be completed — the sign-in link may have expired. Please try again.';
 
@@ -80,7 +51,7 @@ export default function SSOCallbackPage() {
   const paramError =
     errorSlug || !code
       ? errorSlug
-        ? (ERROR_MESSAGES[errorSlug] ?? GENERIC_ERROR)
+        ? ssoErrorMessage(errorSlug)
         : GENERIC_ERROR
       : null;
   const error = paramError ?? exchangeError;
