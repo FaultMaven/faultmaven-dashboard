@@ -478,3 +478,54 @@ describe('logoutAuth — ending the identity provider session', () => {
     expect(assignSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('logoutAuth — the logout URL is not a trust boundary', () => {
+  // The value is read back out of localStorage, which anything with same-origin
+  // write access can replace. location.assign would then run the logout click
+  // as an arbitrary navigation.
+  const mockPeekIdpLogoutUrl = authManager.peekIdpLogoutUrl as ReturnType<typeof vi.fn>;
+  let assignSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch;
+    mockPeekAccessToken.mockResolvedValue('test-token');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    assignSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign: assignSpy, href: 'https://app.test/' },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['javascript:alert(1)', 'script execution'],
+    ['http://authkit.test/logout', 'downgraded scheme'],
+    ['data:text/html,<h1>hi', 'inline payload'],
+    ['/relative/path', 'not absolute — would parse as same-origin'],
+    ['not a url at all', 'unparseable'],
+  ])('refuses %s (%s) and still signs out locally', async (url) => {
+    mockPeekIdpLogoutUrl.mockResolvedValue(url);
+
+    await logoutAuth();
+
+    expect(assignSpy).not.toHaveBeenCalled();
+    // The local half must still have happened — refusing the destination is not
+    // a reason to leave the user signed in.
+    expect(mockClearAuthState).toHaveBeenCalled();
+  });
+
+  it('accepts a genuine https logout URL', async () => {
+    mockPeekIdpLogoutUrl.mockResolvedValue('https://api.workos.com/user_management/sessions/logout?session_id=abc');
+
+    await logoutAuth();
+
+    expect(assignSpy).toHaveBeenCalledWith(
+      'https://api.workos.com/user_management/sessions/logout?session_id=abc',
+    );
+  });
+});
