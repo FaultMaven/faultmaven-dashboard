@@ -12,6 +12,10 @@ export interface AuthState {
   /** Long-lived refresh token used to silently mint a new access token.
    *  Optional: absent for older stored sessions. */
   refresh_token?: string;
+  /** Server-side session this login created. Sent back as X-Session-Id on
+   *  logout so the server can end the IdP session without the browser.
+   *  Optional: absent for sessions stored before it was persisted. */
+  session_id?: string;
   /** Where to send the browser to end the identity provider's own session.
    *
    *  Present only for SSO logins. Clearing our state does NOT end the IdP's

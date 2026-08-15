@@ -3,6 +3,7 @@
 import config from '../../config';
 import { authManager, deriveExpiresAt } from './AuthManager';
 import { AuthenticationError, type AuthState } from './types';
+import { isSafeLogoutUrl } from './logoutUrl';
 
 export type PublishableScope = 'personal' | 'team' | 'global';
 
@@ -154,10 +155,15 @@ export async function logoutAuth(): Promise<void> {
   try {
     const token = await authManager.peekAccessToken();
     if (token) {
+      // X-Session-Id lets the server end the IdP session itself. That path does
+      // not depend on the browser completing the redirect below, so a closed
+      // tab no longer leaves the IdP session alive with nothing able to end it.
+      const sessionId = await authManager.peekSessionId();
       await fetch(`${config.apiUrl}/api/v1/auth/logout`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(sessionId ? { 'X-Session-Id': sessionId } : {}),
         },
       });
     }
@@ -181,32 +187,3 @@ export async function logoutAuth(): Promise<void> {
   }
 }
 
-/**
- * Accept only an absolute https: URL as a logout destination.
- *
- * The value is read back out of localStorage, which is not a trust boundary:
- * anything with same-origin write access can replace it, and `location.assign`
- * would then execute the logout click as an arbitrary navigation — a
- * `javascript:` URL, or a look-alike sign-in page harvesting credentials from a
- * user who just deliberately signed out.
- *
- * `https:` only, and parsed rather than pattern-matched, so scheme-confusion
- * tricks (`java\nscript:`, `HtTpS:` on a `data:` payload) do not slip through.
- * The real value is always an absolute WorkOS https URL, so nothing legitimate
- * is refused; a rejected one degrades to local-only sign-out.
- */
-function isSafeLogoutUrl(url: string | null): url is string {
-  if (!url) return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    console.error('Ignoring unparseable IdP logout URL; signing out locally only');
-    return false;
-  }
-  if (parsed.protocol !== 'https:') {
-    console.error(`Ignoring non-https IdP logout URL (${parsed.protocol})`);
-    return false;
-  }
-  return true;
-}

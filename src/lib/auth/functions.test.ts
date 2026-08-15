@@ -20,6 +20,7 @@ vi.mock('./AuthManager', async () => {
       getAccessToken: vi.fn().mockResolvedValue('test-token'),
       peekAccessToken: vi.fn().mockResolvedValue('test-token'),
       peekIdpLogoutUrl: vi.fn().mockResolvedValue(null),
+      peekSessionId: vi.fn().mockResolvedValue(null),
       clearAuthState: vi.fn().mockResolvedValue(undefined),
     },
   };
@@ -527,5 +528,51 @@ describe('logoutAuth — the logout URL is not a trust boundary', () => {
     expect(assignSpy).toHaveBeenCalledWith(
       'https://api.workos.com/user_management/sessions/logout?session_id=abc',
     );
+  });
+});
+
+describe('logoutAuth — server-side IdP teardown', () => {
+  const mockPeekSessionId = authManager.peekSessionId as ReturnType<typeof vi.fn>;
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    mockPeekAccessToken.mockResolvedValue('test-token');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { assign: vi.fn(), href: 'https://app.test/' },
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sends X-Session-Id so the server can end the IdP session itself', async () => {
+    // Without this the IdP session ends only if the browser completes the
+    // redirect — a closed tab would leave it alive with nothing able to reach it.
+    mockPeekSessionId.mockResolvedValue('sess-abc');
+
+    await logoutAuth();
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://test-api.local/api/v1/auth/logout',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-Session-Id': 'sess-abc' }),
+      }),
+    );
+  });
+
+  it('omits the header entirely when there is no session id', async () => {
+    mockPeekSessionId.mockResolvedValue(null);
+
+    await logoutAuth();
+
+    const headers = fetchSpy.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers).not.toHaveProperty('X-Session-Id');
+    expect(headers).toHaveProperty('Authorization');
   });
 });
