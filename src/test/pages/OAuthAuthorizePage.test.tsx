@@ -78,10 +78,17 @@ const renderPage = (query: string = QUERY) =>
     </MemoryRouter>
   );
 
-// Build the page's query string with a different redirect_uri. Both the approve
-// and the deny path navigate to it now, so a test that only swaps
-// `CONSENT_RESPONSE.redirect_uri` is testing the wrong value on approve:
-// redirectToExtension reads it off the URL, not off the consent response.
+// Build the page's query string with a different redirect_uri.
+//
+// The two entries into redirectToExtension read the URI from DIFFERENT places,
+// so a redirect test has to set both or it proves nothing about one of them:
+// the consent path (clicking Authorize) is handed `consent.redirect_uri`, while
+// the already-approved fast path is handed `searchParams.get('redirect_uri')`.
+// Setting only the URL leaves the Authorize path still using
+// CONSENT_RESPONSE's default chrome-extension URI, which takes the legacy
+// same-origin branch and never navigates — so a "must not navigate" assertion
+// would pass without the named host ever being evaluated. Every test below
+// overrides CONSENT_RESPONSE.redirect_uri as well, and must keep doing so.
 const queryWithRedirect = (redirectUri: string) =>
   QUERY.replace(
     'redirect_uri=chrome-extension%3A%2F%2Fabc%2Fcallback.html',

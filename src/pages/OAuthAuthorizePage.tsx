@@ -35,10 +35,14 @@ import { authManager } from '../lib/auth';
 // may be:
 //
 //   - `chrome-extension:` / `moz-extension:`, matched by scheme. These back the
-//     server's original patterns (chrome-extension://<32>/callback.html,
-//     moz-extension://<uuid>/callback.html) and are retained for extension
-//     builds predating copilot#192, exactly as faultmaven#1065 retains them
-//     server-side.
+//     server's ORIGINAL patterns (chrome-extension://<32>/callback.html,
+//     moz-extension://<uuid>/callback.html), kept here for extension builds
+//     predating copilot#192. Note faultmaven#1065 DROPS those two from the
+//     shipped `OAUTH_REDIRECT_URI_PATTERNS` default rather than retaining them,
+//     so on a default deployment the server refuses such a redirect_uri at
+//     `GET /auth/oauth/authorize` and this branch is never reached. It stays
+//     live only where a deployment has explicitly re-added them for those older
+//     builds — which is the only case that can still use it.
 //   - The two `launchWebAuthFlow` hosts, matched by FULL URI shape rather than
 //     by scheme. `https:` as a scheme entry would be strictly wider than the
 //     policy this backs up and an open redirect to any host; pinning the host
