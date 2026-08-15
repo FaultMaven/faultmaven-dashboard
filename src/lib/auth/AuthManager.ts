@@ -2,6 +2,7 @@
 
 import config from '../../config';
 import type { AuthState } from './types';
+import { isSafeLogoutUrl } from './logoutUrl';
 
 // Refresh the access token this long before it actually expires so an in-flight
 // request never races the expiry boundary.
@@ -281,6 +282,55 @@ export class AuthManager {
   }
 
   /**
+   * Read the stored IdP logout URL verbatim, WITHOUT triggering a refresh.
+   *
+   * Same reason peekAccessToken exists, plus one more: on a session with no
+   * refresh token getAuthState *clears* the state and returns null, which would
+   * destroy the very URL logout is trying to read. Returns null when no session
+   * is stored, or for a login that had no IdP session (dev/password).
+   */
+  async peekIdpLogoutUrl(): Promise<string | null> {
+    const authState = await this.readState();
+    return authState?.idp_logout_url ?? null;
+  }
+
+  /**
+   * Read the stored session id verbatim, WITHOUT triggering a refresh.
+   *
+   * Sent as X-Session-Id on logout so the server can end the IdP session
+   * itself — the one teardown path that does not depend on the browser.
+   */
+  async peekSessionId(): Promise<string | null> {
+    const authState = await this.readState();
+    return authState?.session_id ?? null;
+  }
+
+  /**
+   * Clear the session AND end the identity provider's, for a sign-out the user
+   * did not ask for (rejected credential, unrefreshable session).
+   *
+   * Without this, single-logout is wired only to the explicit Log out button —
+   * yet an expired session is the *more common* way a session ends. The IdP
+   * cookie would survive, so the next "Sign in" is answered silently and the
+   * next person at a shared browser lands in the previous user's account.
+   *
+   * Navigation is last and unconditional-on-success: local state is cleared
+   * first, so a refused or missing URL still leaves the user signed out here.
+   */
+  private async clearAuthStateAndEndIdpSession(): Promise<void> {
+    let idpLogoutUrl: string | null = null;
+    try {
+      idpLogoutUrl = await this.readState().then((s) => s?.idp_logout_url ?? null);
+    } catch {
+      // Reading is best-effort; the clear below is not.
+    }
+    await this.clearAuthState();
+    if (isSafeLogoutUrl(idpLogoutUrl)) {
+      window.location.assign(idpLogoutUrl);
+    }
+  }
+
+  /**
    * Read the raw stored auth state without any expiry handling.
    * Internal: callers that need a *valid* token use getAuthState/getAccessToken.
    */
@@ -333,7 +383,7 @@ export class AuthManager {
     }
 
     // No refresh token (legacy session): nothing we can do — log out.
-    await this.clearAuthState();
+    await this.clearAuthStateAndEndIdpSession();
     return null;
   }
 
@@ -424,7 +474,7 @@ export class AuthManager {
   private async doRefresh(): Promise<string | null> {
     const authState = await this.readState();
     if (!authState?.refresh_token) {
-      await this.clearAuthState();
+      await this.clearAuthStateAndEndIdpSession();
       return null;
     }
 
@@ -528,7 +578,7 @@ export class AuthManager {
       return current.access_token || null;
     }
 
-    await this.clearAuthState();
+    await this.clearAuthStateAndEndIdpSession();
     return null;
   }
 
@@ -575,7 +625,7 @@ export class AuthManager {
       return this.refreshTokens();
     }
 
-    await this.clearAuthState();
+    await this.clearAuthStateAndEndIdpSession();
     return null;
   }
 }
