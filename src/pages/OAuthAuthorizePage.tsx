@@ -22,38 +22,98 @@ import { authManager } from '../lib/auth';
 // must not navigate the browser somewhere it cannot vouch for, whatever a server
 // hands it. It is now a second opinion rather than the only guard.
 //
-// Approve is unaffected — it never navigates off-origin (see redirectToExtension).
-// Only the deny path leaves, so only it needs this.
+// BOTH paths need it now. Approve used to rewrite the address bar same-origin
+// and let the extension scrape `code`/`state` off it with a `tabs.onUpdated`
+// watcher, so only Cancel ever left. copilot#192 moves sign-in to
+// `identity.launchWebAuthFlow`, which settles on exactly one event — a
+// navigation to the extension's redirect URI — and deletes that watcher, so
+// approve navigates off-origin too (see redirectToExtension).
 //
-// Extension schemes ONLY, deliberately. The server's allowlist
-// (`oauth_redirect_uri_patterns`) is exactly two patterns —
-// chrome-extension://<32>/callback.html and moz-extension://<uuid>/callback.html —
-// so permitting `https:` here would be strictly wider than the policy it backs
-// up, and still an open redirect to any host. A deployment that widens the server
-// patterns degrades to an in-page message rather than a silent navigation, which
-// is the right way round.
-const SAFE_REDIRECT_SCHEMES = ['chrome-extension:', 'moz-extension:'];
+// Two shapes, deliberately kept narrow — and they are not interchangeable, so
+// they are separate predicates rather than one flat list. Which one a
+// redirect_uri matches decides HOW the code is handed back, not just whether it
+// may be:
+//
+//   - `chrome-extension:` / `moz-extension:`, matched by scheme. These back the
+//     server's ORIGINAL patterns (chrome-extension://<32>/callback.html,
+//     moz-extension://<uuid>/callback.html), kept here for extension builds
+//     predating copilot#192. Note faultmaven#1065 DROPS those two from the
+//     shipped `OAUTH_REDIRECT_URI_PATTERNS` default rather than retaining them,
+//     so on a default deployment the server refuses such a redirect_uri at
+//     `GET /auth/oauth/authorize` and this branch is never reached. It stays
+//     live only where a deployment has explicitly re-added them for those older
+//     builds — which is the only case that can still use it.
+//   - The two `launchWebAuthFlow` hosts, matched by FULL URI shape rather than
+//     by scheme. `https:` as a scheme entry would be strictly wider than the
+//     policy this backs up and an open redirect to any host; pinning the host
+//     shape keeps the "no wider than the server" property. The patterns mirror
+//     faultmaven#1065's verbatim so the two allowlists cannot drift.
+//
+// A deployment that widens the server patterns degrades to an in-page message
+// rather than a silent navigation, which is the right way round.
+const LEGACY_EXTENSION_SCHEMES = ['chrome-extension:', 'moz-extension:'];
 
-function isSafeRedirectUri(uri: string): boolean {
+const WEB_AUTH_FLOW_PATTERNS = [
+  // Chrome/Chromium: https://<extension-id>.chromiumapp.org/
+  /^https:\/\/[a-p]{32}\.chromiumapp\.org\/?$/,
+  // Firefox: https://<sha1-of-add-on-id>.extensions.allizom.org/ — a 40-char
+  // hex digest, NOT the hyphenated per-install UUID that forms the
+  // `moz-extension://` origin. The two are different values for the same
+  // add-on, and only this one appears in the redirect host.
+  /^https:\/\/[a-f0-9]{40}\.extensions\.allizom\.org\/?$/,
+];
+
+// A redirect target the browser itself owns: `launchWebAuthFlow` watches the
+// auth window for a navigation here, and closes it and resolves on the match.
+function isWebAuthFlowRedirect(uri: string): boolean {
+  // Matched against the raw string, anchored, before any parsing: URL parsing
+  // normalises away differences an allowlist is supposed to notice, and JS `$`
+  // (unlike Python's) matches only at the very end of the input, so no trailing
+  // path, query or newline sneaks past.
+  return WEB_AUTH_FLOW_PATTERNS.some((pattern) => pattern.test(uri));
+}
+
+// A redirect target belonging to an extension build predating copilot#192,
+// which completes the flow by scraping a same-origin URL (see redirectToExtension).
+function isLegacyExtensionRedirect(uri: string): boolean {
   try {
-    return SAFE_REDIRECT_SCHEMES.includes(new URL(uri).protocol);
+    return LEGACY_EXTENSION_SCHEMES.includes(new URL(uri).protocol);
   } catch {
     return false;
   }
 }
 
-// Build the OAuth error redirect (RFC 6749 §4.1.2.1). Each value is
+function isSafeRedirectUri(uri: string): boolean {
+  return isWebAuthFlowRedirect(uri) || isLegacyExtensionRedirect(uri);
+}
+
+// Append OAuth response parameters to a redirect_uri. Each value is
 // percent-encoded so a redirect_uri that already carries a query, or a
 // `state` containing reserved characters (&, =, #), can't corrupt the
 // parameters the extension parses back out.
+function redirectUrlWith(redirectUri: string, params: URLSearchParams): string {
+  // Split any fragment off first. Appending after it would bury code/state in
+  // the hash, where the `URLSearchParams(location.search)` on the other end
+  // never looks — the flow would stall with no error anywhere. The server's
+  // `/callback\.html$` pattern happens to exclude fragments today, but this
+  // guard exists precisely so as not to depend on that.
+  const hashAt = redirectUri.indexOf('#');
+  const base = hashAt === -1 ? redirectUri : redirectUri.slice(0, hashAt);
+  const fragment = hashAt === -1 ? '' : redirectUri.slice(hashAt);
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}${params.toString()}${fragment}`;
+}
+
+// The OAuth error redirect (RFC 6749 §4.1.2.1).
 function denyRedirectUrl(redirectUri: string, state: string): string {
-  const params = new URLSearchParams({
-    error: 'access_denied',
-    error_description: 'User denied authorization',
-    state,
-  });
-  const separator = redirectUri.includes('?') ? '&' : '?';
-  return `${redirectUri}${separator}${params.toString()}`;
+  return redirectUrlWith(
+    redirectUri,
+    new URLSearchParams({
+      error: 'access_denied',
+      error_description: 'User denied authorization',
+      state,
+    })
+  );
 }
 
 export default function OAuthAuthorizePage() {
@@ -64,7 +124,7 @@ export default function OAuthAuthorizePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
   const hasLoadedRef = useRef(false);
 
   // PKCE parameters belong to the extension's authorization request and are
@@ -141,7 +201,7 @@ export default function OAuthAuthorizePage() {
 
       if ('code' in data && data.code) {
         const approvalResponse = data as OAuthApprovalResponse;
-        redirectToExtension(approvalResponse);
+        redirectToExtension(approvalResponse, searchParams.get('redirect_uri'));
         return;
       }
 
@@ -216,7 +276,7 @@ export default function OAuthAuthorizePage() {
       });
 
       if (approval.code && approval.state) {
-        redirectToExtension(approval);
+        redirectToExtension(approval, consent.redirect_uri);
       } else if (approval.error) {
         setError(approval.error_description || 'Authorization failed');
         setSubmitting(false);
@@ -263,9 +323,16 @@ export default function OAuthAuthorizePage() {
     window.location.href = denyRedirectUrl(redirectUri, state);
   }
 
-  function redirectToExtension(approval: OAuthApprovalResponse) {
-    const redirectUri = searchParams.get('redirect_uri');
-
+  // `redirectUri` is passed in rather than read off the URL here, because the
+  // two callers have different best answers and this value is load-bearing now
+  // that it is navigated to. After consent it must be `consent.redirect_uri` —
+  // the URI the server minted the code against — so that a server which ever
+  // normalises or substitutes what it echoes back cannot leave us delivering a
+  // code bound to URI A at URI B, where the extension's token exchange fails
+  // RFC 6749 §4.1.3 matching with nothing legible to show for it. The
+  // already-approved fast path has no consent object and the URL is all there
+  // is.
+  function redirectToExtension(approval: OAuthApprovalResponse, redirectUri: string | null) {
     if (!redirectUri) {
       setError('Invalid authorization request: missing redirect_uri');
       setLoading(false);
@@ -278,11 +345,51 @@ export default function OAuthAuthorizePage() {
       return;
     }
 
-    const callbackParams = new URLSearchParams({ code: approval.code, state: approval.state });
-    const callbackUrl = `${window.location.origin}${window.location.pathname}?${callbackParams.toString()}`;
-    window.history.replaceState({}, '', callbackUrl);
-    setRedirectUrl(callbackUrl);
+    // Same guard as the deny path. This is a real off-origin navigation now, so
+    // "the server already checked" is not enough on its own.
+    if (!isSafeRedirectUri(redirectUri)) {
+      setError('This authorization request has an unsupported redirect target.');
+      setLoading(false);
+      setSubmitting(false);
+      return;
+    }
+
+    const params = new URLSearchParams({ code: approval.code, state: approval.state });
     setLoading(false);
+
+    // Two handoffs, because the two redirect shapes complete the flow in
+    // genuinely different ways and giving both the same treatment breaks one of
+    // them.
+    //
+    // Legacy (`chrome-extension:` / `moz-extension:`): rewrite the address bar
+    // SAME-ORIGIN and let the extension's `tabs.onUpdated` watcher read
+    // code/state off it and close the tab. Navigating to the real
+    // `chrome-extension://<id>/callback.html` instead would not work: neither
+    // built manifest declares that page in `web_accessible_resources`, so both
+    // browsers block a web page from navigating to it — the watcher would never
+    // see a URL carrying `code`, and the user would sit on the spinner below
+    // forever. These builds are exactly the ones that still HAVE the watcher,
+    // which is what makes the same-origin rewrite the working answer for them.
+    if (isLegacyExtensionRedirect(redirectUri)) {
+      const sameOrigin = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, '', sameOrigin);
+      setRedirecting(true);
+      return;
+    }
+
+    // launchWebAuthFlow: navigate for real. This IS the handoff — it resolves on
+    // the auth window reaching the extension's redirect URI and on nothing else,
+    // and the browser closes that window itself the instant the navigation
+    // lands. Doing the same-origin rewrite here is the bug this fixes: copilot#192
+    // deletes the watcher, so nothing was left to notice it and launchWebAuthFlow
+    // stayed pending until the side panel's own timeout gave up (dashboard#89).
+    //
+    // `setRedirecting` AFTER the assignment, deliberately. Its branch renders
+    // ahead of the error branch, so setting it first would mean a throw here —
+    // caught by both callers, which then call setError — left the user on an
+    // unrecoverable spinner with the reason rendered nowhere.
+    window.location.href = redirectUrlWith(redirectUri, params);
+    setRedirecting(true);
   }
 
   if (loading) {
@@ -296,30 +403,10 @@ export default function OAuthAuthorizePage() {
     );
   }
 
-  if (redirectUrl) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
-        <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
-          <div className="w-16 h-16 bg-fm-success-bg text-fm-success rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-fm-text-primary mb-2 text-center">Authorization Successful!</h2>
-          <p className="text-fm-text-secondary mb-6 text-center">
-            Sign-in complete! This window will close automatically.
-          </p>
-          <div className="flex items-center justify-center">
-            <div className="w-8 h-8 border-4 border-fm-success border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <p className="text-fm-xs text-fm-text-tertiary text-center mt-4">
-            Returning to FaultMaven Copilot...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+  // Ordered ahead of `redirecting` so a failure can never be masked by the
+  // spinner: the spinner is a terminal state with no way out of it, and the
+  // handoffs above are the last thing that runs, so anything that goes wrong
+  // afterwards has only this branch left to say so.
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
@@ -337,6 +424,21 @@ export default function OAuthAuthorizePage() {
           >
             Close Window
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Shown only for the moment between handing the code back and whoever owns
+  // the window taking it away — the browser on the launchWebAuthFlow path, the
+  // extension's own watcher on the legacy one. Nothing here claims the window
+  // will close, and nothing here has to make it happen.
+  if (redirecting) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+        <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md text-center">
+          <div className="w-12 h-12 border-4 border-fm-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-fm-text-primary">Returning to the application...</h2>
         </div>
       </div>
     );

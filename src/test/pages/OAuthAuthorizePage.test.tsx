@@ -69,13 +69,30 @@ const QUERY =
   '&state=state-123&code_challenge=challenge-xyz&code_challenge_method=S256' +
   '&scope=openid+profile+cases%3Aread+cases%3Awrite';
 
-const renderPage = () =>
+const renderPage = (query: string = QUERY) =>
   render(
-    <MemoryRouter initialEntries={[`/auth/authorize${QUERY}`]}>
+    <MemoryRouter initialEntries={[`/auth/authorize${query}`]}>
       <Routes>
         <Route path="/auth/authorize" element={<OAuthAuthorizePage />} />
       </Routes>
     </MemoryRouter>
+  );
+
+// Build the page's query string with a different redirect_uri.
+//
+// The two entries into redirectToExtension read the URI from DIFFERENT places,
+// so a redirect test has to set both or it proves nothing about one of them:
+// the consent path (clicking Authorize) is handed `consent.redirect_uri`, while
+// the already-approved fast path is handed `searchParams.get('redirect_uri')`.
+// Setting only the URL leaves the Authorize path still using
+// CONSENT_RESPONSE's default chrome-extension URI, which takes the legacy
+// same-origin branch and never navigates — so a "must not navigate" assertion
+// would pass without the named host ever being evaluated. Every test below
+// overrides CONSENT_RESPONSE.redirect_uri as well, and must keep doing so.
+const queryWithRedirect = (redirectUri: string) =>
+  QUERY.replace(
+    'redirect_uri=chrome-extension%3A%2F%2Fabc%2Fcallback.html',
+    `redirect_uri=${encodeURIComponent(redirectUri)}`
   );
 
 describe('OAuthAuthorizePage', () => {
@@ -93,6 +110,22 @@ describe('OAuthAuthorizePage', () => {
   afterEach(() => {
     if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
   });
+
+  // Both the approve and the deny path leave the origin now, so every
+  // navigation assertion wants the same stub. The returned array collects each
+  // href the page assigned — empty means it refused to navigate at all.
+  function captureNavigations(): string[] {
+    const hrefs: string[] = [];
+    delete (window as any).location;
+    (window as any).location = {
+      ...(originalLocation?.value ?? {}),
+      origin: 'https://app.faultmaven.ai',
+      pathname: '/auth/authorize',
+      set href(v: string) { hrefs.push(v); },
+      get href() { return 'https://app.faultmaven.ai/auth/authorize'; },
+    };
+    return hrefs;
+  }
 
   it('renders the consent screen against the real flat response, without crashing', async () => {
     renderPage();
@@ -162,15 +195,7 @@ describe('OAuthAuthorizePage', () => {
     // The backend RAISES 400 on a denial, so the POST rejecting is the real
     // path — mocking it as resolving tested a branch that never runs.
     mockSubmitOAuthApproval.mockRejectedValueOnce(new Error('User denied authorization request'));
-    const hrefs: string[] = [];
-    delete (window as any).location;
-    (window as any).location = {
-      ...(originalLocation?.value ?? {}),
-      origin: 'https://app.faultmaven.ai',
-      pathname: '/auth/authorize',
-      set href(v: string) { hrefs.push(v); },
-      get href() { return 'https://app.faultmaven.ai/auth/authorize'; },
-    };
+    const hrefs = captureNavigations();
 
     vi.mocked(getOAuthConsent).mockResolvedValueOnce({
       ...CONSENT_RESPONSE,
@@ -186,18 +211,12 @@ describe('OAuthAuthorizePage', () => {
   });
 
   // F2 (review): the guard permitted any https host, which is still an open
-  // redirect. The server's allowlist is extension schemes only.
-  it('refuses an https redirect_uri on Cancel — the server allows extension schemes only', async () => {
+  // redirect. Widening it for launchWebAuthFlow (dashboard#89) had to be done by
+  // host SHAPE for exactly this reason — a bare `https:` scheme entry would have
+  // reopened it.
+  it('refuses an arbitrary https redirect_uri on Cancel', async () => {
     mockSubmitOAuthApproval.mockRejectedValueOnce(new Error('User denied authorization request'));
-    const hrefs: string[] = [];
-    delete (window as any).location;
-    (window as any).location = {
-      ...(originalLocation?.value ?? {}),
-      origin: 'https://app.faultmaven.ai',
-      pathname: '/auth/authorize',
-      set href(v: string) { hrefs.push(v); },
-      get href() { return 'https://app.faultmaven.ai/auth/authorize'; },
-    };
+    const hrefs = captureNavigations();
 
     vi.mocked(getOAuthConsent).mockResolvedValueOnce({
       ...CONSENT_RESPONSE,
@@ -211,26 +230,221 @@ describe('OAuthAuthorizePage', () => {
     expect(hrefs).toHaveLength(0);
   });
 
-  // F5 (review): denyRedirectUrl percent-encodes for exactly this reason; the
-  // approve path interpolated raw, so a `state` carrying & or # would corrupt
-  // the parameters the extension parses back out for its CSRF check.
-  it('percent-encodes code and state into the callback URL', async () => {
+  // dashboard#89. THE regression. Approve used to rewrite the address bar
+  // same-origin (history.replaceState) and render "this window will close
+  // automatically", relying on a tabs.onUpdated watcher in the extension to
+  // scrape the code and close the tab. copilot#192 deletes that watcher for
+  // identity.launchWebAuthFlow, which resolves on a navigation to the redirect
+  // URI and on NOTHING else — so a same-origin rewrite leaves the side panel
+  // spinning until its 3-minute timeout.
+  it('navigates to the extension redirect_uri on Authorize, rather than rewriting the address bar', async () => {
     const replaceState = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
-    mockSubmitOAuthApproval.mockResolvedValueOnce({
-      code: 'code&injected=1',
-      state: 'state#frag&x=2',
-    });
+    const hrefs = captureNavigations();
+    const redirectUri = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/';
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: redirectUri,
+    } as never);
+
+    renderPage(queryWithRedirect(redirectUri));
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+
+    await waitFor(() => expect(hrefs).toHaveLength(1));
+    const url = new URL(hrefs[0]);
+    expect(url.origin).toBe('https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org');
+    expect(url.searchParams.get('code')).toBe('auth-code');
+    expect(url.searchParams.get('state')).toBe('state-123');
+    // Not the dashboard's own origin, and not via history — that is the bug.
+    expect(replaceState).not.toHaveBeenCalled();
+    replaceState.mockRestore();
+  });
+
+  // Not a hand-rolled string that happens to fit the regex: this is the literal
+  // getRedirectURL() output quoted on Mozilla's own forum. Firefox derives the
+  // host from a 40-char SHA-1 of the add-on ID — NOT the hyphenated 36-char
+  // per-install UUID that forms the `moz-extension://` origin. Those are two
+  // different values for the same add-on, and confusing them would make Firefox
+  // sign-in impossible while every test still passed.
+  const FIREFOX_REDIRECT_URI =
+    'https://5a28b4e339e2c8cf75d57c2f1425a38f8c64b80e.extensions.allizom.org/';
+
+  it("accepts Firefox's launchWebAuthFlow redirect host too", async () => {
+    const hrefs = captureNavigations();
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: FIREFOX_REDIRECT_URI,
+    } as never);
+
+    renderPage(queryWithRedirect(FIREFOX_REDIRECT_URI));
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+
+    await waitFor(() => expect(hrefs).toHaveLength(1));
+    expect(hrefs[0]).toBe(`${FIREFOX_REDIRECT_URI}?code=auth-code&state=state-123`);
+  });
+
+  // The hyphenated UUID is the OTHER value — the `moz-extension://` origin —
+  // and must not be accepted as an allizom host. Pinned so that "make Firefox
+  // work" can't be mis-fixed by loosening the charset to `[a-f0-9-]`.
+  it('does not accept a moz-extension UUID as the allizom redirect host', async () => {
+    const hrefs = captureNavigations();
+    const redirectUri = 'https://a1b2c3d4-e5f6-7890-abcd-ef1234567890.extensions.allizom.org/';
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: redirectUri,
+    } as never);
+
+    renderPage(queryWithRedirect(redirectUri));
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+
+    expect(await screen.findByText(/unsupported redirect target/i)).toBeInTheDocument();
+    expect(hrefs).toHaveLength(0);
+  });
+
+  // faultmaven#1065 keeps the extension-scheme patterns server-side for builds
+  // predating copilot#192, so this allowlist has to keep serving them — and
+  // "serving them" means the handoff those builds actually understand. They
+  // complete the flow with a `tabs.onUpdated` watcher reading code/state off a
+  // SAME-ORIGIN url; navigating to `chrome-extension://<id>/callback.html`
+  // instead is blocked by both browsers (the page is not in
+  // web_accessible_resources), so the watcher would never fire and the user
+  // would sit on the spinner forever.
+  it('hands a legacy chrome-extension: build its code same-origin, not by navigating', async () => {
+    const replaceState = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+    const hrefs = captureNavigations();
 
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
 
     await waitFor(() => expect(replaceState).toHaveBeenCalled());
     const url = new URL(replaceState.mock.calls[0][2] as string, 'https://app.faultmaven.ai');
+    expect(url.origin).toBe('https://app.faultmaven.ai');
+    expect(url.searchParams.get('code')).toBe('auth-code');
+    expect(url.searchParams.get('state')).toBe('state-123');
+    // The navigation the browser would have blocked is precisely what must NOT
+    // happen for these builds.
+    expect(hrefs).toHaveLength(0);
+    replaceState.mockRestore();
+  });
+
+  // The approve path leaves the origin now, so it needs the same defence in
+  // depth Cancel has always had. A near-miss host is the case worth pinning:
+  // `chromiumapp.org` as a suffix of an attacker's domain, or as a bare host,
+  // must not pass.
+  it.each([
+    'https://evil.example/steal',
+    'https://evil.example/?x=.chromiumapp.org',
+    'https://chromiumapp.org/',
+    'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org.evil.example/',
+    'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/../evil',
+    'https://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.chromiumapp.org/',
+  ])('refuses to hand the code to %s', async (redirectUri) => {
+    const hrefs = captureNavigations();
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: redirectUri,
+    } as never);
+
+    renderPage(queryWithRedirect(redirectUri));
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+
+    expect(await screen.findByText(/unsupported redirect target/i)).toBeInTheDocument();
+    expect(hrefs).toHaveLength(0);
+  });
+
+  // F5 (review): denyRedirectUrl percent-encodes for exactly this reason; the
+  // approve path interpolated raw, so a `state` carrying & or # would corrupt
+  // the parameters the extension parses back out for its CSRF check. Still true
+  // now that the approve path performs a real navigation.
+  it('percent-encodes code and state into the redirect URL', async () => {
+    const hrefs = captureNavigations();
+    const redirectUri = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/';
+    mockSubmitOAuthApproval.mockResolvedValueOnce({
+      code: 'code&injected=1',
+      state: 'state#frag&x=2',
+    });
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: redirectUri,
+    } as never);
+
+    renderPage(queryWithRedirect(redirectUri));
+    fireEvent.click(await screen.findByRole('button', { name: /authorize/i }));
+
+    await waitFor(() => expect(hrefs).toHaveLength(1));
+    const url = new URL(hrefs[0]);
     // Round-trips intact rather than splitting into extra parameters.
     expect(url.searchParams.get('code')).toBe('code&injected=1');
     expect(url.searchParams.get('state')).toBe('state#frag&x=2');
     expect(url.searchParams.get('injected')).toBeNull();
-    replaceState.mockRestore();
+  });
+
+  // A redirect_uri that already carries a query must gain `&error=`, not a
+  // second `?`. Only the deny path can reach this: the launchWebAuthFlow
+  // patterns are anchored so tightly that an approved redirect target never has
+  // a query of its own.
+  it('appends with & when the redirect_uri already has a query', async () => {
+    mockSubmitOAuthApproval.mockRejectedValueOnce(new Error('User denied authorization request'));
+    const hrefs = captureNavigations();
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: 'chrome-extension://abc/callback.html?src=panel',
+    } as never);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(hrefs).toHaveLength(1));
+    expect(hrefs[0]).toContain('callback.html?src=panel&error=access_denied');
+  });
+
+  // A fragment must not swallow the parameters. `…/callback.html#x?error=…`
+  // puts everything in the hash, where `URLSearchParams(location.search)` on the
+  // far side finds nothing and the flow stalls silently.
+  it('keeps the parameters in the query when the redirect_uri carries a fragment', async () => {
+    mockSubmitOAuthApproval.mockRejectedValueOnce(new Error('User denied authorization request'));
+    const hrefs = captureNavigations();
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: 'chrome-extension://abc/callback.html#section',
+    } as never);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(hrefs).toHaveLength(1));
+    expect(hrefs[0]).toBe(
+      'chrome-extension://abc/callback.html?error=access_denied' +
+        '&error_description=User+denied+authorization&state=state-123#section'
+    );
+  });
+
+  // The deny path shares the allowlist, so widening it for launchWebAuthFlow has
+  // to unblock Cancel as well — it dead-ended on "unsupported redirect target"
+  // for the exact URIs the new sign-in flow uses.
+  it('returns access_denied to a launchWebAuthFlow redirect_uri on Cancel', async () => {
+    mockSubmitOAuthApproval.mockRejectedValueOnce(new Error('User denied authorization request'));
+    const hrefs = captureNavigations();
+    const redirectUri = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/';
+
+    vi.mocked(getOAuthConsent).mockResolvedValueOnce({
+      ...CONSENT_RESPONSE,
+      redirect_uri: redirectUri,
+    } as never);
+
+    renderPage(queryWithRedirect(redirectUri));
+    fireEvent.click(await screen.findByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(hrefs).toHaveLength(1));
+    const url = new URL(hrefs[0]);
+    expect(url.origin).toBe('https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org');
+    expect(url.searchParams.get('error')).toBe('access_denied');
+    expect(url.searchParams.get('state')).toBe('state-123');
   });
 
   // F1 (review): the consent screen can sit open for minutes and the approval
