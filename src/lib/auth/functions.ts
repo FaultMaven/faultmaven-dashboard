@@ -37,6 +37,50 @@ export async function getAvailableScopes(): Promise<PublishableScope[]> {
   return body.scopes;
 }
 
+/** The tenant a session is bound to, as `/auth/me` names it. */
+export interface AccountOrganization {
+  organization_id: string;
+  name: string;
+}
+
+export interface AccountProfile {
+  user_id: string;
+  username: string;
+  email: string;
+  display_name: string;
+  roles: string[];
+  /** Absent when there is no tenant worth naming, or its row was unreadable.
+   *  Never a permission signal — `/auth/me` already succeeded. */
+  organization: AccountOrganization | null;
+}
+
+/**
+ * Fetch the signed-in account, including the organization it is bound to.
+ *
+ * Separate from the stored `AuthState.user`, which comes from the login
+ * response and carries no organization *name* — only its id. This is the
+ * canonical "who am I" read, and the only place the tenant is named.
+ *
+ * Called when the account menu opens rather than on every page load: the
+ * organization is worth a request exactly when someone asks whose session
+ * this is, and never otherwise.
+ */
+export async function getAccountProfile(): Promise<AccountProfile> {
+  const token = await authManager.getAccessToken();
+  if (!token) throw new AuthenticationError('Not authenticated');
+
+  const response = await fetch(`${config.apiUrl}/api/v1/auth/me`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`profile fetch failed: ${response.status}`);
+  }
+
+  return (await response.json()) as AccountProfile;
+}
+
 /**
  * Development login (no password required)
  *
