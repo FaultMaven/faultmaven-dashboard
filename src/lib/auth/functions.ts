@@ -244,13 +244,14 @@ export async function logoutAuth(): Promise<LogoutOutcome> {
         },
       });
       if (response.ok) {
-        // `all_sessions_ended` is not in the committed spec's LogoutResponse
-        // yet, so it is read structurally. A body that will not parse, or one
-        // from a backend predating the field, reads as unconfirmed — which is
-        // exactly what it is.
+        // Typed from the generated schema, so a rename on the backend breaks
+        // this build rather than pinning the answer to "not confirmed" forever.
+        // The `=== true` is still load-bearing at runtime: a body that will not
+        // parse, or one from a backend predating the field, reads as
+        // unconfirmed — which is exactly what it is.
         const body = (await response
           .json()
-          .catch(() => null)) as { all_sessions_ended?: boolean } | null;
+          .catch(() => null)) as components['schemas']['LogoutResponse'] | null;
         allSessionsEnded = body?.all_sessions_ended === true;
       }
     }
