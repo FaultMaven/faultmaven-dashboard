@@ -18,7 +18,7 @@ function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
     user_id: 'u1',
     organization_id: 'org1',
     current_turn: 5,
-    total_milestones: 5,
+    source: 'copilot',
     is_terminal: true,
     turns_without_progress: 0,
     current_stage: null,
@@ -27,7 +27,6 @@ function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
     evidence_count: 0,
     hypothesis_count: 0,
     solution_count: 0,
-    degraded_mode_active: false,
     escalated: false,
     ...overrides,
   };

@@ -1,4 +1,5 @@
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import type { CaseSummary, AdminCaseMetadata } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import AdminCaseListPage from '../../pages/AdminCaseListPage';
@@ -38,7 +39,7 @@ import { useAuth } from '../../context/AuthContext';
 
 const mockGetAdminCases = getAdminCases as ReturnType<typeof vi.fn>;
 
-const copilotCase = {
+const copilotCase: CaseSummary = {
   case_id: 'case-copilot',
   title: 'Copilot Case',
   description: 'from a copilot user',
@@ -52,8 +53,8 @@ const copilotCase = {
   user_id: 'copilot_user',
   organization_id: 'org1',
   current_turn: 3,
-  milestones_completed: 1,
-  total_milestones: 8,
+  stage: 'diagnosis',
+  turns_without_progress: 0,
   is_terminal: false,
   source: 'copilot' as const,
 };
@@ -76,7 +77,7 @@ function renderPage() {
 }
 
 /** The cloud (ADR-012 D9) row: no `title`/`description` keys at all. */
-const metadataCase = {
+const metadataCase: AdminCaseMetadata = {
   case_id: 'case-cloud-1',
   state: 'investigating' as const,
   created_at: '2024-01-01T00:00:00Z',
@@ -88,8 +89,8 @@ const metadataCase = {
   user_id: 'tenant_user',
   organization_id: 'org-acme',
   current_turn: 3,
-  milestones_completed: 1,
-  total_milestones: 8,
+  stage: 'diagnosis',
+  turns_without_progress: 0,
   is_terminal: false,
   source: 'copilot' as const,
 };

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
-import { MilestoneProgress } from './MilestoneProgress';
+import { CaseStageCell } from './CaseStageCell';
 import { SourceBadge } from './SourceBadge';
 import { TeamShareBadge } from './TeamShareBadge';
 import type { CaseSummary } from '../lib/api';
@@ -28,7 +28,7 @@ interface CaseTableProps {
 }
 
 /**
- * Shared case list table (Title / [Owner] / Status / Progress / Last Activity /
+ * Shared case list table (Title / [Owner] / State / Stage / Last Activity /
  * [actions]). Used by both the per-user `CaseListPage` and the cross-tenant
  * `AdminCaseListPage` so the two never drift.
  *
@@ -61,8 +61,8 @@ export function CaseTable({
               {showOwner && (
                 <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
               )}
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Status</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Progress</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Last Activity</th>
               {renderActions && <th className="px-4 py-3"></th>}
             </tr>
@@ -94,7 +94,11 @@ export function CaseTable({
                   <CaseStateBadge state={c.state} />
                 </td>
                 <td className="px-4 py-3">
-                  <MilestoneProgress completed={c.milestones_completed} total={c.total_milestones} />
+                  <CaseStageCell
+                    state={c.state}
+                    stage={c.stage}
+                    turnsWithoutProgress={c.turns_without_progress}
+                  />
                 </td>
                 <td className="px-4 py-3 text-fm-text-tertiary">
                   {new Date(c.last_activity_at).toLocaleDateString()}

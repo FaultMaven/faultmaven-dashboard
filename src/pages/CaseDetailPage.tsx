@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
-import { MilestoneProgress } from '../components/MilestoneProgress';
+import { CaseStageCell } from '../components/CaseStageCell';
 import { CaseTabs } from '../components/CaseTabs';
 import { TeamShareBadge } from '../components/TeamShareBadge';
 import { ShareCaseModal } from '../components/ShareCaseModal';
@@ -141,10 +141,10 @@ export default function CaseDetailPage() {
               )}
               <div className="flex flex-wrap items-center gap-3">
                 <CaseStateBadge state={caseDetail.state} />
-                <MilestoneProgress
-                  completed={caseDetail.milestones_completed.length}
-                  total={caseDetail.milestones_completed.length + (caseDetail.pending_milestones?.length || 0)}
-                  transparent={caseDetail.state === 'investigating' && caseDetail.turns_without_progress >= 5}
+                <CaseStageCell
+                  state={caseDetail.state}
+                  stage={caseDetail.current_stage ?? null}
+                  turnsWithoutProgress={caseDetail.turns_without_progress}
                 />
                 <TeamShareBadge teamIds={caseDetail.shared_team_ids} teamsById={teamsById} />
               </div>
