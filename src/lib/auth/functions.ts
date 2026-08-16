@@ -38,26 +38,27 @@ export async function getAvailableScopes(): Promise<PublishableScope[]> {
   return body.scopes;
 }
 
-/** The tenant a session is bound to, as `/auth/me` names it. */
-export interface AccountOrganization {
-  organization_id: string;
-  name: string;
-}
+/** The tenant a session is bound to, as `/auth/me` names it.
+ *
+ * Aliased rather than declared: the shape belongs to the spec, and a second
+ * copy of it here is a copy that can silently fall out of step. Kept as a name
+ * because it is re-exported through the `lib/api` barrel. */
+export type AccountOrganization = components['schemas']['OrganizationSummary'];
 
 /**
  * The `/auth/me` body, taken from the generated types rather than restated.
  *
- * `organization` is the one field written out here: the committed spec does not
- * carry it yet (it lands with faultmaven#1068), so it is declared optional —
- * which is also the honest shape while backends of both vintages are in the
- * field. Delete the intersection once the field is in the generated schema, so
- * a later rename there breaks this build instead of silently emptying the row.
+ * `organization` was written out here as an intersection while
+ * faultmaven#1068 was in flight and the committed spec did not carry the
+ * field. It does now, so the intersection is gone — that was the point of the
+ * note it replaced: a rename upstream has to break this build rather than
+ * leave it green and quietly empty the organization row at runtime.
+ *
+ * The generated field is optional and nullable, which is also the honest shape
+ * while backends of both vintages are in the field, so nothing about how
+ * callers read it changes.
  */
-export type AccountProfile = components['schemas']['UserInfoResponse'] & {
-  /** Absent when there is no tenant worth naming, or its row was unreadable.
-   *  Never a permission signal — `/auth/me` already succeeded. */
-  organization?: AccountOrganization | null;
-};
+export type AccountProfile = components['schemas']['UserInfoResponse'];
 
 /**
  * Fetch the signed-in account, including the organization it is bound to.
