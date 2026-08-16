@@ -4,7 +4,7 @@ import { accountInitials, elevatedRole, identityColor, IDENTITY_COLORS } from '.
 /**
  * These assertions are the cross-client contract, not local detail.
  *
- * The Dashboard ships a byte-identical `identity.ts`. If the two derivations
+ * The Copilot ships a byte-identical `identity.ts`. If the two derivations
  * ever diverge, the same person renders in different colours in the two
  * clients — and a mismatch, which is the whole point of the colour, stops
  * meaning anything. The literal expectations below are what make a silent
@@ -62,6 +62,14 @@ describe('accountInitials', () => {
 
   it('falls back through username then the email local part', () => {
     expect(accountInitials(undefined, undefined, 'rae.kelmen@faultmaven.ai')).toBe('RK');
+  });
+
+  it('falls through a source that survives nothing of the filter', () => {
+    // "🙂" and "---" are non-empty, so a first-non-empty-source chain would
+    // stop there and render "?" while a perfectly good username sat unused.
+    expect(accountInitials('🙂', 'sterlan.yu')).toBe('SY');
+    expect(accountInitials('---', 'prometheus')).toBe('PR');
+    expect(accountInitials('   ', undefined, 'rae.kelmen@faultmaven.ai')).toBe('RK');
   });
 
   it('never renders empty', () => {

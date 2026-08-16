@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FocusEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { accountInitials, elevatedRole, identityColor } from '../lib/identity';
-import { getAccountProfile, type AccountProfile } from '../lib/auth/functions';
+import { getAccountProfile, type AccountProfile } from '../lib/api';
 
 interface AccountMenuProps {
   onLogout: () => void;
@@ -20,6 +20,10 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Guards on the request, not on its result: `profile` is still null while one
+  // is in flight, so open/close/open would otherwise fire a fetch per open.
+  const fetchStartedRef = useRef(false);
 
   const user = authState?.user;
 
@@ -28,19 +32,31 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
   // every page load. A failure leaves the row out; the stored identity below
   // still renders, because that is what the user came here to read.
   useEffect(() => {
-    if (!open || profile) return;
+    if (!open || fetchStartedRef.current) return;
+    fetchStartedRef.current = true;
     let cancelled = false;
     getAccountProfile()
       .then((p) => {
         if (!cancelled) setProfile(p);
       })
       .catch(() => {
-        /* Display-only: the menu is still useful without the tenant name. */
+        // Display-only: the menu is still useful without the tenant name. The
+        // guard stays set — a failing /auth/me should not be retried on every
+        // open of a menu that reads fine without it.
       });
     return () => {
       cancelled = true;
     };
-  }, [open, profile]);
+  }, [open]);
+
+  // Move focus into the panel when it opens, so a screen reader announces the
+  // account details it just revealed instead of leaving the user on a trigger
+  // whose popup they now have to hunt for. The panel itself takes focus (not
+  // the sign-out button): the details are what the user came for, and landing
+  // on a destructive action is a poor place to arrive.
+  useEffect(() => {
+    if (open) panelRef.current?.focus();
+  }, [open]);
 
   // Close on outside click and on Escape. Escape returns focus to the trigger
   // so keyboard users are not dropped at the top of the document.
@@ -69,16 +85,27 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
 
   const initials = accountInitials(user.display_name, user.username, user.email);
   const color = identityColor(user.user_id);
-  const name = user.display_name || user.username;
+  // Trimmed on the same terms as the initials, so the two halves of the trigger
+  // cannot disagree: a whitespace-only display_name would otherwise render a
+  // blank name beside a monogram derived from the username.
+  const name = user.display_name?.trim() || user.username?.trim() || user.email;
   const role = elevatedRole(profile?.roles ?? user.roles);
   const organization = profile?.organization ?? null;
 
+  // Closing when focus leaves keeps the panel from floating over the page after
+  // a keyboard user tabs past it. relatedTarget null (window blur, browser
+  // chrome) deliberately does not close: focus is coming back.
+  const onPanelBlur = (e: FocusEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget as Node | null;
+    if (next && !containerRef.current?.contains(next)) setOpen(false);
+  };
+
   return (
-    <div className="relative" ref={containerRef}>
+    <div className="relative" ref={containerRef} onBlur={onPanelBlur}>
       <button
         ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`Account: ${name}`}
         className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-fm-border bg-fm-surface-alt hover:bg-fm-elevated transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-fm-accent"
@@ -96,9 +123,16 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
       </button>
 
       {open && (
+        // A dialog, not a menu: nearly everything in here is read, not chosen.
+        // role="menu" puts a screen reader into application mode, where the
+        // identity rows — the reason the panel exists — commonly go unannounced
+        // and arrow-key navigation is expected but absent.
         <div
-          role="menu"
-          className="absolute right-0 mt-2 w-72 bg-fm-elevated border border-fm-border-strong rounded-fm-card shadow-fm-card overflow-hidden z-50"
+          ref={panelRef}
+          role="dialog"
+          aria-label="Account details"
+          tabIndex={-1}
+          className="absolute right-0 mt-2 w-72 bg-fm-elevated border border-fm-border-strong rounded-fm-card shadow-fm-card overflow-hidden z-50 focus:outline-none"
         >
           <div className="flex items-start gap-3 p-4">
             <span
@@ -153,7 +187,7 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
 
           <div className="border-t border-fm-border p-1">
             <button
-              role="menuitem"
+              type="button"
               onClick={() => {
                 setOpen(false);
                 onLogout();
