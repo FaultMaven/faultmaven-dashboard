@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
-import { MilestoneProgress } from './MilestoneProgress';
+import { CaseStageCell } from './CaseStageCell';
 import { SourceBadge } from './SourceBadge';
 import type { AdminCaseMetadata } from '../lib/api';
 
@@ -12,7 +12,7 @@ interface AdminCaseMetadataTableProps {
 /**
  * The cloud operator's All Cases table — ambient metadata only (ADR-012 D9).
  *
- * Columns: Case ID / Owner / Status / Progress / Last Activity. There is no
+ * Columns: Case ID / Owner / State / Stage / Last Activity. There is no
  * Title and no description line, because in cloud the backend does not send
  * them: user free text is content, reachable only through the audited
  * break-glass grant (faultmaven#815).
@@ -33,8 +33,8 @@ interface AdminCaseMetadataTableProps {
  * failure mode of getting that wrong is rendering a withheld title — or the
  * "Untitled Case" placeholder that misreports policy as missing data. Here a
  * `c.title` does not typecheck. The shared cells below are already shared
- * components (`CaseStateBadge`, `MilestoneProgress`, `SourceBadge`), so the two
- * tables cannot drift on how a state or a progress bar looks.
+ * components (`CaseStateBadge`, `CaseStageCell`, `SourceBadge`), so the two
+ * tables cannot drift on how a state or a stage looks.
  *
  * There IS an open-content affordance now, and it goes to `/admin/cases/{id}`
  * rather than `/cases/{id}`. The latter is scoped to cases the caller owns or
@@ -66,8 +66,8 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
             <tr>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Case ID</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Status</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Progress</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
                 Last Activity
               </th>
@@ -92,9 +92,10 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
                   <CaseStateBadge state={c.state} />
                 </td>
                 <td className="px-4 py-3">
-                  <MilestoneProgress
-                    completed={c.milestones_completed}
-                    total={c.total_milestones}
+                  <CaseStageCell
+                    state={c.state}
+                    stage={c.stage}
+                    turnsWithoutProgress={c.turns_without_progress}
                   />
                 </td>
                 <td className="px-4 py-3 text-fm-text-tertiary">

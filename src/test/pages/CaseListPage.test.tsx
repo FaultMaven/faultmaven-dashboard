@@ -1,4 +1,5 @@
 import { render, screen, act, waitFor } from '@testing-library/react';
+import type { CaseSummary } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import CaseListPage from '../../pages/CaseListPage';
@@ -39,7 +40,7 @@ import { listCases } from '../../lib/api';
 
 const mockListCases = listCases as ReturnType<typeof vi.fn>;
 
-const sampleCase = {
+const sampleCase: CaseSummary = {
   case_id: 'case-1',
   title: 'Database Outage',
   description: 'Primary DB is unresponsive',
@@ -53,8 +54,9 @@ const sampleCase = {
   user_id: 'u1',
   organization_id: 'org1',
   current_turn: 5,
-  milestones_completed: 2,
-  total_milestones: 5,
+  source: 'copilot',
+  stage: 'diagnosis',
+  turns_without_progress: 0,
   is_terminal: false,
   shared_team_ids: [],
 };

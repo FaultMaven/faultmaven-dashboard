@@ -75,8 +75,8 @@ const caseDetail = {
   user_id: 'tenant-user-9',
   organization_id: 'org-acme',
   current_turn: 3,
-  milestones_completed: 1,
-  total_milestones: 8,
+  turns_without_progress: 0,
+  milestones_completed: [],
   is_terminal: false,
 };
 

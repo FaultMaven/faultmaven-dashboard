@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { CaseSummary } from '../../types/cases';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useCaseList } from '../../hooks/useCaseList';
 
@@ -12,7 +13,7 @@ import { listCases, searchCases } from '../../lib/api';
 const mockListCases = listCases as ReturnType<typeof vi.fn>;
 const mockSearchCases = searchCases as ReturnType<typeof vi.fn>;
 
-const mockCase = {
+const mockCase: CaseSummary = {
   case_id: 'c1',
   title: 'Test Case',
   description: 'desc',
@@ -26,8 +27,9 @@ const mockCase = {
   user_id: 'u1',
   organization_id: 'org1',
   current_turn: 3,
-  milestones_completed: 2,
-  total_milestones: 5,
+  source: 'copilot',
+  stage: 'diagnosis',
+  turns_without_progress: 0,
   is_terminal: false,
 };
 
