@@ -26,9 +26,23 @@ vi.mock('./AuthManager', async () => {
   };
 });
 
-import { devLogin, logoutAuth, ssoExchange } from './functions';
+import { devLogin, logoutAuth, ssoExchange, SIGNOUT_NOTICE_KEY } from './functions';
 import { AuthenticationError } from './types';
 import { authManager } from './AuthManager';
+
+/** A realistic `POST /auth/logout` reply. The reach of the sign-out is read off
+ *  this body (`all_sessions_ended`), so a bare `{ ok: true }` mocks a backend
+ *  that does not exist and hides the branch under test. */
+function logoutResponse(allSessionsEnded = true) {
+  return {
+    ok: true,
+    json: async () => ({
+      message: 'Logged out successfully',
+      revoked_tokens: 1,
+      all_sessions_ended: allSessionsEnded,
+    }),
+  };
+}
 
 // Get mocked functions for assertions
 const mockSaveAuthState = authManager.saveAuthState as ReturnType<typeof vi.fn>;
@@ -234,9 +248,7 @@ describe('logoutAuth', () => {
 
   it('should successfully logout with valid token', async () => {
     mockPeekAccessToken.mockResolvedValueOnce('test-token-123');
-    fetchSpy.mockResolvedValueOnce({
-      ok: true,
-    });
+    fetchSpy.mockResolvedValueOnce(logoutResponse());
 
     await logoutAuth();
 
@@ -255,7 +267,7 @@ describe('logoutAuth', () => {
     // could mint a rotated refresh token only to discard it, orphaning a live
     // token server-side. It must read the RAW token (peekAccessToken) instead.
     mockPeekAccessToken.mockResolvedValueOnce('raw-stored-token');
-    fetchSpy.mockResolvedValueOnce({ ok: true });
+    fetchSpy.mockResolvedValueOnce(logoutResponse());
 
     await logoutAuth();
 
@@ -427,7 +439,7 @@ describe('logoutAuth — ending the identity provider session', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(logoutResponse()) as unknown as typeof fetch;
     mockPeekAccessToken.mockResolvedValue('test-token');
     assignSpy = vi.fn();
     Object.defineProperty(window, 'location', {
@@ -473,10 +485,87 @@ describe('logoutAuth — ending the identity provider session', () => {
   it('still clears local state when the URL cannot be read', async () => {
     mockPeekIdpLogoutUrl.mockRejectedValue(new Error('storage unavailable'));
 
-    await expect(logoutAuth()).resolves.toBeUndefined();
+    await expect(logoutAuth()).resolves.toEqual({ allSessionsEnded: true });
 
     expect(mockClearAuthState).toHaveBeenCalled();
     expect(assignSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('logoutAuth — the reach of a sign-out', () => {
+  // A deliberate sign-out is account-scoped: the Dashboard and the Copilot hold
+  // independent token chains, so ending only the presented one leaves the other
+  // signed in as the previous user. The backend reports whether the
+  // account-wide revocation took; discarding that answer is how a degraded
+  // revocation store becomes a UI that reports a sign-out that did not happen.
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    mockPeekAccessToken.mockResolvedValue('test-token');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reports a confirmed account-wide sign-out and leaves no notice', async () => {
+    fetchSpy.mockResolvedValueOnce(logoutResponse(true));
+
+    const outcome = await logoutAuth();
+
+    expect(outcome.allSessionsEnded).toBe(true);
+    expect(sessionStorage.getItem(SIGNOUT_NOTICE_KEY)).toBeNull();
+  });
+
+  it('records a notice when the server says the revocation did not take', async () => {
+    // 200 with all_sessions_ended:false — exactly the case a discarded body hid.
+    fetchSpy.mockResolvedValueOnce(logoutResponse(false));
+
+    const outcome = await logoutAuth();
+
+    expect(outcome.allSessionsEnded).toBe(false);
+    expect(sessionStorage.getItem(SIGNOUT_NOTICE_KEY)).not.toBeNull();
+  });
+
+  it('treats a backend without the field as unconfirmed, not as success', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ message: 'Logged out successfully', revoked_tokens: 1 }),
+    });
+
+    expect((await logoutAuth()).allSessionsEnded).toBe(false);
+    expect(sessionStorage.getItem(SIGNOUT_NOTICE_KEY)).not.toBeNull();
+  });
+
+  it('treats a refused request as unconfirmed', async () => {
+    fetchSpy.mockResolvedValueOnce({ ok: false, status: 500 });
+
+    expect((await logoutAuth()).allSessionsEnded).toBe(false);
+    expect(sessionStorage.getItem(SIGNOUT_NOTICE_KEY)).not.toBeNull();
+  });
+
+  it('treats a network failure as unconfirmed, and still clears local state', async () => {
+    fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    expect((await logoutAuth()).allSessionsEnded).toBe(false);
+    expect(sessionStorage.getItem(SIGNOUT_NOTICE_KEY)).not.toBeNull();
+    // The reach of the sign-out is a separate question from whether THIS
+    // browser is signed out — the local session goes either way.
+    expect(mockClearAuthState).toHaveBeenCalled();
+  });
+
+  it('clears a stale notice on the next, confirmed sign-out', async () => {
+    sessionStorage.setItem(SIGNOUT_NOTICE_KEY, 'other_sessions_unconfirmed');
+    fetchSpy.mockResolvedValueOnce(logoutResponse(true));
+
+    await logoutAuth();
+
+    expect(sessionStorage.getItem(SIGNOUT_NOTICE_KEY)).toBeNull();
   });
 });
 
@@ -489,7 +578,7 @@ describe('logoutAuth — the logout URL is not a trust boundary', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(logoutResponse()) as unknown as typeof fetch;
     mockPeekAccessToken.mockResolvedValue('test-token');
     vi.spyOn(console, 'error').mockImplementation(() => {});
     assignSpy = vi.fn();
@@ -537,7 +626,7 @@ describe('logoutAuth — server-side IdP teardown', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    fetchSpy = vi.fn().mockResolvedValue(logoutResponse());
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     mockPeekAccessToken.mockResolvedValue('test-token');
     vi.spyOn(console, 'error').mockImplementation(() => {});
