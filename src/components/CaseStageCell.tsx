@@ -61,8 +61,18 @@ export function CaseStageCell({ state, stage, turnsWithoutProgress }: CaseStageC
   // INQUIRY: the problem is still being framed, so there is no stage yet. Said
   // explicitly rather than with a dash, because "not started" is a fact about
   // the case, not an absence of data.
-  if (state === 'inquiry' || stage === null) {
+  if (state === 'inquiry') {
     return <span className="text-fm-text-tertiary">Not started</span>;
+  }
+
+  // Stage absent on a case that should have one. Reachable on version skew: the
+  // dashboard and API images are tagged independently (FM_DASHBOARD_IMAGE_TAG vs
+  // FM_IMAGE_TAG), so a dashboard built after faultmaven#1076 can talk to an API
+  // that never sends `stage` — arriving as undefined, which a `=== null` test
+  // misses. Deliberately not "Not started": that would assert something false
+  // beside a State column reading Investigating. An em dash claims nothing.
+  if (!stage) {
+    return <span className="text-fm-text-tertiary">—</span>;
   }
 
   const stalled = turnsWithoutProgress >= STALLED_TURN_THRESHOLD;

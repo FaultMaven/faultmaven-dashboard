@@ -141,11 +141,19 @@ export default function CaseDetailPage() {
               )}
               <div className="flex flex-wrap items-center gap-3">
                 <CaseStateBadge state={caseDetail.state} />
-                <CaseStageCell
-                  state={caseDetail.state}
-                  stage={caseDetail.current_stage ?? null}
-                  turnsWithoutProgress={caseDetail.turns_without_progress}
-                />
+                {/* Only when a stage exists. In the tables a column header gives
+                    "—" and "Not started" their meaning; here there is no header,
+                    so a bare dash floating between two badges reads as a glitch,
+                    and "Inquiry · Not started" says the same thing twice. The
+                    cell still owns every label — this decides only whether the
+                    header has anything to show. */}
+                {caseDetail.state === 'investigating' && caseDetail.current_stage && (
+                  <CaseStageCell
+                    state={caseDetail.state}
+                    stage={caseDetail.current_stage}
+                    turnsWithoutProgress={caseDetail.turns_without_progress}
+                  />
+                )}
                 <TeamShareBadge teamIds={caseDetail.shared_team_ids} teamsById={teamsById} />
               </div>
             </div>

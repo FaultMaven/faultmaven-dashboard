@@ -76,10 +76,32 @@ describe('CaseStageCell', () => {
     expect(screen.queryByText(/stalled/)).not.toBeInTheDocument();
   });
 
-  it('never reports a stalled INQUIRY case, which has no turns to stall on', () => {
+  it('does not report an INQUIRY case as stalled', () => {
+    // NOT because the counter stays at zero — milestone_engine increments
+    // turns_without_progress on every non-progress turn regardless of state, so
+    // a long-running INQUIRY genuinely accumulates them. This column reports
+    // investigation stage, and INQUIRY has none to qualify. Whether a case stuck
+    // in problem framing deserves its own signal is an open product question,
+    // deliberately not answered here.
     renderCell('inquiry', null, 99);
     expect(screen.getByText('Not started')).toBeInTheDocument();
     expect(screen.queryByText(/stalled/)).not.toBeInTheDocument();
+  });
+
+  it('claims nothing when an older API omits stage entirely', () => {
+    // Version skew: image tags are pinned independently, so a dashboard built
+    // after faultmaven#1076 can meet an API that never sends `stage`. It arrives
+    // as undefined, not null. Rendering must not go blank, and must not claim
+    // "Not started" next to a State column reading Investigating.
+    render(
+      <CaseStageCell
+        state="investigating"
+        stage={undefined as unknown as InvestigationStage | null}
+        turnsWithoutProgress={0}
+      />
+    );
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('Not started')).not.toBeInTheDocument();
   });
 
   it('pins the stalled threshold to an absolute value', () => {
