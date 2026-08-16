@@ -79,10 +79,12 @@ describe('CaseStageCell', () => {
   it('does not report an INQUIRY case as stalled', () => {
     // NOT because the counter stays at zero — milestone_engine increments
     // turns_without_progress on every non-progress turn regardless of state, so
-    // a long-running INQUIRY genuinely accumulates them. This column reports
-    // investigation stage, and INQUIRY has none to qualify. Whether a case stuck
-    // in problem framing deserves its own signal is an open product question,
-    // deliberately not answered here.
+    // a long-running INQUIRY genuinely accumulates them.
+    //
+    // Only INVESTIGATING cases can stall. An INQUIRY case may not describe a
+    // problem at all — it can be a plain question — so there is nothing for it
+    // to be stuck on, and calling it stalled would assert a troubleshooting
+    // failure that may not exist. Do not "fix" this by counting inquiry turns.
     renderCell('inquiry', null, 99);
     expect(screen.getByText('Not started')).toBeInTheDocument();
     expect(screen.queryByText(/stalled/)).not.toBeInTheDocument();
