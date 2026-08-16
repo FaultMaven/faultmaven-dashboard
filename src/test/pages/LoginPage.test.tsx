@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../../lib/api', () => ({
   devLogin: vi.fn(),
+  SIGNOUT_NOTICE_KEY: 'fm_signout_notice',
   authManager: {
     writeBridgeAuthState: vi.fn(),
     hasBridgeAuthState: vi.fn().mockReturnValue(false),
@@ -128,5 +129,50 @@ describe('LoginPage', () => {
     expect(screen.getByText(/single sign-on is not configured/i)).toBeInTheDocument();
     expect(assignSpy).not.toHaveBeenCalled();
     assignSpy.mockRestore();
+  });
+
+  // The sign-out that landed the user here could not confirm that the account's
+  // other sessions ended. The menu that asked is gone by then — this screen is
+  // the only place left to say so, and saying nothing would let the user read
+  // the sign-out as complete when the Copilot is still signed in.
+  describe('unconfirmed sign-out notice', () => {
+    beforeEach(() => sessionStorage.clear());
+
+    it('warns about other sessions, then consumes the notice', () => {
+      sessionStorage.setItem('fm_signout_notice', 'other_sessions_unconfirmed');
+      mockUseAuth.mockReturnValue({ deployment: 'standalone', loginUrl: null, setAuthState: vi.fn() });
+
+      const { unmount } = renderLogin();
+
+      expect(screen.getByText(/could not confirm that your other sessions/i)).toBeInTheDocument();
+      // Read once: a later, clean sign-out must not inherit this warning.
+      expect(sessionStorage.getItem('fm_signout_notice')).toBeNull();
+
+      unmount();
+      mockUseAuth.mockReturnValue({ deployment: 'standalone', loginUrl: null, setAuthState: vi.fn() });
+      renderLogin();
+      expect(screen.queryByText(/could not confirm that your other sessions/i)).toBeNull();
+    });
+
+    it('shows the same warning on the cloud sign-in screen', () => {
+      sessionStorage.setItem('fm_signout_notice', 'other_sessions_unconfirmed');
+      mockUseAuth.mockReturnValue({
+        deployment: 'cloud',
+        loginUrl: 'https://idp.example/login',
+        setAuthState: vi.fn(),
+      });
+
+      renderLogin();
+
+      expect(screen.getByText(/could not confirm that your other sessions/i)).toBeInTheDocument();
+    });
+
+    it('says nothing after an ordinary sign-out', () => {
+      mockUseAuth.mockReturnValue({ deployment: 'standalone', loginUrl: null, setAuthState: vi.fn() });
+
+      renderLogin();
+
+      expect(screen.queryByText(/could not confirm that your other sessions/i)).toBeNull();
+    });
   });
 });

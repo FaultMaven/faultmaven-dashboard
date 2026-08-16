@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useNavigationItems } from '../hooks/useNavigationItems';
 import { CopilotEntry } from './CopilotEntry';
+import { AccountMenu } from './AccountMenu';
 
 interface PageHeaderProps {
   onLogout: () => void;
@@ -32,12 +33,7 @@ export function PageHeader({ onLogout }: PageHeaderProps) {
             })}
           </nav>
           <CopilotEntry />
-          <button
-            onClick={onLogout}
-            className="px-4 py-2 text-sm font-medium text-fm-text-secondary hover:text-fm-text-primary transition-colors"
-          >
-            Logout
-          </button>
+          <AccountMenu onLogout={onLogout} />
         </div>
       </div>
     </header>

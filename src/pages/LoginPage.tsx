@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { devLogin, authManager } from '../lib/api';
+import { devLogin, authManager, SIGNOUT_NOTICE_KEY } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 
@@ -13,8 +13,41 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { deployment, loginUrl, setAuthState } = useAuth();
+  // The sign-out that sent the user here could not confirm that the account's
+  // other sessions ended (logoutAuth). The menu that asked is long gone by now,
+  // so this screen is where the user finds out. Read at mount and consumed
+  // immediately after, so it reports that sign-out and not a later, clean one.
+  const [signOutUnconfirmed] = useState(() => {
+    try {
+      return sessionStorage.getItem(SIGNOUT_NOTICE_KEY) !== null;
+    } catch {
+      // Storage denied (private mode): nothing was recorded, nothing to show.
+      return false;
+    }
+  });
 
   const isExtensionLogin = new URLSearchParams(location.search).get('source') === 'extension';
+
+  // Consumed in an effect, not in the initializer above: the initializer runs
+  // during render (twice under StrictMode) and must stay free of side effects.
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(SIGNOUT_NOTICE_KEY);
+    } catch {
+      /* Nothing was recorded, so there is nothing to consume. */
+    }
+  }, []);
+
+  const signOutNotice = signOutUnconfirmed ? (
+    <div
+      role="status"
+      className="mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn"
+    >
+      Signed out on this device. We could not confirm that your other sessions
+      ended — if you are signed in to the FaultMaven Copilot or another browser,
+      sign out there too.
+    </div>
+  ) : null;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +152,8 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {signOutNotice}
+
           {error && (
             <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border p-3 rounded-fm-btn">
               {error}
@@ -183,6 +218,8 @@ export default function LoginPage() {
             Authenticate to access the Knowledge Base, view case metrics, and launch the AI Copilot.
           </p>
         </div>
+
+        {signOutNotice}
 
         {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4">
