@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { CaseMessage } from '../types/cases';
 import { prepareMarkdown } from '../lib/markdownUtils';
+import { PreWithMermaid } from './MermaidDiagram';
 
 export const transcriptProseClasses = `prose prose-sm prose-invert max-w-none
   prose-headings:text-fm-text-primary prose-headings:font-semibold
@@ -77,6 +78,10 @@ export function TranscriptView({ messages }: TranscriptViewProps) {
                   rehypePlugins={[rehypeHighlight]}
                   components={{
                     a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                    // The closure-turn reply embeds the resolution summary
+                    // (Causal Map included) inline, so the transcript needs
+                    // the same mermaid routing as the Report tab.
+                    pre: PreWithMermaid,
                   }}
                 >
                   {prepareMarkdown(msg.content)}
