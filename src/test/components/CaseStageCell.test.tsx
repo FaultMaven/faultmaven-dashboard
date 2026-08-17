@@ -64,6 +64,17 @@ describe('CaseStageCell', () => {
     expect(screen.queryByText('Resolving')).not.toBeInTheDocument();
   });
 
+  it('mutes an INQUIRY case even if a stage is somehow supplied', () => {
+    // The server nulls current_stage outside INVESTIGATING, so in practice an
+    // inquiry row arrives with no stage and the absent-stage branch would mute
+    // it anyway. Asserted independently so the rule stands on the STATE, not on
+    // a null that happens to accompany it — otherwise the inquiry decision is
+    // only tested by accident and a later refactor could drop it unnoticed.
+    renderCell('inquiry', 'diagnosis');
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('Diagnosing')).not.toBeInTheDocument();
+  });
+
   it('marks a case stalled at the threshold, keeping the stage visible', () => {
     renderCell('investigating', 'mitigation', STALLED_TURN_THRESHOLD);
     // Stalled-ness annotates the stage rather than replacing it — a stuck case
