@@ -37,11 +37,13 @@ describe('CaseStageCell', () => {
     expect(screen.queryByText('Investigating')).not.toBeInTheDocument();
   });
 
-  it('reports INQUIRY as not started rather than as zero progress', () => {
+  it('mutes the stage for an INQUIRY case', () => {
     // The bug this component replaced rendered an empty progress bar here,
-    // implying an investigation underway that had achieved nothing.
+    // implying an investigation underway that had achieved nothing. A caption
+    // would be wrong for the opposite reason: an inquiry may be a plain
+    // question with no troubleshooting owed, so the cell claims nothing.
     renderCell('inquiry', null);
-    expect(screen.getByText('Not started')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('shows no stage for terminal cases', () => {
@@ -86,15 +88,15 @@ describe('CaseStageCell', () => {
     // to be stuck on, and calling it stalled would assert a troubleshooting
     // failure that may not exist. Do not "fix" this by counting inquiry turns.
     renderCell('inquiry', null, 99);
-    expect(screen.getByText('Not started')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
     expect(screen.queryByText(/stalled/)).not.toBeInTheDocument();
   });
 
   it('claims nothing when an older API omits stage entirely', () => {
     // Version skew: image tags are pinned independently, so a dashboard built
     // after faultmaven#1076 can meet an API that never sends `stage`. It arrives
-    // as undefined, not null. Rendering must not go blank, and must not claim
-    // "Not started" next to a State column reading Investigating.
+    // as undefined, not null, so a `=== null` test would miss it and the cell
+    // would fall through and render blank.
     render(
       <CaseStageCell
         state="investigating"
@@ -103,7 +105,6 @@ describe('CaseStageCell', () => {
       />
     );
     expect(screen.getByText('—')).toBeInTheDocument();
-    expect(screen.queryByText('Not started')).not.toBeInTheDocument();
   });
 
   it('names an unrecognised stage rather than going blank', () => {

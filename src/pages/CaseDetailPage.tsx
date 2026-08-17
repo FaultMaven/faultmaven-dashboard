@@ -142,11 +142,12 @@ export default function CaseDetailPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <CaseStateBadge state={caseDetail.state} />
                 {/* Only when a stage exists. In the tables a column header gives
-                    "—" and "Not started" their meaning; here there is no header,
-                    so a bare dash floating between two badges reads as a glitch,
-                    and "Inquiry · Not started" says the same thing twice. The
-                    cell still owns every label — this decides only whether the
-                    header has anything to show. */}
+                    the muted em dash its meaning; here there is no header, so a
+                    bare dash floating between two badges reads as a glitch. This
+                    condition is the exact complement of the cell's own muted
+                    branch, so the header shows a stage precisely when the cell
+                    would have something to say. The cell still owns every
+                    label — this decides only whether to render it at all. */}
                 {caseDetail.state === 'investigating' && caseDetail.current_stage && (
                   <CaseStageCell
                     state={caseDetail.state}

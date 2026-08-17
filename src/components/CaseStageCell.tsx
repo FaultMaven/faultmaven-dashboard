@@ -52,26 +52,22 @@ const stageLabels: Record<InvestigationStage, string> = {
  * case that is stuck is still somewhere, and "where" is the column's subject.
  */
 export function CaseStageCell({ state, stage, turnsWithoutProgress }: CaseStageCellProps) {
-  // Terminal cases have no live stage; the State column already says how they
-  // ended, so repeating it here would be noise.
-  if (state === 'resolved' || state === 'closed') {
-    return <span className="text-fm-text-tertiary">—</span>;
-  }
-
-  // INQUIRY: the problem is still being framed, so there is no stage yet. Said
-  // explicitly rather than with a dash, because "not started" is a fact about
-  // the case, not an absence of data.
-  if (state === 'inquiry') {
-    return <span className="text-fm-text-tertiary">Not started</span>;
-  }
-
-  // Stage absent on a case that should have one. Reachable on version skew: the
-  // dashboard and API images are tagged independently (FM_DASHBOARD_IMAGE_TAG vs
-  // FM_IMAGE_TAG), so a dashboard built after faultmaven#1076 can talk to an API
-  // that never sends `stage` — arriving as undefined, which a `=== null` test
-  // misses. Deliberately not "Not started": that would assert something false
-  // beside a State column reading Investigating. An em dash claims nothing.
-  if (!stage) {
+  // A stage is only meaningful while a case is being investigated, so every
+  // other row is muted rather than captioned. Three situations reach this, and
+  // an em dash is the right answer to all of them:
+  //
+  //   RESOLVED / CLOSED — no live stage, and the State column already reports
+  //     how the case ended; captioning it here would just repeat that.
+  //   INQUIRY — the case may not describe a problem at all, it can be a plain
+  //     question. Wording it as though troubleshooting were pending ("Not
+  //     started") asserts work that may never have been owed.
+  //   stage absent on an investigating case — version skew. Image tags move
+  //     independently (FM_DASHBOARD_IMAGE_TAG vs FM_IMAGE_TAG), so a dashboard
+  //     built after faultmaven#1076 can meet an API that never sends `stage`;
+  //     it arrives as undefined, which a `=== null` test would miss.
+  //
+  // The dash claims nothing, which is exactly what is true in each case.
+  if (state !== 'investigating' || !stage) {
     return <span className="text-fm-text-tertiary">—</span>;
   }
 
