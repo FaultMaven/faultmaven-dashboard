@@ -82,7 +82,13 @@ export function CaseStageCell({ state, stage, turnsWithoutProgress }: CaseStageC
       className={stalled ? 'text-fm-warning' : 'text-fm-text-secondary'}
       title={stalled ? `No progress for ${turnsWithoutProgress} turns` : undefined}
     >
-      {stageLabels[stage]}
+      {/* Fall back to the raw enum value, not the em dash. A newer API can send
+          a stage this bundle has no label for — the mirror of the absent-stage
+          case above, since the image tags move independently in both
+          directions. An em dash here would claim the case has no stage, which
+          is false: it has one, we just cannot name it. Showing the value keeps
+          the row truthful and makes the skew visible instead of hiding it. */}
+      {stageLabels[stage] ?? stage}
       {stalled && (
         <span className="text-xs"> · stalled {turnsWithoutProgress}t</span>
       )}

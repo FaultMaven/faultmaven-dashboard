@@ -106,6 +106,26 @@ describe('CaseStageCell', () => {
     expect(screen.queryByText('Not started')).not.toBeInTheDocument();
   });
 
+  it('names an unrecognised stage rather than going blank', () => {
+    // The mirror of the older-API case above. Image tags move independently in
+    // both directions, so a bundle can also be OLDER than the API and meet a
+    // stage it has no label for. Without a fallback the lookup is undefined and
+    // the cell renders empty — and on a stalled row that leaves an orphaned
+    // "· stalled 7t" with nothing in front of it.
+    render(
+      <CaseStageCell
+        state="investigating"
+        stage={'escalation' as unknown as InvestigationStage}
+        turnsWithoutProgress={7}
+      />
+    );
+    // The raw value, not an em dash: the case HAS a stage, so claiming it has
+    // none would be false. The stalled signal still stands on its own.
+    expect(screen.getByText(/escalation/)).toBeInTheDocument();
+    expect(screen.getByText(/stalled 7t/)).toBeInTheDocument();
+    expect(screen.queryByText('—')).not.toBeInTheDocument();
+  });
+
   it('pins the stalled threshold to an absolute value', () => {
     // Asserting against the constant would be vacuous — it would follow any
     // edit. The detail header used this same number before this component
