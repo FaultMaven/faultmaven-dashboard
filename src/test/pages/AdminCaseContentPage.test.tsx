@@ -1,4 +1,5 @@
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import type { CaseDetail } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AdminCaseContentPage from '../../pages/AdminCaseContentPage';
@@ -64,7 +65,7 @@ const mockRequest = requestBreakGlassGrant as ReturnType<typeof vi.fn>;
 const CASE_ID = 'case_a1b2c3d4e5f6';
 const SECRET_TITLE = 'payments API 5xx spike';
 
-const caseDetail = {
+const caseDetail: CaseDetail = {
   case_id: CASE_ID,
   title: SECRET_TITLE,
   description: 'content an operator must not see without a grant',
@@ -74,10 +75,20 @@ const caseDetail = {
   last_activity_at: '2026-07-02T00:00:00Z',
   user_id: 'tenant-user-9',
   organization_id: 'org-acme',
+  source: 'copilot',
   current_turn: 3,
   turns_without_progress: 0,
+  current_stage: 'diagnosis',
   milestones_completed: [],
+  pending_milestones: [],
+  evidence_count: 0,
+  hypothesis_count: 0,
+  solution_count: 0,
   is_terminal: false,
+  escalated: false,
+  resolved_at: null,
+  closed_at: null,
+  closure_reason: null,
 };
 
 const liveGrant = {
