@@ -169,6 +169,24 @@ const vercelSecurityRules = vercelRules.filter((rule) =>
   rule.headers.some((h) => h.key.toLowerCase() === 'content-security-policy'),
 );
 
+/**
+ * Vercel `source` patterns known to match the bare root path `/`.
+ *
+ * Coverage is asserted against this allowlist rather than by re-implementing
+ * path-to-regexp, so an unrecognised pattern reads as NOT covering root. That
+ * direction matters: the failure this guards against is a rule that looks
+ * site-wide but silently misses `/`, and a permissive matcher would wave
+ * exactly that through.
+ *
+ * `/:path*` is deliberately absent. It looks site-wide and is not: verified
+ * live against the deployed dashboard, where `/` came back with none of the
+ * security headers while `/cases`, `/index.html` and `/config.js` came back
+ * with all of them.
+ */
+const ROOT_MATCHING_SOURCES = new Set(['/', '/(.*)', '/(.*)?']);
+
+const matchesRoot = (source: string) => ROOT_MATCHING_SOURCES.has(source.trim());
+
 // The parser decides what "the policy allows" means, so it is tested against
 // browser semantics directly rather than only through the configs it reads.
 describe('CSP policy parsing', () => {
@@ -229,6 +247,21 @@ describe('Content-Security-Policy', () => {
     for (const { label, csp } of vercelPolicies) {
       expect(`${label}: ${csp}`).toBe(`${label}: ${nginxPolicies[0].csp}`);
     }
+  });
+
+  // A correct policy that never reaches the document protects nothing. This is
+  // a single-document SPA: the browser loads `/` once and every later route is
+  // client-side, so the headers on `/` govern the whole session. A rule that
+  // covers `/cases` but not `/` therefore protects only the rarer deep-link
+  // entry, while the ordinary visit runs unprotected.
+  it('applies the security headers at the site root, not just below it', () => {
+    expect(vercelSecurityRules.length).toBeGreaterThan(0);
+    const covering = vercelSecurityRules.filter((rule) => matchesRoot(rule.source));
+    expect(
+      covering.map((r) => r.source),
+      'no CSP-bearing vercel.json rule matches "/", so the document a user ' +
+        'actually loads is served without security headers',
+    ).not.toEqual([]);
   });
 
   it('has every CSP-bearing Vercel rule declaring the same required set as nginx', () => {
