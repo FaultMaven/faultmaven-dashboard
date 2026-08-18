@@ -4,6 +4,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { prepareMarkdown } from '../lib/markdownUtils';
+import { PreWithMermaid } from './MermaidDiagram';
 import { getCaseReports, getCaseReportDownloadUrl } from '../lib/api';
 import { makeAuthenticatedRequest } from '../lib/knowledge/client';
 import type { CaseReport, CaseDetail } from '../types/cases';
@@ -276,7 +277,10 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
               <Markdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
-                components={{ a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" /> }}
+                components={{
+                  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                  pre: PreWithMermaid,
+                }}
               >
                 {prepareMarkdown(selectedReport.content)}
               </Markdown>
