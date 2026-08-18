@@ -1,23 +1,40 @@
 import { useEffect, useId, useState, isValidElement } from 'react';
 import type { ComponentProps, ReactElement, ReactNode } from 'react';
+import type { ExtraProps } from 'react-markdown';
 
 // Lazy-load mermaid so the ~1.5MB library ships as its own chunk and is
 // fetched only when a page actually contains a diagram.
 let mermaidModule: Promise<typeof import('mermaid')> | null = null;
 function loadMermaid() {
-  mermaidModule ??= import('mermaid').then((mod) => {
-    mod.default.initialize({
-      startOnLoad: false,
-      // Diagram sources arrive inside markdown from the backend (reports)
-      // and case transcripts, so treat them as untrusted content.
-      securityLevel: 'strict',
-      theme: 'dark',
-      fontFamily: 'inherit',
+  mermaidModule ??= import('mermaid')
+    .then((mod) => {
+      mod.default.initialize({
+        startOnLoad: false,
+        // Diagram sources arrive inside markdown from the backend (reports)
+        // and case transcripts, so treat them as untrusted content.
+        securityLevel: 'strict',
+        // Without this, a parse failure draws mermaid's "Syntax error"
+        // diagram into document.body and throws before its own cleanup —
+        // the component's code-block fallback must be the only failure UI.
+        suppressErrorRendering: true,
+        theme: 'dark',
+        fontFamily: 'inherit',
+      });
+      return mod;
+    })
+    .catch((err) => {
+      // Don't memoize a rejected load (e.g. the chunk 404s in a tab kept
+      // open across a redeploy) — clear the cache so a later mount retries.
+      mermaidModule = null;
+      throw err;
     });
-    return mod;
-  });
   return mermaidModule;
 }
+
+// Rendered SVG per chart source. Charts are deterministic strings, so a
+// remount (e.g. a CaseTabs tab switch, which unmounts inactive tabs) can
+// reuse the previous result instead of re-running parse + layout.
+const svgCache = new Map<string, string>();
 
 interface MermaidDiagramProps {
   chart: string;
@@ -36,23 +53,36 @@ interface RenderState {
  * presentation the app had before mermaid support.
  */
 export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
-  const [state, setState] = useState<RenderState>({ chart, svg: null, failed: false });
+  const [state, setState] = useState<RenderState>(() => ({
+    chart,
+    svg: svgCache.get(chart) ?? null,
+    failed: false,
+  }));
   const renderId = `mmd-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
   // Reset for a new chart during render (the React-endorsed "adjusting
   // state when a prop changes" pattern) so the effect stays async-only.
   if (state.chart !== chart) {
-    setState({ chart, svg: null, failed: false });
+    setState({ chart, svg: svgCache.get(chart) ?? null, failed: false });
   }
 
   useEffect(() => {
+    if (svgCache.has(chart)) return;
     let cancelled = false;
     loadMermaid()
       .then(({ default: mermaid }) => mermaid.render(renderId, chart))
       .then((result) => {
-        if (!cancelled) setState({ chart, svg: result.svg, failed: false });
+        if (cancelled) return;
+        // Mermaid resolves with whatever survives sanitization; an empty
+        // string must fall back, not sit on the loading placeholder.
+        const svg = result.svg.trim() ? result.svg : null;
+        if (svg) svgCache.set(chart, svg);
+        setState({ chart, svg, failed: !svg });
       })
-      .catch(() => {
+      .catch((err) => {
+        // Logged so a chunk-load failure is distinguishable from the
+        // parse failure this fallback is designed for.
+        console.error('mermaid render failed:', err);
         if (!cancelled) setState({ chart, svg: null, failed: true });
       });
     return () => {
@@ -62,7 +92,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
 
   if (state.failed) {
     return (
-      <pre className="not-prose overflow-x-auto text-xs">
+      <pre className="overflow-x-auto text-xs">
         <code>{chart}</code>
       </pre>
     );
@@ -78,6 +108,10 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
     <div
       className="not-prose overflow-x-auto my-2 [&_svg]:max-w-full [&_svg]:h-auto"
       role="img"
+      // role="img" makes the SVG's node text presentational, and the
+      // backend emits no accTitle/accDescr — without a label this is an
+      // unnamed image to assistive tech.
+      aria-label="Diagram"
       // Mermaid output under securityLevel 'strict' is sanitized SVG.
       dangerouslySetInnerHTML={{ __html: state.svg }}
     />
@@ -98,8 +132,11 @@ function fenceText(node: ReactNode): string {
  * MermaidDiagram and leaves every other code block untouched. Use as
  * `components={{ pre: PreWithMermaid, ... }}`.
  */
-export function PreWithMermaid(props: ComponentProps<'pre'>) {
-  const { children, ...rest } = props;
+export function PreWithMermaid(props: ComponentProps<'pre'> & ExtraProps) {
+  // `node` is the hast element react-markdown passes to custom components;
+  // keep it out of the spread or it lands in the DOM as node="[object Object]".
+  const { children, node, ...rest } = props;
+  void node;
   const child = Array.isArray(children) ? children[0] : children;
   if (isValidElement(child)) {
     const className = (child.props as { className?: string }).className ?? '';

@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { getDocument, updateDocument } from '../lib/knowledge/kb';
 import { prepareMarkdown } from '../lib/markdownUtils';
+import { PreWithMermaid } from './MermaidDiagram';
 
 export interface DocumentCardData {
   document_id: string;
@@ -225,7 +226,12 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
               <Markdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
-                components={{ a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" /> }}
+                components={{
+                  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                  // Runbooks are the likeliest KB content to carry mermaid;
+                  // keep the KB viewer's rendering in step with the case tabs.
+                  pre: PreWithMermaid,
+                }}
               >
                 {prepareMarkdown(content, { frontmatter: true })}
               </Markdown>
