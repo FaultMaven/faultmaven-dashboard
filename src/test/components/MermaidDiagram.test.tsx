@@ -1,7 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, act } from '@testing-library/react';
+import { StrictMode } from 'react';
 import Markdown from 'react-markdown';
-import { PreWithMermaid } from '../../components/MermaidDiagram';
+import MermaidDiagram, { PreWithMermaid } from '../../components/MermaidDiagram';
+
+// The component memoizes rendered svg by chart source, so every test here
+// must use a chart string no earlier test has rendered.
+let svgCacheBust = 0;
 
 // jsdom cannot lay out real diagrams, so pin the routing contract instead:
 // ```mermaid fences reach mermaid.render, other fences stay code blocks,
@@ -93,5 +98,115 @@ describe('PreWithMermaid', () => {
     // Served synchronously from the module cache: no placeholder, no new call.
     expect(remounted.container.querySelector('[role="img"]')).toBeInTheDocument();
     expect(renderMock.mock.calls.length).toBe(calls);
+  });
+});
+
+// Mermaid keys its scratch DOM off the id it is handed: render(id) deletes
+// any existing #d{id}, appends its own, and removes it on the way out. Two
+// renders sharing an id destroy each other. These tests stand in a mock with
+// that same id-keyed lifecycle — an interleaving that leaves the later render
+// without its element fails, exactly as the real library does — so they fail
+// on a real collision rather than merely on ids being equal.
+describe('MermaidDiagram concurrent renders', () => {
+  const gates: Array<() => void> = [];
+
+  const idKeyedRender = (id: string, chart: string) => {
+    // removeExistingElements(document, id, 'd'+id, 'i'+id)
+    document.getElementById(id)?.remove();
+    document.getElementById(`d${id}`)?.remove();
+    const scratch = document.createElement('div');
+    scratch.id = `d${id}`;
+    document.body.appendChild(scratch);
+    // Suspend mid-render so a second render can interleave, the way a real
+    // layout pass leaves a window open.
+    return new Promise<{ svg: string }>((resolve, reject) => {
+      gates.push(() => {
+        const mine = document.getElementById(`d${id}`);
+        if (!mine) {
+          reject(
+            new TypeError("Cannot read properties of null (reading 'firstChild')")
+          );
+          return;
+        }
+        mine.remove(); // removeTempElements()
+        resolve({ svg: `<svg data-chart="${chart}"></svg>` });
+      });
+    });
+  };
+
+  beforeEach(() => {
+    gates.length = 0;
+    svgCacheBust++;
+    renderMock.mockImplementation(idKeyedRender);
+  });
+
+  afterEach(() => {
+    renderMock.mockReset();
+    renderMock.mockResolvedValue({ svg: '<svg data-testid="mmd-svg"></svg>' });
+    document.body.querySelectorAll('[id^="dmmd-"]').forEach((n) => n.remove());
+  });
+
+  const fence = (body: string) => `flowchart LR\n  ${body}`;
+
+  it('survives the chart prop changing while a render is in flight', async () => {
+    const first = fence(`a${svgCacheBust} --> b`);
+    const second = fence(`c${svgCacheBust} --> d`);
+
+    const { container, rerender } = render(<MermaidDiagram chart={first} />);
+    await waitFor(() => expect(gates.length).toBe(1));
+
+    // Second render begins while the first is still suspended.
+    rerender(<MermaidDiagram chart={second} />);
+    await waitFor(() => expect(gates.length).toBe(2));
+
+    // The stale render completes first — this is the ordering that used to
+    // delete the live render's scratch element out from under it.
+    await act(async () => {
+      gates[0]();
+      gates[1]();
+    });
+
+    await waitFor(() =>
+      expect(container.querySelector('[role="img"]')).toBeInTheDocument()
+    );
+    // The raw-source fallback is the symptom of the collision.
+    expect(container.querySelector('pre')).not.toBeInTheDocument();
+    expect(container.innerHTML).toContain(`data-chart="${second}"`);
+  });
+
+  it('gives each render attempt its own id', async () => {
+    const chart = fence(`unique${svgCacheBust} --> ids`);
+    const { rerender } = render(<MermaidDiagram chart={chart} />);
+    await waitFor(() => expect(gates.length).toBe(1));
+    rerender(<MermaidDiagram chart={fence(`other${svgCacheBust} --> id`)} />);
+    await waitFor(() => expect(gates.length).toBe(2));
+
+    const ids = renderMock.mock.calls.slice(-2).map((c) => c[0] as string);
+    expect(ids[0]).not.toBe(ids[1]);
+    await act(async () => gates.forEach((g) => g()));
+  });
+
+  it('survives StrictMode double-invoking the effect on mount', async () => {
+    const chart = fence(`strict${svgCacheBust} --> mode`);
+    const { container } = render(
+      <StrictMode>
+        <MermaidDiagram chart={chart} />
+      </StrictMode>
+    );
+    // StrictMode runs the effect, cleans up, and runs it again: two
+    // overlapping renders on a single mount.
+    await waitFor(() => expect(gates.length).toBe(2));
+    const ids = renderMock.mock.calls.slice(-2).map((c) => c[0] as string);
+    expect(ids[0]).not.toBe(ids[1]);
+
+    await act(async () => {
+      gates[0]();
+      gates[1]();
+    });
+
+    await waitFor(() =>
+      expect(container.querySelector('[role="img"]')).toBeInTheDocument()
+    );
+    expect(container.querySelector('pre')).not.toBeInTheDocument();
   });
 });

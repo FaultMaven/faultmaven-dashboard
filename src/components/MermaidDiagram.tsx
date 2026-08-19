@@ -36,6 +36,21 @@ function loadMermaid() {
 // reuse the previous result instead of re-running parse + layout.
 const svgCache = new Map<string, string>();
 
+// Mermaid keys its scratch DOM entirely off the id it is handed: `render(id)`
+// first deletes `#id` / `#d{id}` / `#i{id}`, then appends its own
+// `div#d{id} > svg#{id}` to document.body and removes it on the way out. Two
+// renders sharing an id therefore destroy each other's working DOM — the
+// loser's div is deleted from under it and mermaid throws, which surfaces
+// here as the raw-source fallback on a diagram that parses perfectly well.
+//
+// `useId()` is stable for a component instance's whole lifetime, so it cannot
+// separate two renders by the SAME component, which is exactly when overlap
+// happens: the `chart` prop changing while a render is in flight, and
+// StrictMode's double-invoke in development (which does it on every mount).
+// The counter makes the id unique per render ATTEMPT; the `useId` prefix is
+// kept so an id is still traceable back to a component instance.
+let renderAttempt = 0;
+
 interface MermaidDiagramProps {
   chart: string;
 }
@@ -69,8 +84,9 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
   useEffect(() => {
     if (svgCache.has(chart)) return;
     let cancelled = false;
+    const attemptId = `${renderId}-${renderAttempt++}`;
     loadMermaid()
-      .then(({ default: mermaid }) => mermaid.render(renderId, chart))
+      .then(({ default: mermaid }) => mermaid.render(attemptId, chart))
       .then((result) => {
         if (cancelled) return;
         // Mermaid resolves with whatever survives sanitization; an empty
