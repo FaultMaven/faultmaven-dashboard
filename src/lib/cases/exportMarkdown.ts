@@ -1,5 +1,6 @@
 import { getCaseMessages, getCaseEvidenceList, getCaseUI } from './api';
 import { closureReasonDisplay } from './closureReason';
+import { messageAuthorLabel, transcriptTurnNumbers } from './messageAttribution';
 import type {
   CaseDetail,
   CaseMessage,
@@ -27,15 +28,6 @@ function formatDate(value: string | null | undefined): string {
   const ts = new Date(value).getTime();
   if (isNaN(ts)) return '—';
   return new Date(value).toISOString();
-}
-
-/** Turn numbers: each user message starts a new turn; the assistant reply shares it. */
-function turnNumbers(messages: CaseMessage[]): number[] {
-  let turn = 0;
-  return messages.map((m) => {
-    if (m.role === 'user') turn++;
-    return turn;
-  });
 }
 
 /**
@@ -132,10 +124,18 @@ export function buildCaseMarkdown({
   if (messages.length > 0) {
     lines.push('## Transcript');
     lines.push('');
-    const turns = turnNumbers(messages);
+    // Attribution — the author name and whether the row owns a turn — comes
+    // from `messageAttribution`, the same derivation `TranscriptView` renders
+    // from. The export is the archival, shareable artifact: if it could reach a
+    // different answer than the screen, the misattribution it recorded would
+    // outlive the session that produced it. A notice therefore carries no turn
+    // heading here either — the export must not assert a membership the app
+    // deliberately declines to assert.
+    const turns = transcriptTurnNumbers(messages);
     messages.forEach((msg, i) => {
-      const who = msg.role === 'assistant' ? 'FaultMaven' : 'You';
-      lines.push(`#### ${who} · Turn ${turns[i]}`);
+      const who = messageAuthorLabel(msg.role);
+      const turn = turns[i];
+      lines.push(turn === null ? `#### ${who}` : `#### ${who} · Turn ${turn}`);
       lines.push('');
       lines.push(msg.content);
       lines.push('');

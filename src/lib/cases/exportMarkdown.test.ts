@@ -79,6 +79,38 @@ describe('buildCaseMarkdown', () => {
     expect(md).toContain('#### FaultMaven · Turn 1');
   });
 
+  it('does not attribute a system notice or an unknown role to the user', () => {
+    // The export is the archival artifact, so a misattribution recorded here
+    // outlives the session. The backend appends runbook-conversion notices to
+    // `case.messages` with `role: "system"` and the messages endpoint does not
+    // filter them, so this row reaches the exporter on a real case. The `tool`
+    // row is the same hazard one step ahead: a role the contract does not yet
+    // declare must not fall into the "You" arm either.
+    //
+    // Attribution consistency with the on-screen renderer is asserted in
+    // src/test/lib/messageAttribution.test.tsx — this covers the export path.
+    const withNotice = [
+      { message_id: 'm0', role: 'user', content: 'DB is down' },
+      { message_id: 'm1', role: 'assistant', content: 'Checking connections' },
+      { message_id: 'm2', role: 'system', content: 'Your runbook draft is ready.' },
+      { message_id: 'm3', role: 'tool', content: 'Something a future backend sent' },
+    ] as unknown as CaseMessage[];
+
+    const md = buildCaseMarkdown({ caseDetail, messages: withNotice, evidence, hypotheses });
+
+    expect(md).toContain('#### System\n\nYour runbook draft is ready.');
+    expect(md).toContain('#### System\n\nSomething a future backend sent');
+    expect(md).not.toContain('#### You · Turn 1\n\nYour runbook draft is ready.');
+    expect(md).not.toContain('#### You · Turn 1\n\nSomething a future backend sent');
+
+    // A notice claims no turn — matching the screen, which prints none.
+    expect(md).not.toContain('#### System · Turn');
+
+    // …and the conversational turns around it are untouched.
+    expect(md).toContain('#### You · Turn 1\n\nDB is down');
+    expect(md).toContain('#### FaultMaven · Turn 1\n\nChecking connections');
+  });
+
   it('omits optional sections when their data is absent', () => {
     const bare = {
       ...caseDetail,

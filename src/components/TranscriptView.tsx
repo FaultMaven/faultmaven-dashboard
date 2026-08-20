@@ -3,6 +3,12 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { CaseMessage } from '../types/cases';
 import { prepareMarkdown } from '../lib/markdownUtils';
+import {
+  MESSAGE_AUTHOR_LABEL,
+  messageKind,
+  transcriptTurnNumbers,
+  type MessageKind,
+} from '../lib/cases/messageAttribution';
 import { PreWithMermaid } from './MermaidDiagram';
 
 export const transcriptProseClasses = `prose prose-sm prose-invert max-w-none
@@ -23,54 +29,24 @@ interface TranscriptViewProps {
 }
 
 /**
- * The three ways a transcript row can be presented.
+ * How each kind looks *on screen* — this component's half of the split.
  *
- * `notice` exists because not every row in `case.messages` is a conversational
- * turn: the backend appends runbook-conversion completion notices with
- * `role: "system"` ("Your runbook draft **X** is ready…"), and neither the
- * messages endpoints nor this component filter them out. Rendering was
- * previously a binary — assistant or *you* — so those rows were attributed to
- * the reader, who appeared to have typed FaultMaven's own notification.
- */
-type MessageKind = 'user' | 'assistant' | 'notice';
-
-/**
- * Presentation per kind. A `Record` keyed on `MessageKind` so a fourth kind
- * cannot be added without deciding how it looks.
+ * Who a message is from, what they are called, and whether the row owns a turn
+ * are not decided here: they come from `lib/cases/messageAttribution`, shared
+ * with the Markdown export so the two transcript renderers cannot disagree
+ * about attribution. What is local is the visual treatment, which has no
+ * meaning in a Markdown document.
  *
- * The notice treatment is deliberately the quietest of the three — subtle
- * border, tertiary label. It is a notification about the case, not a
- * participant in it, and should not read as one.
+ * A `Record` keyed on `MessageKind` so a fourth kind cannot be added without
+ * deciding how it looks. The notice treatment is deliberately the quietest of
+ * the three — subtle border, tertiary label. It is a notification about the
+ * case, not a participant in it, and should not read as one.
  */
-const KIND_PRESENTATION: Record<
-  MessageKind,
-  { label: string; accent: string; labelColor: string }
-> = {
-  user: { label: 'You', accent: 'border-fm-border', labelColor: 'text-fm-text-primary' },
-  assistant: { label: 'FaultMaven', accent: 'border-fm-accent', labelColor: 'text-fm-accent' },
-  notice: {
-    label: 'System',
-    accent: 'border-fm-border-subtle',
-    labelColor: 'text-fm-text-tertiary',
-  },
+const KIND_PRESENTATION: Record<MessageKind, { accent: string; labelColor: string }> = {
+  user: { accent: 'border-fm-border', labelColor: 'text-fm-text-primary' },
+  assistant: { accent: 'border-fm-accent', labelColor: 'text-fm-accent' },
+  notice: { accent: 'border-fm-border-subtle', labelColor: 'text-fm-text-tertiary' },
 };
-
-/**
- * Classify a message for display.
- *
- * The parameter is `string`, not the generated `role` union, on purpose: the
- * union is what the contract *declares*, and the whole point of the default arm
- * is a value the contract did not. Attribution is the failure mode here, so the
- * default must be the one treatment that claims no author — anything the client
- * does not recognise is shown as a notice rather than as something the reader
- * said. Do not narrow this to an equality test on `'system'`; the next role the
- * backend adds would then inherit the bug this replaced.
- */
-function messageKind(role: string): MessageKind {
-  if (role === 'assistant') return 'assistant';
-  if (role === 'user') return 'user';
-  return 'notice';
-}
 
 /**
  * Renders a case transcript. Purely presentational — it takes messages and does
@@ -89,15 +65,9 @@ export function TranscriptView({ messages }: TranscriptViewProps) {
     return <div className="text-fm-text-tertiary text-sm py-4">No messages yet.</div>;
   }
 
-  // Turn numbering: each user message opens a turn, and the assistant response
-  // belongs to the turn it answers. Notices open nothing and render no number
-  // (see below); they are still walked so the counter stays aligned with the
-  // rows that do.
-  let turnCounter = 0;
-  const turnNumbers = messages.map((msg) => {
-    if (messageKind(msg.role) === 'user') turnCounter++;
-    return turnCounter;
-  });
+  // `null` for a notice: it owns no turn and prints none. See
+  // `transcriptTurnNumbers` for why, and for why that call is not made here.
+  const turnNumbers = transcriptTurnNumbers(messages);
 
   return (
     <div className="py-2">
@@ -110,24 +80,19 @@ export function TranscriptView({ messages }: TranscriptViewProps) {
           : isTurnStart
             ? 'mt-8 pt-6 border-t border-fm-border'
             : 'mt-4';
-        const { label, accent, labelColor } = KIND_PRESENTATION[kind];
+        const { accent, labelColor } = KIND_PRESENTATION[kind];
+        const turn = turnNumbers[idx];
 
         return (
           <div key={msg.message_id} className={wrapperClass}>
             <div className={`pl-4 border-l-2 ${accent}`}>
               <div className="flex items-baseline gap-2 mb-2">
-                <span className={`text-xs font-semibold ${labelColor}`}>{label}</span>
-                {/*
-                  A notice carries no turn label. `turnCounter` advances only on
-                  a user message, so a notice would inherit whichever turn
-                  happened to be open when the background job finished — the
-                  backend stamps it the same way — and printing that claims the
-                  notice is part of an exchange it had no part in. Ordering is
-                  already conveyed by its position in the list.
-                */}
-                {kind !== 'notice' && (
+                <span className={`text-xs font-semibold ${labelColor}`}>
+                  {MESSAGE_AUTHOR_LABEL[kind]}
+                </span>
+                {turn !== null && (
                   <span className="text-[10px] text-fm-text-tertiary font-medium uppercase tracking-wide">
-                    Turn {turnNumbers[idx]}
+                    Turn {turn}
                   </span>
                 )}
               </div>
