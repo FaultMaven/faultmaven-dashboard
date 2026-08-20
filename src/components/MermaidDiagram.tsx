@@ -34,7 +34,51 @@ function loadMermaid() {
 // Rendered SVG per chart source. Charts are deterministic strings, so a
 // remount (e.g. a CaseTabs tab switch, which unmounts inactive tabs) can
 // reuse the previous result instead of re-running parse + layout.
+//
+// Bounded, because this Map is module-level: it outlives every component and
+// lives for the tab's lifetime, and the dashboard is an ops tool whose tabs
+// stay open for days. Unbounded, a session walking cases retains every
+// distinct diagram it ever drew — a Causal Map per report and transcript,
+// plus every mermaid fence in a browsed KB runbook via DocumentCard — with
+// each entry holding both the full chart source (the key) and its SVG.
+//
+// Least-recently-USED, not just a size cap. `Map` iterates in insertion
+// order, so evicting the first key alone would drop whichever diagram was
+// inserted earliest even if it is the one on screen; reads re-insert to
+// refresh recency, so eviction follows use rather than age. The cap is a
+// working-set guess, not a measurement: enough to keep tab-switching inside
+// a case and stepping back through recently-viewed cases on the fast path.
+export const SVG_CACHE_MAX = 50;
 const svgCache = new Map<string, string>();
+
+/** Mark a cached chart as most-recently used. No-op if absent. */
+function touchCachedSvg(chart: string): void {
+  const svg = svgCache.get(chart);
+  if (svg === undefined) return;
+  svgCache.delete(chart);
+  svgCache.set(chart, svg);
+}
+
+/** Store a rendered SVG as most-recently used, evicting the least-recent. */
+function storeSvg(chart: string, svg: string): void {
+  // Delete first: `set` on an existing key updates the value but keeps the
+  // original insertion position, which would leave recency stale. Defensive
+  // rather than load-bearing — the caller only reaches here on a cache miss,
+  // so the key is normally absent and this is a no-op. It earns its place
+  // only when two renders of the SAME uncached chart overlap (StrictMode's
+  // double-invoke, or two instances mounting together) AND another chart is
+  // stored between their two writes; without it the second write would leave
+  // this entry ranked older than it is. Deliberately untested: the
+  // interleaving is narrow and the consequence is one slot of eviction
+  // order, so a test for it would be more brittle than the line it guards.
+  svgCache.delete(chart);
+  svgCache.set(chart, svg);
+  while (svgCache.size > SVG_CACHE_MAX) {
+    const leastRecent = svgCache.keys().next().value;
+    if (leastRecent === undefined) break;
+    svgCache.delete(leastRecent);
+  }
+}
 
 // Mermaid keys its scratch DOM entirely off the id it is handed: `render(id)`
 // first deletes `#id` / `#d{id}` / `#i{id}`, then appends its own
@@ -82,7 +126,14 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
   }
 
   useEffect(() => {
-    if (svgCache.has(chart)) return;
+    // Recency is refreshed here rather than at the reads above: those run
+    // during render, and mutating module state there would be an impure
+    // render. This effect fires on mount and on every chart change, which
+    // is exactly when a cached chart counts as used.
+    if (svgCache.has(chart)) {
+      touchCachedSvg(chart);
+      return;
+    }
     let cancelled = false;
     const attemptId = `${renderId}-${renderAttempt++}`;
     loadMermaid()
@@ -92,7 +143,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
         // Mermaid resolves with whatever survives sanitization; an empty
         // string must fall back, not sit on the loading placeholder.
         const svg = result.svg.trim() ? result.svg : null;
-        if (svg) svgCache.set(chart, svg);
+        if (svg) storeSvg(chart, svg);
         setState({ chart, svg, failed: !svg });
       })
       .catch((err) => {

@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { StrictMode } from 'react';
 import Markdown from 'react-markdown';
-import MermaidDiagram, { PreWithMermaid } from '../../components/MermaidDiagram';
+import MermaidDiagram, {
+  PreWithMermaid,
+  SVG_CACHE_MAX,
+} from '../../components/MermaidDiagram';
 
 // The component memoizes rendered svg by chart source, so every test here
 // must use a chart string no earlier test has rendered.
@@ -208,5 +211,73 @@ describe('MermaidDiagram concurrent renders', () => {
       expect(container.querySelector('[role="img"]')).toBeInTheDocument()
     );
     expect(container.querySelector('pre')).not.toBeInTheDocument();
+  });
+});
+
+// The svg cache is module-level, so it outlives every component and every
+// test in this file. Each test below first inserts SVG_CACHE_MAX charts of
+// its own, which flushes anything earlier tests left behind — that is what
+// makes the eviction assertions deterministic without a reset hook.
+describe('MermaidDiagram svg cache', () => {
+  let run = 0;
+
+  beforeEach(() => {
+    run++;
+    renderMock.mockReset();
+    renderMock.mockImplementation((_id: string, chart: string) =>
+      Promise.resolve({ svg: `<svg data-chart="${chart}"></svg>` })
+    );
+  });
+
+  const chartFor = (n: number) => `flowchart LR\n  cache${run}_${n} --> x`;
+
+  /** Render a chart to completion, then unmount, leaving only its cache entry. */
+  const visit = async (chart: string) => {
+    const { container, unmount } = render(<MermaidDiagram chart={chart} />);
+    await waitFor(() =>
+      expect(container.querySelector('[role="img"]')).toBeInTheDocument()
+    );
+    unmount();
+  };
+
+  /** A chart is cached iff revisiting it does not reach mermaid again. */
+  const isCached = async (chart: string) => {
+    const before = renderMock.mock.calls.length;
+    await visit(chart);
+    return renderMock.mock.calls.length === before;
+  };
+
+  it('evicts once the cache is full instead of growing without bound', async () => {
+    const oldest = chartFor(0);
+    await visit(oldest);
+    // SVG_CACHE_MAX further charts push it past the cap.
+    for (let i = 1; i <= SVG_CACHE_MAX; i++) await visit(chartFor(i));
+
+    expect(await isCached(oldest)).toBe(false);
+  });
+
+  it('evicts the least-recently-USED entry, not the oldest one', async () => {
+    for (let i = 0; i < SVG_CACHE_MAX; i++) await visit(chartFor(i));
+
+    // Re-visit the oldest entry: under LRU this makes it most-recent, so the
+    // next insertion must evict entry 1 instead. Under a plain insertion-order
+    // cap, entry 0 is still the first key and would be the one dropped.
+    expect(await isCached(chartFor(0))).toBe(true);
+
+    // Exactly one insertion over capacity => exactly one eviction.
+    await visit(chartFor(SVG_CACHE_MAX));
+
+    expect(await isCached(chartFor(0))).toBe(true);
+    expect(await isCached(chartFor(1))).toBe(false);
+  });
+
+  it('keeps the cache bounded at the configured capacity', async () => {
+    for (let i = 0; i < SVG_CACHE_MAX * 2; i++) await visit(chartFor(i));
+
+    // The most recent SVG_CACHE_MAX charts are all still served from cache...
+    const newest = SVG_CACHE_MAX * 2 - 1;
+    expect(await isCached(chartFor(newest))).toBe(true);
+    // ...and everything older than the window is gone.
+    expect(await isCached(chartFor(0))).toBe(false);
   });
 });
