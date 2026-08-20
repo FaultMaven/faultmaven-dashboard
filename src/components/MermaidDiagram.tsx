@@ -1,6 +1,11 @@
 import { useEffect, useId, useState, isValidElement } from 'react';
 import type { ComponentProps, ReactElement, ReactNode } from 'react';
 import type { ExtraProps } from 'react-markdown';
+import {
+  decideRenderAction,
+  readSvg,
+  storeSvg,
+} from '../lib/mermaidSvgCache';
 
 // Lazy-load mermaid so the ~1.5MB library ships as its own chunk and is
 // fetched only when a page actually contains a diagram.
@@ -30,11 +35,6 @@ function loadMermaid() {
     });
   return mermaidModule;
 }
-
-// Rendered SVG per chart source. Charts are deterministic strings, so a
-// remount (e.g. a CaseTabs tab switch, which unmounts inactive tabs) can
-// reuse the previous result instead of re-running parse + layout.
-const svgCache = new Map<string, string>();
 
 // Mermaid keys its scratch DOM entirely off the id it is handed: `render(id)`
 // first deletes `#id` / `#d{id}` / `#i{id}`, then appends its own
@@ -70,7 +70,7 @@ interface RenderState {
 export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
   const [state, setState] = useState<RenderState>(() => ({
     chart,
-    svg: svgCache.get(chart) ?? null,
+    svg: readSvg(chart) ?? null,
     failed: false,
   }));
   const renderId = `mmd-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
@@ -78,11 +78,29 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
   // Reset for a new chart during render (the React-endorsed "adjusting
   // state when a prop changes" pattern) so the effect stays async-only.
   if (state.chart !== chart) {
-    setState({ chart, svg: svgCache.get(chart) ?? null, failed: false });
+    setState({ chart, svg: readSvg(chart) ?? null, failed: false });
   }
 
   useEffect(() => {
-    if (svgCache.has(chart)) return;
+    // Recency is refreshed here rather than at the reads above: those run
+    // during render, and mutating module state there would be an impure
+    // render. This effect fires on mount and on every chart change, which
+    // is exactly when a cached chart counts as used.
+    const cached = readSvg(chart);
+    const action = decideRenderAction(state.svg, cached);
+    if (action === 'idle') {
+      // Re-store rather than merely touch: if another instance's insertion
+      // evicted this entry in the commit-to-effect window, the diagram on
+      // screen is missing from the cache while being, by definition, the
+      // most recently used thing in it.
+      storeSvg(chart, state.svg as string);
+      return;
+    }
+    if (action === 'adopt') {
+      storeSvg(chart, cached as string);
+      setState({ chart, svg: cached as string, failed: false });
+      return;
+    }
     let cancelled = false;
     const attemptId = `${renderId}-${renderAttempt++}`;
     loadMermaid()
@@ -92,7 +110,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
         // Mermaid resolves with whatever survives sanitization; an empty
         // string must fall back, not sit on the loading placeholder.
         const svg = result.svg.trim() ? result.svg : null;
-        if (svg) svgCache.set(chart, svg);
+        if (svg) storeSvg(chart, svg);
         setState({ chart, svg, failed: !svg });
       })
       .catch((err) => {
@@ -104,7 +122,7 @@ export default function MermaidDiagram({ chart }: MermaidDiagramProps) {
     return () => {
       cancelled = true;
     };
-  }, [chart, renderId]);
+  }, [chart, renderId, state.svg]);
 
   if (state.failed) {
     return (
