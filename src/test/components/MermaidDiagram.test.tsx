@@ -4,8 +4,11 @@ import { StrictMode } from 'react';
 import Markdown from 'react-markdown';
 import MermaidDiagram, {
   PreWithMermaid,
-  SVG_CACHE_MAX,
 } from '../../components/MermaidDiagram';
+import {
+  SVG_CACHE_MAX,
+  decideRenderAction,
+} from '../../lib/mermaidSvgCache';
 
 // The component memoizes rendered svg by chart source, so every test here
 // must use a chart string no earlier test has rendered.
@@ -279,5 +282,50 @@ describe('MermaidDiagram svg cache', () => {
     expect(await isCached(chartFor(newest))).toBe(true);
     // ...and everything older than the window is gone.
     expect(await isCached(chartFor(0))).toBe(false);
+  });
+});
+
+// The two defects this guards against are races in React's commit-to-passive-
+// effect window: another instance's storeSvg lands there and changes the cache
+// out from under a decision the render phase already made. `act()` collapses
+// that window, so the interleaving cannot be staged in this suite — but the
+// decision it feeds is a pure function, and every cell of it is pinned here.
+describe('decideRenderAction', () => {
+  const SVG = '<svg/>';
+  const OTHER = '<svg data-other/>';
+
+  it('is idle when this instance already shows the chart, even on a cache miss', () => {
+    // The finding: keying off cache membership would re-run mermaid for a
+    // diagram already on screen if its entry was evicted in the window, and a
+    // redundant render that rejects flips a working diagram to the fallback.
+    expect(decideRenderAction(SVG, undefined)).toBe('idle');
+  });
+
+  it('is idle when this instance shows the chart and the cache agrees', () => {
+    expect(decideRenderAction(SVG, SVG)).toBe('idle');
+  });
+
+  it('adopts the cached svg when this instance has none', () => {
+    // The finding: returning here without writing state leaves the component
+    // on "Rendering diagram…" forever.
+    expect(decideRenderAction(null, SVG)).toBe('adopt');
+  });
+
+  it('renders when neither this instance nor the cache has the chart', () => {
+    expect(decideRenderAction(null, undefined)).toBe('render');
+  });
+
+  it('prefers what is already on screen over a differing cache entry', () => {
+    // Not a redraw: swapping the on-screen SVG for another rendering of the
+    // same deterministic source would be churn with no visible benefit.
+    expect(decideRenderAction(SVG, OTHER)).toBe('idle');
+  });
+
+  it('treats an empty string as nothing, on both inputs', () => {
+    // `''` is falsy and must not be mistaken for a usable SVG: the render
+    // path already maps a blank mermaid result to null + the fallback.
+    expect(decideRenderAction('', SVG)).toBe('adopt');
+    expect(decideRenderAction('', '')).toBe('render');
+    expect(decideRenderAction(null, '')).toBe('render');
   });
 });
