@@ -4,11 +4,15 @@
  *
  * Canonical source: `.claude/skills/brand-messaging.md` (§3 terminology, §7
  * enforcement) in the faultmaven repo. This is the downstream copy for the
- * Dashboard, scoped to its brand surface (the README). Stdlib only.
+ * Dashboard. Stdlib only.
  *
- * Two pattern classes, per the skill's "Authority by rule type":
- *   - UNIVERSAL : terminology — must not appear on any brand-facing surface.
- *   - CORE_ONLY : positioning/audience/tone — core product surfaces (README).
+ * Two pattern classes, per the skill's "Authority by rule type", each with its
+ * own file list — the split is canonical's and must be kept:
+ *   - UNIVERSAL : terminology — every brand-facing surface, prose or not.
+ *   - CORE_ONLY : positioning/audience/tone — PROSE surfaces only. Applying
+ *     these to package.json would hard-fail on a dependency name or npm script
+ *     containing 'leverage'/'utilize', and JSON carries no comment, so the
+ *     'brand-lint: allow' escape hatch below cannot reach it.
  *
  * The dashboard's src/ is application code / UI copy (a product-design concern,
  * out of brand-skill scope), so it is not scanned. 'AIOps platform' /
@@ -36,7 +40,10 @@ const UNIVERSAL = [
   [/\bCommunity Edition\b/i, "retired tier name — use 'Standalone' (one unified codebase)"],
   [/\bEnterprise Edition\b/i, "retired tier name — use 'Cloud' (one unified codebase)"],
   [/\bfaultmaven-deploy\b/i, 'obsolete repo — do not reference'],
-  [/\bfm-[a-z]+-service\b(?!-)/i, 'obsolete microservice repo — do not reference'],
+  // The exemption names the ONE thing it exempts: the fm-provision-service-account
+  // console entrypoint (faultmaven#887). A bare (?!-) also let fm-case-service-v2
+  // and fm-agent-service-archive through, which ARE retired repo names.
+  [/\bfm-[a-z]+-service\b(?!-account\b)/i, 'obsolete microservice repo — do not reference'],
 ];
 
 const CORE_ONLY = [
@@ -46,9 +53,11 @@ const CORE_ONLY = [
   [/\butiliz(?:e|es|ed|ing|ation)\b/i, "use 'use', not 'utilize' (brand §5)"],
 ];
 
-// README plus package.json, whose `description` is a published product
-// description (npm metadata, GHCR image label).
-const BRAND_FILES = ['README.md', 'package.json'];
+// Terminology binds every brand-facing surface, including package.json, whose
+// `description` is published metadata (npm, GHCR image label).
+const UNIVERSAL_FILES = ['README.md', 'package.json'];
+// Tone/positioning rules apply to prose only — see the CORE_ONLY note above.
+const CORE_FILES = ['README.md'];
 
 function scan(rel, rules, hits) {
   const abs = join(ROOT, rel);
@@ -63,7 +72,8 @@ function scan(rel, rules, hits) {
 }
 
 const hits = [];
-for (const f of BRAND_FILES) scan(f, [...UNIVERSAL, ...CORE_ONLY], hits);
+for (const f of UNIVERSAL_FILES) scan(f, UNIVERSAL, hits);
+for (const f of CORE_FILES) scan(f, CORE_ONLY, hits);
 
 if (hits.length) {
   console.error('Brand-messaging lint failed (canonical: faultmaven/.claude/skills/brand-messaging.md):\n');
