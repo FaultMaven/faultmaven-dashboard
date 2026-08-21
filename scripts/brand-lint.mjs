@@ -4,11 +4,18 @@
  *
  * Canonical source: `.claude/skills/brand-messaging.md` (§3 terminology, §7
  * enforcement) in the faultmaven repo. This is the downstream copy for the
- * Dashboard, scoped to its brand surface (the README). Stdlib only.
+ * Dashboard. Stdlib only.
  *
- * Two pattern classes, per the skill's "Authority by rule type":
- *   - UNIVERSAL : terminology — must not appear on any brand-facing surface.
- *   - CORE_ONLY : positioning/audience/tone — core product surfaces (README).
+ * Two pattern classes, per the skill's "Authority by rule type", each with its
+ * own file list:
+ *   - UNIVERSAL : terminology — every brand-facing surface, prose or not.
+ *   - CORE_ONLY : positioning/audience/tone. Canonical applies these to its own
+ *     manifest (pyproject.toml) and excludes only CLAUDE.md, a dev guide — so
+ *     excluding package.json here is a JS-ecosystem judgement, NOT canonical's
+ *     rule: package.json carries dependency names and npm scripts, where
+ *     'leverage'/'utilize' show up as third-party names nobody can rename, and
+ *     JSON has no comment syntax, so the 'brand-lint: allow' escape hatch below
+ *     cannot reach them.
  *
  * The dashboard's src/ is application code / UI copy (a product-design concern,
  * out of brand-skill scope), so it is not scanned. 'AIOps platform' /
@@ -26,12 +33,21 @@ const ALLOW = 'brand-lint: allow';
 
 const UNIVERSAL = [
   [/\btroubleshooting assistant\b/i, "use 'troubleshooting copilot', not 'troubleshooting assistant'"],
+  // Retired overclaim (#821): FaultMaven has no reach into production — it works
+  // from what you paste, upload or capture.
+  [/\blive telemetry\b/i, "FaultMaven reads no live telemetry — say 'the logs, metrics, and configs you share'"],
   [/\bmicroservices?\s+backend\b/i, 'FaultMaven is a modular monolith, not microservices'],
   [/\bLocal Deployment\b/i, "use 'Standalone' (ADR-004); 'local' is reserved for AUTH_MODE/CHAT_PROVIDER"],
   [/\bdeploy locally\b/i, "use 'self-host' / 'Standalone' (ADR-004)"],
   [/\bEnterprise SaaS\b/i, "use 'FaultMaven Cloud'; there is no Enterprise tier"],
+  [/\bCommunity Edition\b/i, "retired tier name — use 'Standalone' (one unified codebase)"],
+  [/\bEnterprise Edition\b/i, "retired tier name — use 'Cloud' (one unified codebase)"],
   [/\bfaultmaven-deploy\b/i, 'obsolete repo — do not reference'],
-  [/\bfm-[a-z]+-service\b/i, 'obsolete microservice repo — do not reference'],
+  // The exemption names the ONE thing it exempts: the fm-provision-service-account
+  // console entrypoint (faultmaven#887), singular or plural. A bare (?!-) also let
+  // fm-case-service-v2 and fm-agent-service-archive through, which ARE retired
+  // repo names. Kept in step with canonical via faultmaven#1148.
+  [/\bfm-[a-z]+-service\b(?!-accounts?\b)/i, 'obsolete microservice repo — do not reference'],
 ];
 
 const CORE_ONLY = [
@@ -41,7 +57,11 @@ const CORE_ONLY = [
   [/\butiliz(?:e|es|ed|ing|ation)\b/i, "use 'use', not 'utilize' (brand §5)"],
 ];
 
-const BRAND_FILES = ['README.md'];
+// Terminology binds every brand-facing surface, including package.json, whose
+// `description` is published metadata (npm, GHCR image label).
+const UNIVERSAL_FILES = ['README.md', 'package.json'];
+// Tone/positioning rules apply to prose only — see the CORE_ONLY note above.
+const CORE_FILES = ['README.md'];
 
 function scan(rel, rules, hits) {
   const abs = join(ROOT, rel);
@@ -56,7 +76,8 @@ function scan(rel, rules, hits) {
 }
 
 const hits = [];
-for (const f of BRAND_FILES) scan(f, [...UNIVERSAL, ...CORE_ONLY], hits);
+for (const f of UNIVERSAL_FILES) scan(f, UNIVERSAL, hits);
+for (const f of CORE_FILES) scan(f, CORE_ONLY, hits);
 
 if (hits.length) {
   console.error('Brand-messaging lint failed (canonical: faultmaven/.claude/skills/brand-messaging.md):\n');
