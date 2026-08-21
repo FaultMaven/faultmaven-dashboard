@@ -14,7 +14,7 @@
 
 ## About FaultMaven
 
-FaultMaven is an AI-powered troubleshooting copilot that reasons a problem to its solution the way a seasoned engineer would — methodically, grounded in your live telemetry, runbooks, docs, and past fixes rather than generic guesses. It's self-learning, too: every resolved case becomes knowledge it reuses, and this Dashboard is where that knowledge lives.
+FaultMaven is an AI-powered troubleshooting copilot that reasons a problem to its solution the way a seasoned engineer would — methodically, grounded in the logs, metrics, and configs you share, correlated with your runbooks, docs, and past fixes rather than generic guesses. It's self-learning, too: every resolved case becomes knowledge it reuses, and this Dashboard is where that knowledge lives.
 
 **Learn More:**
 - **[Product Overview](https://faultmaven.ai/product)** — See what FaultMaven can do
