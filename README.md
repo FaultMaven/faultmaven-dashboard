@@ -183,7 +183,7 @@ This project is licensed under the **Apache 2.0 License** - see the [LICENSE](LI
 The FaultMaven ecosystem includes:
 
 - **[faultmaven](https://github.com/FaultMaven/faultmaven)** - Main repository with monolithic backend API
-- **[faultmaven-copilot](https://github.com/FaultMaven/faultmaven-copilot)** - Browser extension for in-flow troubleshooting
+- **[faultmaven-copilot](https://github.com/FaultMaven/faultmaven-copilot)** - Browser extension for in-flow troubleshooting — [install from the Chrome Web Store](https://chromewebstore.google.com/detail/faultmaven-copilot/fghoagggojmkdopidfopijfnlmchjcng)
 - **[faultmaven-website](https://github.com/FaultMaven/faultmaven-website)** - Official website
 
 For local development of both components, see:
