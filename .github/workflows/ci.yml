@@ -93,6 +93,46 @@ jobs:
       - name: Compare handled slugs against the backend
         run: node scripts/check-sso-error-slugs.mjs
 
+  # ============================================================================
+  # Dependency audit
+  # Trivy (in `build`) scans the final image, which ships only bundled static
+  # assets — no node_modules, no package manifests — so it is structurally
+  # blind to vulnerable npm dependencies in this repo: 48 open Dependabot
+  # alerts accumulated on main while every Trivy scan stayed green. This gate
+  # audits pnpm-lock.yaml itself and fails closed on high/critical advisories.
+  #
+  # Escape hatch for a true positive with no upstream patch: add the GHSA id
+  # to `pnpm.auditConfig.ignoreGhsas` in package.json, alongside a documented
+  # exception (see faultmaven docs/operations/security/vulnerability-exceptions.md
+  # for the model) and a package-scoped watch in .github/dependabot.yml.
+  # ============================================================================
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: '9'
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No install step: `pnpm audit` reads pnpm-lock.yaml directly.
+      # Verified to bite when introduced: against the pre-remediation lockfile
+      # this exact command exits 1 (45 high, 1 critical); against the
+      # remediated lockfile it exits 0 with no known vulnerabilities.
+      - name: Audit lockfile (high/critical, fail closed)
+        run: pnpm audit --audit-level high
+
   api-types-drift:
     name: API Types Drift Check
     runs-on: ubuntu-latest
@@ -373,7 +413,7 @@ jobs:
   # ============================================================================
   summary:
     name: Pipeline Summary
-    needs: [lint, api-types-drift, sso-slug-drift, build, test, smoke]
+    needs: [lint, dependency-audit, api-types-drift, sso-slug-drift, build, test, smoke]
     if: always()
     runs-on: ubuntu-latest
 
@@ -388,6 +428,7 @@ jobs:
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Lint & Type Check | ${{ needs.lint.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Audit | ${{ needs['dependency-audit'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| API Types Drift | ${{ needs['api-types-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| SSO Slug Drift | ${{ needs['sso-slug-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Verify | ${{ needs.build.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
@@ -410,6 +451,7 @@ jobs:
         # announcing success for stages it merely reported on.
         env:
           LINT: ${{ needs.lint.result }}
+          DEPENDENCY_AUDIT: ${{ needs['dependency-audit'].result }}
           API_TYPES_DRIFT: ${{ needs['api-types-drift'].result }}
           SSO_SLUG_DRIFT: ${{ needs['sso-slug-drift'].result }}
           BUILD: ${{ needs.build.result }}
@@ -417,7 +459,7 @@ jobs:
           SMOKE: ${{ needs.smoke.result }}
         run: |
           rc=0
-          for stage in LINT API_TYPES_DRIFT SSO_SLUG_DRIFT BUILD TEST SMOKE; do
+          for stage in LINT DEPENDENCY_AUDIT API_TYPES_DRIFT SSO_SLUG_DRIFT BUILD TEST SMOKE; do
             result="${!stage}"
             # `skipped` is a pass: a stage skipped on purpose (the `skip_tests`
             # dispatch input) must not fail the pipeline, and a stage skipped
