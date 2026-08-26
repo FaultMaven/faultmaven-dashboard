@@ -29,6 +29,14 @@ describe('stripHtmlComments', () => {
     );
   });
 
+  it('discards back to the marker that actually opened the region, not a stale start', () => {
+    // The second `<!--` here exists only because removing the first one rejoined
+    // `<!-` with the `-` behind it. The live region therefore begins earlier than
+    // the point the first removal recorded, and the closer has to discard back to
+    // the earlier point — discarding to the stale one leaks `BOD` into the output.
+    expect(stripHtmlComments('KEEP<!-<!---BODY-->TAIL')).toBe('KEEPTAIL');
+  });
+
   it('removes an unterminated open marker so the rest still renders as markdown', () => {
     // CommonMark treats a bare `<!--` as an HTML block running to end of input,
     // so anything after it would render as escaped plain text.
@@ -65,7 +73,7 @@ describe('stripHtmlComments', () => {
   it('holds the guarantee and idempotence over randomised marker soup', () => {
     // The failure mode is a splice at a seam, so bias the alphabet entirely
     // towards marker characters instead of hoping prose stumbles into one.
-    const alphabet = ['<', '!', '-', '>', ' ', 'x', '\n'];
+    const alphabet = ['<', '!', '-', '>', ' ', 'x', '\n', '\r'];
     let seed = 0x5eed;
     const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 
@@ -77,6 +85,12 @@ describe('stripHtmlComments', () => {
       const once = stripHtmlComments(input);
       expect(once, `input ${JSON.stringify(input)}`).not.toContain('<!--');
       expect(stripHtmlComments(once), `input ${JSON.stringify(input)}`).toBe(once);
+      // Marker-absence alone is satisfied by returning less than was asked for, so
+      // pin the other side too: an input that never forms an opener comes back
+      // byte for byte, CRLF and all.
+      if (!input.includes('<!--')) {
+        expect(once, `input ${JSON.stringify(input)}`).toBe(input);
+      }
     }
   });
 
@@ -94,7 +108,7 @@ describe('stripHtmlComments', () => {
     // main thread, reachable from a single KB document another user uploaded.
     // The single-pass scanner measured a 9.0ms median (worst of 9 runs 12.4ms).
     // The budget below sits ~20x above that worst local run — loose enough for a
-    // loaded CI runner, still ~230x below the quadratic cost it exists to catch.
+    // loaded CI runner — and still ~8x below the ~2100ms it exists to catch.
     const n = 20000;
     const hostile = '<!-'.repeat(n) + '- -->' + '- -->'.repeat(n);
     expect(hostile.length).toBeGreaterThan(150000);

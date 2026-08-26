@@ -41,6 +41,11 @@ export function stripFrontmatter(md: string): string {
  * every mermaid edge (`A --> B`), which these same renderers pass through to the
  * causal-map diagrams.
  *
+ * Not fence-aware, exactly as the regex it replaces was not: a marker inside a
+ * fenced code block is stripped like any other. A *closed* comment in a fence
+ * already disappeared before this change; what is new is that an unclosed one
+ * now loses its four characters too, the rest of the line surviving.
+ *
  * This is a rendering-correctness guarantee, not an XSS control. None of the call
  * sites enable rehype-raw, so react-markdown escapes raw HTML rather than rendering
  * it (`<img onerror>` arrives as `&lt;img onerror...&gt;`); a comment marker in the
