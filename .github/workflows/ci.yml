@@ -416,6 +416,10 @@ jobs:
     needs: [lint, dependency-audit, api-types-drift, sso-slug-drift, build, test, smoke]
     if: always()
     runs-on: ubuntu-latest
+    # No checkout and no GitHub API call: this job only reads `needs.*.result`
+    # and appends to $GITHUB_STEP_SUMMARY, which is a file on the runner.
+    # It needs no token scope at all.
+    permissions: {}
 
     steps:
       - name: Pipeline summary

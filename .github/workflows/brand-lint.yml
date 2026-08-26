@@ -17,6 +17,11 @@ on:
   push:
     branches: [main]
 
+# Single job: checks out this repo and runs a stdlib Node script over the
+# checked-out files. It writes nothing back and calls no GitHub API.
+permissions:
+  contents: read
+
 jobs:
   brand-lint:
     runs-on: ubuntu-latest
