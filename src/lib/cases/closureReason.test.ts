@@ -23,6 +23,7 @@ describe('closureReasonDisplay', () => {
     expect(Object.keys(CLOSURE_REASON_DISPLAY).sort()).toEqual([
       'closed_insufficient_evidence',
       'closed_rca_infeasible',
+      'closed_restatement_held',
       'inquiry_only',
       'mitigation_sufficient',
       'solution_deferred',
