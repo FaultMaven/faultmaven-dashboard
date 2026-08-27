@@ -39,7 +39,7 @@ export default function SSOCallbackPage() {
   const [exchangeError, setExchangeError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { deployment, configStatus, setAuthState } = useAuth();
+  const { setAuthState } = useAuth();
   const startedRef = useRef(false);
 
   // The error-slug / missing-code outcome is a pure derivation of the URL —
@@ -54,24 +54,17 @@ export default function SSOCallbackPage() {
         ? ssoErrorMessage(errorSlug)
         : GENERIC_ERROR
       : null;
-  // 'unreachable' would otherwise leave this page waiting on `deployment`
-  // forever (the exchange effect below gates on it): surface it as a terminal
-  // error instead. The user restarts sign-in from /login, whose unreachable
-  // state carries the retry affordance.
-  const error =
-    paramError ??
-    exchangeError ??
-    (configStatus === 'unreachable'
-      ? 'Could not reach the FaultMaven API to complete sign-in.'
-      : null);
+  const error = paramError ?? exchangeError;
 
   useEffect(() => {
     if (paramError || !code) return;
 
-    // Wait for auth-config resolution: setAuthState derives the dashboard role
-    // from `deployment`, so exchanging before it resolves would store a session
-    // with no role (same reason LoginPage gates its variants on deployment).
-    if (deployment === null) return;
+    // No deployment gate: the exchange fires immediately. This effect used to
+    // wait for auth-config resolution so setAuthState could derive a role, but
+    // role is now DERIVED (AuthContext useMemo over authState + deployment) —
+    // it materializes on its own once detection resolves. Holding the
+    // short-TTL single-use completion code hostage to an unrelated fetch let
+    // a config blip expire a perfectly exchangeable code.
 
     // The completion code is single-use: StrictMode's double-invoked effect
     // must not POST it twice (the second exchange would 401 and clobber a
@@ -103,7 +96,7 @@ export default function SSOCallbackPage() {
         setExchangeError(EXCHANGE_ERROR);
       }
     })();
-  }, [paramError, code, deployment, location.search, navigate, setAuthState]);
+  }, [paramError, code, location.search, navigate, setAuthState]);
 
   if (error) {
     return (
