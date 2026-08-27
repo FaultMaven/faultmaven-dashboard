@@ -6,6 +6,32 @@ import config from '../config';
 // Deployment type: derived from the backend auth mode
 export type Deployment = 'standalone' | 'cloud';
 
+/**
+ * Whether the deployment's `/auth/config` has been confirmed.
+ *
+ * Kept as a separate axis rather than widening `Deployment`: `deployment` is a
+ * CLAIM about which backend this is, and it must only ever hold a value the
+ * backend actually confirmed. When the config endpoint cannot be reached, the
+ * dashboard does not know which deployment it fronts — and it must say so
+ * instead of guessing. The previous behavior defaulted to 'standalone' on any
+ * fetch failure, which rendered the standalone dev-login ("LOCAL MODE ACTIVE")
+ * to cloud users whose browser blocked the cross-origin config fetch (e.g.
+ * Chrome's Local Network Access blocking a public page from reaching an API
+ * host that resolves to a private address), and silently demoted a signed-in
+ * cloud admin's role to 'individual' on a transient failure.
+ */
+export type ConfigStatus = 'pending' | 'ok' | 'unreachable';
+
+/**
+ * Auto-retry backoff for the auth-config fetch: total attempts = 1 + length.
+ * Covers a backend that is a moment away from ready (compose startup, pod
+ * restart) without hammering; a genuine block (LNA, network) settles into
+ * 'unreachable' after ~4s, where the login page offers a manual Retry.
+ */
+export const CONFIG_RETRY_DELAYS_MS = [1000, 3000];
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 // Dashboard role: derived from the JWT roles array and deployment
 export type DashboardRole = 'individual' | 'standard_user' | 'platform_admin';
 
@@ -34,6 +60,10 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isAdmin: boolean;
   deployment: Deployment | null;
+  /** See ConfigStatus. `deployment` is non-null only when this is 'ok'. */
+  configStatus: ConfigStatus;
+  /** Re-run deployment detection after an 'unreachable' verdict. */
+  retryConfigDetection: () => void;
   role: DashboardRole | null;
   /**
    * Deployment-config-driven sign-in URL for cloud (OIDC) deployments, resolved
@@ -54,8 +84,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authState, setAuthStateInternal] = useState<AuthState | null>(null);
   const [loading, setLoading] = useState(true);
   const [deployment, setDeployment] = useState<Deployment | null>(null);
+  const [configStatus, setConfigStatus] = useState<ConfigStatus>('pending');
   const [role, setRole] = useState<DashboardRole | null>(null);
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
+
+  /**
+   * One attempt against `/auth/config`. Returns null when the deployment could
+   * not be CONFIRMED — thrown fetch and non-ok response alike. Both must fail
+   * closed: a 5xx/429 no more proves "standalone" than a network error does.
+   */
+  const fetchAuthConfigOnce = useCallback(async (): Promise<{
+    dep: Deployment;
+    resolvedLoginUrl: string | null;
+  } | null> => {
+    try {
+      const res = await fetch(`${config.apiUrl}/api/v1/auth/config`);
+      if (!res.ok) return null;
+      const authConfig: {
+        auth_mode?: string;
+        oauth?: { hosted_login_url?: string; authorize_url?: string } | null;
+      } = await res.json();
+      const dep: Deployment = authConfig.auth_mode === 'oauth' ? 'cloud' : 'standalone';
+      // The human Sign In target must be a HOSTED LOGIN URL, taken ONLY from
+      // a field explicitly designated for it (`oauth.hosted_login_url`).
+      // Deliberately NOT `oauth.authorize_url`: that is the copilot OAuth-PKCE
+      // authorize endpoint (needs client_id/redirect_uri/PKCE params) — a
+      // machine flow, not a human hosted login; conflating them sends users
+      // to a broken redirect. The redirect remains deployment-config-driven —
+      // no hardcoded IdP.
+      const advertised = authConfig.oauth?.hosted_login_url;
+      let resolvedLoginUrl: string | null = null;
+      if (dep === 'cloud' && advertised) {
+        resolvedLoginUrl = advertised.startsWith('http')
+          ? advertised
+          : `${config.apiUrl}${advertised.startsWith('/') ? '' : '/'}${advertised}`;
+      }
+      return { dep, resolvedLoginUrl };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /**
+   * Detect the deployment, retrying briefly, and FAIL CLOSED on exhaustion:
+   * `deployment` stays null and `configStatus` becomes 'unreachable'. The
+   * login page renders a retriable error for that state — never the
+   * standalone dev-login, which previously masqueraded as "LOCAL MODE" in
+   * front of cloud users whenever this fetch was blocked (see ConfigStatus).
+   * Role derivation re-reads stored auth here so a manual Retry restores a
+   * signed-in user's role too, not just the login variant.
+   */
+  const runConfigDetection = useCallback(async () => {
+    setConfigStatus('pending');
+    let result = await fetchAuthConfigOnce();
+    for (const delay of CONFIG_RETRY_DELAYS_MS) {
+      if (result) break;
+      await sleep(delay);
+      result = await fetchAuthConfigOnce();
+    }
+    if (!result) {
+      setDeployment(null);
+      setLoginUrl(null);
+      setConfigStatus('unreachable');
+      return;
+    }
+    setDeployment(result.dep);
+    setLoginUrl(result.resolvedLoginUrl);
+    setConfigStatus('ok');
+    const state = await authManager.getAuthState();
+    if (state) {
+      setRole(deriveRole(result.dep, state.user.roles ?? []));
+    }
+  }, [fetchAuthConfigOnce]);
+
+  const retryConfigDetection = useCallback(() => {
+    void runConfigDetection();
+  }, [runConfigDetection]);
 
   useEffect(() => {
     const load = async () => {
@@ -65,47 +169,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const state = await authManager.getAuthState();
       setAuthStateInternal(state);
 
-      // Detect deployment from backend auth config (public endpoint, no auth needed)
-      let dep: Deployment = 'standalone';
-      let resolvedLoginUrl: string | null = null;
-      try {
-        const res = await fetch(`${config.apiUrl}/api/v1/auth/config`);
-        if (res.ok) {
-          const authConfig: {
-            auth_mode?: string;
-            oauth?: { hosted_login_url?: string; authorize_url?: string } | null;
-          } = await res.json();
-          dep = authConfig.auth_mode === 'oauth' ? 'cloud' : 'standalone';
-          // The human Sign In target must be a HOSTED LOGIN URL, taken ONLY from
-          // a field explicitly designated for it (`oauth.hosted_login_url`).
-          // Deliberately NOT `oauth.authorize_url`: that is the copilot OAuth-PKCE
-          // authorize endpoint (needs client_id/redirect_uri/PKCE params) — a
-          // machine flow, not a human hosted login; conflating them sends users
-          // to a broken redirect. The WorkOS/OIDC backend workstream will
-          // populate `hosted_login_url` in /auth/config; until then this stays
-          // null and the login page shows an honest "not configured" state. The
-          // redirect remains deployment-config-driven — no hardcoded IdP.
-          const advertised = authConfig.oauth?.hosted_login_url;
-          if (dep === 'cloud' && advertised) {
-            resolvedLoginUrl = advertised.startsWith('http')
-              ? advertised
-              : `${config.apiUrl}${advertised.startsWith('/') ? '' : '/'}${advertised}`;
-          }
-        }
-      } catch {
-        // Network error or backend unavailable — default to standalone
-      }
-      setDeployment(dep);
-      setLoginUrl(resolvedLoginUrl);
-
-      // Derive role from JWT roles array and deployment
-      if (state) {
-        setRole(deriveRole(dep, state.user.roles ?? []));
-      }
+      // Detect deployment from backend auth config (public endpoint, no auth
+      // needed). Role derivation happens inside on success.
+      await runConfigDetection();
 
       setLoading(false);
     };
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // React to AuthManager-initiated clears (a definitive refresh failure wipes
@@ -155,6 +226,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // All Cases view served by `GET /api/v1/admin/cases`.
         isAdmin: !!authState?.user?.roles?.includes('platform_admin'),
         deployment,
+        configStatus,
+        retryConfigDetection,
         role,
         loginUrl,
         setAuthState,

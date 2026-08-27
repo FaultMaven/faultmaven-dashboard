@@ -12,7 +12,40 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { deployment, loginUrl, setAuthState } = useAuth();
+  const { deployment, configStatus, retryConfigDetection, loginUrl, setAuthState } = useAuth();
+
+  // When the API is unreachable, check whether the browser's Local Network
+  // Access permission is the blocker, to make the error actionable. The
+  // permission name is 'local-network' as of Chrome 145, with the launch-era
+  // 'local-network-access' kept as an alias; other browsers throw on unknown
+  // names, hence the try-per-name. Detection only — never pass
+  // `targetAddressSpace` on the fetch itself: the same bundle serves external
+  // users whose API resolves publicly, and a declared-space mismatch fails the
+  // request outright.
+  // Rendered only inside the unreachable branch, so a stale value from a
+  // previous unreachable episode is invisible; the async query refreshes it
+  // (both directions) each time the state is entered.
+  const [lnaBlocked, setLnaBlocked] = useState(false);
+  useEffect(() => {
+    if (configStatus !== 'unreachable') return;
+    let cancelled = false;
+    (async () => {
+      for (const name of ['local-network', 'local-network-access']) {
+        try {
+          const status = await navigator.permissions.query({
+            name: name as PermissionName,
+          });
+          if (!cancelled) setLnaBlocked(status.state === 'denied');
+          return;
+        } catch {
+          // Unknown permission name in this browser — try the next alias.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [configStatus]);
   // The sign-out that sent the user here could not confirm that the account's
   // other sessions ended (logoutAuth). The menu that asked is long gone by now,
   // so this screen is where the user finds out. Read at mount and consumed
@@ -129,6 +162,51 @@ export default function LoginPage() {
         : loginUrl;
     window.location.assign(target);
   };
+
+  // Deployment could not be confirmed: fail CLOSED with a retriable error.
+  // Rendering either login variant here would be a guess — and the standalone
+  // guess is how cloud users ended up on a "LOCAL MODE ACTIVE" dev-login they
+  // could never sign in through (Chrome's Local Network Access blocking the
+  // config fetch on networks where the API resolves to a private address).
+  if (configStatus === 'unreachable') {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+        <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
+          <div className="text-center mb-6 mt-2">
+            <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
+            <h2 className="text-xl font-semibold text-fm-text-primary mb-2">
+              Can&apos;t reach the FaultMaven API
+            </h2>
+            <p className="text-sm text-fm-text-secondary">
+              The dashboard could not contact its API server to determine how to
+              sign you in. Check that the API is running and reachable from this
+              browser, then try again.
+            </p>
+          </div>
+
+          {lnaBlocked && (
+            <div
+              role="status"
+              className="mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn"
+            >
+              Your browser is blocking this site&apos;s access to the local
+              network, which can block the API when it resolves to a private
+              address. In Chrome, open this site&apos;s settings and set
+              &ldquo;Local network access&rdquo; to Allow, then retry.
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={retryConfigDetection}
+            className="w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Wait for deployment detection before rendering a login variant, so a cloud
   // user never briefly sees the standalone username form (and vice versa).

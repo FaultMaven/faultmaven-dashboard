@@ -39,7 +39,7 @@ export default function SSOCallbackPage() {
   const [exchangeError, setExchangeError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { deployment, setAuthState } = useAuth();
+  const { deployment, configStatus, setAuthState } = useAuth();
   const startedRef = useRef(false);
 
   // The error-slug / missing-code outcome is a pure derivation of the URL —
@@ -54,7 +54,16 @@ export default function SSOCallbackPage() {
         ? ssoErrorMessage(errorSlug)
         : GENERIC_ERROR
       : null;
-  const error = paramError ?? exchangeError;
+  // 'unreachable' would otherwise leave this page waiting on `deployment`
+  // forever (the exchange effect below gates on it): surface it as a terminal
+  // error instead. The user restarts sign-in from /login, whose unreachable
+  // state carries the retry affordance.
+  const error =
+    paramError ??
+    exchangeError ??
+    (configStatus === 'unreachable'
+      ? 'Could not reach the FaultMaven API to complete sign-in.'
+      : null);
 
   useEffect(() => {
     if (paramError || !code) return;
