@@ -27,11 +27,13 @@ FROM nginx:alpine
 # so `apk upgrade` re-runs against the current package index instead of serving
 # a stale cached layer:
 #   - libxml2>=2.13.9-r1  → CVE-2026-6732
-#   - libcrypto3/libssl3>=3.5.7-r0 → CVE-2026-45447 (openssl PKCS7_verify UAF)
+#   - libcrypto3/libssl3>=3.5.8-r0 → CVE-2026-45447 (openssl PKCS7_verify UAF)
+#                                    and CVE-2026-14456 (openssl QUIC server
+#                                    unbounded memory growth → DoS)
 #   - libexpat>=2.8.1-r0  → CVE-2026-45186 (expat DoS via crafted XML)
 #   - c-ares>=1.34.8-r0   → CVE-2026-33630 (c-ares UAF/double-free in query-completion handling)
 RUN apk update && apk upgrade --no-cache \
-    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.7-r0" "libssl3>=3.5.7-r0" "libexpat>=2.8.1-r0" "c-ares>=1.34.8-r0"
+    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.8.1-r0" "c-ares>=1.34.8-r0"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
