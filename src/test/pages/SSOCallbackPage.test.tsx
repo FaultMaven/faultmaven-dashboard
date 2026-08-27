@@ -120,15 +120,16 @@ describe('SSOCallbackPage', () => {
     expect(mockSsoExchange).toHaveBeenCalledTimes(1);
   });
 
-  it('waits for deployment detection before exchanging', () => {
-    // setAuthState derives the dashboard role from deployment; exchanging
-    // before /auth/config resolves would store a role-less session.
+  it('exchanges immediately, without waiting for deployment detection', async () => {
+    // The completion code is single-use and short-TTL; holding it behind the
+    // unrelated /auth/config fetch let a config blip expire an exchangeable
+    // code. Role no longer needs the gate — it is derived in AuthContext from
+    // authState + deployment and materializes once detection resolves.
     mockUseAuth.mockReturnValue({ deployment: null, setAuthState: mockSetAuthState });
 
     renderCallback('/auth/sso/callback?code=abc');
 
-    expect(screen.getByText(/completing sign-in/i)).toBeInTheDocument();
-    expect(mockSsoExchange).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockSsoExchange).toHaveBeenCalledWith('abc'));
   });
 
   it('renders the mapped message for a known error slug without calling exchange', async () => {

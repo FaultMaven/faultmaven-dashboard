@@ -3,8 +3,82 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { devLogin, authManager, SIGNOUT_NOTICE_KEY } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
+import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
 
 const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
+const warningBannerClass = 'mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn';
+const primaryButtonClass = 'w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+
+/**
+ * Rendered when deployment detection settled 'unreachable'. Owns the Chrome
+ * Local Network Access diagnosis: mounting only inside this state means the
+ * component's lifecycle scopes the answer to the current unreachable episode —
+ * no staleness to reason about. The card stays mounted across Retry clicks
+ * (retry is a single attempt that never flips configStatus back to pending),
+ * so the guidance and the sign-out notice don't flicker away mid-retry.
+ */
+function UnreachableCard({
+  signOutNotice,
+  onRetry,
+}: {
+  signOutNotice: React.ReactNode;
+  onRetry: () => Promise<void>;
+}) {
+  const [lnaBlocked, setLnaBlocked] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void localNetworkAccessLikelyBlocked().then((blocked) => {
+      if (!cancelled) setLnaBlocked(blocked);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
+      <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
+        <div className="text-center mb-6 mt-2">
+          <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
+          <h2 className="text-xl font-semibold text-fm-text-primary mb-2">
+            Can&apos;t reach the FaultMaven API
+          </h2>
+          <p className="text-sm text-fm-text-secondary">
+            The dashboard could not contact its API server to determine how to
+            sign you in. Check that the API is running and reachable from this
+            browser, then try again.
+          </p>
+        </div>
+
+        {signOutNotice}
+
+        {lnaBlocked && (
+          <div role="status" className={warningBannerClass}>
+            Your browser may be blocking this site&apos;s access to the local
+            network, which blocks the API when it resolves to a private
+            address. In Chrome, open this site&apos;s settings, set
+            &ldquo;Local network access&rdquo; to Allow, and retry.
+          </div>
+        )}
+
+        <button type="button" onClick={handleRetry} disabled={retrying} className={primaryButtonClass}>
+          {retrying ? 'Checking…' : 'Retry'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -12,7 +86,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { deployment, loginUrl, setAuthState } = useAuth();
+  const { deployment, configStatus, retryConfigDetection, loginUrl, setAuthState } = useAuth();
+
   // The sign-out that sent the user here could not confirm that the account's
   // other sessions ended (logoutAuth). The menu that asked is long gone by now,
   // so this screen is where the user finds out. Read at mount and consumed
@@ -41,7 +116,7 @@ export default function LoginPage() {
   const signOutNotice = signOutUnconfirmed ? (
     <div
       role="status"
-      className="mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn"
+      className={warningBannerClass}
     >
       Signed out on this device. We could not confirm that your other sessions
       ended — if you are signed in to the FaultMaven Copilot or another browser,
@@ -130,6 +205,15 @@ export default function LoginPage() {
     window.location.assign(target);
   };
 
+  // Deployment could not be confirmed: fail CLOSED with a retriable error.
+  // Rendering either login variant here would be a guess — and the standalone
+  // guess is how cloud users ended up on a "LOCAL MODE ACTIVE" dev-login they
+  // could never sign in through (Chrome's Local Network Access blocking the
+  // config fetch on networks where the API resolves to a private address).
+  if (configStatus === 'unreachable') {
+    return <UnreachableCard signOutNotice={signOutNotice} onRetry={retryConfigDetection} />;
+  }
+
   // Wait for deployment detection before rendering a login variant, so a cloud
   // user never briefly sees the standalone username form (and vice versa).
   if (deployment === null) {
@@ -163,7 +247,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={handleCloudSignIn}
-            className="w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 transition-colors"
+            className={primaryButtonClass}
           >
             Sign In
           </button>
@@ -248,7 +332,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={primaryButtonClass}
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
