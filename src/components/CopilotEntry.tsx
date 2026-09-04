@@ -15,9 +15,11 @@ import { useEffect, useState } from 'react';
  *   event:     faultmaven-copilot:ready (window)
  */
 
-// FaultMaven Copilot Chrome Web Store listing. TODO: replace with the real
-// listing URL once the extension is published (the ID is assigned at publish).
-const COPILOT_STORE_URL = 'https://chromewebstore.google.com/detail/faultmaven-copilot';
+// FaultMaven Copilot's published Chrome Web Store listing (#119). The trailing
+// segment is the extension ID assigned at publish; a `/detail/<slug>` URL
+// without it does not address the listing, so keep the ID when editing this.
+const COPILOT_STORE_URL =
+  'https://chromewebstore.google.com/detail/faultmaven-copilot/fghoagggojmkdopidfopijfnlmchjcng';
 
 const PRESENCE_ATTR = 'data-faultmaven-copilot';
 const PRESENCE_EVENT = 'faultmaven-copilot:ready';
