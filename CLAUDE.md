@@ -291,6 +291,11 @@ change reaches both or reaches neither.
 - **The theme ships with it** as a Tailwind preset, consumed in
   `tailwind.config.cjs`; `src/index.css` imports the package's `globals.css`.
   ADR-003 is one design system — the two configs had already drifted silently.
+  ⚠️ `content` is the ONE key Tailwind does not merge across presets: a config's
+  array REPLACES the preset's, and the package is a pnpm symlink. Get either
+  wrong and every `fm-*` class the shared UI uses is purged — no error, no
+  warning, a panel rendered unstyled. `pnpm check:shared-ui-styles` (CI job
+  `web-bundle-boundary`, after `pnpm build`) is what makes that loud.
 - **Adopting a change is moving the SHA** in `package.json` and re-running
   `pnpm install`. `pnpm check:copilot-pin` (CI job `copilot-ui-pin`, a required
   check on main) fails when the pin is not on the copilot repo's `main`, when

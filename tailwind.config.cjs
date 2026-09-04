@@ -19,12 +19,28 @@
  * adds the installed path explicitly) or every `fm-*` class the shared UI uses
  * is purged out of the bundle.
  */
+const copilotUiPreset = require('@faultmaven/copilot-ui/tailwind-preset.cjs');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  presets: [require('@faultmaven/copilot-ui/tailwind-preset.cjs')],
+  presets: [copilotUiPreset],
+  /*
+   * `content` is the ONE key Tailwind does not merge across presets — a
+   * config's array REPLACES the preset's — so the package's own globs have to
+   * be spread in by hand. Omit them and every `fm-*` class the shared UI uses
+   * is purged: no error, no warning, just a panel rendered unstyled.
+   *
+   * Spread rather than hand-written, so this tracks wherever the package says
+   * its sources are (it resolves them from its own `__dirname`, which is inside
+   * pnpm's store) instead of a path in this repo that happens to work today.
+   * The explicit glob below stays as well: it is broader than the preset's
+   * `shared/` + `lib/`, and `scripts/check-shared-ui-styles.mjs` is what proves
+   * the whole arrangement actually emits.
+   */
   content: [
     './src/**/*.{js,ts,jsx,tsx,html}',
     './node_modules/@faultmaven/copilot-ui/**/*.{js,ts,jsx,tsx}',
+    ...copilotUiPreset.content,
   ],
   theme: {
     extend: {

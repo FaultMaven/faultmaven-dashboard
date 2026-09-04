@@ -216,6 +216,16 @@ jobs:
       - name: Assert no Copilot sign-in reached the bundle
         run: node scripts/check-web-bundle-boundary.mjs
 
+      # A missing Tailwind token throws nothing: the class is never emitted and
+      # the shared panel renders unstyled. `content` is the one key Tailwind
+      # does not merge across presets, and the package is a pnpm symlink, so
+      # this is one line of config away in two different directions.
+      #
+      # Verified to bite when introduced: dropping the package globs from
+      # `content` makes this exact command exit 1 on all three classes.
+      - name: Assert the shared UI's classes reached the stylesheet
+        run: node scripts/check-shared-ui-styles.mjs
+
   api-types-drift:
     name: API Types Drift Check
     runs-on: ubuntu-latest

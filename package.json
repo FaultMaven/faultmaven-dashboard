@@ -17,10 +17,11 @@
     "test:coverage": "vitest run --coverage",
     "check:copilot-pin": "node scripts/check-copilot-ui-pin.mjs",
     "check:web-boundary": "node scripts/check-web-bundle-boundary.mjs",
-    "lint:tests": "eslint --no-ignore 'src/test/**/*.{ts,tsx}' 'src/**/*.test.{ts,tsx}'"
+    "lint:tests": "eslint --no-ignore 'src/test/**/*.{ts,tsx}' 'src/**/*.test.{ts,tsx}'",
+    "check:shared-ui-styles": "node scripts/check-shared-ui-styles.mjs"
   },
   "dependencies": {
-    "@faultmaven/copilot-ui": "github:FaultMaven/faultmaven-copilot#e9baf67db712306d9957c40ac156dd688369c099&path:packages/copilot-ui",
+    "@faultmaven/copilot-ui": "github:FaultMaven/faultmaven-copilot#707bebcd9c3cd33f1a4e55aa17c2f0a7f2b39204&path:packages/copilot-ui",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tanstack/react-query": "^5.90.17",
