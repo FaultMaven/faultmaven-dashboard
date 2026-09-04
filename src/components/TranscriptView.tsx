@@ -49,16 +49,20 @@ const KIND_PRESENTATION: Record<MessageKind, { accent: string; labelColor: strin
 };
 
 /**
- * Renders a case transcript. Purely presentational — it takes messages and does
- * not know where they came from.
+ * Renders a case transcript for the OPERATOR break-glass page (ADR-012 D9).
  *
- * That is the point: the owner-facing tab loads them from `GET
- * /cases/{id}/messages` and the operator break-glass page from the audited
- * `GET /api/v1/admin/cases/{id}/messages` (ADR-012 D9), and both render through
- * here. The backend deliberately serves the same shape from both, so an
- * operator-opened transcript cannot present differently from the one its owner
- * sees — a divergence would mean an operator reviewing something other than
- * what the customer is looking at.
+ * Purely presentational — it takes messages and does not know where they came
+ * from. It used to render the owner's Transcript tab as well, and that is the
+ * copy ADR-016 D1 retired: the owner's tab now mounts the shared Copilot UI, so
+ * the Dashboard and the extension render one investigation through one
+ * component instead of two that drifted.
+ *
+ * This one is NOT that renderer and must not be replaced by it. The break-glass
+ * page reads someone else's case through the audited
+ * `GET /api/v1/admin/cases/{id}/messages`, under a grant, with no interaction
+ * of any kind — the shared panel is an interactive shell bound to the signed-in
+ * user's own cases and could not answer for that page even if it were asked to.
+ * A read-only operator view is exactly what this is for.
  */
 export function TranscriptView({ messages }: TranscriptViewProps) {
   if (!messages.length) {

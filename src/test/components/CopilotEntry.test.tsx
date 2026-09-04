@@ -77,10 +77,32 @@ describe('Chrome Web Store install CTA', () => {
     }
   });
 
-  it('shows the toolbar hint when the copilot has marked the page', () => {
+  it('no longer tells an installed user to open the panel from their toolbar', () => {
+    // The Dashboard now hosts the panel itself, and the extension YIELDS its
+    // side panel on this origin (ADR-016 D4). "Copilot in your toolbar" pointed
+    // at a panel that deliberately will not open — worse than saying nothing.
     document.documentElement.setAttribute('data-faultmaven-copilot', '0.4.0');
     render(<CopilotEntry />);
-    expect(screen.getByText(/in your toolbar/i)).toBeInTheDocument();
+
+    expect(screen.queryByText(/in your toolbar/i)).not.toBeInTheDocument();
+  });
+
+  it('tells an installed user where the extension still earns its keep', () => {
+    document.documentElement.setAttribute('data-faultmaven-copilot', '0.4.0');
+    render(<CopilotEntry />);
+
+    const hint = screen.getByText(/other tabs/i);
+    expect(hint).toBeInTheDocument();
+    // Beside a third-party console — the thing this Dashboard is not — and not
+    // an instruction to open something here.
+    expect(hint.closest('span')?.getAttribute('title') ?? '').toMatch(/grafana|aws|console/i);
     expect(screen.queryByText(/get the copilot/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the install CTA for a visitor who has not installed it', () => {
+    // Nothing here requires the extension, but page capture does — so the one
+    // install prompt the product makes must survive this copy change.
+    render(<CopilotEntry />);
+    expect(screen.getByText(/get the copilot/i)).toBeInTheDocument();
   });
 });

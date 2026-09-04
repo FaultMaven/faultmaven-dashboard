@@ -1,27 +1,25 @@
-/* ADR-003: FaultMaven Design System — fm-* Tokens */
+/*
+ * ADR-003: FaultMaven Design System — one stylesheet, not two.
+ *
+ * The fonts, the Tailwind layers, the base reset and the type-scale utilities
+ * (`text-body`, `text-meta`, `text-micro`, `text-finding-title`) all come from
+ * the Copilot UI package, because the shared components USE them: a Dashboard
+ * that redefined them here would be forking the design system, and one that
+ * simply lacked them would render the shared panel unstyled with nothing
+ * thrown. Importing the package's sheet is the same move as consuming its
+ * Tailwind preset (see tailwind.config.cjs) — the tokens and the rules that
+ * consume them travel together.
+ */
+@import '@faultmaven/copilot-ui/styles/globals.css';
 
-/* Fonts */
-@import '@fontsource/dm-sans/400.css';
-@import '@fontsource/dm-sans/500.css';
-@import '@fontsource/dm-sans/600.css';
-@import '@fontsource/dm-sans/700.css';
-@import '@fontsource/jetbrains-mono/400.css';
+/* Dashboard-only additions below. Everything above is the shared system. */
 
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Dark theme base */
+/* The Dashboard's own reading size. The shared sheet sets 13px for the panel's
+   dense side-panel layout; full-width pages read at 14px. */
 body {
-  font-family: "DM Sans", system-ui, sans-serif;
   font-size: 14px;
-  line-height: 1.5;
   color: #F1F5F9;
   background-color: #0F172A;
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {

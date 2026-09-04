@@ -30,11 +30,22 @@
 type StorageValue = string | number | boolean | Record<string, unknown> | Array<unknown>;
 type StorageData = Record<string, StorageValue>;
 
+/**
+ * Prefix every key this adapter writes into `localStorage` carries.
+ *
+ * Exported so nothing has to restate the composed key. `AUTH_STATE_STORAGE_KEY`
+ * (lib/auth/crossTab.ts) is the one place outside this file that must know the
+ * physical name, because the cross-tab `storage` event reports physical keys —
+ * and a second hand-written `'faultmaven_authState'` literal is exactly the
+ * copy that would keep working while this prefix changed underneath it.
+ */
+export const STORAGE_KEY_PREFIX = 'faultmaven_';
+
 class LocalStorageAdapter {
   async get(keys: string[]): Promise<StorageData> {
     const result: StorageData = {};
     for (const key of keys) {
-      const value = localStorage.getItem(`faultmaven_${key}`);
+      const value = localStorage.getItem(`${STORAGE_KEY_PREFIX}${key}`);
       if (value !== null) {
         try {
           result[key] = JSON.parse(value);
@@ -51,13 +62,13 @@ class LocalStorageAdapter {
       // Always JSON-serialize so `get` (which JSON.parses) round-trips the
       // original type. Writing strings verbatim made `set("42")` read back as
       // the number 42 (JSON.parse coerces), and `"true"` as a boolean.
-      localStorage.setItem(`faultmaven_${key}`, JSON.stringify(value));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}${key}`, JSON.stringify(value));
     }
   }
 
   async remove(keys: string[]): Promise<void> {
     for (const key of keys) {
-      localStorage.removeItem(`faultmaven_${key}`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}${key}`);
     }
   }
 }

@@ -1,7 +1,7 @@
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import type { CaseSummary } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import CaseListPage from '../../pages/CaseListPage';
 
 // Shared mock setup (same pattern as App.test.tsx). The Dashboard is read-only
@@ -61,10 +61,19 @@ const sampleCase: CaseSummary = {
   shared_team_ids: [],
 };
 
+/**
+ * Rendered inside the routes it can navigate to, so a redirect is OBSERVABLE.
+ * A bare `<CaseListPage />` under MemoryRouter renders `<Navigate>` as nothing
+ * at all, and "the panel opened instead of an empty list" would be
+ * indistinguishable from "the page rendered nothing".
+ */
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <CaseListPage />
+    <MemoryRouter initialEntries={['/cases']}>
+      <Routes>
+        <Route path="/cases" element={<CaseListPage />} />
+        <Route path="/investigate" element={<div data-testid="investigate-page">panel</div>} />
+      </Routes>
     </MemoryRouter>
   );
 }
@@ -131,7 +140,10 @@ describe('CaseListPage (read-only, D1)', () => {
     expect(screen.queryByText(/include archived/i)).not.toBeInTheDocument();
   });
 
-  it('shows empty state when no cases', async () => {
+  it('lands a person with NO cases on the panel, not on an empty list', async () => {
+    // ADR-016 D6. Before this, the list rendered a table with no rows and a
+    // one-line "No cases found." — the worst possible first screen for someone
+    // whose whole reason for being here is to start an investigation.
     mockListCases.mockResolvedValue({ cases: [], total_count: 0, page: 0, page_size: 20, has_more: false });
 
     await act(async () => {
@@ -139,8 +151,52 @@ describe('CaseListPage (read-only, D1)', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('No cases found.')).toBeInTheDocument();
+      expect(screen.getByTestId('investigate-page')).toBeInTheDocument();
     });
+    expect(screen.queryByRole('heading', { name: /^Cases$/i })).not.toBeInTheDocument();
+  });
+
+  it('does NOT redirect when the list is empty because a filter narrowed it', async () => {
+    // "Nothing matched" is not "you have no cases". Redirecting here would
+    // throw away the query the user just typed, so the list stays put and
+    // offers the panel instead of jumping to it.
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('Database Outage')).toBeInTheDocument());
+
+    mockListCases.mockResolvedValue({
+      cases: [],
+      total_count: 0,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Resolved$/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
+    // …and it leads to the panel rather than dead-ending.
+    expect(
+      screen.getByRole('link', { name: /start an investigation/i }).getAttribute('href'),
+    ).toBe('/investigate');
+  });
+
+  it('does NOT redirect away from a failed load', async () => {
+    // A failed load also leaves `cases` empty. Bouncing the user to the panel
+    // would hide the reason their cases are missing and look like data loss.
+    mockListCases.mockRejectedValue(new Error('API unreachable'));
+
+    await act(async () => {
+      renderPage();
+    });
+
+    await waitFor(() => expect(screen.getByText('API unreachable')).toBeInTheDocument());
+    expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
   });
 
   it('shows error when fetch fails', async () => {

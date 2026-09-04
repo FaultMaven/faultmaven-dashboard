@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  getCaseMessages,
   getUploadedFiles,
   getUploadedFileDetails,
   getCaseEvidenceList,
@@ -9,7 +8,6 @@ import {
 } from '../lib/api';
 import type {
   CaseDetail,
-  CaseMessage,
   UploadedFile,
   UploadedFileDetails,
   EvidenceDetails,
@@ -18,7 +16,7 @@ import type {
 } from '../types/cases';
 import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
-import { TranscriptView } from './TranscriptView';
+import CopilotPanelMount from '../copilot/CopilotPanelMount';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
@@ -75,35 +73,24 @@ function stanceColor(stance: string): string {
   }
 }
 
+/**
+ * The transcript, and the input that continues it.
+ *
+ * This tab used to render `TranscriptView`, a read-only copy of a conversation
+ * the extension rendered a second time and differently — the drift ADR-016 D1
+ * retires. It now mounts the shared Copilot UI on this case: one renderer, and
+ * the Dashboard can continue an investigation rather than only review one.
+ *
+ * The panel loads its own messages; nothing is fetched here. A turn taken here
+ * and a turn taken in the extension are the same rows on the same server, so
+ * neither host needs the other and each sees the other's work on reload.
+ */
 function TranscriptTab({ caseId }: { caseId: string }) {
-  const [messages, setMessages] = useState<CaseMessage[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await getCaseMessages(caseId);
-        if (!cancelled) setMessages(res.messages);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load transcript');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
-
-  if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
-  if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
-
-  // Rendering lives in `TranscriptView`, shared with the operator break-glass
-  // page (ADR-012 D9): the backend serves the same message shape to both, and a
-  // second copy of this markup here would let the two drift.
-  return <TranscriptView messages={messages ?? []} />;
+  return (
+    <div className="h-[70vh] min-h-[28rem]">
+      <CopilotPanelMount caseId={caseId} />
+    </div>
+  );
 }
 
 function FileEvidenceDetails({ caseId, fileId }: { caseId: string; fileId: string }) {
