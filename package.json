@@ -55,5 +55,10 @@
     "typescript-eslint": "^8.49.0",
     "vite": "^6.4.3",
     "vitest": "^4.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "browserslist": "^4.28.7"
+    }
   }
 }
