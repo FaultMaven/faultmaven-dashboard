@@ -256,9 +256,14 @@ This dashboard complements the copilot extension by providing dedicated KB manag
 pnpm generate:api-types
 ```
 
-By default it reads the spec from `main` on GitHub, which is the same source the
-`api-types-drift` CI job compares against. Point it elsewhere to generate from a
-local checkout or a branch — `--spec` works identically on every platform:
+By default it reads the spec from the core commit pinned in
+`api-contract.pin.json`, which is the same file the `api-types-drift` CI job
+reads — so the local command and the gate cannot disagree about which contract is
+in force. It does **not** follow `main`: a backend merge reaches this client only
+when a pull request here moves `ref` (and `contractVersion` to match), and that
+commit is where this repository accepts the change. Point the generator elsewhere
+to build against a contract you have not adopted — `--spec` works identically on
+every platform:
 
 ```bash
 pnpm generate:api-types --spec ../faultmaven/docs/reference/api/openapi.json
@@ -281,6 +286,9 @@ Prefer `--spec` — it avoids the question entirely.
 Generating against whatever build happens to be running is how this repo and the
 other frontend ended up with different names for the same schema (fm#880).
 
-When faultmaven's spec changes, `api-types-drift` goes red here until the types
-are regenerated and committed. That is the gate working — regenerate in a PR of
-its own rather than folding it into unrelated work.
+A spec change in faultmaven does **not** turn this repository red: the job
+regenerates from the pinned commit, so merging there reaches nothing here.
+`api-types-drift` goes red when the generated file stops matching the contract
+this repo pins — `ref` moved without a regeneration, or the generated file was
+edited by hand. Adopt a new contract in a PR of its own, pin and regenerated
+types together, rather than folding it into unrelated work.
