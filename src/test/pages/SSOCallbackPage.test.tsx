@@ -19,6 +19,7 @@ vi.mock('../../hooks/useAvailableScopes', () => ({
 
 import SSOCallbackPage from '../../pages/SSOCallbackPage';
 import { ssoExchange } from '../../lib/api';
+import { POST_SIGN_IN_LANDING } from '../../lib/auth/landing';
 
 const mockSsoExchange = ssoExchange as ReturnType<typeof vi.fn>;
 
@@ -68,10 +69,15 @@ describe('SSOCallbackPage', () => {
     mockSsoExchange.mockResolvedValue(AUTH_STATE);
   });
 
-  it('exchanges the completion code, stores the session, and lands on /kb by default', async () => {
+  it('exchanges the completion code, stores the session, and lands on the shared default', async () => {
+    // The default is `/cases`, not the knowledge base: that is the route that
+    // owns the zero-case rule, so a brand-new cloud account reaches the panel
+    // with a new investigation (ADR-016 D6) instead of an empty KB. Asserted
+    // through the constant both sign-in paths share, so the standalone and
+    // cloud legs cannot drift apart again.
     renderCallback('/auth/sso/callback?code=completion-abc');
 
-    expect(await screen.findByTestId('location')).toHaveTextContent('/kb');
+    expect(await screen.findByTestId('location')).toHaveTextContent(POST_SIGN_IN_LANDING);
     expect(mockSsoExchange).toHaveBeenCalledWith('completion-abc');
     expect(mockSetAuthState).toHaveBeenCalledWith(AUTH_STATE);
     // Cross-user residue guard runs before the new session renders.
@@ -84,20 +90,21 @@ describe('SSOCallbackPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent('/cases/case-42?tab=report');
   });
 
-  it('rejects a non-same-origin return_to and falls back to /kb', async () => {
+  it('rejects a non-same-origin return_to and falls back to the default', async () => {
     // "//host" is scheme-relative (open redirect); absolute URLs never start
     // with "/" so they are rejected by the same guard.
     renderCallback('/auth/sso/callback?code=abc&return_to=%2F%2Fevil.example%2Fphish');
 
-    expect(await screen.findByTestId('location')).toHaveTextContent('/kb');
+    expect(await screen.findByTestId('location')).toHaveTextContent(POST_SIGN_IN_LANDING);
+    expect(await screen.findByTestId('location')).not.toHaveTextContent('evil.example');
   });
 
-  it('rejects an oversized return_to and falls back to /kb', async () => {
+  it('rejects an oversized return_to and falls back to the default', async () => {
     // Parity with the backend guard: bounded length (512).
     const huge = '/' + 'a'.repeat(600);
     renderCallback(`/auth/sso/callback?code=abc&return_to=${encodeURIComponent(huge)}`);
 
-    expect(await screen.findByTestId('location')).toHaveTextContent('/kb');
+    expect(await screen.findByTestId('location')).toHaveTextContent(POST_SIGN_IN_LANDING);
   });
 
   it('falls back to the ProtectedRoute-saved destination and consumes it', async () => {
@@ -116,7 +123,7 @@ describe('SSOCallbackPage', () => {
     // and replace a successful login with an error screen.
     renderCallback('/auth/sso/callback?code=only-once', { strict: true });
 
-    expect(await screen.findByTestId('location')).toHaveTextContent('/kb');
+    expect(await screen.findByTestId('location')).toHaveTextContent(POST_SIGN_IN_LANDING);
     expect(mockSsoExchange).toHaveBeenCalledTimes(1);
   });
 
