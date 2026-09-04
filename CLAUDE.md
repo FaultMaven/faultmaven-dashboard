@@ -298,12 +298,18 @@ change reaches both or reaches neither.
 - **`pnpm check:web-boundary`** (CI job `web-bundle-boundary`, after
   `pnpm build`) asserts no Copilot sign-in reached the shipped bundle. The panel
   has no sign-in of its own and must never acquire one (ADR-016 D3).
-- **One test renders the REAL package**, `src/test/copilot/realPanelMounts.test.tsx`.
+- **The Dashboard mounts the panel with `chrome: 'embedded'`**, stated once in
+  `CopilotPanelMount` rather than at each call site. The panel's own sidebar
+  carries a case list, an account row and an "Open Dashboard" button — all three
+  of which this app already renders around it, and the last of which links to
+  the page the user is already on.
+- **Two tests render the REAL package**, `realPanelMounts.test.tsx` and
+  `embeddedChrome.test.tsx`.
   Every other test here mocks `@faultmaven/copilot-ui`, which is right for
   asserting the wiring and structurally blind to a package/host MISMATCH — a
   mocked package has no dependencies, so the whole suite stayed green while the
   panel crashed on every mount for want of a React context this app did not
-  install. Keep that test rendering the real thing.
+  install. Keep them rendering the real thing.
 
 ### The panel advertisement
 

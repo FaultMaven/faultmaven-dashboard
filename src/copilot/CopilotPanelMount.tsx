@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { InitialCase, WiredHost } from '@faultmaven/copilot-ui';
+import type { InitialCase, PanelChrome, WiredHost } from '@faultmaven/copilot-ui';
 import { getAccountProfile } from '../lib/auth/functions';
 import { announcePanelAvailableOnce } from './advertisement';
 import { createWebHostCapabilities } from './webHost';
@@ -42,7 +42,28 @@ interface CopilotPanelMountProps {
   initialCase: InitialCase;
 }
 
-type PanelComponent = ComponentType<{ host: WiredHost; initialCase?: InitialCase }>;
+type PanelComponent = ComponentType<{
+  host: WiredHost;
+  initialCase?: InitialCase;
+  chrome?: PanelChrome;
+}>;
+
+/**
+ * How much of the panel's own shell this host wants: none of it.
+ *
+ * Not a prop, because there is no Dashboard route that would want the other
+ * answer. The panel's sidebar carries a case list, an account row and an "Open
+ * Dashboard" button — every one of which this app already renders around it,
+ * and the last of which links to the page it is already on. A real-browser
+ * check found all three duplicated inside the page.
+ *
+ * `embedded` is a statement about THIS HOST, so it is made once, here, rather
+ * than repeated at each call site where a third mount could forget it. The
+ * package keeps it a prop rather than inferring it from `host.kind` because
+ * both hosts genuinely can render either — the extension could embed, and this
+ * app could show the full shell; it is a layout choice, not a capability.
+ */
+const DASHBOARD_CHROME: PanelChrome = 'embedded';
 
 export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProps) {
   const [panel, setPanel] = useState<{ Panel: PanelComponent; host: WiredHost } | null>(null);
@@ -151,7 +172,7 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
   const { Panel, host } = panel;
   return (
     <div data-testid="copilot-panel" className="h-full min-h-0">
-      <Panel host={host} initialCase={initialCase} />
+      <Panel host={host} initialCase={initialCase} chrome={DASHBOARD_CHROME} />
     </div>
   );
 }
