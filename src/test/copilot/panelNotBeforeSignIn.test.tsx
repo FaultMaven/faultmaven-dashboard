@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  */
 
 let packageImports = 0;
+let lastInitialCase: unknown;
 
 vi.mock('@faultmaven/copilot-ui', () => {
   packageImports += 1;
@@ -27,7 +28,11 @@ vi.mock('@faultmaven/copilot-ui', () => {
     setHostStore: vi.fn(),
     setHostEndpoints: vi.fn(),
     setApiTransport: vi.fn(),
-    CopilotPanel: () => <div data-testid="shared-copilot-ui">shared UI</div>,
+    clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+    CopilotPanel: ({ initialCase }: { initialCase?: unknown }) => {
+      lastInitialCase = initialCase;
+      return <div data-testid="shared-copilot-ui">shared UI</div>;
+    },
   };
 });
 
@@ -100,6 +105,7 @@ const SIGNED_IN = {
 beforeEach(() => {
   vi.clearAllMocks();
   packageImports = 0;
+  lastInitialCase = undefined;
   localStorage.clear();
   // Standalone deployment, so LoginPage renders its own single sign-in action.
   vi.stubGlobal(
@@ -153,5 +159,22 @@ describe('the counter is not vacuous', () => {
       expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument();
     });
     expect(packageImports).toBe(1);
+  });
+});
+
+describe('the /investigate route', () => {
+  it('opens ON a new investigation, not one click short of it', async () => {
+    // ADR-016 D6. Without `initialCase` the panel lands on its own "Start a new
+    // case" screen, which is a button away from where the route meant to put
+    // the person — and the route is reached BY a redirect for someone with no
+    // cases, so that button is the first thing a new user would see.
+    getAuthState.mockResolvedValue(SIGNED_IN);
+
+    await renderAppAt('/investigate');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument();
+    });
+    expect(lastInitialCase).toEqual({ kind: 'new' });
   });
 });

@@ -20,7 +20,7 @@
     "lint:tests": "eslint --no-ignore 'src/test/**/*.{ts,tsx}' 'src/**/*.test.{ts,tsx}'"
   },
   "dependencies": {
-    "@faultmaven/copilot-ui": "github:FaultMaven/faultmaven-copilot#84b5d3adc01fa4692174384e2f9815fe50fdcd13&path:packages/copilot-ui",
+    "@faultmaven/copilot-ui": "github:FaultMaven/faultmaven-copilot#1044d55b99015a5b9730c3d79ade90fe03beeecc&path:packages/copilot-ui",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tanstack/react-query": "^5.90.17",

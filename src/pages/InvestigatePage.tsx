@@ -16,6 +16,10 @@ import { logoutAuth } from '../lib/api';
  * no sign-in of its own and cannot acquire one: its host contract makes the
  * session non-nullable, so there is no value it can be mounted with that lacks
  * a signed-in user (ADR-016 D3).
+ *
+ * `initialCase: { kind: 'new' }` is D6 in one word: the person arrives ON a new
+ * investigation, at the composer, rather than on the panel's "Start a new case"
+ * screen one click short of it.
  */
 export default function InvestigatePage() {
   const { clearAuthState } = useAuth();
@@ -29,7 +33,7 @@ export default function InvestigatePage() {
     <div className="h-screen flex flex-col bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
       <main className="flex-1 min-h-0">
-        <CopilotPanelMount caseId={null} />
+        <CopilotPanelMount initialCase={{ kind: 'new' }} />
       </main>
     </div>
   );

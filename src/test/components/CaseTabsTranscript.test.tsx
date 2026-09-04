@@ -20,12 +20,33 @@ import type { CaseDetail } from '../../types/cases';
  * longer uses it.
  */
 
-vi.mock('@faultmaven/copilot-ui', () => ({
-  setHostStore: vi.fn(),
-  setHostEndpoints: vi.fn(),
-  setApiTransport: vi.fn(),
-  CopilotPanel: () => <div data-testid="shared-copilot-ui">shared UI</div>,
-}));
+let lastInitialCase: unknown;
+
+/**
+ * The stand-in applies `initialCase` ONCE PER INSTANCE, because that is what
+ * the real panel does — `useState`'s initialiser runs exactly at mount.
+ *
+ * Recording it on every render instead would make the remount test below
+ * vacuous: a prop passed straight through changes on re-render whether or not a
+ * new panel mounted, so the test would pass with the `key` removed and assert
+ * nothing about the defect it exists for. It did, until this was fixed.
+ */
+vi.mock('@faultmaven/copilot-ui', async () => {
+  const { useState } = await import('react');
+  return {
+    setHostStore: vi.fn(),
+    setHostEndpoints: vi.fn(),
+    setApiTransport: vi.fn(),
+    clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+    CopilotPanel: ({ initialCase }: { initialCase?: unknown }) => {
+      useState(() => {
+        lastInitialCase = initialCase;
+        return null;
+      });
+      return <div data-testid="shared-copilot-ui">shared UI</div>;
+    },
+  };
+});
 
 const transcriptViewRenders = vi.fn();
 vi.mock('../../components/TranscriptView', () => ({
@@ -111,6 +132,7 @@ function renderTabs() {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  lastInitialCase = undefined;
 });
 
 describe('the Transcript tab', () => {
@@ -137,14 +159,44 @@ describe('the Transcript tab', () => {
     expect(getCaseMessages).not.toHaveBeenCalled();
   });
 
-  it('opens the panel ON THIS CASE', async () => {
-    // Seeded through the panel's own active-case pointer in host storage,
-    // before the panel mounts and hydrates from it.
+  it('opens the panel ON THIS CASE, by telling it so', async () => {
     renderTabs();
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
 
-    expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}faultmaven_current_case`)).toBe(
-      JSON.stringify('case-1'),
+    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1' });
+  });
+
+  it('writes nothing into the panel’s storage to do it', async () => {
+    // The tab used to hand the case over by writing the panel's own
+    // active-case pointer before it mounted. It is an argument now, so the only
+    // key this host writes is its assertion that the environment is ready.
+    renderTabs();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+
+    const written = Object.keys(localStorage)
+      .filter((key) => key.startsWith(PANEL_STORAGE_NAMESPACE))
+      .map((key) => key.slice(PANEL_STORAGE_NAMESPACE.length))
+      .sort();
+    expect(written).toEqual(['hasCompletedFirstRun']);
+  });
+
+  it('remounts the panel when the route moves to another case', async () => {
+    // The panel applies `initialCase` ONCE, at its own mount, and React Router
+    // keeps this component instance across a `:caseId` change — so without the
+    // `key` a move from one case to the next would leave the previous case's
+    // transcript on screen with nothing thrown.
+    const { rerender } = renderTabs();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1' });
+
+    rerender(
+      <MemoryRouter initialEntries={['/?tab=transcript']}>
+        <CaseTabs caseId="case-2" caseDetail={{ ...CASE, case_id: 'case-2' }} />
+      </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-2' });
+    });
   });
 });

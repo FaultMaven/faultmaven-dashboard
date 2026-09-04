@@ -88,7 +88,11 @@ function stanceColor(stance: string): string {
 function TranscriptTab({ caseId }: { caseId: string }) {
   return (
     <div className="h-[70vh] min-h-[28rem]">
-      <CopilotPanelMount caseId={caseId} />
+      {/* `key` because the panel applies `initialCase` ONCE, at its own mount:
+          React Router keeps this component instance across a `:caseId` change,
+          so without a remount a move from one case to the next would leave the
+          previous case's transcript on screen. */}
+      <CopilotPanelMount key={caseId} initialCase={{ kind: 'existing', caseId }} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { WiredHost } from '@faultmaven/copilot-ui';
+import type { InitialCase, WiredHost } from '@faultmaven/copilot-ui';
 import { getAccountProfile } from '../lib/auth/functions';
 import { announcePanelAvailableOnce } from './advertisement';
 import { createWebHostCapabilities } from './webHost';
@@ -25,19 +25,26 @@ import { createWebSession, hostUserFromProfile } from './webSession';
 
 interface CopilotPanelMountProps {
   /**
-   * The case to open on, or `null` for a new investigation.
+   * What the panel opens on: a new investigation, or a named case.
    *
-   * Applied by seeding the panel's own active-case pointer in host storage
-   * BEFORE the panel mounts, which is the key its hydration reads on load.
-   * Sequential, not concurrent: this host writes it while no panel exists, and
-   * the panel is the only writer afterwards.
+   * Handed to the panel as an ARGUMENT. This host briefly expressed the same
+   * intent by writing the panel's own active-case pointer into host storage
+   * before mounting it, which worked and was the wrong shape: it coupled this
+   * file to a key name, an encoding and a race with the panel's hydrate that
+   * neither side could see. `initialCase` is the package's answer
+   * (faultmaven-copilot#230), and it wins over the persisted restore, so the
+   * host no longer has to fight it.
+   *
+   * Required, not optional. Both routes that mount the panel know exactly why
+   * they did; "restore whatever was open last" is a side-panel behaviour that
+   * outlives its host, and no Dashboard route means it.
    */
-  caseId: string | null;
+  initialCase: InitialCase;
 }
 
-type PanelComponent = ComponentType<{ host: WiredHost }>;
+type PanelComponent = ComponentType<{ host: WiredHost; initialCase?: InitialCase }>;
 
-export default function CopilotPanelMount({ caseId }: CopilotPanelMountProps) {
+export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProps) {
   const [panel, setPanel] = useState<{ Panel: PanelComponent; host: WiredHost } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -71,13 +78,6 @@ export default function CopilotPanelMount({ caseId }: CopilotPanelMountProps) {
       // backend what it supports.
       await capabilities.store.set({ hasCompletedFirstRun: true });
 
-      // Seeded before the panel exists; see `caseId` above.
-      if (caseId) {
-        await capabilities.store.set({ faultmaven_current_case: caseId });
-      } else {
-        await capabilities.store.remove(['faultmaven_current_case']);
-      }
-
       const profile = await getAccountProfile();
       const session = createWebSession(hostUserFromProfile(profile));
 
@@ -91,12 +91,12 @@ export default function CopilotPanelMount({ caseId }: CopilotPanelMountProps) {
           const stored = await capabilities.store.get(['sessionId']);
           return (stored.sessionId as string | undefined) ?? null;
         },
-        // Which keys a FaultMaven session occupies is the package's to know;
-        // its own `clearPersistedSession` is not on the supported surface, so
-        // this host restates the list. See the PR body — the fix is to export it.
-        async clearSession() {
-          await capabilities.store.remove(['sessionId', 'sessionCreatedAt', 'sessionResumed']);
-        },
+        // Delegated, not reimplemented. Which keys a FaultMaven session occupies
+        // is the package's to know, and it is their single writer — restating
+        // the list here would be a fourth copy of something that had already
+        // drifted over whether `clientId` survives (it does: a fresh /sessions
+        // POST presents it to resume rather than start cold).
+        clearSession: () => ui.clearPersistedSession(),
         onUnauthorized: () => session.onUnauthorized(),
       });
 
@@ -110,7 +110,12 @@ export default function CopilotPanelMount({ caseId }: CopilotPanelMountProps) {
     return () => {
       cancelled = true;
     };
-  }, [caseId]);
+    // Genuinely empty, not silenced: nothing in here reads `initialCase` any
+    // more. Wiring is a once-per-mount job, and the intent now travels as a
+    // PROP to the panel rather than as a storage write this effect had to make
+    // before the panel existed. Opening on something else is a remount — see
+    // the `key` at the case-detail call site.
+  }, []);
 
   // The panel is mounted: tell the extension this build hosts one, so it keeps
   // its own side panel out of the way here (ADR-016 D4). The attribute in the
@@ -146,7 +151,7 @@ export default function CopilotPanelMount({ caseId }: CopilotPanelMountProps) {
   const { Panel, host } = panel;
   return (
     <div data-testid="copilot-panel" className="h-full min-h-0">
-      <Panel host={host} />
+      <Panel host={host} initialCase={initialCase} />
     </div>
   );
 }

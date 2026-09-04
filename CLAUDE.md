@@ -146,7 +146,7 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **CaseDetailPage**: Case header (title, description, state badge, stage cell when investigating, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.
-- **TranscriptTab**: The built-in Copilot panel, opened on this case (ADR-016 D1). It replaced a read-only renderer that duplicated the extension's — one renderer, not two — so the transcript on this tab is interactive: a turn taken here and a turn taken in the extension are the same rows on the same server. The case is handed over by seeding the panel's own active-case pointer in host storage before it mounts. `TranscriptView` survives for the operator break-glass page only.
+- **TranscriptTab**: The built-in Copilot panel, opened on this case (ADR-016 D1). It replaced a read-only renderer that duplicated the extension's — one renderer, not two — so the transcript on this tab is interactive: a turn taken here and a turn taken in the extension are the same rows on the same server. The case is handed over as an argument (`initialCase={{ kind: 'existing', caseId }}`), and the mount is `key`ed on the case id because the panel applies that once, at its own mount. `TranscriptView` survives for the operator break-glass page only.
 - **HypothesesTab**: Renders `active_hypotheses` from `GET /cases/{id}/ui` for INVESTIGATING cases — status symbol (✓ validated / ✗ refuted / ● active / ◌ inconclusive / ○ captured-or-retired), likelihood %, evidence count, and statement. For terminal cases the `/ui` endpoint does not surface hypothesis details; falls back to a count-only note.
 - **EvidenceTab**: Evidence-first list backed by `GET /cases/{id}/evidence` (returns full `EvidenceDetails[]` in one round-trip). Each row shows category badge · summary · source filename · turn · linked-hypothesis count. Click to expand: verbatim `extract` (monospace), optional analysis, related hypotheses with stance badges (SUPPORTS / REFUTES / NEUTRAL). Footer toggle switches to a secondary file-view (uses `GET /cases/{id}/uploaded-files` + per-file detail) for the "did my upload get processed?" use case.
 - **CaseTabs**: 5 tabs shown for all cases: Transcript, Issue, Report, Hypotheses, Evidence. URL query param support (`?tab=report`, `?tab=issue`) for cross-frontend linking from copilot. All markdown content rendered via react-markdown with external links opening in new tabs.
@@ -267,6 +267,14 @@ change reaches both or reaches neither.
   its environment (a key-value store, where the backend is, navigation, page
   capture, a session) and each host answers differently. Nothing in it branches
   on `kind`; a branch on `kind` is a capability the interface failed to model.
+- **What the panel opens on is an ARGUMENT**, `initialCase` — `{ kind: 'new' }`
+  or `{ kind: 'existing', caseId }` — never a storage write. A host writing the
+  panel's own keys behind its back couples this app to a key name, an encoding
+  and a race it cannot see; two tests assert the only key this host writes is
+  `hasCompletedFirstRun`.
+- **`ApiTransport.clearSession` delegates** to the package's exported
+  `clearPersistedSession`. Which keys a session occupies is the package's to
+  know, and it is their single writer.
 - **Import the package ENTRY only.** Deep subpaths resolve and are still off
   limits: they exist for the extension, which lives in the same repository as
   the package and can be updated in the same commit.

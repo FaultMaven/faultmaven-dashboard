@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import type { WiredHost } from '@faultmaven/copilot-ui';
+import type { InitialCase, WiredHost } from '@faultmaven/copilot-ui';
 
 /**
  * What the host installs before the shared UI renders (ADR-016 D2, D4).
@@ -15,14 +15,18 @@ import type { WiredHost } from '@faultmaven/copilot-ui';
 const setHostStore = vi.fn();
 const setHostEndpoints = vi.fn();
 const setApiTransport = vi.fn();
+const clearPersistedSession = vi.fn().mockResolvedValue(undefined);
 let lastHost: WiredHost | null = null;
+let lastInitialCase: InitialCase | undefined;
 
 vi.mock('@faultmaven/copilot-ui', () => ({
   setHostStore,
   setHostEndpoints,
   setApiTransport,
-  CopilotPanel: ({ host }: { host: WiredHost }) => {
+  clearPersistedSession,
+  CopilotPanel: ({ host, initialCase }: { host: WiredHost; initialCase?: InitialCase }) => {
     lastHost = host;
+    lastInitialCase = initialCase;
     return <div data-testid="shared-copilot-ui">shared UI</div>;
   },
 }));
@@ -64,18 +68,29 @@ const PROFILE = {
   organization: { organization_id: 'org-1', name: 'Acme' },
 };
 
-function mount(caseId: string | null) {
+function mount(initialCase: InitialCase) {
   return render(
     <MemoryRouter>
-      <CopilotPanelMount caseId={caseId} />
+      <CopilotPanelMount initialCase={initialCase} />
     </MemoryRouter>,
   );
+}
+
+const NEW_INVESTIGATION: InitialCase = { kind: 'new' };
+
+/** Namespaced keys this host has written to the viewer's storage. */
+function hostWrittenKeys(): string[] {
+  return Object.keys(localStorage)
+    .filter((key) => key.startsWith(PANEL_STORAGE_NAMESPACE))
+    .map((key) => key.slice(PANEL_STORAGE_NAMESPACE.length))
+    .sort();
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   lastHost = null;
+  lastInitialCase = undefined;
   resetPanelAnnouncementForTests();
   getAccountProfile.mockResolvedValue(PROFILE);
   getAccessToken.mockResolvedValue('tok-live');
@@ -83,7 +98,7 @@ beforeEach(() => {
 
 describe('CopilotPanelMount', () => {
   it('installs the module singletons before the panel renders', async () => {
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
     // Reads before installation THROW by design: a request that silently went
@@ -95,7 +110,7 @@ describe('CopilotPanelMount', () => {
   });
 
   it('gives the panel a host whose session is the Dashboard’s own', async () => {
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
     expect(lastHost).not.toBeNull();
@@ -119,7 +134,7 @@ describe('CopilotPanelMount', () => {
     // This is the whole of "both hosts share the session, the case and the
     // transcript": one origin, one identity, one set of server-side rows. There
     // is nothing else for the two hosts to agree about.
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
     const transport = setApiTransport.mock.calls[0][0];
@@ -128,7 +143,7 @@ describe('CopilotPanelMount', () => {
   });
 
   it('reads and clears the FaultMaven session id through the host store', async () => {
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
     const transport = setApiTransport.mock.calls[0][0];
 
@@ -137,8 +152,11 @@ describe('CopilotPanelMount', () => {
     localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}sessionId`, JSON.stringify('sess-1'));
     await expect(transport.sessionId()).resolves.toBe('sess-1');
 
+    // Delegated to the package's own single writer of those keys rather than
+    // restating the list — a fourth copy of it had already drifted over whether
+    // `clientId` survives a session ending.
     await transport.clearSession();
-    expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}sessionId`)).toBeNull();
+    expect(clearPersistedSession).toHaveBeenCalledTimes(1);
   });
 
   it('asserts the environment is ready, so the panel probes backend capabilities', async () => {
@@ -146,31 +164,54 @@ describe('CopilotPanelMount', () => {
     // sets from its onboarding screen. This host has no onboarding, and without
     // the flag the panel renders with `capabilities: null` and never asks the
     // backend what it supports.
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
     expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}hasCompletedFirstRun`)).toBe('true');
   });
 
-  it('seeds the active-case pointer when opened on a case', async () => {
-    mount('case-42');
+  it('tells the panel what to open, as an argument', async () => {
+    mount({ kind: 'existing', caseId: 'case-42' });
     await screen.findByTestId('shared-copilot-ui');
 
-    expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}faultmaven_current_case`)).toBe(
-      JSON.stringify('case-42'),
-    );
+    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-42' });
   });
 
-  it('clears the pointer for a new investigation, so no earlier case reopens', async () => {
+  it('opens a new investigation as an argument too', async () => {
+    mount(NEW_INVESTIGATION);
+    await screen.findByTestId('shared-copilot-ui');
+
+    expect(lastInitialCase).toEqual({ kind: 'new' });
+  });
+
+  it('writes NO storage to open a case', async () => {
+    // The property that replaced the seeding. This host briefly expressed
+    // "open on this case" by writing the panel's own active-case pointer into
+    // storage before mounting it — which worked, and coupled this file to a key
+    // name, an encoding and a race with the panel's hydrate that neither side
+    // could see. The intent is an argument now, so the only key the host has
+    // any business writing is its assertion that the environment is ready.
+    mount({ kind: 'existing', caseId: 'case-42' });
+    await screen.findByTestId('shared-copilot-ui');
+
+    expect(hostWrittenKeys()).toEqual(['hasCompletedFirstRun']);
+  });
+
+  it('leaves the panel\u2019s own persisted pointer alone', async () => {
+    // Nor does it DELETE one. Whatever the panel last persisted is the panel's;
+    // `initialCase` wins over the restore inside the package, so a host that
+    // reached in to clear it would be fighting a race it has already won.
     localStorage.setItem(
       `${PANEL_STORAGE_NAMESPACE}faultmaven_current_case`,
       JSON.stringify('case-old'),
     );
 
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
-    expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}faultmaven_current_case`)).toBeNull();
+    expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}faultmaven_current_case`)).toBe(
+      JSON.stringify('case-old'),
+    );
   });
 
   it('advertises the panel to the extension once it has mounted', async () => {
@@ -178,7 +219,7 @@ describe('CopilotPanelMount', () => {
     // HTML is checked in indexHtmlAdvertisement.test.ts.
     const postMessage = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
 
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
     await waitFor(() => {
@@ -197,7 +238,7 @@ describe('CopilotPanelMount', () => {
     const postMessage = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
     getAccountProfile.mockRejectedValue(new Error('profile fetch failed: 500'));
 
-    mount(null);
+    mount(NEW_INVESTIGATION);
     await screen.findByTestId('copilot-panel-error');
 
     expect(postMessage).not.toHaveBeenCalled();
