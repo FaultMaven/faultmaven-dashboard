@@ -16,6 +16,9 @@ const setHostStore = vi.fn();
 const setHostEndpoints = vi.fn();
 const setApiTransport = vi.fn();
 const clearPersistedSession = vi.fn().mockResolvedValue(undefined);
+const clearApiTransport = vi.fn();
+const clearHostEndpoints = vi.fn();
+const clearHostStore = vi.fn();
 let lastHost: WiredHost | null = null;
 let lastInitialCase: InitialCase | undefined;
 
@@ -24,6 +27,9 @@ vi.mock('@faultmaven/copilot-ui', () => ({
   setHostEndpoints,
   setApiTransport,
   clearPersistedSession,
+  clearApiTransport,
+  clearHostEndpoints,
+  clearHostStore,
   CopilotPanel: ({ host, initialCase }: { host: WiredHost; initialCase?: InitialCase }) => {
     lastHost = host;
     lastInitialCase = initialCase;
@@ -212,6 +218,23 @@ describe('CopilotPanelMount', () => {
     expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}faultmaven_current_case`)).toBe(
       JSON.stringify('case-old'),
     );
+  });
+
+  it('clears the module singletons when it unmounts', async () => {
+    // They are module-level and outlive the component. A panel that has
+    // unmounted otherwise leaves a live transport behind, and anything still in
+    // flight — a poll loop, a queued continuation — goes on issuing requests
+    // with the credential and base URL of a session the page has moved on from.
+    const { unmount } = mount(NEW_INVESTIGATION);
+    await screen.findByTestId('shared-copilot-ui');
+
+    unmount();
+
+    await waitFor(() => {
+      expect(clearApiTransport).toHaveBeenCalledTimes(1);
+      expect(clearHostEndpoints).toHaveBeenCalledTimes(1);
+      expect(clearHostStore).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('advertises the panel to the extension once it has mounted', async () => {

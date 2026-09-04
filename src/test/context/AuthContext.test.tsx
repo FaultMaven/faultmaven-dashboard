@@ -5,14 +5,10 @@ vi.mock('../../config', () => ({
   default: { apiUrl: 'http://test-api.local' },
 }));
 
-vi.mock('../../lib/api', () => ({
-  authManager: {
-    getAuthState: vi.fn().mockResolvedValue(null),
-    saveAuthState: vi.fn().mockResolvedValue(undefined),
-    clearAuthState: vi.fn().mockResolvedValue(undefined),
-    onAuthCleared: vi.fn().mockReturnValue(() => {}),
-  },
-}));
+vi.mock('../../lib/api', async () => {
+  const { makeAuthManagerMock } = await import('../support/authFixtures');
+  return { authManager: makeAuthManagerMock() };
+});
 
 import {
   AuthProvider,

@@ -8,6 +8,11 @@ vi.mock('../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+const isCrossTabSignOut = vi.fn().mockReturnValue(false);
+vi.mock('../../lib/auth/AuthManager', () => ({
+  authManager: { isCrossTabSignOut: () => isCrossTabSignOut() },
+}));
+
 import { useAuth } from '../../context/AuthContext';
 
 const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
@@ -71,5 +76,45 @@ describe('ProtectedRoute', () => {
   it('does not persist a redirect target while still loading', () => {
     renderAt({ isAuthenticated: false, loading: true });
     expect(sessionStorage.getItem('oauth_redirect_after_login')).toBeNull();
+  });
+});
+
+
+describe('the post-login destination it records', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    isCrossTabSignOut.mockReturnValue(false);
+  });
+
+  it('records where the user was, for an ordinary bounce to login', () => {
+    // The OAuth flow depends on this: the extension opens /auth/authorize with
+    // its PKCE params, and they have to survive the round trip through login.
+    renderAt({ isAuthenticated: false, loading: false }, '/auth/authorize?client_id=copilot');
+
+    expect(sessionStorage.getItem('oauth_redirect_after_login')).toBe(
+      '/auth/authorize?client_id=copilot',
+    );
+  });
+
+  it('records NOTHING when another tab signed this one out', () => {
+    // The URL in the bar belongs to the account that just went away. Recording
+    // it would deep-link whoever signs in next straight into the previous
+    // person's case — a cross-account leak by way of a convenience feature.
+    isCrossTabSignOut.mockReturnValue(true);
+
+    renderAt({ isAuthenticated: false, loading: false }, '/cases');
+
+    expect(sessionStorage.getItem('oauth_redirect_after_login')).toBeNull();
+  });
+
+  it('does not overwrite an existing destination on a cross-tab sign-out', () => {
+    isCrossTabSignOut.mockReturnValue(true);
+    sessionStorage.setItem('oauth_redirect_after_login', '/auth/authorize?client_id=copilot');
+
+    renderAt({ isAuthenticated: false, loading: false }, '/cases');
+
+    expect(sessionStorage.getItem('oauth_redirect_after_login')).toBe(
+      '/auth/authorize?client_id=copilot',
+    );
   });
 });

@@ -120,7 +120,7 @@ export default function CaseDetailPage() {
 
   return (
     /*
-     * VIEWPORT-BOUNDED, not content-driven — `h-screen`, not `min-h-screen`.
+     * VIEWPORT-BOUNDED, not content-driven — a fixed height, not `min-h-screen`.
      *
      * The Transcript tab hosts the Copilot panel, and a panel is only usable if
      * its composer is on screen. While this page grew with its content the
@@ -134,8 +134,15 @@ export default function CaseDetailPage() {
      * left, which is what `/investigate` already does and why it fits. The case
      * header stays put because it is a non-shrinking sibling rather than
      * something the page scrolls away.
+     *
+     * `h-dvh`, not `h-screen`: `vh` ignores mobile browser toolbars, so the
+     * bottom of the page — the composer — sits under them. And `min-h-[40rem]`
+     * below the viewport height, so a genuinely short window (a laptop with
+     * devtools open, a split screen) SCROLLS the page instead of crushing the
+     * panel to nothing. Bounding the page must not mean the content has no
+     * floor; that trades one unusable layout for another.
      */
-    <div className="h-screen flex flex-col bg-fm-canvas">
+    <div className="h-dvh min-h-[40rem] flex flex-col bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
 
       {/* `min-h-0` is load-bearing on every flex child down to the panel: a

@@ -4,7 +4,7 @@ import { ssoExchange } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 import { GENERIC_ERROR, ssoErrorMessage } from '../lib/auth/ssoErrors';
-import { POST_SIGN_IN_LANDING } from '../lib/auth/landing';
+import { resolvePostSignInLanding } from '../lib/auth/landing';
 
 const EXCHANGE_ERROR =
   'Sign-in could not be completed — the sign-in link may have expired. Please try again.';
@@ -76,10 +76,9 @@ export default function SSOCallbackPage() {
     // Post-login destination: backend-echoed return_to first (survives even if
     // this tab's sessionStorage was cleared mid-flow), then the
     // ProtectedRoute-saved hint, else the shared default LoginPage uses.
-    const returnTo =
+    const explicitReturnTo =
       sanitizeReturnTo(new URLSearchParams(location.search).get('return_to')) ??
-      sanitizeReturnTo(sessionStorage.getItem('oauth_redirect_after_login')) ??
-      POST_SIGN_IN_LANDING;
+      sanitizeReturnTo(sessionStorage.getItem('oauth_redirect_after_login'));
 
     (async () => {
       try {
@@ -89,7 +88,9 @@ export default function SSOCallbackPage() {
         invalidateAvailableScopes();
         await setAuthState(authState);
         sessionStorage.removeItem('oauth_redirect_after_login');
-        navigate(returnTo, { replace: true });
+        // An explicit destination wins; otherwise the same first-run question
+        // the standalone sign-in asks, answered once (ADR-016 D6).
+        navigate(explicitReturnTo ?? (await resolvePostSignInLanding()), { replace: true });
       } catch {
         // The backend 401s identically for every exchange failure (expired,
         // replayed, or unknown code; deactivated user) — one message, and the

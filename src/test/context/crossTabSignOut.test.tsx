@@ -25,7 +25,7 @@ vi.mock('@faultmaven/copilot-ui', () => ({
 }));
 
 const getAuthState = vi.fn();
-const clearAuthState = vi.fn();
+const watchCrossTabAuthChanges = vi.fn().mockReturnValue(() => {});
 let fireAuthCleared: () => void = () => {};
 
 vi.mock('../../lib/api', () => ({
@@ -43,19 +43,14 @@ vi.mock('../../lib/api', () => ({
   authManager: {
     getAuthState: (...args: unknown[]) => getAuthState(...args),
     saveAuthState: vi.fn(),
-    // The real one wipes storage and then notifies; the notify half is what the
-    // shell's existing listener reacts to, so the stub keeps both.
-    clearAuthState: (...args: unknown[]) => {
-      clearAuthState(...args);
-      fireAuthCleared();
-      return Promise.resolve();
-    },
+    clearAuthState: vi.fn().mockResolvedValue(undefined),
     getAccessToken: vi.fn().mockResolvedValue('tok-live'),
+    isCrossTabSignOut: vi.fn().mockReturnValue(true),
+    watchCrossTabAuthChanges: (...args: unknown[]) => watchCrossTabAuthChanges(...args),
+    // The one channel every kind of session end arrives on.
     onAuthCleared: (listener: () => void) => {
       fireAuthCleared = listener;
-      return () => {
-        fireAuthCleared = () => {};
-      };
+      return () => { fireAuthCleared = () => {}; };
     },
   },
   config: { apiUrl: 'http://localhost:8090' },
@@ -86,7 +81,6 @@ vi.mock('../../lib/auth/functions', () => ({
 }));
 
 import App from '../../App';
-import { AUTH_STATE_STORAGE_KEY } from '../../lib/auth/crossTab';
 
 const SIGNED_IN = {
   access_token: 'tok-live',
@@ -109,6 +103,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   fireAuthCleared = () => {};
+  watchCrossTabAuthChanges.mockReturnValue(() => {});
   getAuthState.mockResolvedValue(SIGNED_IN);
   vi.stubGlobal(
     'fetch',
@@ -121,28 +116,33 @@ beforeEach(() => {
 
 async function openPanelRoute() {
   window.history.pushState({}, '', '/investigate');
+  let result!: ReturnType<typeof render>;
   await act(async () => {
-    render(<App />);
+    result = render(<App />);
   });
   await waitFor(() => {
     expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument();
   });
+  return result;
 }
 
-/** The other tab wiping the session: shared localStorage, hence a storage event. */
-async function signOutInAnotherTab() {
-  await act(async () => {
-    window.dispatchEvent(
-      new StorageEvent('storage', { key: AUTH_STATE_STORAGE_KEY, newValue: null }),
-    );
-  });
-}
-
-describe('a sign-out in another tab', () => {
-  it('takes the shell down too, not just the panel', async () => {
+describe('the shell and a cross-tab sign-out', () => {
+  it('starts the ONE watch, and does not roll its own', async () => {
+    // The decision lives in AuthManager, which owns the credential and knows
+    // which identity this tab holds. The shell only turns it on — so the shell
+    // and the panel cannot disagree about what a cross-tab write means, or hear
+    // it a different number of times.
     await openPanelRoute();
 
-    await signOutInAnotherTab();
+    expect(watchCrossTabAuthChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes the shell down when that watch reports the session ended', async () => {
+    await openPanelRoute();
+
+    await act(async () => {
+      fireAuthCleared();
+    });
 
     await waitFor(() => {
       expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
@@ -150,35 +150,13 @@ describe('a sign-out in another tab', () => {
     expect(window.location.pathname).toBe('/login');
   });
 
-  it('goes through the shell’s own sign-out path, so per-user caches are purged', async () => {
-    // Not a bare React state drop. `clearAuthState` is what fires
-    // `onAuthCleared`, which is what evicts the process-wide caches keyed to the
-    // previous identity — otherwise the next person to sign in on this profile
-    // inherits their cached KB scopes.
-    await openPanelRoute();
+  it('stops watching when the provider unmounts', async () => {
+    const stop = vi.fn();
+    watchCrossTabAuthChanges.mockReturnValue(stop);
 
-    await signOutInAnotherTab();
+    const { unmount } = await openPanelRoute();
+    unmount();
 
-    await waitFor(() => {
-      expect(clearAuthState).toHaveBeenCalled();
-    });
-  });
-
-  it('ignores a rotation in another tab', async () => {
-    // Another tab refreshing its token writes the same key. Treating that as a
-    // sign-out would log everyone out roughly every half hour.
-    await openPanelRoute();
-
-    await act(async () => {
-      window.dispatchEvent(
-        new StorageEvent('storage', {
-          key: AUTH_STATE_STORAGE_KEY,
-          newValue: JSON.stringify({ ...SIGNED_IN, access_token: 'tok-rotated' }),
-        }),
-      );
-    });
-
-    expect(clearAuthState).not.toHaveBeenCalled();
-    expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument();
+    expect(stop).toHaveBeenCalled();
   });
 });

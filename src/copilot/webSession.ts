@@ -11,7 +11,6 @@
  */
 import type { HostSession, HostUser } from '@faultmaven/copilot-ui';
 import { authManager } from '../lib/auth/AuthManager';
-import { subscribeCrossTabAuthState } from '../lib/auth/crossTab';
 import type { AccountProfile } from '../lib/auth/functions';
 
 /**
@@ -94,35 +93,24 @@ export function createWebSession(user: HostUser): HostSession {
     signOut: null,
 
     /**
-     * The signed-in identity changed somewhere else.
+     * The session ended — wherever that was decided.
      *
-     * Both halves of "somewhere else" are real on a web page and neither alone
-     * is enough:
-     *
-     *  - `onAuthCleared` is THIS tab — the account menu's sign-out, or
-     *    AuthManager wiping a definitively-rejected session from inside the
-     *    request path. The `storage` event is deliberately not delivered to the
-     *    tab that wrote it, so without this the panel would miss its own
-     *    sign-out.
-     *  - `subscribeCrossTabAuthState` is ANOTHER tab: the page is still open and
-     *    its credential is gone. That is the case the contract calls out for a
-     *    web host.
+     * ONE subscription, deliberately. `onAuthCleared` fires for every way a
+     * session ends: the account menu's sign-out, AuthManager wiping a
+     * definitively-rejected credential from inside the request path, and — since
+     * the cross-tab decision moved into AuthManager — another tab signing out or
+     * signing a different account in. Subscribing to the storage event as well,
+     * as this did, delivered a cross-tab sign-out to the panel twice while still
+     * missing an account switch entirely, because both listeners only acted on
+     * `null`.
      *
      * Only a signed-OUT transition is reported. A different account signing in
-     * elsewhere is a change this panel must not silently adopt: the Dashboard
-     * routes identity through `AuthProvider`, which remounts the panel with a
-     * fresh session for the new user, and reporting the new identity from here
-     * would race that with a half-swapped store.
+     * is not something this panel adopts in place: the Dashboard routes identity
+     * through `AuthProvider`, which remounts the panel with a fresh session for
+     * whoever signed in.
      */
     subscribeAuthState(onChange) {
-      const stopLocal = authManager.onAuthCleared(() => onChange(null));
-      const stopCrossTab = subscribeCrossTabAuthState((state) => {
-        if (state === null) onChange(null);
-      });
-      return () => {
-        stopLocal();
-        stopCrossTab();
-      };
+      return authManager.onAuthCleared(() => onChange(null));
     },
   };
 }

@@ -153,10 +153,26 @@ describe('the case detail page is bounded by the viewport', () => {
 
     // `min-h-screen` is the content-driven shape this replaced: it lets the
     // page grow, which is what pushed the panel's composer past the fold.
-    expect(root.classList.contains('h-screen')).toBe(true);
+    //
+    // `h-dvh` and not `h-screen`: `vh` ignores mobile browser toolbars, so the
+    // bottom of the page — the composer — ends up underneath them.
+    expect(root.classList.contains('h-dvh')).toBe(true);
+    expect(root.classList.contains('h-screen')).toBe(false);
     expect(root.classList.contains('min-h-screen')).toBe(false);
     expect(root.classList.contains('flex')).toBe(true);
     expect(root.classList.contains('flex-col')).toBe(true);
+  });
+
+  it('keeps a floor below which the PAGE scrolls instead of crushing the panel', async () => {
+    // Bounding the page must not mean the content has no minimum. A laptop with
+    // devtools open, or a split screen, would otherwise squeeze the panel
+    // towards nothing — trading the composer-below-the-fold bug for an
+    // unusable one at a different viewport.
+    const { container } = await renderCaseDetail();
+    const root = container.firstElementChild as HTMLElement;
+
+    const floor = Array.from(root.classList).find((c) => /^min-h-\[/.test(c));
+    expect(floor, 'the root needs a minimum height to scroll below').toBeDefined();
   });
 
   it('keeps the case header from shrinking, so it stays visible', async () => {

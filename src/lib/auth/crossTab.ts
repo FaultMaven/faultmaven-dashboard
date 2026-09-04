@@ -1,67 +1,66 @@
 /**
- * Observing a sign-in or sign-out that happened in ANOTHER tab.
+ * Reading what another tab did to the shared session.
  *
  * The Dashboard's cross-tab channel has always been shared `localStorage`: the
- * storage adapter (`lib/storage.ts`) is localStorage-backed, so every tab of an
- * origin reads and writes one `faultmaven_authState`. That is why AuthManager
- * needs no BroadcastChannel to hand a rotated token between tabs (#48) — the
- * write IS the message.
+ * storage adapter is localStorage-backed, so every tab of an origin reads and
+ * writes one `faultmaven_authState`. That is why AuthManager needs no
+ * BroadcastChannel to hand a rotated token between tabs (#48) — the write IS
+ * the message.
  *
- * What was missing is a READER. `authManager.onAuthCleared` fires only in the
- * tab that did the clearing, so a tab left open while the user signed out
- * elsewhere kept its React state and kept rendering as though signed in. That
- * did not matter while every page was a read-only view that would 401 on its
- * next request. It matters to the built-in Copilot panel, whose host contract
- * requires the fact ("who is signed in now, or nobody") rather than the
- * mechanism, and whose whole point is that it holds a live session.
- *
- * The `storage` event is not delivered to the tab that made the change, which
- * is exactly right: that tab already knows, and `onAuthCleared` covers it.
+ * This module is only the READER. What a change MEANS, and what to do about it,
+ * belongs to `AuthManager`: it owns the token chain, the storage key and the
+ * rotation, and it is the only thing that knows which identity this tab holds.
+ * Splitting the decision across two subscribers is what let a cross-tab
+ * sign-out reach the panel twice and an account switch reach it not at all.
  */
-import { STORAGE_KEY_PREFIX } from '../storage';
+import { authLocalStore, STORAGE_KEY_PREFIX } from '../storage';
 import type { AuthState } from './types';
 
 /** The physical `localStorage` key the storage adapter writes the session to. */
 export const AUTH_STATE_STORAGE_KEY = `${STORAGE_KEY_PREFIX}authState`;
 
-/** What another tab now holds: a session, or nobody. */
-export type CrossTabAuthChange = AuthState | null;
+/** What another tab's write says the session is now. */
+export type CrossTabAuthState = AuthState | null;
 
-function parseAuthState(raw: string | null): AuthState | null {
-  if (raw === null) return null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object') return null;
-    const state = parsed as Partial<AuthState>;
-    // A row with no user is not a session anyone can act as. Treat it as
-    // signed out rather than handing a caller a half-built identity.
-    if (!state.user || typeof state.user.user_id !== 'string') return null;
-    return state as AuthState;
-  } catch {
-    return null;
-  }
+/**
+ * Decode a cross-tab row THROUGH THE ADAPTER that wrote it.
+ *
+ * Hand-parsing here is how the reader came to disagree with the writer: the
+ * adapter JSON-encodes every value, and a second decoder is a second set of
+ * assumptions about that. A row with no user is not a session anyone can act
+ * as, so it reads as signed out rather than as a half-built identity.
+ */
+export function decodeCrossTabAuthState(raw: string | null): CrossTabAuthState {
+  const { present, value } = authLocalStore.decode(raw);
+  if (!present || !value || typeof value !== 'object') return null;
+  const state = value as Partial<AuthState>;
+  if (!state.user || typeof state.user.user_id !== 'string') return null;
+  return state as AuthState;
 }
 
 /**
- * Call `onChange` when another tab signs in, signs out, or switches account.
+ * Call `onChange` when ANOTHER tab writes or clears the session.
  *
  * Returns an unsubscribe. `null` means signed out — including
  * `localStorage.clear()`, which arrives as an event with a null `key` and must
  * not be mistaken for "some unrelated key changed".
+ *
+ * The `storage` event is not delivered to the tab that made the change, which
+ * is exactly right: that tab already knows.
  */
 export function subscribeCrossTabAuthState(
-  onChange: (state: CrossTabAuthChange) => void,
+  onChange: (state: CrossTabAuthState) => void,
 ): () => void {
   if (typeof window === 'undefined') return () => {};
 
   const handler = (event: StorageEvent) => {
     if (event.key === null) {
-      // Whole-store clear in another tab: the session is gone with it.
+      // Whole-store clear in another tab: the session went with it.
       onChange(null);
       return;
     }
     if (event.key !== AUTH_STATE_STORAGE_KEY) return;
-    onChange(parseAuthState(event.newValue));
+    onChange(decodeCrossTabAuthState(event.newValue));
   };
 
   window.addEventListener('storage', handler);

@@ -22,8 +22,7 @@
  * Run AFTER `pnpm build`:
  *     pnpm build && node scripts/check-shared-ui-styles.mjs
  */
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { collectBuildOutputOrExit, fail, readAll } from './gate-support.mjs';
 
 const ASSETS = 'dist/assets';
 
@@ -42,23 +41,14 @@ const SHARED_UI_CLASSES = [
   { name: 'hover:bg-fm-accent-strong', verbatim: 'hover\\:bg-fm-accent-strong' },
 ];
 
-function fail(message) {
-  console.error(`FAIL: ${message}`);
+const files = collectBuildOutputOrExit(ASSETS, ['.css'], 'this gate');
+
+if (SHARED_UI_CLASSES.length === 0) {
+  fail('No classes configured. Nothing was searched for; that is not a pass.');
   process.exit(1);
 }
 
-let files;
-try {
-  files = readdirSync(ASSETS).filter((f) => f.endsWith('.css'));
-} catch {
-  fail(`No ${ASSETS}/ to inspect. Run \`pnpm build\` first.`);
-}
-
-// A gate that scanned nothing would pass having compared nothing.
-if (files.length === 0) fail(`${ASSETS}/ holds no .css files. Nothing was scanned; that is not a pass.`);
-if (SHARED_UI_CLASSES.length === 0) fail('No classes configured. Nothing was searched for; that is not a pass.');
-
-const css = files.map((f) => readFileSync(join(ASSETS, f), 'utf8')).join('\n');
+const css = readAll(files);
 
 const missing = SHARED_UI_CLASSES.filter(({ verbatim }) => !css.includes(verbatim));
 

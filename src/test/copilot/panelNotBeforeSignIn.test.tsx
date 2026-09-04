@@ -38,7 +38,7 @@ vi.mock('@faultmaven/copilot-ui', () => {
 
 const getAuthState = vi.fn();
 
-vi.mock('../../lib/api', () => ({
+vi.mock('../../lib/api', async () => ({
   devLogin: vi.fn(),
   logoutAuth: vi.fn(),
   listCases: vi.fn().mockResolvedValue({
@@ -50,13 +50,7 @@ vi.mock('../../lib/api', () => ({
   }),
   searchCases: vi.fn(),
   listDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
-  authManager: {
-    getAuthState: (...args: unknown[]) => getAuthState(...args),
-    saveAuthState: vi.fn(),
-    clearAuthState: vi.fn(),
-    getAccessToken: vi.fn().mockResolvedValue('tok-live'),
-    onAuthCleared: vi.fn().mockReturnValue(() => {}),
-  },
+  authManager: (await import('../support/authFixtures')).makeAuthManagerMock({ getAuthState: (...args: unknown[]) => getAuthState(...args) }),
   config: { apiUrl: 'http://localhost:8090' },
   SIGNOUT_NOTICE_KEY: 'fm_signout_notice',
   AuthenticationError: class extends Error {},

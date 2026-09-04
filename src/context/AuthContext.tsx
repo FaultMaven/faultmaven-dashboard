@@ -10,7 +10,6 @@ import {
   useCallback,
 } from 'react';
 import { authManager, AuthState } from '../lib/api';
-import { subscribeCrossTabAuthState } from '../lib/auth/crossTab';
 import config from '../config';
 
 // Deployment type: derived from the backend auth mode
@@ -272,34 +271,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * React to a sign-out that happened in ANOTHER TAB.
+   * Start the one cross-tab watch, for the whole app.
    *
-   * The listener above fires only in the tab that did the clearing — the
-   * `storage` event is deliberately not delivered to the writer — so a second
-   * tab left open kept rendering as signed in after the user signed out
-   * elsewhere. That did not matter while every page was a read-only view that
-   * would 401 on its next request. It matters now: the built-in Copilot panel
-   * holds a live session, and a real-browser check found the panel correctly
-   * noticing the sign-out and tearing its own state down while the shell around
-   * it carried on showing an account menu and a working page. Half a session is
-   * worse than either whole one.
-   *
-   * `clearAuthState()` rather than a bare state drop, and deliberately so:
-   * storage is already empty (the other tab emptied it, and the call is
-   * idempotent), but it is also what fires `onAuthCleared`, which is what
-   * purges the process-wide per-user caches. Dropping only React state would
-   * leave the previous identity's cached KB scopes for whoever signs in next.
-   *
-   * Sign-out only. Another tab signing IN is not this tab's business to adopt —
-   * the same rule the panel's own `subscribeAuthState` follows, so the shell
-   * and the panel cannot disagree about what a cross-tab change means.
+   * The decision — a clear, or a different account signing in elsewhere — lives
+   * in AuthManager, which owns the credential and knows which identity this tab
+   * holds. All this does is turn it on and hand back its unsubscribe; the
+   * result arrives through `onAuthCleared` above, like every other way a
+   * session ends, so the shell and the Copilot panel cannot disagree about what
+   * happened or hear it a different number of times.
    */
-  useEffect(() => {
-    return subscribeCrossTabAuthState((state) => {
-      if (state !== null) return;
-      void authManager.clearAuthState();
-    });
-  }, []);
+  useEffect(() => authManager.watchCrossTabAuthChanges(), []);
 
   /**
    * Role is DERIVED, never synced: a pure function of the confirmed

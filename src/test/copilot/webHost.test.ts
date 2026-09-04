@@ -138,6 +138,29 @@ describe('web host store', () => {
 });
 
 describe('web host endpoints', () => {
+  it('resolves the SAME-ORIGIN deployment to an absolute origin', async () => {
+    // The Kubernetes Dashboard ships `VITE_API_URL=""` and proxies `/api/*`, so
+    // `config.apiUrl` is deliberately the empty string. This app's own client
+    // builds relative URLs from it and they resolve; the shared UI composes
+    // `new URL(`${baseUrl}/api/v1/…`)`, and `new URL('/api/v1/cases')` THROWS.
+    //
+    // The result was silent: the transcript rendered empty, cases never listed,
+    // async turns never polled. Every browser smoke of this branch used an
+    // absolute URL, so none of them could have caught it.
+    vi.resetModules();
+    vi.doMock('../../config', () => ({ default: { apiUrl: '', inputLimits: {} } }));
+    const { createWebHostEndpoints: sameOrigin } = await import('../../copilot/webHost');
+
+    const resolved = await sameOrigin().apiUrl();
+
+    expect(resolved).toBe(window.location.origin);
+    expect(resolved).not.toBe('');
+    // The shape the package actually needs: an absolute base a URL can be built on.
+    expect(() => new URL(`${resolved}/api/v1/cases`)).not.toThrow();
+    vi.doUnmock('../../config');
+    vi.resetModules();
+  });
+
   it('answers with the deployment the Dashboard itself talks to', async () => {
     // Same value `src/config.ts` resolves for every other request this app
     // makes. That is the whole of "both hosts share the case": one origin, one
@@ -170,15 +193,11 @@ describe('web host navigation', () => {
     expect(navigate).toHaveBeenCalledWith('/cases/case-1');
   });
 
-  it('opens an external URL with noopener', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null);
-    await createWebHostNavigation(vi.fn()).external('https://grafana.example.com');
-    expect(open).toHaveBeenCalledWith(
-      'https://grafana.example.com',
-      '_blank',
-      'noopener,noreferrer',
-    );
-    open.mockRestore();
+  it('offers no `external` — nothing in the shared UI asks for one', () => {
+    // It is not in the capability subset the package wires, and no call site
+    // exists. An affordance kept working for a caller that does not exist is
+    // maintenance, not a feature.
+    expect('external' in createWebHostNavigation(vi.fn())).toBe(false);
   });
 
   it('has NO settings surface — null, not a no-op', () => {

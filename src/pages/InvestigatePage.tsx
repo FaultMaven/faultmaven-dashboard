@@ -30,7 +30,7 @@ export default function InvestigatePage() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-fm-canvas">
+    <div className="h-dvh min-h-[40rem] flex flex-col bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
       <main className="flex-1 min-h-0">
         <CopilotPanelMount initialCase={{ kind: 'new' }} />

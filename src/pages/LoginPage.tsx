@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { devLogin, authManager, SIGNOUT_NOTICE_KEY } from '../lib/api';
-import { POST_SIGN_IN_LANDING } from '../lib/auth/landing';
+import { resolvePostSignInLanding } from '../lib/auth/landing';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
@@ -168,7 +168,7 @@ export default function LoginPage() {
         return;
       }
 
-      navigate(POST_SIGN_IN_LANDING);
+      navigate(await resolvePostSignInLanding());
     } catch (err: unknown) {
       let errorMessage = 'Login failed. Please check your connection to the backend.';
 

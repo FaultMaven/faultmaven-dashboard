@@ -6,16 +6,11 @@ import CaseListPage from '../../pages/CaseListPage';
 
 // Shared mock setup (same pattern as App.test.tsx). The Dashboard is read-only
 // for cases (D1) — there is no archive/mutation client to mock here.
-vi.mock('../../lib/api', () => ({
+vi.mock('../../lib/api', async () => ({
   logoutAuth: vi.fn().mockResolvedValue(undefined),
   listCases: vi.fn(),
   searchCases: vi.fn(),
-  authManager: {
-    getAuthState: vi.fn().mockResolvedValue(null),
-    saveAuthState: vi.fn(),
-    clearAuthState: vi.fn(),
-    getAccessToken: vi.fn().mockResolvedValue(null),
-  },
+  authManager: (await import('../support/authFixtures')).makeAuthManagerMock(),
   config: { apiUrl: 'http://localhost:8090' },
 }));
 
@@ -140,47 +135,52 @@ describe('CaseListPage (read-only, D1)', () => {
     expect(screen.queryByText(/include archived/i)).not.toBeInTheDocument();
   });
 
-  it('lands a person with NO cases on the panel, not on an empty list', async () => {
-    // ADR-016 D6. Before this, the list rendered a table with no rows and a
-    // one-line "No cases found." — the worst possible first screen for someone
-    // whose whole reason for being here is to start an investigation.
+  it('stays on /cases and offers the panel when the account has no cases', async () => {
+    // `/cases` is an ORDINARY PAGE again. It used to redirect to /investigate
+    // whenever the rows in hand were empty, which made the route unreachable
+    // for the very person it was meant to help and bounced anyone who paged
+    // past the end or cleared a filter — `cases.length` cannot tell those
+    // apart. The first-run question is asked once, at sign-in, by
+    // `resolvePostSignInLanding()`.
     mockListCases.mockResolvedValue({ cases: [], total_count: 0, page: 0, page_size: 20, has_more: false });
 
-    await act(async () => {
-      renderPage();
-    });
+    await act(async () => { renderPage(); });
 
-    await waitFor(() => {
-      expect(screen.getByTestId('investigate-page')).toBeInTheDocument();
-    });
-    expect(screen.queryByRole('heading', { name: /^Cases$/i })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+    expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Cases$/i })).toBeInTheDocument();
+    expect(screen.getByText(/no cases yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /start an investigation/i }).getAttribute('href'),
+    ).toBe('/investigate');
   });
 
-  it('does NOT redirect when the list is empty because a filter narrowed it', async () => {
-    // "Nothing matched" is not "you have no cases". Redirecting here would
-    // throw away the query the user just typed, so the list stays put and
-    // offers the panel instead of jumping to it.
-    await act(async () => {
-      renderPage();
-    });
+  it('does not bounce a user who paged PAST THE END of their cases', async () => {
+    // An empty page of a non-empty account. The redirect keyed on
+    // `cases.length` sent this person to a new investigation and hid the cases
+    // they actually have; `total_count` is what distinguishes the two.
+    mockListCases.mockResolvedValue({ cases: [], total_count: 42, page: 9, page_size: 20, has_more: false });
+
+    await act(async () => { renderPage(); });
+
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+    expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
+    // It says "nothing matched", not "you have no cases".
+    expect(screen.getByText(/no cases match these filters/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no cases yet/i)).not.toBeInTheDocument();
+  });
+
+  it('does not bounce a user who CLEARED a filter down to nothing', async () => {
+    await act(async () => { renderPage(); });
     await waitFor(() => expect(screen.getByText('Database Outage')).toBeInTheDocument());
 
-    mockListCases.mockResolvedValue({
-      cases: [],
-      total_count: 0,
-      page: 0,
-      page_size: 20,
-      has_more: false,
-    });
+    mockListCases.mockResolvedValue({ cases: [], total_count: 0, page: 0, page_size: 20, has_more: false });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^Resolved$/i }));
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
     expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
-    // …and it leads to the panel rather than dead-ending.
     expect(
       screen.getByRole('link', { name: /start an investigation/i }).getAttribute('href'),
     ).toBe('/investigate');

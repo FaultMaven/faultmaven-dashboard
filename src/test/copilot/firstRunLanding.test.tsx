@@ -36,25 +36,24 @@ const devLogin = vi.fn();
 const getAuthState = vi.fn();
 const listCases = vi.fn();
 
-vi.mock('../../lib/api', () => ({
+vi.mock('../../lib/api', async () => ({
   devLogin: (...args: unknown[]) => devLogin(...args),
   logoutAuth: vi.fn(),
   listCases: (...args: unknown[]) => listCases(...args),
   searchCases: vi.fn(),
   listDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
   ssoExchange: vi.fn(),
-  authManager: {
-    getAuthState: (...args: unknown[]) => getAuthState(...args),
-    saveAuthState: vi.fn(),
-    clearAuthState: vi.fn(),
-    getAccessToken: vi.fn().mockResolvedValue('tok-live'),
-    onAuthCleared: vi.fn().mockReturnValue(() => {}),
-    writeBridgeAuthState: vi.fn(),
-    hasBridgeAuthState: vi.fn().mockReturnValue(false),
-  },
+  authManager: (await import('../support/authFixtures')).makeAuthManagerMock({ getAuthState: (...args: unknown[]) => getAuthState(...args) }),
   config: { apiUrl: 'http://localhost:8090' },
   SIGNOUT_NOTICE_KEY: 'fm_signout_notice',
   AuthenticationError: class extends Error {},
+}));
+
+// `resolvePostSignInLanding` imports the client directly, not through the
+// barrel, so both paths are pointed at the same spy — otherwise the landing
+// decision would run against the real one.
+vi.mock('../../lib/cases/api', () => ({
+  listCases: (...args: unknown[]) => listCases(...args),
 }));
 
 vi.mock('../../lib/auth/AuthManager', () => ({
@@ -80,7 +79,7 @@ vi.mock('../../lib/auth/functions', () => ({
 }));
 
 import App from '../../App';
-import { POST_SIGN_IN_LANDING } from '../../lib/auth/landing';
+import { FIRST_RUN_LANDING, POST_SIGN_IN_LANDING } from '../../lib/auth/landing';
 
 const SIGNED_IN = {
   access_token: 'tok-live',
@@ -99,6 +98,27 @@ const SIGNED_IN = {
 };
 
 const NO_CASES = { cases: [], total_count: 0, page: 0, page_size: 20, has_more: false };
+
+const CASE_ROW = {
+  case_id: 'case-1',
+  title: 'Database Outage',
+  description: '',
+  state: 'investigating',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  last_activity_at: '2026-01-02T00:00:00Z',
+  resolved_at: null,
+  closed_at: null,
+  closure_reason: null,
+  user_id: 'u1',
+  organization_id: 'org1',
+  current_turn: 1,
+  source: 'copilot',
+  stage: 'diagnosis',
+  turns_without_progress: 0,
+  is_terminal: false,
+  shared_team_ids: [],
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -137,10 +157,11 @@ async function signIn() {
 }
 
 describe('the destination a sign-in hands over to', () => {
-  it('is the case list, which owns the zero-case rule — not the knowledge base', () => {
-    // Named once, so the two sign-in paths cannot drift. `/kb` bypassed the
-    // rule entirely; any value that is not the route holding it would.
+  it('is decided at sign-in, from the account\u2019s case count', () => {
+    // Not from the rows a page happens to be holding. `/cases` is an ordinary
+    // page with an empty state; the first-run question is asked once, here.
     expect(POST_SIGN_IN_LANDING).toBe('/cases');
+    expect(FIRST_RUN_LANDING).toBe('/investigate');
   });
 });
 
@@ -155,6 +176,14 @@ describe('a signed-in user with no cases', () => {
     expect(lastInitialCase).toEqual({ kind: 'new' });
   });
 
+  it('asks for the count ONCE, and does not fetch a page of rows to get it', async () => {
+    await signIn();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+
+    const landingCalls = listCases.mock.calls.filter(([, , pageSize]) => pageSize === 1);
+    expect(landingCalls).toHaveLength(1);
+  });
+
   it('never shows the knowledge base on the way', async () => {
     await signIn();
 
@@ -167,35 +196,9 @@ describe('a signed-in user with no cases', () => {
 
 describe('a signed-in user who HAS cases', () => {
   it('lands on their case list, not on the panel', async () => {
-    // The redirect is for an empty account. Someone with work in progress must
-    // land on it — sending every sign-in to a new investigation would be the
-    // same bug pointing the other way.
-    listCases.mockResolvedValue({
-      ...NO_CASES,
-      total_count: 1,
-      cases: [
-        {
-          case_id: 'case-1',
-          title: 'Database Outage',
-          description: '',
-          state: 'investigating',
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: '2026-01-01T00:00:00Z',
-          last_activity_at: '2026-01-02T00:00:00Z',
-          resolved_at: null,
-          closed_at: null,
-          closure_reason: null,
-          user_id: 'u1',
-          organization_id: 'org1',
-          current_turn: 1,
-          source: 'copilot',
-          stage: 'diagnosis',
-          turns_without_progress: 0,
-          is_terminal: false,
-          shared_team_ids: [],
-        },
-      ],
-    });
+    // The first-run landing is for an empty account. Sending every sign-in to a
+    // new investigation would be the same bug pointing the other way.
+    listCases.mockResolvedValue({ ...NO_CASES, total_count: 1, cases: [CASE_ROW] });
 
     await signIn();
 
@@ -205,5 +208,18 @@ describe('a signed-in user who HAS cases', () => {
     expect(window.location.pathname).toBe('/cases');
     expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
     expect(packageImports).toBe(0);
+  });
+});
+
+describe('when the count cannot be obtained', () => {
+  it('lands on the case list, never on a new investigation', async () => {
+    // A failed request is not evidence of an empty account. Sending someone to
+    // a new investigation on it would hide the cases they have.
+    listCases.mockRejectedValue(new Error('API unreachable'));
+
+    await signIn();
+
+    await waitFor(() => expect(window.location.pathname).toBe('/cases'));
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
   });
 });

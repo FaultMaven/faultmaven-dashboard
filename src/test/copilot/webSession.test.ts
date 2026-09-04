@@ -18,7 +18,6 @@ vi.mock('../../lib/auth/AuthManager', () => ({
 }));
 
 import { createWebSession, hostUserFromProfile } from '../../copilot/webSession';
-import { AUTH_STATE_STORAGE_KEY } from '../../lib/auth/crossTab';
 import type { AccountProfile } from '../../lib/auth/functions';
 
 /**
@@ -138,74 +137,45 @@ describe('onUnauthorized', () => {
 });
 
 describe('subscribeAuthState', () => {
-  it('reports signed-out when THIS tab clears the session', async () => {
-    let fireLocalClear = () => {};
+  it('reports signed-out through the ONE channel AuthManager notifies on', () => {
+    // One subscription, not two. Every way a session ends — the account menu,
+    // a definitively-rejected credential inside the request path, and (since
+    // the decision moved into AuthManager) another tab signing out or signing a
+    // different account in — arrives as `onAuthCleared`. Subscribing to the
+    // storage event here as well delivered a cross-tab sign-out to the panel
+    // TWICE while still missing an account switch entirely, because both
+    // listeners only acted on `null`.
+    let fireCleared = () => {};
     onAuthCleared.mockImplementation((listener: () => void) => {
-      fireLocalClear = listener;
+      fireCleared = listener;
       return () => {};
     });
 
     const onChange = vi.fn();
     createWebSession(USER).subscribeAuthState(onChange);
-    fireLocalClear();
 
-    expect(onChange).toHaveBeenCalledWith(null);
+    expect(onAuthCleared).toHaveBeenCalledTimes(1);
+    fireCleared();
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(null);
   });
 
-  it('reports signed-out when ANOTHER TAB signs out', () => {
-    // The `storage` event is deliberately not delivered to the tab that wrote
-    // it, so this leg and the one above cover different halves of "somewhere
-    // else" and neither alone is enough.
-    const onChange = vi.fn();
-    createWebSession(USER).subscribeAuthState(onChange);
+  it('does not listen to the storage event itself', () => {
+    // The host must not second-guess AuthManager about what a cross-tab write
+    // means; that is what produced the double delivery.
+    const addEventListener = vi.spyOn(window, 'addEventListener');
 
-    window.dispatchEvent(
-      new StorageEvent('storage', { key: AUTH_STATE_STORAGE_KEY, newValue: null }),
-    );
+    createWebSession(USER).subscribeAuthState(vi.fn());
 
-    expect(onChange).toHaveBeenCalledWith(null);
+    expect(addEventListener).not.toHaveBeenCalledWith('storage', expect.anything());
+    addEventListener.mockRestore();
   });
 
-  it('reports signed-out when another tab clears all storage', () => {
-    const onChange = vi.fn();
-    createWebSession(USER).subscribeAuthState(onChange);
+  it('detaches on unsubscribe', () => {
+    const stop = vi.fn();
+    onAuthCleared.mockReturnValue(stop);
 
-    window.dispatchEvent(new StorageEvent('storage', { key: null }));
+    createWebSession(USER).subscribeAuthState(vi.fn())();
 
-    expect(onChange).toHaveBeenCalledWith(null);
-  });
-
-  it('says NOTHING when another tab merely rotates the token', () => {
-    // Rotation is not an identity change. Reporting it would make the panel
-    // treat a routine refresh as a sign-out.
-    const onChange = vi.fn();
-    createWebSession(USER).subscribeAuthState(onChange);
-
-    window.dispatchEvent(
-      new StorageEvent('storage', {
-        key: AUTH_STATE_STORAGE_KEY,
-        newValue: JSON.stringify({
-          access_token: 'tok-rotated',
-          user: { user_id: 'u1' },
-        }),
-      }),
-    );
-
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it('detaches both listeners on unsubscribe', () => {
-    const stopLocal = vi.fn();
-    onAuthCleared.mockReturnValue(stopLocal);
-
-    const onChange = vi.fn();
-    const unsubscribe = createWebSession(USER).subscribeAuthState(onChange);
-    unsubscribe();
-
-    expect(stopLocal).toHaveBeenCalled();
-    window.dispatchEvent(
-      new StorageEvent('storage', { key: AUTH_STATE_STORAGE_KEY, newValue: null }),
-    );
-    expect(onChange).not.toHaveBeenCalled();
+    expect(stop).toHaveBeenCalled();
   });
 });

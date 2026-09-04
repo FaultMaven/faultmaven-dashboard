@@ -135,11 +135,13 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 
 ### Component Architecture
 
-- **Post-sign-in landing**: both sign-in paths hand over to `POST_SIGN_IN_LANDING`
-  (`src/lib/auth/landing.ts`) = `/cases`, never a hard-coded route. `/cases` is
-  where the zero-case rule lives, so a brand-new account reaches the panel with
-  a new investigation (ADR-016 D6); the old hard-coded `/kb` bypassed that gate
-  entirely and put the one user the rule exists for on an empty knowledge base.
+- **Post-sign-in landing**: both sign-in paths call `resolvePostSignInLanding()`
+  (`src/lib/auth/landing.ts`), which reads the account's case `total_count`
+  once: no cases → `/investigate` (ADR-016 D6), otherwise `/cases`. It fails to
+  `/cases`, because a count that could not be fetched is not evidence of an
+  empty account. The decision is made HERE, at sign-in — not inside the list
+  page, where it could not tell "no cases" from "paged past the end" or "just
+  cleared a filter".
 - **LoginPage**: Authentication interface with FaultMaven branding. Standalone: passwordless username form. Cloud: single Sign In button that hands off to the backend-advertised hosted-login URL (`oauth.hosted_login_url` from `/auth/config`), forwarding the ProtectedRoute-saved destination as `return_to`.
 - **SSOCallbackPage**: Cloud hosted-login return leg (route `/auth/sso/callback`, public — it IS the login). The backend redirects here with a single-use completion `code` (+ optional same-origin `return_to`) or a sanitized `error` slug; the page POSTs `{code}` to `/api/v1/auth/sso/exchange`, stores the standard token response exactly like a LoginPage sign-in, and forwards to `return_to` → saved destination → `/kb`. Error slugs map to friendly messages with a "Back to sign in" link; raw query content is never echoed.
 - **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
@@ -297,13 +299,19 @@ change reaches both or reaches neither.
   warning, a panel rendered unstyled. `pnpm check:shared-ui-styles` (CI job
   `web-bundle-boundary`, after `pnpm build`) is what makes that loud.
 - **Adopting a change is moving the SHA** in `package.json` and re-running
-  `pnpm install`. `pnpm check:copilot-pin` (CI job `copilot-ui-pin`, a required
-  check on main) fails when the pin is not on the copilot repo's `main`, when
-  the `packages/copilot-ui` subtree has moved on without it, or when the two
-  repositories' `api-contract.pin.json` disagree.
-- **`pnpm check:web-boundary`** (CI job `web-bundle-boundary`, after
-  `pnpm build`) asserts no Copilot sign-in reached the shipped bundle. The panel
-  has no sign-in of its own and must never acquire one (ADR-016 D3).
+  `pnpm install`. `pnpm check:copilot-pin` (CI job `copilot-ui-pin`) FAILS on
+  pin shape, on a pin that is not on the copilot repo's `main`, and on the two
+  repositories' `api-contract.pin.json` disagreeing. Staleness — the package
+  having moved on — is an ADVISORY note only: copilot's main moves on its own,
+  so failing on it would redden every open PR here and forbid developing the
+  two repositories together. Whether this job is *required* depends on the
+  ruleset the owner has applied; it is not required by default.
+- **`pnpm check:web-boundary`** and **`pnpm check:shared-ui-styles`** run in the
+  `lint` job after a build (that job already installs, and `build`/`smoke`
+  already build twice — a third full build to ask two questions about `dist/`
+  is CI time for nothing). The first asserts no Copilot sign-in reached the
+  shipped bundle (ADR-016 D3); the second that the shared UI's `fm-*` classes
+  are in the stylesheet at all.
 - **The Dashboard mounts the panel with `chrome: 'embedded'`**, stated once in
   `CopilotPanelMount` rather than at each call site. The panel's own sidebar
   carries a case list, an account row and an "Open Dashboard" button — all three

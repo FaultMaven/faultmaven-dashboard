@@ -500,11 +500,18 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
           below the fold again. Every other tab is long-form content with no
           scroller of its own, so it gets one — without it the viewport-bounded
           page would simply clip them. */}
-      {activeTab === 'transcript' && (
-        <div className="flex-1 min-h-0" data-testid="transcript-tab-panel">
-          <TranscriptTab caseId={caseId} />
-        </div>
-      )}
+      {/* HIDDEN, not unmounted, when another tab is showing.
+          Unmounting the panel tears down its session, its conversation cache
+          and any in-flight turn — so glancing at Evidence and coming back
+          re-minted a session and re-fetched the transcript, and a turn in
+          progress was lost. `hidden` costs a rendered subtree; the alternative
+          costs the user's work. */}
+      <div
+        className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
+        data-testid="transcript-tab-panel"
+      >
+        <TranscriptTab caseId={caseId} />
+      </div>
       {activeTab !== 'transcript' && (
         <div className="flex-1 min-h-0 overflow-y-auto">
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}

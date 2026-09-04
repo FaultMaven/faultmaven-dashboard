@@ -18,9 +18,12 @@
  *     at an unmerged branch commit is not adoptable: it can be rebased away or
  *     never merged, and the tarball it resolves would then describe a revision
  *     that does not exist in the producer's history.
- *  3. STALENESS — nothing under `packages/copilot-ui` differs between the pin
- *     and `main`. This is the assertion the pin itself removes and the one this
- *     file mostly exists for.
+ *  3. STALENESS — ADVISORY ONLY, never a failure. Whether the pin has fallen
+ *     behind is worth saying out loud, but it is not a property of THIS pull
+ *     request: copilot's main moves on its own, so failing on it would redden
+ *     every open Dashboard PR the moment someone merged there, and would forbid
+ *     developing the two repositories together. Adoption is a decision, and a
+ *     red check is not how you ask for one. A pin-bump PR is.
  *  4. PIN PARITY — the copilot repository's `api-contract.pin.json` AT THE
  *     PINNED SHA matches this repository's. The two regenerate-and-diff jobs are
  *     the CORRECTNESS leg (each client matches the contract it pinned); this is
@@ -42,9 +45,6 @@ const COPILOT_REPO = 'FaultMaven/faultmaven-copilot';
 const COPILOT_BRANCH = 'main';
 const PACKAGE_SUBTREE = 'packages/copilot-ui/';
 
-/** GitHub caps a comparison's `files` at this many, with no pagination. */
-const COMPARE_FILES_CAP = 300;
-
 const failures = [];
 function fail(message) {
   failures.push(message);
@@ -59,6 +59,16 @@ function githubHeaders() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
+}
+
+/** The copilot repository's own API-contract pin, at a given commit. */
+async function fetchPinnedContract(sha) {
+  const response = await fetch(
+    `https://raw.githubusercontent.com/${COPILOT_REPO}/${sha}/api-contract.pin.json`,
+    { headers: { 'User-Agent': 'faultmaven-dashboard-copilot-ui-pin-check' } },
+  );
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return JSON.parse(await response.text());
 }
 
 async function getJson(url) {
@@ -108,18 +118,22 @@ if (lockedShas.size === 0) {
 // 2 & 3. Ancestry and staleness, from one comparison.
 // ---------------------------------------------------------------------------
 
-let comparison;
-try {
-  comparison = await getJson(
-    `https://api.github.com/repos/${COPILOT_REPO}/compare/${pinnedSha}...${COPILOT_BRANCH}`,
-  );
-} catch (error) {
+// Both network reads at once: neither needs the other, and this gate runs on
+// every push.
+const [comparisonResult, contractResult] = await Promise.allSettled([
+  getJson(`https://api.github.com/repos/${COPILOT_REPO}/compare/${pinnedSha}...${COPILOT_BRANCH}`),
+  fetchPinnedContract(pinnedSha),
+]);
+
+if (comparisonResult.status === 'rejected') {
   fail(
-    `Could not compare ${pinnedSha} with ${COPILOT_REPO}@${COPILOT_BRANCH}: ${error.message}\n` +
+    `Could not compare ${pinnedSha} with ${COPILOT_REPO}@${COPILOT_BRANCH}: ` +
+      `${comparisonResult.reason.message}\n` +
       '    Unverifiable is not a pass — this gate reports on a pin it could not read.',
   );
   report();
 }
+const comparison = comparisonResult.value;
 
 // `<pin>...main`: "ahead" means MAIN is ahead of the pin, i.e. the pin is an
 // ancestor. "behind" and "diverged" both mean the pin is not on main.
@@ -132,33 +146,23 @@ if (comparison.status === 'behind' || comparison.status === 'diverged') {
   );
 }
 
+// Narrowed to the package path: nothing else in that repository is this
+// repository's business, and the whole-diff view was both noisier and subject
+// to GitHub's 300-file truncation.
 const changedInPackage = (comparison.files ?? []).filter((file) =>
   (file.filename ?? '').startsWith(PACKAGE_SUBTREE),
 );
 
 if (changedInPackage.length > 0) {
-  const commits = (comparison.commits ?? []).slice(-10).reverse();
-  fail(
-    `The pin has fallen behind: ${changedInPackage.length} file(s) under ${PACKAGE_SUBTREE} ` +
-      `differ between ${pinnedSha.slice(0, 12)} and ${COPILOT_BRANCH}.\n` +
-      changedInPackage
-        .slice(0, 15)
-        .map((f) => `      ${f.status.padEnd(9)} ${f.filename}`)
-        .join('\n') +
-      (changedInPackage.length > 15 ? `\n      … ${changedInPackage.length - 15} more` : '') +
-      '\n    Most recent commits in the gap:\n' +
+  const commits = (comparison.commits ?? []).slice(-5).reverse();
+  console.warn(
+    `\nNOTE: ${changedInPackage.length} file(s) under ${PACKAGE_SUBTREE} have changed on ` +
+      `${COPILOT_BRANCH} since ${pinnedSha.slice(0, 12)}.\n` +
       commits
         .map((c) => `      ${c.sha.slice(0, 12)} ${c.commit.message.split('\n')[0]}`)
         .join('\n') +
-      `\n    Adopt by moving the SHA in package.json and re-running \`pnpm install\`.`,
-  );
-} else if ((comparison.files ?? []).length >= COMPARE_FILES_CAP) {
-  // GitHub truncates `files` at 300 with no pagination. A clean result from a
-  // truncated list proves nothing about the files it dropped.
-  fail(
-    `The comparison with ${COPILOT_BRANCH} was truncated at ${COMPARE_FILES_CAP} files, so ` +
-      `"nothing under ${PACKAGE_SUBTREE} changed" cannot be established.\n` +
-      '    The pin is far enough behind that it should be moved regardless.',
+      `\n      Adopt by moving the SHA in package.json and re-running \`pnpm install\`.` +
+      `\n      Advisory: staleness is a decision to take, not a reason to fail this PR.\n`,
   );
 }
 
@@ -168,21 +172,14 @@ if (changedInPackage.length > 0) {
 
 const ourContract = JSON.parse(readFileSync('api-contract.pin.json', 'utf8'));
 
-let theirContract;
-try {
-  const response = await fetch(
-    `https://raw.githubusercontent.com/${COPILOT_REPO}/${pinnedSha}/api-contract.pin.json`,
-    { headers: { 'User-Agent': 'faultmaven-dashboard-copilot-ui-pin-check' } },
-  );
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  theirContract = JSON.parse(await response.text());
-} catch (error) {
+if (contractResult.status === 'rejected') {
   fail(
-    `Could not read the copilot repository's api-contract.pin.json at ${pinnedSha}: ${error.message}\n` +
-      '    Unverifiable is not a pass.',
+    `Could not read the copilot repository's api-contract.pin.json at ${pinnedSha}: ` +
+      `${contractResult.reason.message}\n    Unverifiable is not a pass.`,
   );
   report();
 }
+const theirContract = contractResult.value;
 
 for (const field of ['repository', 'ref', 'contractVersion']) {
   if (ourContract[field] !== theirContract[field]) {

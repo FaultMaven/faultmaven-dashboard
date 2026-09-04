@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { CaseDetail } from '../../types/cases';
@@ -157,6 +157,22 @@ describe('the Transcript tab', () => {
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
 
     expect(getCaseMessages).not.toHaveBeenCalled();
+  });
+
+  it('stays mounted when another tab is showing', async () => {
+    // Unmounting would tear down the panel's session, its conversation cache
+    // and any turn in flight, so a glance at Evidence and back cost the user
+    // their work. It is hidden instead.
+    renderTabs();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Issue' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('transcript-tab-panel').className).toContain('hidden');
+    });
+    // Still THERE — same instance, not re-created.
+    expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument();
   });
 
   it('opens the panel ON THIS CASE, by telling it so', async () => {

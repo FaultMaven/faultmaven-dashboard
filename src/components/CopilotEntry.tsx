@@ -5,13 +5,16 @@ import { useEffect, useState } from 'react';
  *
  * What this says changed with the built-in panel (ADR-016 D1). It used to tell
  * an installed user to open the Copilot from their toolbar — which was the only
- * way to run an investigation, and is no longer true on this page: the
- * extension YIELDS its side panel here, because this build hosts the panel
- * itself (D4). Telling someone to open a panel that deliberately will not open
- * is worse than saying nothing.
+ * way to run an investigation, and is no longer true on this page.
+ *
+ * The wording is deliberately VERSION-AGNOSTIC. The marker says an extension is
+ * present, not which one: an extension older than the yield behaviour (D4)
+ * still opens its own side panel here, so copy asserting that the Copilot
+ * "steps aside" would be flatly wrong for that user. Pointing at where the
+ * extension is useful is true for every version.
  *
  * So the two states now say what is true:
- * - Copilot installed  → where it still earns its keep: beside Grafana, AWS,
+ * - Copilot installed  → where it earns its keep: beside Grafana, AWS,
  *                        Datadog — the consoles this Dashboard is not.
  * - Not installed      → the same store CTA as before. Nothing here requires
  *                        the extension, and the product must never imply it
@@ -75,10 +78,10 @@ export function CopilotEntry() {
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1.5 text-sm text-fm-text-tertiary cursor-default"
-        title="The Copilot steps aside here — this page runs the investigation itself. Open it on Grafana, AWS or any console you are debugging in."
+        title="Use the Copilot on Grafana, AWS or any console you are debugging in. This page runs the investigation itself."
       >
         <CopilotGlyph className="h-4 w-4" />
-        Copilot ready on other tabs
+        Copilot for other tabs
       </span>
     );
   }

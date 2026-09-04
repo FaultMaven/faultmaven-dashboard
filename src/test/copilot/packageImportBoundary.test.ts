@@ -36,6 +36,34 @@ const sources = import.meta.glob<string>(['../../**/*.{ts,tsx}', '!../../**/*.te
   eager: true,
 });
 
+/**
+ * The non-TypeScript ways in: the stylesheet and the build config.
+ *
+ * A rule about imports that only reads `.ts` is a rule with two doors left
+ * open — `src/index.css` pulls the package's stylesheet and
+ * `tailwind.config.cjs` requires its preset, and either could reach a deep
+ * path without a single TypeScript file changing.
+ */
+const nonTsSources = import.meta.glob<string>(
+  ['../../index.css', '/tailwind.config.cjs', '/postcss.config.cjs'],
+  { query: '?raw', import: 'default', eager: true },
+);
+
+/**
+ * The two package-provided ASSETS, which are deliberate exceptions.
+ *
+ * Neither is reachable through the package entry — an `index.ts` cannot export
+ * a stylesheet to `@import` or a CommonJS preset for a Tailwind config to
+ * `require` — and both are part of the package's published surface (its `files`
+ * list ships them, and its own docs tell a host to consume them this way).
+ * They are named here so that "deep subpath" keeps meaning "reaching past the
+ * contract" rather than "any path with a slash in it".
+ */
+const ASSET_EXCEPTIONS = [
+  `${PACKAGE}/styles/globals.css`,
+  `${PACKAGE}/tailwind-preset.cjs`,
+];
+
 interface Reference {
   file: string;
   statement: string;
@@ -94,6 +122,49 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
       expect(ref.specifier, `${ref.file} reaches past the package's supported surface`).toBe(
         PACKAGE,
       );
+    }
+  });
+
+  it('reaches the package from CSS and build config only through the two documented assets', () => {
+    // Same rule, the other two doors. A stylesheet `@import` and a config
+    // `require` are imports; they simply are not TypeScript ones.
+    const found: Array<[string, string]> = [];
+    for (const [file, text] of Object.entries(nonTsSources)) {
+      for (const match of text.matchAll(
+        new RegExp(String.raw`['"](` + PACKAGE.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&') + String.raw`[^'"]*)['"]`, 'g'),
+      )) {
+        found.push([file, match[1]]);
+      }
+    }
+
+    // Fail closed: with no hits the loop asserts nothing, so a renamed package
+    // or a stylesheet that stopped importing the shared one must break this.
+    expect(found.length).toBeGreaterThan(0);
+    for (const [file, specifier] of found) {
+      expect(
+        [PACKAGE, ...ASSET_EXCEPTIONS],
+        `${file} reaches ${specifier}, which is neither the entry nor a published asset`,
+      ).toContain(specifier);
+    }
+  });
+
+  it('names each asset exception as something the package actually ships', () => {
+    // An exception list that drifted from the package would quietly permit a
+    // path that no longer exists — or forbid one that does. Read as text: the
+    // preset is CommonJS and the stylesheet is CSS, and neither should be
+    // EVALUATED just to prove it is there.
+    const shipped = import.meta.glob(
+      [
+        '/node_modules/@faultmaven/copilot-ui/styles/globals.css',
+        '/node_modules/@faultmaven/copilot-ui/tailwind-preset.cjs',
+      ],
+      { query: '?raw', import: 'default', eager: true },
+    );
+
+    expect(Object.keys(shipped)).toHaveLength(ASSET_EXCEPTIONS.length);
+    for (const exception of ASSET_EXCEPTIONS) {
+      const path = exception.replace(PACKAGE, '/node_modules/@faultmaven/copilot-ui');
+      expect(Object.keys(shipped), `${exception} is not shipped by the package`).toContain(path);
     }
   });
 

@@ -1,4 +1,4 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { CaseTable } from '../components/CaseTable';
 import { CaseFiltersBar } from '../components/CaseFiltersBar';
@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCaseList } from '../hooks/useCaseList';
 import { useTeamSharing } from '../hooks/useTeamSharing';
 import { logoutAuth } from '../lib/api';
-import { isUnfiltered } from '../lib/cases/filters';
+import { ACCENT_BUTTON } from '../lib/ui/chip';
 
 export default function CaseListPage() {
   const { clearAuthState } = useAuth();
@@ -29,16 +29,6 @@ export default function CaseListPage() {
     await clearAuthState();
   };
 
-  // ADR-016 D6: a signed-in person with no cases lands on the panel with a new
-  // investigation open, not on an empty list. The list is not a useful place to
-  // arrive with nothing in it — before this, it rendered a table with no rows
-  // and no empty state at all. `error` guards the redirect: a failed load also
-  // leaves `cases` empty, and bouncing someone away from the error would hide
-  // the reason their cases are missing.
-  if (!loading && !error && cases.length === 0 && isUnfiltered(filters)) {
-    return <Navigate to="/investigate" replace />;
-  }
-
   return (
     <div className="min-h-screen bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
@@ -51,10 +41,7 @@ export default function CaseListPage() {
               {totalCount} case{totalCount !== 1 ? 's' : ''}
             </p>
           </div>
-          <Link
-            to="/investigate"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-fm-btn bg-fm-accent-soft text-fm-accent border border-fm-accent-border hover:bg-fm-accent-hover transition-colors"
-          >
+          <Link to="/investigate" className={ACCENT_BUTTON}>
             New investigation
           </Link>
         </div>
@@ -68,20 +55,31 @@ export default function CaseListPage() {
         )}
 
         {!loading && !error && cases.length === 0 ? (
+          /*
+           * An ordinary empty state, on an ordinary page.
+           *
+           * This used to be a redirect to `/investigate` keyed on the rows in
+           * hand, which made `/cases` unreachable for a person with no cases
+           * and bounced anyone who merely paged past the end or cleared a
+           * filter — `cases.length` cannot tell those apart. The first-run
+           * question is asked once, at sign-in, by `resolvePostSignInLanding`.
+           *
+           * The wording follows `total_count`, which is the whole account
+           * rather than this page of it.
+           */
           <div
             data-testid="cases-empty-state"
             className="border border-fm-border rounded-fm-card bg-fm-surface px-6 py-12 text-center"
           >
             <p className="text-fm-text-primary text-sm font-medium mb-1">
-              No cases match these filters.
+              {totalCount === 0 ? 'No cases yet.' : 'No cases match these filters.'}
             </p>
             <p className="text-fm-text-secondary text-sm mb-5">
-              Clear the filters to see everything, or start looking at something new.
+              {totalCount === 0
+                ? 'Start an investigation and it will show up here.'
+                : 'Clear the filters to see everything, or start looking at something new.'}
             </p>
-            <Link
-              to="/investigate"
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-fm-btn bg-fm-accent-soft text-fm-accent border border-fm-accent-border hover:bg-fm-accent-hover transition-colors"
-            >
+            <Link to="/investigate" className={ACCENT_BUTTON}>
               Start an investigation
             </Link>
           </div>

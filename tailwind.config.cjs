@@ -30,18 +30,15 @@ module.exports = {
    * be spread in by hand. Omit them and every `fm-*` class the shared UI uses
    * is purged: no error, no warning, just a panel rendered unstyled.
    *
-   * Spread rather than hand-written, so this tracks wherever the package says
-   * its sources are (it resolves them from its own `__dirname`, which is inside
-   * pnpm's store) instead of a path in this repo that happens to work today.
-   * The explicit glob below stays as well: it is broader than the preset's
-   * `shared/` + `lib/`, and `scripts/check-shared-ui-styles.mjs` is what proves
-   * the whole arrangement actually emits.
+   * ONE set of globs for the package, and they are the package's own. A second,
+   * hand-written `./node_modules/@faultmaven/copilot-ui/**` glob was here as
+   * well; it worked, and it was a duplicate scan of the same files under a path
+   * that happens to resolve today rather than wherever the package says its
+   * sources are. `scripts/check-shared-ui-styles.mjs` is what proves the
+   * arrangement actually emits.
    */
-  content: [
-    './src/**/*.{js,ts,jsx,tsx,html}',
-    './node_modules/@faultmaven/copilot-ui/**/*.{js,ts,jsx,tsx}',
-    ...copilotUiPreset.content,
-  ],
+  content: ['./src/**/*.{js,ts,jsx,tsx,html}', ...copilotUiPreset.content],
+
   theme: {
     extend: {
       typography: {

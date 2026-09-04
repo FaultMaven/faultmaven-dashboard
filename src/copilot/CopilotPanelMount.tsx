@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { InitialCase, PanelChrome, WiredHost } from '@faultmaven/copilot-ui';
+import type {
+  CopilotPanelProps,
+  InitialCase,
+  PanelChrome,
+  WiredHost,
+} from '@faultmaven/copilot-ui';
 import { getAccountProfile } from '../lib/auth/functions';
 import { announcePanelAvailableOnce } from './advertisement';
 import { createWebHostCapabilities } from './webHost';
@@ -42,11 +47,11 @@ interface CopilotPanelMountProps {
   initialCase: InitialCase;
 }
 
-type PanelComponent = ComponentType<{
-  host: WiredHost;
-  initialCase?: InitialCase;
-  chrome?: PanelChrome;
-}>;
+/**
+ * The package's own props, not a restatement of them. A local copy would keep
+ * compiling while the real signature moved underneath it.
+ */
+type PanelComponent = ComponentType<CopilotPanelProps>;
 
 /**
  * How much of the panel's own shell this host wants: none of it.
@@ -80,8 +85,15 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
   useEffect(() => {
     let cancelled = false;
 
+    // Held so the cleanup below can clear exactly what this mount installed,
+    // without importing the package a second time.
+    const loadedUi = import('@faultmaven/copilot-ui');
+
     (async () => {
-      const ui = await import('@faultmaven/copilot-ui');
+      // In parallel: the chunk is a network fetch and so is the profile, and
+      // neither needs the other. Awaiting them in sequence made the panel's
+      // time-to-first-paint the sum of two round trips for no reason.
+      const [ui, profile] = await Promise.all([loadedUi, getAccountProfile()]);
 
       const capabilities = createWebHostCapabilities((path) => navigateRef.current(path));
 
@@ -99,7 +111,6 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
       // backend what it supports.
       await capabilities.store.set({ hasCompletedFirstRun: true });
 
-      const profile = await getAccountProfile();
       const session = createWebSession(hostUserFromProfile(profile));
 
       ui.setApiTransport({
@@ -130,6 +141,25 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
 
     return () => {
       cancelled = true;
+      // Drop the module singletons this mount installed.
+      //
+      // They are module-level and outlive the component, so a panel that has
+      // unmounted leaves a live transport behind — and anything still in flight
+      // (a poll loop, a queued continuation) goes on using it, with the
+      // credential and base URL of a session the page has moved on from. Making
+      // a read after unmount THROW is the point: the package treats an
+      // uninstalled singleton as a wiring bug, which is exactly what a request
+      // issued by a dead panel is.
+      //
+      // Safe because installation is per-mount: the next mount reinstalls
+      // before it renders anything.
+      void loadedUi.then((ui) => {
+        ui.clearApiTransport();
+        ui.clearHostEndpoints();
+        ui.clearHostStore();
+      }).catch(() => {
+        // The import never resolved, so nothing was installed to clear.
+      });
     };
     // Genuinely empty, not silenced: nothing in here reads `initialCase` any
     // more. Wiring is a once-per-mount job, and the intent now travels as a

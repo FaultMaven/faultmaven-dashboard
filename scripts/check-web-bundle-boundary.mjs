@@ -22,8 +22,7 @@
  * Run AFTER `pnpm build`:
  *     pnpm build && node scripts/check-web-bundle-boundary.mjs
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { collectBuildOutputOrExit, fail, readAll } from './gate-support.mjs';
 
 const DIST = 'dist';
 
@@ -48,64 +47,32 @@ const SIGNIN_MARKERS = [
   'Enter your password (if set)',
 ];
 
-function fail(message) {
-  console.error(`FAIL: ${message}`);
-  process.exitCode = 1;
-}
+/*
+ * `.js` AND `.css`. Shipped code only — sourcemaps were scanned here first and
+ * the gate went red immediately, on a COMMENT: the package's host adapter
+ * documents why the shared UI has no state in which it could render
+ * `AuthScreen`, and a sourcemap embeds that prose verbatim. A gate that fires
+ * on a file saying the right thing is a gate people turn off.
+ *
+ * The stylesheet is included because a sign-in screen leaves its mark there
+ * too — the classes it needs are emitted only if its markup reached the
+ * `content` scan — so a screen that slipped in without its copy being obvious
+ * in the JS is still visible in the CSS.
+ */
+const files = collectBuildOutputOrExit(DIST, ['.js', '.css'], 'this gate');
 
-function collectBundleFiles(dir) {
-  const out = [];
-  const walk = (current) => {
-    for (const entry of readdirSync(current)) {
-      const path = join(current, entry);
-      if (statSync(path).isDirectory()) {
-        walk(path);
-        continue;
-      }
-      // Shipped code only. Sourcemaps were scanned here first and the gate went
-      // red immediately — on a COMMENT: the package's host adapter documents
-      // why the shared UI has no state in which it could render `AuthScreen`,
-      // and a sourcemap embeds that prose verbatim. A gate that fires on a
-      // file saying the right thing is a gate people turn off. What matters is
-      // what executes, and the copy markers survive minification, so nothing
-      // load-bearing is given up by looking only here.
-      if (entry.endsWith('.js')) out.push(path);
-    }
-  };
-  walk(dir);
-  return out;
-}
-
-let files;
-try {
-  files = collectBundleFiles(DIST);
-} catch {
-  fail(`No ${DIST}/ to inspect. Run \`pnpm build\` first — this gate reports on the built bundle.`);
-  process.exit(1);
-}
-
-// A gate that scanned nothing would pass having compared nothing. Both of these
-// are its own failure states, not the subject's.
-if (files.length === 0) {
-  fail(`${DIST}/ holds no .js files. Nothing was scanned; that is not a pass.`);
-  process.exit(1);
-}
 if (SIGNIN_MARKERS.length === 0) {
   fail('No markers configured. Nothing was searched for; that is not a pass.');
   process.exit(1);
 }
 
-const hits = [];
-for (const file of files) {
-  const text = readFileSync(file, 'utf8');
-  for (const marker of SIGNIN_MARKERS) {
-    if (text.includes(marker)) hits.push({ file, marker });
-  }
-}
+const bundle = readAll(files);
+
+const hits = SIGNIN_MARKERS.filter((marker) => bundle.includes(marker));
 
 if (hits.length > 0) {
-  for (const { file, marker } of hits) {
-    fail(`${file} contains ${JSON.stringify(marker)} — a Copilot sign-in reached the web build.`);
+  for (const marker of hits) {
+    fail(`the built bundle contains ${JSON.stringify(marker)} — a Copilot sign-in reached the web build.`);
   }
   console.error('');
   console.error('The built-in panel must never render a sign-in (ADR-016 D3): the Dashboard');

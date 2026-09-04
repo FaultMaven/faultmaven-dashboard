@@ -59,6 +59,22 @@ jobs:
       - name: Run TypeScript type check
         run: pnpm typecheck
 
+      # The two build-output gates live here rather than in a job of their own:
+      # they need a build, and `build` already builds a Docker image while
+      # `smoke` builds it again. A fifth full build to ask two questions about
+      # `dist/` is minutes of CI for nothing.
+      - name: Build
+        run: pnpm build
+
+      - name: Assert no Copilot sign-in reached the bundle
+        run: node scripts/check-web-bundle-boundary.mjs
+
+      # A missing Tailwind token throws nothing: the class is never emitted and
+      # the shared panel renders unstyled. `content` is the one key Tailwind
+      # does not merge across presets, so this is one line of config away.
+      - name: Assert the shared UI's classes reached the stylesheet
+        run: node scripts/check-shared-ui-styles.mjs
+
   # ============================================================================
   # API type drift
   # `src/types/api.generated.ts` is generated from faultmaven's committed
@@ -173,58 +189,6 @@ jobs:
           # script works without it; CI shares an IP pool and would not.
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/check-copilot-ui-pin.mjs
-
-  # ============================================================================
-  # No Copilot sign-in in the web build
-  #
-  # ADR-016 D3: the built-in panel exists only inside the authenticated app
-  # shell and renders no sign-in of its own. The copilot repository asserts its
-  # sign-in screens are not in the package; this asserts they are not in what
-  # THIS repository ships, which is a different question — a deep import or a
-  # future re-export would be invisible to a source grep over there.
-  #
-  # Verified to bite when introduced: injecting "Sign in with Organization" into
-  # a built chunk makes this exact command exit 1.
-  # ============================================================================
-  web-bundle-boundary:
-    name: Web Bundle Boundary
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          version: '9'
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Assert no Copilot sign-in reached the bundle
-        run: node scripts/check-web-bundle-boundary.mjs
-
-      # A missing Tailwind token throws nothing: the class is never emitted and
-      # the shared panel renders unstyled. `content` is the one key Tailwind
-      # does not merge across presets, and the package is a pnpm symlink, so
-      # this is one line of config away in two different directions.
-      #
-      # Verified to bite when introduced: dropping the package globs from
-      # `content` makes this exact command exit 1 on all three classes.
-      - name: Assert the shared UI's classes reached the stylesheet
-        run: node scripts/check-shared-ui-styles.mjs
 
   api-types-drift:
     name: API Types Drift Check
@@ -506,7 +470,7 @@ jobs:
   # ============================================================================
   summary:
     name: Pipeline Summary
-    needs: [lint, dependency-audit, api-types-drift, sso-slug-drift, copilot-ui-pin, web-bundle-boundary, build, test, smoke]
+    needs: [lint, dependency-audit, api-types-drift, sso-slug-drift, copilot-ui-pin, build, test, smoke]
     if: always()
     runs-on: ubuntu-latest
     # No checkout and no GitHub API call: this job only reads `needs.*.result`
@@ -529,7 +493,6 @@ jobs:
           echo "| API Types Drift | ${{ needs['api-types-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| SSO Slug Drift | ${{ needs['sso-slug-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Copilot UI Pin | ${{ needs['copilot-ui-pin'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Web Bundle Boundary | ${{ needs['web-bundle-boundary'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Verify | ${{ needs.build.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Tests | ${{ needs.test.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Smoke Test | ${{ needs.smoke.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
@@ -554,13 +517,12 @@ jobs:
           API_TYPES_DRIFT: ${{ needs['api-types-drift'].result }}
           SSO_SLUG_DRIFT: ${{ needs['sso-slug-drift'].result }}
           COPILOT_UI_PIN: ${{ needs['copilot-ui-pin'].result }}
-          WEB_BUNDLE_BOUNDARY: ${{ needs['web-bundle-boundary'].result }}
           BUILD: ${{ needs.build.result }}
           TEST: ${{ needs.test.result }}
           SMOKE: ${{ needs.smoke.result }}
         run: |
           rc=0
-          for stage in LINT DEPENDENCY_AUDIT API_TYPES_DRIFT SSO_SLUG_DRIFT COPILOT_UI_PIN WEB_BUNDLE_BOUNDARY BUILD TEST SMOKE; do
+          for stage in LINT DEPENDENCY_AUDIT API_TYPES_DRIFT SSO_SLUG_DRIFT COPILOT_UI_PIN BUILD TEST SMOKE; do
             result="${!stage}"
             # `skipped` is a pass: a stage skipped on purpose (the `skip_tests`
             # dispatch input) must not fail the pipeline, and a stage skipped

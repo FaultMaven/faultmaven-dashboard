@@ -153,8 +153,27 @@ export function createWebHostStore(namespace: string = PANEL_STORAGE_NAMESPACE):
  */
 export function createWebHostEndpoints(): HostEndpoints {
   return {
+    /**
+     * An ABSOLUTE origin, always — never the empty string.
+     *
+     * `config.apiUrl` is deliberately `""` in the same-origin deployment: the
+     * Kubernetes Dashboard ships `VITE_API_URL=""` and the reverse proxy
+     * forwards `/api/*` to the backend, so this app's own client builds
+     * relative `/api/v1/...` URLs and they resolve against the page.
+     *
+     * The shared UI cannot do that. It composes `new URL(`${baseUrl}/api/v1/…`)`
+     * at three request sites, and `new URL('/api/v1/cases')` THROWS. The failure
+     * is silent in the worst way: the transcript renders empty, cases never
+     * list, async turns never poll, and nothing is thrown where a user or a log
+     * would see it. Every browser smoke of this branch used an absolute URL, so
+     * none of them could have found it.
+     *
+     * Resolving `""` here — the one place that knows the shared UI needs an
+     * origin — keeps the deployment's config meaning what it says while giving
+     * the package what its contract requires.
+     */
     async apiUrl() {
-      return config.apiUrl;
+      return config.apiUrl === '' ? window.location.origin : config.apiUrl;
     },
     async dashboardUrl() {
       return window.location.origin;
@@ -177,14 +196,16 @@ export function createWebHostEndpoints(): HostEndpoints {
  */
 export function createWebHostNavigation(
   navigate: (path: string) => void,
-): HostNavigation {
+): Omit<HostNavigation, 'external'> {
   return {
     async dashboard(path) {
       navigate(path);
     },
-    async external(url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    },
+    /*
+     * No `external`. It is not in the capability subset the shared UI wires,
+     * and nothing in the package calls it — an affordance implemented for a
+     * caller that does not exist is a thing to keep working, not a feature.
+     */
     settings: null,
   };
 }
