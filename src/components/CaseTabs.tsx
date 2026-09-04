@@ -87,7 +87,10 @@ function stanceColor(stance: string): string {
  */
 function TranscriptTab({ caseId }: { caseId: string }) {
   return (
-    <div className="h-[70vh] min-h-[28rem]">
+    // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
+    // takes the room the page has left it; naming its own height is what put
+    // the composer below the fold (see CaseDetailPage).
+    <div className="h-full min-h-0" data-testid="transcript-panel-holder">
       {/* `key` because the panel applies `initialCase` ONCE, at its own mount:
           React Router keeps this component instance across a `:caseId` change,
           so without a remount a move from one case to the next would leave the
@@ -478,8 +481,8 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   const tabInactive = 'border-transparent text-fm-text-secondary hover:text-fm-text-primary';
 
   return (
-    <div>
-      <div className="flex border-b border-fm-border mb-3">
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-shrink-0 flex border-b border-fm-border mb-3">
         {tabLabels.map(({ id, label }) => (
           <button
             key={id}
@@ -491,11 +494,25 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
         ))}
       </div>
 
-      {activeTab === 'transcript' && <TranscriptTab caseId={caseId} />}
-      {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
-      {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
-      {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
-      {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
+      {/* The Transcript tab OWNS its scrolling: the panel scrolls its
+          transcript internally and pins its composer to the bottom, so a
+          scroll container here would give it a second one and put the composer
+          below the fold again. Every other tab is long-form content with no
+          scroller of its own, so it gets one — without it the viewport-bounded
+          page would simply clip them. */}
+      {activeTab === 'transcript' && (
+        <div className="flex-1 min-h-0" data-testid="transcript-tab-panel">
+          <TranscriptTab caseId={caseId} />
+        </div>
+      )}
+      {activeTab !== 'transcript' && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
+          {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
+          {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
+          {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
+        </div>
+      )}
     </div>
   );
 }
