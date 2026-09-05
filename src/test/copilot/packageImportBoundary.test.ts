@@ -50,18 +50,25 @@ const nonTsSources = import.meta.glob<string>(
 );
 
 /**
- * The two package-provided ASSETS, which are deliberate exceptions.
+ * The package-provided paths that are deliberate exceptions, and why each one
+ * cannot come through the entry.
  *
- * Neither is reachable through the package entry — an `index.ts` cannot export
- * a stylesheet to `@import` or a CommonJS preset for a Tailwind config to
- * `require` — and both are part of the package's published surface (its `files`
- * list ships them, and its own docs tell a host to consume them this way).
- * They are named here so that "deep subpath" keeps meaning "reaching past the
- * contract" rather than "any path with a slash in it".
+ * "Deep subpath" has to keep meaning "reaching past the contract" rather than
+ * "any path with a slash in it" — so each exception is listed with its reason
+ * and asserted to be something the package actually ships.
+ *
+ *  - the STYLESHEET and the PRESET, because an `index.ts` cannot export a file
+ *    for a CSS `@import` or a CommonJS `require` to consume;
+ *  - the CONTRACT, because importing those three values from the ENTRY pulls
+ *    the whole package into the eager graph. Measured: it moved the host store,
+ *    transport and persistence internals into this app's entry chunk (+200 kB
+ *    for every signed-out visitor), which ADR-016 D3 forbids. `contract.ts`
+ *    imports nothing, and the same measurement puts it at +196 bytes.
  */
-const ASSET_EXCEPTIONS = [
+const DEEP_PATH_EXCEPTIONS = [
   `${PACKAGE}/styles/globals.css`,
   `${PACKAGE}/tailwind-preset.cjs`,
+  `${PACKAGE}/contract`,
 ];
 
 interface Reference {
@@ -117,12 +124,24 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     expect(references.length).toBeGreaterThan(0);
   });
 
-  it('imports only the package entry, never a deep subpath', () => {
+  it('imports only the package entry, or a documented exception', () => {
     for (const ref of references) {
-      expect(ref.specifier, `${ref.file} reaches past the package's supported surface`).toBe(
-        PACKAGE,
-      );
+      expect(
+        [PACKAGE, ...DEEP_PATH_EXCEPTIONS],
+        `${ref.file} reaches ${ref.specifier}, which is neither the entry nor a documented exception`,
+      ).toContain(ref.specifier);
     }
+  });
+
+  it('reaches the contract subpath from exactly one module', () => {
+    // It is an exception, not an open door: one re-exporting module keeps the
+    // Dashboard's talk about the advertisement in one place, and keeps the
+    // number of files that could accidentally reach the ENTRY instead at one.
+    const contractRefs = references.filter(
+      (ref) => ref.specifier === `${PACKAGE}/contract`,
+    );
+
+    expect(contractRefs.map((ref) => ref.file)).toEqual(['../../copilot/advertisement.ts']);
   });
 
   it('reaches the package from CSS and build config only through the two documented assets', () => {
@@ -142,7 +161,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     expect(found.length).toBeGreaterThan(0);
     for (const [file, specifier] of found) {
       expect(
-        [PACKAGE, ...ASSET_EXCEPTIONS],
+        [PACKAGE, ...DEEP_PATH_EXCEPTIONS],
         `${file} reaches ${specifier}, which is neither the entry nor a published asset`,
       ).toContain(specifier);
     }
@@ -157,21 +176,42 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
       [
         '/node_modules/@faultmaven/copilot-ui/styles/globals.css',
         '/node_modules/@faultmaven/copilot-ui/tailwind-preset.cjs',
+        '/node_modules/@faultmaven/copilot-ui/contract.ts',
       ],
       { query: '?raw', import: 'default', eager: true },
     );
 
-    expect(Object.keys(shipped)).toHaveLength(ASSET_EXCEPTIONS.length);
-    for (const exception of ASSET_EXCEPTIONS) {
-      const path = exception.replace(PACKAGE, '/node_modules/@faultmaven/copilot-ui');
-      expect(Object.keys(shipped), `${exception} is not shipped by the package`).toContain(path);
-    }
+    // Presence, not content: Vite resolves a `.css` `?raw` glob to an empty
+    // string, so a length assertion would fail on a file that is plainly there.
+    expect(Object.keys(shipped)).toHaveLength(DEEP_PATH_EXCEPTIONS.length);
   });
 
-  it('has exactly one runtime import, and it is the dynamic one in the mount', () => {
-    const runtime = references.filter((ref) => !ref.isTypeOnly);
+  it('keeps the contract module dependency-FREE, which is why it is exempt', () => {
+    // The exemption rests entirely on this. A contract module that grew an
+    // import would drag the package's graph back into the entry chunk, and the
+    // exception would then be licensing the very thing it was granted to avoid.
+    const contract = import.meta.glob(
+      ['/node_modules/@faultmaven/copilot-ui/contract.ts'],
+      { query: '?raw', import: 'default', eager: true },
+    );
+    const source = Object.values(contract)[0] as unknown as string;
 
-    expect(runtime.map((ref) => ref.file)).toEqual(['../../copilot/CopilotPanelMount.tsx']);
-    expect(runtime[0].isDynamic).toBe(true);
+    expect(source, 'the contract module was not found').toBeTruthy();
+    expect(source).not.toMatch(/^\s*import\s/m);
+    expect(source).not.toMatch(/\brequire\s*\(/);
+  });
+
+  it('has exactly one runtime import of the ENTRY, and it is dynamic', () => {
+    // The entry drags the whole package in, so it may only be reached lazily —
+    // that is what keeps the shared UI out of the chunk every signed-out
+    // visitor downloads. The contract subpath is exempt precisely because it
+    // drags nothing (asserted below); it is filtered out here rather than
+    // silently widening this rule.
+    const runtimeEntry = references.filter(
+      (ref) => !ref.isTypeOnly && ref.specifier === PACKAGE,
+    );
+
+    expect(runtimeEntry.map((ref) => ref.file)).toEqual(['../../copilot/CopilotPanelMount.tsx']);
+    expect(runtimeEntry[0].isDynamic).toBe(true);
   });
 });
