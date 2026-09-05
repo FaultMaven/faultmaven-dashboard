@@ -1,12 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  PANEL_ADVERTISEMENT_ATTRIBUTE,
-  PANEL_AVAILABLE_MESSAGE_TYPE,
-  advertisesBuiltInPanel,
+  DASHBOARD_PANEL_ATTR,
+  DASHBOARD_PANEL_MESSAGE,
   announcePanelAvailable,
-  announcePanelAvailableOnce,
-  resetPanelAnnouncementForTests,
+  dashboardAdvertisesPanel,
 } from '../../copilot/advertisement';
+// The real package, at module scope: a dynamic import inside a test pays the
+// whole package's transform cost against that test's timeout, which is a
+// flaky-under-load failure with nothing to do with what is being asserted.
+import {
+  DASHBOARD_PANEL_ATTR as PKG_ATTR,
+  DASHBOARD_PANEL_MESSAGE as PKG_MESSAGE,
+  dashboardAdvertisesPanel as pkgAdvertises,
+} from '@faultmaven/copilot-ui';
 
 /**
  * The panel advertisement, as a cross-repo contract (ADR-016 D4; settled in
@@ -21,6 +27,13 @@ import {
  *
  * `index.html` is checked in `indexHtmlAdvertisement.test.ts` — the attribute
  * must be in the INITIAL HTML, and no amount of component testing sees that.
+ *
+ * This file is where the copy is kept honest. The values are declared locally
+ * (importing them would put the package in the eager graph and ship it to
+ * signed-out visitors — see the note in `advertisement.ts`), so the drift a
+ * shared definition would have prevented is caught HERE instead: the package is
+ * imported below and the two are compared, name for name and case for case.
+ * A test can import freely; the shipped bundle cannot.
  */
 
 /** The names in the settled contract. Restated as literals ON PURPOSE. */
@@ -32,8 +45,8 @@ describe('panel advertisement — the names', () => {
     // A constant compared against itself proves nothing, so these are typed out
     // again from faultmaven-copilot#231 rather than imported. Renaming the
     // export cannot make this pass.
-    expect(PANEL_ADVERTISEMENT_ATTRIBUTE).toBe(CONTRACT_ATTRIBUTE);
-    expect(PANEL_AVAILABLE_MESSAGE_TYPE).toBe(CONTRACT_MESSAGE_TYPE);
+    expect(DASHBOARD_PANEL_ATTR).toBe(CONTRACT_ATTRIBUTE);
+    expect(DASHBOARD_PANEL_MESSAGE).toBe(CONTRACT_MESSAGE_TYPE);
   });
 });
 
@@ -43,30 +56,20 @@ describe('panel advertisement — the attribute predicate', () => {
   });
 
   it('does not advertise when the attribute is absent', () => {
-    expect(advertisesBuiltInPanel(document)).toBe(false);
+    expect(dashboardAdvertisesPanel(document)).toBe(false);
   });
 
   it.each(['', 'false', '0'])(
     'does not advertise for the falsy value %o the contract names',
     (value) => {
       document.documentElement.setAttribute(CONTRACT_ATTRIBUTE, value);
-      expect(advertisesBuiltInPanel(document)).toBe(false);
-    },
-  );
-
-  it.each(['FALSE', ' false ', '0 '])(
-    'does not advertise for %o either — case and padding are not a loophole',
-    (value) => {
-      // A build that flipped the flag to "False" and quietly kept advertising
-      // is the failure direction this normalisation exists for.
-      document.documentElement.setAttribute(CONTRACT_ATTRIBUTE, value);
-      expect(advertisesBuiltInPanel(document)).toBe(false);
+      expect(dashboardAdvertisesPanel(document)).toBe(false);
     },
   );
 
   it.each(['1', 'true', 'yes', '2026-09-04'])('advertises for %o', (value) => {
     document.documentElement.setAttribute(CONTRACT_ATTRIBUTE, value);
-    expect(advertisesBuiltInPanel(document)).toBe(true);
+    expect(dashboardAdvertisesPanel(document)).toBe(true);
   });
 });
 
@@ -75,7 +78,6 @@ describe('panel advertisement — the window message', () => {
   let fakeWindow: Window;
 
   beforeEach(() => {
-    resetPanelAnnouncementForTests();
     postMessage = vi.fn();
     fakeWindow = {
       postMessage,
@@ -100,12 +102,31 @@ describe('panel advertisement — the window message', () => {
     expect(postMessage).toHaveBeenCalledWith(expect.anything(), 'https://app.faultmaven.ai');
     expect(postMessage).not.toHaveBeenCalledWith(expect.anything(), '*');
   });
+});
 
-  it('announces at most once per document load', () => {
-    announcePanelAvailableOnce(fakeWindow);
-    announcePanelAvailableOnce(fakeWindow);
-    announcePanelAvailableOnce(fakeWindow);
 
-    expect(postMessage).toHaveBeenCalledTimes(1);
+describe('the local copy agrees with the package', () => {
+  it('matches the package byte for byte, so the two repositories cannot drift', () => {
+    // This is the assertion that replaces sharing the module — and it fails on
+    // any divergence, in either direction.
+    expect(DASHBOARD_PANEL_ATTR).toBe(PKG_ATTR);
+    expect(DASHBOARD_PANEL_MESSAGE).toBe(PKG_MESSAGE);
+  });
+
+  it('answers identically to the package predicate, on every contract value', () => {
+    // Including the case- and whitespace-sensitive ones. A local predicate that
+    // trimmed or lower-cased would advertise where the extension does not stand
+    // down, which is the failure direction that leaves a user with two panels.
+    const theirs = pkgAdvertises;
+
+    for (const value of ['', 'false', '0', '1', 'true', 'FALSE', ' false ', '0 ', 'yes']) {
+      document.documentElement.setAttribute(DASHBOARD_PANEL_ATTR, value);
+      expect(dashboardAdvertisesPanel(document), `value ${JSON.stringify(value)}`).toBe(
+        theirs(document),
+      );
+    }
+
+    document.documentElement.removeAttribute(DASHBOARD_PANEL_ATTR);
+    expect(dashboardAdvertisesPanel(document)).toBe(theirs(document));
   });
 });

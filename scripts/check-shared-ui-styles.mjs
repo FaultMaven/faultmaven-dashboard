@@ -50,6 +50,44 @@ if (SHARED_UI_CLASSES.length === 0) {
 
 const css = readAll(files);
 
+/**
+ * The package's base styles must not escape the panel.
+ *
+ * Its stylesheet is imported app-wide (that is how the `fm-*` tokens arrive),
+ * and its base layer used to restyle every Dashboard page: link hover went
+ * translucent, buttons picked up a transition, scrollbars shrank to 5px, and
+ * `.prose-sm` list rules beat the typography plugin in the Report and KB views.
+ * None of that throws; it just quietly makes other pages look wrong.
+ *
+ * Each rule below is one the package sets and MUST carry the panel-root
+ * selector. A bare `.prose-sm { … }` is fine — that one is the typography
+ * plugin's own utility, not the package's list overrides.
+ */
+const PANEL_ROOT = '.fm-copilot-panel';
+const MUST_BE_SCOPED = [
+  { name: 'link hover opacity', pattern: /(^|[},])\s*a:hover\s*\{/g },
+  { name: 'button transition', pattern: /(^|[},])\s*button\s*\{\s*transition/g },
+  { name: 'scrollbar width', pattern: /(^|[},])\s*::-webkit-scrollbar\s*\{/g },
+  { name: 'prose-sm list rules', pattern: /(^|[},])\s*\.prose-sm\s+(ul|ol|li)\s*\{/g },
+];
+
+const leaked = MUST_BE_SCOPED.filter(({ pattern }) => {
+  for (const match of css.matchAll(pattern)) {
+    // Scoped occurrences are preceded by the panel root within the same
+    // selector; an unscoped one starts the selector list.
+    const selectorStart = css.lastIndexOf('}', match.index) + 1;
+    if (!css.slice(selectorStart, match.index + match[0].length).includes(PANEL_ROOT)) return true;
+  }
+  return false;
+});
+
+if (leaked.length > 0) {
+  for (const { name } of leaked) {
+    fail(`the package's "${name}" rule is not scoped to ${PANEL_ROOT} — it restyles every page.`);
+  }
+  process.exit(1);
+}
+
 const missing = SHARED_UI_CLASSES.filter(({ verbatim }) => !css.includes(verbatim));
 
 if (missing.length > 0) {

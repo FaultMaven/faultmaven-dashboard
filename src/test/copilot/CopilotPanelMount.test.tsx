@@ -58,10 +58,7 @@ vi.mock('../../config', () => ({
 
 import CopilotPanelMount from '../../copilot/CopilotPanelMount';
 import { PANEL_STORAGE_NAMESPACE } from '../../copilot/webHost';
-import {
-  PANEL_AVAILABLE_MESSAGE_TYPE,
-  resetPanelAnnouncementForTests,
-} from '../../copilot/advertisement';
+import { DASHBOARD_PANEL_MESSAGE } from '../../copilot/advertisement';
 
 const PROFILE = {
   user_id: 'u1',
@@ -97,7 +94,6 @@ beforeEach(() => {
   localStorage.clear();
   lastHost = null;
   lastInitialCase = undefined;
-  resetPanelAnnouncementForTests();
   getAccountProfile.mockResolvedValue(PROFILE);
   getAccessToken.mockResolvedValue('tok-live');
 });
@@ -165,15 +161,15 @@ describe('CopilotPanelMount', () => {
     expect(clearPersistedSession).toHaveBeenCalledTimes(1);
   });
 
-  it('asserts the environment is ready, so the panel probes backend capabilities', async () => {
-    // The panel gates its capability probe on a first-run flag the extension
-    // sets from its onboarding screen. This host has no onboarding, and without
-    // the flag the panel renders with `capabilities: null` and never asks the
-    // backend what it supports.
+  it('writes NO onboarding flag — embedded chrome owns that now', async () => {
+    // The host used to poke `hasCompletedFirstRun` into the panel's own storage
+    // to get past an onboarding gate meant for the extension. The package skips
+    // that gate for `chrome: 'embedded'`, so the host writes nothing at all.
     mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
-    expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}hasCompletedFirstRun`)).toBe('true');
+    expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}hasCompletedFirstRun`)).toBeNull();
+    expect(hostWrittenKeys()).toEqual([]);
   });
 
   it('tells the panel what to open, as an argument', async () => {
@@ -200,7 +196,7 @@ describe('CopilotPanelMount', () => {
     mount({ kind: 'existing', caseId: 'case-42' });
     await screen.findByTestId('shared-copilot-ui');
 
-    expect(hostWrittenKeys()).toEqual(['hasCompletedFirstRun']);
+    expect(hostWrittenKeys()).toEqual([]);
   });
 
   it('leaves the panel\u2019s own persisted pointer alone', async () => {
@@ -247,7 +243,7 @@ describe('CopilotPanelMount', () => {
 
     await waitFor(() => {
       expect(postMessage).toHaveBeenCalledWith(
-        { type: PANEL_AVAILABLE_MESSAGE_TYPE },
+        { type: DASHBOARD_PANEL_MESSAGE },
         window.location.origin,
       );
     });

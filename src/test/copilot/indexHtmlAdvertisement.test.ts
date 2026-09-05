@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PANEL_ADVERTISEMENT_ATTRIBUTE,
-  advertisesBuiltInPanel,
+  DASHBOARD_PANEL_ATTR,
+  dashboardAdvertisesPanel,
 } from '../../copilot/advertisement';
 
 /**
@@ -32,8 +32,8 @@ describe('index.html advertises the built-in panel', () => {
   it('carries the attribute on <html>, with a value that advertises', () => {
     const doc = documentFrom(html);
 
-    expect(doc.documentElement.hasAttribute(PANEL_ADVERTISEMENT_ATTRIBUTE)).toBe(true);
-    expect(advertisesBuiltInPanel(doc)).toBe(true);
+    expect(doc.documentElement.hasAttribute(DASHBOARD_PANEL_ATTR)).toBe(true);
+    expect(dashboardAdvertisesPanel(doc)).toBe(true);
   });
 
   it('would NOT advertise if the flag were flipped off', () => {
@@ -43,8 +43,8 @@ describe('index.html advertises the built-in panel', () => {
     // above could be passing on a predicate that returns true for anything.
     for (const off of ['', 'false', '0']) {
       const doc = documentFrom(html);
-      doc.documentElement.setAttribute(PANEL_ADVERTISEMENT_ATTRIBUTE, off);
-      expect(advertisesBuiltInPanel(doc), `value ${JSON.stringify(off)}`).toBe(false);
+      doc.documentElement.setAttribute(DASHBOARD_PANEL_ATTR, off);
+      expect(dashboardAdvertisesPanel(doc), `value ${JSON.stringify(off)}`).toBe(false);
     }
   });
 
@@ -54,8 +54,8 @@ describe('index.html advertises the built-in panel', () => {
     // it is needed.
     const doc = documentFrom(html);
 
-    expect(doc.body.hasAttribute(PANEL_ADVERTISEMENT_ATTRIBUTE)).toBe(false);
-    expect(doc.querySelectorAll(`[${PANEL_ADVERTISEMENT_ATTRIBUTE}]`)).toHaveLength(1);
-    expect(doc.querySelector(`[${PANEL_ADVERTISEMENT_ATTRIBUTE}]`)).toBe(doc.documentElement);
+    expect(doc.body.hasAttribute(DASHBOARD_PANEL_ATTR)).toBe(false);
+    expect(doc.querySelectorAll(`[${DASHBOARD_PANEL_ATTR}]`)).toHaveLength(1);
+    expect(doc.querySelector(`[${DASHBOARD_PANEL_ATTR}]`)).toBe(doc.documentElement);
   });
 });

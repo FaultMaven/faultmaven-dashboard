@@ -27,23 +27,8 @@
 
     /* Linting */
     "strict": true,
-    /*
-     * `noUnusedLocals` / `noUnusedParameters` are deliberately NOT set, and the
-     * enforcement lives in ESLint instead (`@typescript-eslint/no-unused-vars`,
-     * blocking in CI via `pnpm lint --max-warnings 0`).
-     *
-     * `@faultmaven/copilot-ui` ships TypeScript SOURCES that this app compiles
-     * — that is what lets the theme and the types stay one system rather than a
-     * build frozen at publish time — so `tsc` checks the package's files with
-     * this project's options. The package's own tsconfig does not set these two
-     * and its sources carry ~40 unused locals, none of which this repository
-     * can fix. tsc has no way to scope a diagnostic to a path, so the choice is
-     * "off here" or "red forever on somebody else's code".
-     *
-     * Nothing is lost: ESLint ignores node_modules, so the rule still covers
-     * every file in `src` — including the test files, through
-     * tsconfig.eslint.json — and CI still fails on it.
-     */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
     /* Path aliases */

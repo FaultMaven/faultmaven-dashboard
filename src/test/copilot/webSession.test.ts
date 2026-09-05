@@ -121,6 +121,23 @@ describe('onUnauthorized', () => {
     expect(refreshTokens).toHaveBeenCalledWith('tok-refused');
   });
 
+  it("answers 'refreshed' when the credential was renewed", async () => {
+    // The answer is what stops the panel showing a blocking "session expired"
+    // modal after a refresh that WORKED — and whose action wiped the panel
+    // while the shell stayed signed in. On 'refreshed' the client retries.
+    peekAccessToken.mockResolvedValue('tok-refused');
+    refreshTokens.mockResolvedValue('tok-new');
+
+    await expect(createWebSession(USER).onUnauthorized()).resolves.toBe('refreshed');
+  });
+
+  it("answers 'ended' when the session is genuinely over", async () => {
+    peekAccessToken.mockResolvedValue('tok-refused');
+    refreshTokens.mockResolvedValue(null);
+
+    await expect(createWebSession(USER).onUnauthorized()).resolves.toBe('ended');
+  });
+
   it('does not clear the session itself', async () => {
     // Whether a 401 condemns the session is AuthManager's call: a definitive
     // rejection clears (and routes to /login through onAuthCleared), while a

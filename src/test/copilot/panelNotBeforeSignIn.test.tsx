@@ -29,6 +29,12 @@ vi.mock('@faultmaven/copilot-ui', () => {
     setHostEndpoints: vi.fn(),
     setApiTransport: vi.fn(),
     clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+  DASHBOARD_PANEL_ATTR: 'data-faultmaven-dashboard-panel',
+  DASHBOARD_PANEL_MESSAGE: 'FM_DASHBOARD_PANEL_AVAILABLE',
+  dashboardAdvertisesPanel: (doc: Document = document) => {
+  const v = doc.documentElement.getAttribute('data-faultmaven-dashboard-panel');
+  return v !== null && v !== '' && v !== 'false' && v !== '0';
+  },
     CopilotPanel: ({ initialCase }: { initialCase?: unknown }) => {
       lastInitialCase = initialCase;
       return <div data-testid="shared-copilot-ui">shared UI</div>;

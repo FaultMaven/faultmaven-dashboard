@@ -91,6 +91,13 @@ export function makeCopilotUiMock(
     clearHostEndpoints: vi.fn(),
     clearApiTransport: vi.fn(),
     clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+    DASHBOARD_PANEL_ATTR: 'data-faultmaven-dashboard-panel',
+    DASHBOARD_PANEL_MESSAGE: 'FM_DASHBOARD_PANEL_AVAILABLE',
+    dashboardAdvertisesPanel: (doc: Document = document) => {
+      const v = doc.documentElement.getAttribute('data-faultmaven-dashboard-panel');
+      return v !== null && v !== '' && v !== 'false' && v !== '0';
+    },
+
     CopilotPanel: Panel,
   };
 }

@@ -38,6 +38,12 @@ vi.mock('@faultmaven/copilot-ui', async () => {
     setHostEndpoints: vi.fn(),
     setApiTransport: vi.fn(),
     clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+  DASHBOARD_PANEL_ATTR: 'data-faultmaven-dashboard-panel',
+  DASHBOARD_PANEL_MESSAGE: 'FM_DASHBOARD_PANEL_AVAILABLE',
+  dashboardAdvertisesPanel: (doc: Document = document) => {
+  const v = doc.documentElement.getAttribute('data-faultmaven-dashboard-panel');
+  return v !== null && v !== '' && v !== 'false' && v !== '0';
+  },
     CopilotPanel: ({ initialCase }: { initialCase?: unknown }) => {
       useState(() => {
         lastInitialCase = initialCase;
@@ -73,6 +79,11 @@ vi.mock('../../lib/auth/AuthManager', () => ({
     refreshTokens: vi.fn(),
     onAuthCleared: vi.fn().mockReturnValue(() => {}),
   },
+}));
+
+const currentUserId = { value: 'u1' };
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ authState: { user: { user_id: currentUserId.value } } }),
 }));
 
 vi.mock('../../lib/auth/functions', () => ({
@@ -179,13 +190,14 @@ describe('the Transcript tab', () => {
     renderTabs();
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
 
-    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1' });
+    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1', readOnly: false });
   });
 
   it('writes nothing into the panel’s storage to do it', async () => {
     // The tab used to hand the case over by writing the panel's own
-    // active-case pointer before it mounted. It is an argument now, so the only
-    // key this host writes is its assertion that the environment is ready.
+    // active-case pointer before it mounted. It is an argument now, and the
+    // onboarding flag went with `chrome: 'embedded'` — so this host writes
+    // nothing into the panel's storage at all.
     renderTabs();
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
 
@@ -193,7 +205,7 @@ describe('the Transcript tab', () => {
       .filter((key) => key.startsWith(PANEL_STORAGE_NAMESPACE))
       .map((key) => key.slice(PANEL_STORAGE_NAMESPACE.length))
       .sort();
-    expect(written).toEqual(['hasCompletedFirstRun']);
+    expect(written).toEqual([]);
   });
 
   it('remounts the panel when the route moves to another case', async () => {
@@ -203,7 +215,7 @@ describe('the Transcript tab', () => {
     // transcript on screen with nothing thrown.
     const { rerender } = renderTabs();
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
-    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1' });
+    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1', readOnly: false });
 
     rerender(
       <MemoryRouter initialEntries={['/?tab=transcript']}>
@@ -212,7 +224,43 @@ describe('the Transcript tab', () => {
     );
 
     await waitFor(() => {
-      expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-2' });
+      expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-2', readOnly: false });
     });
+  });
+});
+
+
+describe('a case someone else owns', () => {
+  it('opens the panel READ-ONLY for a non-owner', async () => {
+    // A shared case is another person's investigation. Replacing the read-only
+    // transcript with the panel handed a viewer a live composer and an upload,
+    // so a teammate could post turns into an owner's case — an authoring right
+    // the old view never granted.
+    currentUserId.value = 'someone-else';
+
+    renderTabs();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+
+    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1', readOnly: true });
+  });
+
+  it('opens it writable for the owner', async () => {
+    currentUserId.value = 'u1'; // CASE.user_id
+
+    renderTabs();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+
+    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1', readOnly: false });
+  });
+
+  it('fails CLOSED when the viewer is unknown', async () => {
+    // No signed-in user id to compare against is not a match. Read-only is the
+    // safe answer; writable-by-default is not.
+    currentUserId.value = '';
+
+    renderTabs();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+
+    expect(lastInitialCase).toMatchObject({ readOnly: true });
   });
 });

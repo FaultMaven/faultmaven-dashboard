@@ -7,6 +7,23 @@ import type { CaseDetail, HypothesisSummary } from '../../types/cases';
 
 // Only the active tab fetches; mock every client CaseTabs may touch so no tab
 // throws on mount regardless of which one ends up active.
+// CaseTabs reads the signed-in user to decide whether this case is the
+// viewer's own (the panel is read-only when it is not).
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ authState: { user: { user_id: 'u1' } } }),
+}));
+
+vi.mock('@faultmaven/copilot-ui', () => ({
+  setHostStore: vi.fn(),
+  setHostEndpoints: vi.fn(),
+  setApiTransport: vi.fn(),
+  clearHostStore: vi.fn(),
+  clearHostEndpoints: vi.fn(),
+  clearApiTransport: vi.fn(),
+  clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+  CopilotPanel: () => null,
+}));
+
 vi.mock('../../lib/api', () => ({
   getCaseMessages: vi.fn().mockResolvedValue([]),
   getUploadedFiles: vi.fn().mockResolvedValue([]),

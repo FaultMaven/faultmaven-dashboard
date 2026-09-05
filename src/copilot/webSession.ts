@@ -9,7 +9,7 @@
  * non-nullable, so there is no value of the host type without a signed-in user
  * and no state in which the panel could decide to show one (ADR-016 D3).
  */
-import type { HostSession, HostUser } from '@faultmaven/copilot-ui';
+import type { AuthOutcome, HostSession, HostUser } from '@faultmaven/copilot-ui';
 import { authManager } from '../lib/auth/AuthManager';
 import type { AccountProfile } from '../lib/auth/functions';
 
@@ -77,10 +77,18 @@ export function createWebSession(user: HostUser): HostSession {
      * React auth state and routes the app to `/login`; a transient failure (5xx,
      * offline) keeps the session so a deploy blip does not sign everyone out.
      * Clearing unconditionally here would turn every 401 into a forced logout.
+     *
+     * The ANSWER matters as much as the action. The panel used to be told
+     * nothing and assumed the worst: it threw `AuthenticationError` after this
+     * callback whatever happened, so a host that had just successfully renewed
+     * the credential still got a blocking "session expired" modal whose action
+     * wiped the panel while the shell stayed signed in. `'refreshed'` means the
+     * session continues and the client should retry; `'ended'` means it is over.
      */
-    async onUnauthorized() {
+    async onUnauthorized(): Promise<AuthOutcome> {
       const rejected = await authManager.peekAccessToken();
-      await authManager.refreshTokens(rejected ?? undefined);
+      const renewed = await authManager.refreshTokens(rejected ?? undefined);
+      return renewed ? 'refreshed' : 'ended';
     },
 
     /**

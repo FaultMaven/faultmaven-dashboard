@@ -17,6 +17,7 @@ import type {
 import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
 import CopilotPanelMount from '../copilot/CopilotPanelMount';
+import { useAuth } from '../context/AuthContext';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
@@ -85,7 +86,7 @@ function stanceColor(stance: string): string {
  * and a turn taken in the extension are the same rows on the same server, so
  * neither host needs the other and each sees the other's work on reload.
  */
-function TranscriptTab({ caseId }: { caseId: string }) {
+function TranscriptTab({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
   return (
     // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
     // takes the room the page has left it; naming its own height is what put
@@ -95,7 +96,10 @@ function TranscriptTab({ caseId }: { caseId: string }) {
           React Router keeps this component instance across a `:caseId` change,
           so without a remount a move from one case to the next would leave the
           previous case's transcript on screen. */}
-      <CopilotPanelMount key={caseId} initialCase={{ kind: 'existing', caseId }} />
+      <CopilotPanelMount
+        key={caseId}
+        initialCase={{ kind: 'existing', caseId, readOnly }}
+      />
     </div>
   );
 }
@@ -438,6 +442,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
 
 export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { authState } = useAuth();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
   // so many cases have none. Show the tab only when the case actually produced
@@ -460,6 +465,21 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   // click updates the URL — keeping copied links current. A deep link to a tab
   // that isn't visible (e.g. ?tab=hypotheses on a case with none) or an unknown
   // value falls back to Transcript rather than rendering a blank panel.
+  /**
+   * Whether this case belongs to the person looking at it.
+   *
+   * A shared case is someone else's investigation. Before the panel replaced
+   * the read-only transcript, a teammate opening one simply could not type; the
+   * panel brought a live composer and an upload with it, so a viewer became
+   * able to post turns into an owner's case. `readOnly` puts that back — and it
+   * is derived from the case's own `user_id`, not from whether this page
+   * happens to offer a Share button.
+   *
+   * Fails CLOSED: an unknown viewer or an unknown owner is not a match, so the
+   * panel is read-only rather than writable by default.
+   */
+  const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
+
   const requestedTab = searchParams.get('tab') as Tab | null;
   const activeTab: Tab = tabLabels.some((t) => t.id === requestedTab)
     ? (requestedTab as Tab)
@@ -510,7 +530,7 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
         className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
         data-testid="transcript-tab-panel"
       >
-        <TranscriptTab caseId={caseId} />
+        <TranscriptTab caseId={caseId} readOnly={!isOwner} />
       </div>
       {activeTab !== 'transcript' && (
         <div className="flex-1 min-h-0 overflow-y-auto">

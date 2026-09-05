@@ -7,7 +7,7 @@ import type {
   WiredHost,
 } from '@faultmaven/copilot-ui';
 import { getAccountProfile } from '../lib/auth/functions';
-import { announcePanelAvailableOnce } from './advertisement';
+import { announcePanelAvailable } from './advertisement';
 import { createWebHostCapabilities } from './webHost';
 import { createWebSession, hostUserFromProfile } from './webSession';
 
@@ -103,14 +103,6 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
       ui.setHostStore(capabilities.store);
       ui.setHostEndpoints(capabilities.endpoints);
 
-      // The panel's capability probe is gated on a first-run flag the extension
-      // sets from its onboarding screen. This host has no onboarding — the user
-      // is already signed in and the backend URL was decided by the origin that
-      // served this app — so the host asserts the environment is ready. Without
-      // it the panel renders with `capabilities: null` and never asks the
-      // backend what it supports.
-      await capabilities.store.set({ hasCompletedFirstRun: true });
-
       const session = createWebSession(hostUserFromProfile(profile));
 
       ui.setApiTransport({
@@ -172,9 +164,15 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
   // its own side panel out of the way here (ADR-016 D4). The attribute in the
   // initial HTML is the other half of the same claim — this is the half a page
   // that mounts after hydration can make.
+  //
+  // Announced on mount, and that is all the "once" this needs: the effect runs
+  // when the panel first appears, and a module-level flag guarding it only
+  // mattered while a second mount could occur on the same document — which the
+  // route-level `key` already prevents, and which a stale flag would then make
+  // permanently silent.
   useEffect(() => {
     if (!panel) return;
-    announcePanelAvailableOnce();
+    announcePanelAvailable();
   }, [panel]);
 
   if (error) {
