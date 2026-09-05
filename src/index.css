@@ -12,6 +12,27 @@
  */
 @import '@faultmaven/copilot-ui/styles/globals.css';
 
+/*
+ * THE DASHBOARD'S OWN RESET.
+ *
+ * `@tailwind base` is preflight: `box-sizing: border-box` on every element, and
+ * `margin: 0` on `body`. This app used to inherit it from the package's
+ * stylesheet, which was wrong in principle — a component library has no
+ * business resetting its host's document — and copilot#249 correctly stopped
+ * shipping one, scoping its base rules to the panel root instead.
+ *
+ * Which left this app with NO preflight at all, and the failure was not subtle:
+ * `body` kept the user agent's 8px margin so every page scrolled 16px, and
+ * `box-sizing` fell back to `content-box`, so `<main class="max-w-7xl px-6">`
+ * measured 1056px inside a 1008px parent at 1024 wide and overflowed
+ * horizontally. Nothing threw; the pages just came apart.
+ *
+ * It goes AFTER the package import so the layer order is base → components →
+ * utilities as Tailwind expects, and the package's panel-scoped rules still win
+ * inside the panel.
+ */
+@tailwind base;
+
 /* Dashboard-only additions below. Everything above is the shared system. */
 
 /* The Dashboard's own reading size. The shared sheet sets 13px for the panel's

@@ -46,6 +46,14 @@ function withTempDir(fn: (dir: string) => void) {
 
 const GATES = ['check-web-bundle-boundary.mjs', 'check-shared-ui-styles.mjs'] as const;
 
+/**
+ * Tailwind preflight, as the built stylesheet carries it.
+ *
+ * The styles gate now also refuses a build with no reset, so a fixture that
+ * only carries the shared-UI classes fails for a reason the test is not about.
+ */
+const PREFLIGHT = '*,:before,:after{box-sizing:border-box}body{margin:0}';
+
 describe.each(GATES)('%s', (gate) => {
   it('FAILS when there is no dist/ at all', () => {
     withTempDir((dir) => {
@@ -103,7 +111,7 @@ describe('check-shared-ui-styles.mjs', () => {
     withTempDir((dir) => {
       const assets = join(dir, 'dist', 'assets');
       mkdirSync(assets, { recursive: true });
-      writeFileSync(join(assets, 'app.css'), '.some-other-class{color:red}');
+      writeFileSync(join(assets, 'app.css'), `${PREFLIGHT}.some-other-class{color:red}`);
 
       const { code, output } = runGate('check-shared-ui-styles.mjs', dir);
       expect(code).toBe(1);
@@ -117,9 +125,46 @@ describe('check-shared-ui-styles.mjs', () => {
       mkdirSync(assets, { recursive: true });
       writeFileSync(
         join(assets, 'app.css'),
-        '.bg-fm-bg{}.font-fm-sans{}.hover\\:bg-fm-accent-strong:hover{}',
+        `${PREFLIGHT}.bg-fm-bg{}.font-fm-sans{}.hover\\:bg-fm-accent-strong:hover{}`,
       );
       expect(runGate('check-shared-ui-styles.mjs', dir).code).toBe(0);
+    });
+  });
+});
+
+
+describe('check-shared-ui-styles.mjs — preflight', () => {
+  it('FAILS when the stylesheet carries no Tailwind preflight', () => {
+    // The regression this gate was added for: the package stopped shipping a
+    // global reset, this app had none of its own, and every page kept the UA
+    // body margin and fell back to content-box. Nothing threw.
+    withTempDir((dir) => {
+      const assets = join(dir, 'dist', 'assets');
+      mkdirSync(assets, { recursive: true });
+      writeFileSync(
+        join(assets, 'app.css'),
+        '.bg-fm-bg{}.font-fm-sans{}.hover\\:bg-fm-accent-strong:hover{}',
+      );
+
+      const { code, output } = runGate('check-shared-ui-styles.mjs', dir);
+      expect(code).toBe(1);
+      expect(output).toMatch(/preflight/i);
+    });
+  });
+
+  it('is not satisfied by the panel-scoped box-sizing rule', () => {
+    // `.fm-copilot-panel *` also sets box-sizing. Matching that would pass on a
+    // build with no preflight at all, which is precisely the broken build.
+    withTempDir((dir) => {
+      const assets = join(dir, 'dist', 'assets');
+      mkdirSync(assets, { recursive: true });
+      writeFileSync(
+        join(assets, 'app.css'),
+        '.fm-copilot-panel *,.fm-copilot-panel :before{box-sizing:border-box}' +
+          '.bg-fm-bg{}.font-fm-sans{}.hover\\:bg-fm-accent-strong:hover{}',
+      );
+
+      expect(runGate('check-shared-ui-styles.mjs', dir).code).toBe(1);
     });
   });
 });

@@ -12,6 +12,7 @@ import CopilotPanel, {
   type WiredHost,
 } from '@faultmaven/copilot-ui';
 import { PANEL_STORAGE_NAMESPACE, createWebHostCapabilities } from '../../copilot/webHost';
+import { resetPageSingletonsForTests } from '../../copilot/pageSingletons';
 
 /**
  * The REAL panel, mounted once, against this repository's own host adapter.
@@ -96,6 +97,7 @@ function stubHost(): WiredHost {
 let signOutTheSession: () => void = () => {};
 
 beforeEach(() => {
+  resetPageSingletonsForTests();
   localStorage.clear();
   consoleErrors.length = 0;
   vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
@@ -275,3 +277,8 @@ describe('sign-out leaves nothing of the previous user behind', () => {
     });
   });
 });
+
+// The sign-out-plus-unmount RACE lives in `signOutRace.test.tsx`, which mounts
+// through `CopilotPanelMount` so the cleanup effect under test is actually in
+// the tree. A version of it here rendered `CopilotPanel` directly and therefore
+// passed against the very ordering it was written to catch.

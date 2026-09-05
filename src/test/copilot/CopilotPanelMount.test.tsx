@@ -216,11 +216,13 @@ describe('CopilotPanelMount', () => {
     );
   });
 
-  it('clears the module singletons when it unmounts', async () => {
-    // They are module-level and outlive the component. A panel that has
-    // unmounted otherwise leaves a live transport behind, and anything still in
-    // flight — a poll loop, a queued continuation — goes on issuing requests
-    // with the credential and base URL of a session the page has moved on from.
+  it('clears ONLY the transport when it unmounts', async () => {
+    // The transport closes over this mount's credential, so a later mount must
+    // not inherit it. The store and the endpoints describe the PAGE — its
+    // localStorage and its build config — and are never cleared: the shell
+    // unmounts the panel on sign-out while the package's purge of that user's
+    // data is still running, and pulling the store out from under it made every
+    // step throw and left the residue behind.
     const { unmount } = mount(NEW_INVESTIGATION);
     await screen.findByTestId('shared-copilot-ui');
 
@@ -228,9 +230,9 @@ describe('CopilotPanelMount', () => {
 
     await waitFor(() => {
       expect(clearApiTransport).toHaveBeenCalledTimes(1);
-      expect(clearHostEndpoints).toHaveBeenCalledTimes(1);
-      expect(clearHostStore).toHaveBeenCalledTimes(1);
     });
+    expect(clearHostEndpoints).not.toHaveBeenCalled();
+    expect(clearHostStore).not.toHaveBeenCalled();
   });
 
   it('advertises the panel to the extension once it has mounted', async () => {

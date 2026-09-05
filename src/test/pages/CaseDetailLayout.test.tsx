@@ -252,3 +252,25 @@ describe('the panel takes the room the page has left', () => {
     }
   });
 });
+
+
+describe('what this environment can and cannot measure', () => {
+  it('cannot measure page scroll, so no test here may claim to', async () => {
+    // The page-scroll invariant — `document.scrollHeight === clientHeight`, i.e.
+    // the panel bounded the page rather than overflowing it — was asked for
+    // here. It cannot be had: happy-dom performs no layout, so both are 0 and
+    // the comparison is TRUE for any markup whatsoever, including markup that
+    // overflows badly in a browser.
+    //
+    // This test exists so that stays known. Asserting the equality would look
+    // like coverage of the 16px-scroll regression while catching nothing, and
+    // the next person would trust it. The real checks are elsewhere: the
+    // preflight gate (`check-shared-ui-styles.mjs`) over the built CSS, the
+    // `min-h-0` chain above, and smoke 6 in a browser.
+    await renderCaseDetail();
+
+    expect(document.documentElement.scrollHeight).toBe(0);
+    expect(document.documentElement.clientHeight).toBe(0);
+    expect(getComputedStyle(document.body).marginTop).toBe('');
+  });
+});

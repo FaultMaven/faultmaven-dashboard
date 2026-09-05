@@ -8,6 +8,7 @@ import type {
 } from '@faultmaven/copilot-ui';
 import { getAccountProfile } from '../lib/auth/functions';
 import { announcePanelAvailable } from './advertisement';
+import { installPageSingletons } from './pageSingletons';
 import { createWebHostCapabilities } from './webHost';
 import { createWebSession, hostUserFromProfile } from './webSession';
 
@@ -97,11 +98,21 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
 
       const capabilities = createWebHostCapabilities((path) => navigateRef.current(path));
 
-      // Before anything reads them. Reads before installation throw, which is
-      // the point: a request that silently went out unauthenticated, or to the
-      // wrong origin, is the failure this boundary exists to prevent.
-      ui.setHostStore(capabilities.store);
-      ui.setHostEndpoints(capabilities.endpoints);
+      // PAGE-LIFETIME, installed once and never cleared.
+      //
+      // The store is this page's `localStorage` and the endpoints are its
+      // build config. Neither belongs to a session, so tying them to a
+      // component's lifetime was a category error — and a damaging one: the
+      // shell unmounts the panel on sign-out, while the package's purge of the
+      // signed-out user's data is still running. That purge is fire-and-forget
+      // with four store-backed steps, so an unmount that pulled the store out
+      // from under it made it throw `No HostStore installed` four times and
+      // leave most of `fm.copilot.*` behind — the residue this whole exercise
+      // was about, recreated by the cleanup meant to be tidy.
+      //
+      // Installing once is safe precisely because they are page-scoped: a
+      // second mount would install equivalent values, so it does not.
+      installPageSingletons(ui, capabilities);
 
       const session = createWebSession(hostUserFromProfile(profile));
 
@@ -133,26 +144,25 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
 
     return () => {
       cancelled = true;
-      // Drop the module singletons this mount installed.
+      // ONLY the transport. It is the one session-bound singleton — it closes
+      // over this mount's credential — so it is the one a later mount must not
+      // inherit. The store and the endpoints stay: see above.
       //
-      // They are module-level and outlive the component, so a panel that has
-      // unmounted leaves a live transport behind — and anything still in flight
-      // (a poll loop, a queued continuation) goes on using it, with the
-      // credential and base URL of a session the page has moved on from. Making
-      // a read after unmount THROW is the point: the package treats an
-      // uninstalled singleton as a wiring bug, which is exactly what a request
-      // issued by a dead panel is.
-      //
-      // Safe because installation is per-mount: the next mount reinstalls
-      // before it renders anything.
-      void loadedUi.then((ui) => {
-        ui.clearApiTransport();
-        ui.clearHostEndpoints();
-        ui.clearHostStore();
-      }).catch(() => {
-        // The import never resolved, so nothing was installed to clear.
-      });
+      // Clearing it here cannot strand the purge. Its first step goes through
+      // the transport and will warn if this got there first; every step that
+      // actually removes data goes through the store, which is still installed.
+      // And the credential itself is already fenced: `accessToken()` throws
+      // once AuthManager has no session, so a surviving poll cannot issue an
+      // authenticated request with a stale transport either way.
+      void loadedUi
+        .then((ui) => {
+          ui.clearApiTransport();
+        })
+        .catch(() => {
+          // The import never resolved, so nothing was installed to clear.
+        });
     };
+
     // Genuinely empty, not silenced: nothing in here reads `initialCase` any
     // more. Wiring is a once-per-mount job, and the intent now travels as a
     // PROP to the panel rather than as a storage write this effect had to make

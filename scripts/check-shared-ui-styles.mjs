@@ -88,6 +88,49 @@ if (leaked.length > 0) {
   process.exit(1);
 }
 
+/**
+ * The Dashboard's OWN preflight has to be in the stylesheet.
+ *
+ * This app used to inherit `@tailwind base` from the package's global sheet.
+ * copilot#249 correctly stopped shipping one — a component library has no
+ * business resetting its host's document — and the Dashboard was left with no
+ * preflight at all. Nothing threw. `body` kept the user agent's 8px margin so
+ * every page scrolled 16px, and `box-sizing` fell back to `content-box`, so a
+ * `max-w-7xl px-6` main measured 1056px inside a 1008px parent at 1024 wide
+ * and overflowed sideways.
+ *
+ * That is the whole reason this is a gate: a missing reset is invisible to
+ * every unit test and to a build, and shows up only as pages quietly coming
+ * apart at particular widths.
+ *
+ * The universal selector matters. `.fm-copilot-panel *` also sets
+ * `box-sizing`, and matching that would pass on a build with no preflight at
+ * all, so the patterns below are anchored to a rule that starts the selector.
+ */
+const PREFLIGHT_RULES = [
+  {
+    name: 'universal box-sizing (Tailwind preflight)',
+    pattern: /(^|})\s*\*\s*,\s*::?before\s*,\s*::?after\s*\{[^}]*box-sizing:\s*border-box/,
+  },
+  {
+    name: 'body margin reset (Tailwind preflight)',
+    pattern: /(^|})\s*body\s*\{[^}]*margin:\s*0/,
+  },
+];
+
+const missingPreflight = PREFLIGHT_RULES.filter(({ pattern }) => !pattern.test(css));
+
+if (missingPreflight.length > 0) {
+  for (const { name } of missingPreflight) {
+    fail(`the built stylesheet has no ${name}.`);
+  }
+  console.error('');
+  console.error("The Dashboard needs its own `@tailwind base` in src/index.css: the");
+  console.error('Copilot UI package deliberately ships no global reset, and without one');
+  console.error('every page keeps the UA body margin and falls back to content-box.');
+  process.exit(1);
+}
+
 const missing = SHARED_UI_CLASSES.filter(({ verbatim }) => !css.includes(verbatim));
 
 if (missing.length > 0) {
@@ -102,5 +145,6 @@ if (missing.length > 0) {
 }
 
 console.log(
-  `OK: ${files.length} stylesheet(s) carry all ${SHARED_UI_CLASSES.length} shared-UI classes checked.`,
+  `OK: ${files.length} stylesheet(s) carry preflight, the panel-scoped base rules, ` +
+    `and all ${SHARED_UI_CLASSES.length} shared-UI classes checked.`,
 );
