@@ -13,13 +13,7 @@ vi.mock('../../lib/api', () => ({
 }));
 
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: vi.fn().mockReturnValue({
-    deployment: 'standalone',
-    role: 'individual',
-    isAdmin: true,
-    clearAuthState: vi.fn(),
-    isAuthenticated: true,
-  }),
+  useAuth: vi.fn(),
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -30,10 +24,28 @@ vi.mock('../../hooks/useNavigationItems', () => ({
 }));
 
 import { listUsers, updateUserRole, deactivateUser } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 
 const mockListUsers = listUsers as ReturnType<typeof vi.fn>;
 const mockUpdateUserRole = updateUserRole as ReturnType<typeof vi.fn>;
 const mockDeactivateUser = deactivateUser as ReturnType<typeof vi.fn>;
+const mockUseAuth = useAuth as unknown as ReturnType<typeof vi.fn>;
+
+/**
+ * The signed-in operator. Deliberately NOT one of the fixture rows, so the
+ * self-row lock does not silently remove a select the other cases index into;
+ * the one test that exercises the lock re-points this at a listed user.
+ */
+function authAs(userId: string) {
+  return {
+    deployment: 'standalone' as const,
+    role: 'individual' as const,
+    isAdmin: true,
+    clearAuthState: vi.fn(),
+    isAuthenticated: true,
+    authState: { user: { user_id: userId, roles: ['user', 'platform_admin'] } },
+  };
+}
 
 // Backend-real AdminUserListItem shape: `full_name`, `roles`, `last_login_at`,
 // `is_active`, `is_verified` — and crucially NO `username`, `display_name`,
@@ -82,6 +94,12 @@ function renderPage() {
 describe('UserManagementPage — backend-real admin user shape', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseAuth.mockReturnValue(authAs('u-signed-in'));
+    // mockReset, not mockClear: a test that queues mockResolvedValueOnce and
+    // then fails leaves the unconsumed value behind, and the NEXT test renders
+    // the wrong fixture. That turns one real failure into a cascade that hides
+    // which assertion actually broke.
+    mockListUsers.mockReset();
     mockListUsers.mockResolvedValue(listResponse);
   });
 
@@ -167,6 +185,68 @@ describe('UserManagementPage — backend-real admin user shape', () => {
     });
 
     expect(mockUpdateUserRole).toHaveBeenCalledWith('u-standard', { role: 'admin' });
+  });
+
+  // -- #78: the roles the table shows after a write are the SERVER's ---------
+  //
+  // The backend replaces the ORG-SCOPED axis only and preserves `platform_admin`
+  // (faultmaven#706), so the row must end up showing what the server holds. A
+  // list rebuilt here from the select value would show `['admin']` and drop the
+  // operator badge -- inventing a privilege change the backend did not make.
+  it("shows the server's roles after an assignment, not the select value", async () => {
+    const operator: UserProfile = {
+      ...adminUser,
+      user_id: 'u-op',
+      email: 'olive@faultmaven.local',
+      full_name: 'Olive Operator',
+      roles: ['user', 'member', 'platform_admin'],
+    };
+    // Before: the org axis is `member`, so the two-value select reads 'user'.
+    mockListUsers.mockResolvedValueOnce({ users: [operator], total: 1, limit: 50, offset: 0 });
+    // After: the server replaced the org axis and KEPT `platform_admin`.
+    mockListUsers.mockResolvedValueOnce({
+      users: [{ ...operator, roles: ['user', 'platform_admin', 'admin'] }],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    });
+
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('Olive Operator')).toBeInTheDocument());
+
+    const select = screen.getByLabelText('Role for olive@faultmaven.local') as HTMLSelectElement;
+    expect(select.value).toBe('user');
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'admin' } });
+    });
+
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText('Role for olive@faultmaven.local') as HTMLSelectElement).value,
+      ).toBe('admin'),
+    );
+    // The role the server still holds is still on screen.
+    expect(screen.getByText(/Platform Admin/)).toBeInTheDocument();
+    // Two reads: the initial load and the post-write refetch.
+    expect(mockListUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it("locks the role control on the signed-in operator's own row", async () => {
+    mockUseAuth.mockReturnValue(authAs(adminUser.user_id));
+
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('Ada Admin')).toBeInTheDocument());
+
+    // The backend answers 403 on a self role write; do not offer it.
+    expect(screen.queryByLabelText(`Role for ${adminUser.email}`)).not.toBeInTheDocument();
+    expect(screen.getByText('(you)')).toBeInTheDocument();
+    // Everyone else stays editable.
+    expect(screen.getByLabelText(`Role for ${standardUser.email}`)).toBeInTheDocument();
   });
 
   it('the Deactivate action confirms then calls deactivateUser', async () => {
