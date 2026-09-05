@@ -10,7 +10,7 @@ import type { UserProfile, DashboardRoleValue } from '../types/users';
 const PAGE_SIZE = 50;
 
 export default function UserManagementPage() {
-  const { clearAuthState } = useAuth();
+  const { clearAuthState, authState } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -60,6 +60,12 @@ export default function UserManagementPage() {
     );
   }, [users, search]);
 
+  // The roles the table shows after a write are the SERVER's, never a list
+  // rebuilt here from the select value. Rebuilding it locally would render an
+  // operator as holding only the org role just assigned and drop
+  // `platform_admin` from the row — a privilege change the backend did not
+  // make (it replaces the org-scoped axis alone, faultmaven#706) and this page
+  // would have invented. The refetch is what makes that impossible.
   const handleChangeRole = async (userId: string, role: DashboardRoleValue) => {
     setActionError(null);
     try {
@@ -127,6 +133,7 @@ export default function UserManagementPage() {
               users={filteredUsers}
               onChangeRole={handleChangeRole}
               onDeactivate={(id) => setConfirmDeactivateId(id)}
+              currentUserId={authState?.user?.user_id ?? null}
             />
           )}
         </div>

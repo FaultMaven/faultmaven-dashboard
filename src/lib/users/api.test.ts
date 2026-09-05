@@ -32,7 +32,7 @@ describe('users API', () => {
     expect(mockRequest).toHaveBeenCalledWith('/api/v1/admin/users?limit=50&offset=100');
   });
 
-  // Promote → POST /roles {role:'admin'} (replaces roles on the backend).
+  // Promote → POST /roles {role:'admin'} (replaces the org-scoped axis only).
   it('updateUserRole to admin POSTs the roles endpoint', async () => {
     mockRequest.mockResolvedValueOnce({ json: async () => ({}) });
 
@@ -47,7 +47,7 @@ describe('users API', () => {
     );
   });
 
-  // Demote → DELETE /roles/admin (backend downgrades to viewer).
+  // Demote → DELETE /roles/admin (backend lands on viewer if that empties the org axis).
   it('updateUserRole to user DELETEs the admin role', async () => {
     mockRequest.mockResolvedValueOnce({ json: async () => ({}) });
 

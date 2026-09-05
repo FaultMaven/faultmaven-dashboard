@@ -32,13 +32,19 @@ export async function listUsers(
 /**
  * Set a user's admin membership to match the Dashboard's two-value role model
  * (`admin` / `user`), against the real backend RBAC endpoints:
- *   - promote → `POST /admin/users/{id}/roles` with `{role:'admin'}` (replaces roles)
- *   - demote  → `DELETE /admin/users/{id}/roles/admin` (downgrades to viewer)
+ *   - promote → `POST /admin/users/{id}/roles` with `{role:'admin'}`
+ *   - demote  → `DELETE /admin/users/{id}/roles/admin`
  *
- * The backend role set is `admin | member | viewer`; the Dashboard only
- * distinguishes admin from non-admin, so a demote drops the admin role and the
- * backend settles the user at the minimum-privilege `viewer`. Both writes revoke
- * the target's JWTs server-side. Admins cannot change their own role (backend 403).
+ * Both write the ORGANIZATION-SCOPED role axis (`admin | member | viewer`) and
+ * only that axis: roles on other axes — `platform_admin`, the base `user`
+ * marker — are preserved, so neither call can strip a deployment operator's
+ * cross-tenant reach (faultmaven#706). The Dashboard only distinguishes admin
+ * from non-admin, so a demote drops `admin` and, when that empties the org
+ * axis, the backend settles the user at the minimum-privilege `viewer`.
+ *
+ * Both writes revoke the target's JWTs server-side. The caller cannot change
+ * their own role (403), and cannot address a user outside their own
+ * organization (404, indistinguishable from an id that names nobody).
  */
 export async function updateUserRole(
   userId: string,
