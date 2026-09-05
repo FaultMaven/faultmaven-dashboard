@@ -14,11 +14,17 @@
     "check:sso-slugs": "node scripts/check-sso-error-slugs.mjs",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "check:copilot-pin": "node scripts/check-copilot-ui-pin.mjs",
+    "check:web-boundary": "node scripts/check-web-bundle-boundary.mjs",
+    "lint:tests": "eslint --no-ignore 'src/test/**/*.{ts,tsx}' 'src/**/*.test.{ts,tsx}'",
+    "check:shared-ui-styles": "node scripts/check-shared-ui-styles.mjs"
   },
   "dependencies": {
+    "@faultmaven/copilot-ui": "github:FaultMaven/faultmaven-copilot#ef324edd39fd308c1b52eb3ee79e907b1e9eb0ec&path:packages/copilot-ui",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@tanstack/react-query": "^5.90.17",
     "highlight.js": "^11.11.1",
     "mermaid": "^11.16.1",
     "react": "^19.1.0",
@@ -26,7 +32,8 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.2",
     "rehype-highlight": "^7.0.2",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

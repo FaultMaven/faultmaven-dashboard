@@ -11,9 +11,24 @@
  * query bag, and the narrowed `/ui` read-adapter) — each is marked as such.
  */
 import type { components } from './api.generated';
-import type { CaseState } from './case';
+import type { UserCaseState } from '@faultmaven/copilot-ui';
 
-export type { CaseState };
+/**
+ * The case lifecycle: phases (`inquiry`, `investigating`) then dispositions
+ * (`resolved`, `closed`).
+ *
+ * Taken from the Copilot UI package rather than declared here. It used to be a
+ * second hand-written copy of the same four strings in `types/case.ts`, which
+ * is the shape ADR-016 D2 exists to retire — a byte-identical duplicate that
+ * nothing compared, in a repository that renders the same cases as the
+ * package. The union is not in the generated contract (the enum left the
+ * published spec with the replay API, fm#1002), so a copy here could not have
+ * been checked against anything.
+ *
+ * A type-only import: erased at build, so nothing about the panel's runtime
+ * reaches the pages that render a case list.
+ */
+export type CaseState = UserCaseState;
 
 // ==================== Case core (list + detail) ====================
 

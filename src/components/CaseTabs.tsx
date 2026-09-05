@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  getCaseMessages,
   getUploadedFiles,
   getUploadedFileDetails,
   getCaseEvidenceList,
@@ -9,7 +8,6 @@ import {
 } from '../lib/api';
 import type {
   CaseDetail,
-  CaseMessage,
   UploadedFile,
   UploadedFileDetails,
   EvidenceDetails,
@@ -18,7 +16,8 @@ import type {
 } from '../types/cases';
 import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
-import { TranscriptView } from './TranscriptView';
+import CopilotPanelMount from '../copilot/CopilotPanelMount';
+import { useAuth } from '../context/AuthContext';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
@@ -75,35 +74,34 @@ function stanceColor(stance: string): string {
   }
 }
 
-function TranscriptTab({ caseId }: { caseId: string }) {
-  const [messages, setMessages] = useState<CaseMessage[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await getCaseMessages(caseId);
-        if (!cancelled) setMessages(res.messages);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load transcript');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
-
-  if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
-  if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
-
-  // Rendering lives in `TranscriptView`, shared with the operator break-glass
-  // page (ADR-012 D9): the backend serves the same message shape to both, and a
-  // second copy of this markup here would let the two drift.
-  return <TranscriptView messages={messages ?? []} />;
+/**
+ * The transcript, and the input that continues it.
+ *
+ * This tab used to render `TranscriptView`, a read-only copy of a conversation
+ * the extension rendered a second time and differently — the drift ADR-016 D1
+ * retires. It now mounts the shared Copilot UI on this case: one renderer, and
+ * the Dashboard can continue an investigation rather than only review one.
+ *
+ * The panel loads its own messages; nothing is fetched here. A turn taken here
+ * and a turn taken in the extension are the same rows on the same server, so
+ * neither host needs the other and each sees the other's work on reload.
+ */
+function TranscriptTab({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
+  return (
+    // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
+    // takes the room the page has left it; naming its own height is what put
+    // the composer below the fold (see CaseDetailPage).
+    <div className="h-full min-h-0" data-testid="transcript-panel-holder">
+      {/* `key` because the panel applies `initialCase` ONCE, at its own mount:
+          React Router keeps this component instance across a `:caseId` change,
+          so without a remount a move from one case to the next would leave the
+          previous case's transcript on screen. */}
+      <CopilotPanelMount
+        key={caseId}
+        initialCase={{ kind: 'existing', caseId, readOnly }}
+      />
+    </div>
+  );
 }
 
 function FileEvidenceDetails({ caseId, fileId }: { caseId: string; fileId: string }) {
@@ -444,6 +442,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
 
 export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { authState } = useAuth();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
   // so many cases have none. Show the tab only when the case actually produced
@@ -466,6 +465,21 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   // click updates the URL — keeping copied links current. A deep link to a tab
   // that isn't visible (e.g. ?tab=hypotheses on a case with none) or an unknown
   // value falls back to Transcript rather than rendering a blank panel.
+  /**
+   * Whether this case belongs to the person looking at it.
+   *
+   * A shared case is someone else's investigation. Before the panel replaced
+   * the read-only transcript, a teammate opening one simply could not type; the
+   * panel brought a live composer and an upload with it, so a viewer became
+   * able to post turns into an owner's case. `readOnly` puts that back — and it
+   * is derived from the case's own `user_id`, not from whether this page
+   * happens to offer a Share button.
+   *
+   * Fails CLOSED: an unknown viewer or an unknown owner is not a match, so the
+   * panel is read-only rather than writable by default.
+   */
+  const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
+
   const requestedTab = searchParams.get('tab') as Tab | null;
   const activeTab: Tab = tabLabels.some((t) => t.id === requestedTab)
     ? (requestedTab as Tab)
@@ -487,8 +501,8 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
   const tabInactive = 'border-transparent text-fm-text-secondary hover:text-fm-text-primary';
 
   return (
-    <div>
-      <div className="flex border-b border-fm-border mb-3">
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-shrink-0 flex border-b border-fm-border mb-3">
         {tabLabels.map(({ id, label }) => (
           <button
             key={id}
@@ -500,11 +514,32 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
         ))}
       </div>
 
-      {activeTab === 'transcript' && <TranscriptTab caseId={caseId} />}
-      {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
-      {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
-      {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
-      {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
+      {/* The Transcript tab OWNS its scrolling: the panel scrolls its
+          transcript internally and pins its composer to the bottom, so a
+          scroll container here would give it a second one and put the composer
+          below the fold again. Every other tab is long-form content with no
+          scroller of its own, so it gets one — without it the viewport-bounded
+          page would simply clip them. */}
+      {/* HIDDEN, not unmounted, when another tab is showing.
+          Unmounting the panel tears down its session, its conversation cache
+          and any in-flight turn — so glancing at Evidence and coming back
+          re-minted a session and re-fetched the transcript, and a turn in
+          progress was lost. `hidden` costs a rendered subtree; the alternative
+          costs the user's work. */}
+      <div
+        className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
+        data-testid="transcript-tab-panel"
+      >
+        <TranscriptTab caseId={caseId} readOnly={!isOwner} />
+      </div>
+      {activeTab !== 'transcript' && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
+          {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
+          {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
+          {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
+        </div>
+      )}
     </div>
   );
 }

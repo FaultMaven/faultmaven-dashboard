@@ -10,6 +10,17 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    /* `@faultmaven/copilot-ui` ships TypeScript sources this app compiles, and
+       they read `import.meta.env` for their build-time constants — so the
+       package's ambient Vite types have to be in this project's `types`. It is
+       the one thing the package asks of a consumer; notably NOT `@types/node`,
+       which a browser UI package has no business demanding.
+
+       `react` and `react-dom` are listed because naming ANY `types` turns off
+       the automatic inclusion of everything under node_modules/@types, and
+       those two are what was being included before. Adding an entry must not
+       quietly remove three. */
+    "types": ["vite/client", "react", "react-dom"],
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",

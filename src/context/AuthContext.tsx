@@ -271,6 +271,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Start the one cross-tab watch, for the whole app.
+   *
+   * The decision — a clear, or a different account signing in elsewhere — lives
+   * in AuthManager, which owns the credential and knows which identity this tab
+   * holds. All this does is turn it on and hand back its unsubscribe; the
+   * result arrives through `onAuthCleared` above, like every other way a
+   * session ends, so the shell and the Copilot panel cannot disagree about what
+   * happened or hear it a different number of times.
+   */
+  useEffect(() => authManager.watchCrossTabAuthChanges(), []);
+
+  /**
    * Role is DERIVED, never synced: a pure function of the confirmed
    * deployment and the React-visible auth state, so it cannot diverge from
    * either (imperative setRole sites could bind a role to a different

@@ -1,0 +1,217 @@
+import { describe, it, expect } from 'vitest';
+
+/**
+ * How this app is allowed to reach the Copilot UI package.
+ *
+ * Two rules, and each fails silently without a check:
+ *
+ * 1. THE SUPPORTED SURFACE IS THE PACKAGE ENTRY. Deep subpaths resolve —
+ *    `@faultmaven/copilot-ui/lib/state/store` compiles perfectly — but the
+ *    package's own design doc names that as reaching past the contract: those
+ *    files exist for the extension, which lives in the same repository and can
+ *    be updated in the same commit. A Dashboard that reached them would pin
+ *    itself to internals the producer is free to move, and the pin would keep
+ *    it green until the day it did.
+ * 2. EXACTLY ONE RUNTIME IMPORT, AND IT IS DYNAMIC. That is what keeps the
+ *    shared UI out of the entry chunk, so nothing of it is fetched or evaluated
+ *    before someone is signed in (ADR-016 D3). A single static `import` added
+ *    anywhere would undo the code split with nothing red — the panel would
+ *    still be behind ProtectedRoute, and every visitor to `/login` would still
+ *    download it.
+ *
+ * Type-only imports are exempt from rule 2 and are erased at build; they are
+ * still held to rule 1.
+ */
+
+const PACKAGE = '@faultmaven/copilot-ui';
+
+/**
+ * Every non-test source under `src/`, as text. Globbed through Vite rather than
+ * `node:fs` because this repo ships no `@types/node` (same reason as
+ * CopilotEntry.test.tsx).
+ */
+const sources = import.meta.glob<string>(['../../**/*.{ts,tsx}', '!../../**/*.test.{ts,tsx}'], {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+/**
+ * The non-TypeScript ways in: the stylesheet and the build config.
+ *
+ * A rule about imports that only reads `.ts` is a rule with two doors left
+ * open — `src/index.css` pulls the package's stylesheet and
+ * `tailwind.config.cjs` requires its preset, and either could reach a deep
+ * path without a single TypeScript file changing.
+ */
+const nonTsSources = import.meta.glob<string>(
+  ['../../index.css', '/tailwind.config.cjs', '/postcss.config.cjs'],
+  { query: '?raw', import: 'default', eager: true },
+);
+
+/**
+ * The package-provided paths that are deliberate exceptions, and why each one
+ * cannot come through the entry.
+ *
+ * "Deep subpath" has to keep meaning "reaching past the contract" rather than
+ * "any path with a slash in it" — so each exception is listed with its reason
+ * and asserted to be something the package actually ships.
+ *
+ *  - the STYLESHEET and the PRESET, because an `index.ts` cannot export a file
+ *    for a CSS `@import` or a CommonJS `require` to consume;
+ *  - the CONTRACT, because importing those three values from the ENTRY pulls
+ *    the whole package into the eager graph. Measured: it moved the host store,
+ *    transport and persistence internals into this app's entry chunk (+200 kB
+ *    for every signed-out visitor), which ADR-016 D3 forbids. `contract.ts`
+ *    imports nothing, and the same measurement puts it at +196 bytes.
+ */
+const DEEP_PATH_EXCEPTIONS = [
+  `${PACKAGE}/styles/globals.css`,
+  `${PACKAGE}/tailwind-preset.cjs`,
+  `${PACKAGE}/contract`,
+];
+
+interface Reference {
+  file: string;
+  statement: string;
+  specifier: string;
+  isTypeOnly: boolean;
+  isDynamic: boolean;
+}
+
+/**
+ * Anchored on the SPECIFIER, then read backwards to the nearest `import` or
+ * `export` keyword.
+ *
+ * The obvious pattern — one regex spanning keyword to specifier — silently
+ * mis-reads a multi-line import block: its lazy gap matcher happily starts at
+ * an unrelated `import { useEffect } from 'react'` three lines above and runs
+ * on to the first specifier that matches, so a type-only import is reported as
+ * a runtime one. That failure was observed here before this was rewritten.
+ */
+function collectReferences(): Reference[] {
+  const refs: Reference[] = [];
+  const quoted = new RegExp(
+    String.raw`['"](` + PACKAGE.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&') + String.raw`[^'"]*)['"]`,
+    'g',
+  );
+
+  for (const [file, text] of Object.entries(sources)) {
+    for (const match of text.matchAll(quoted)) {
+      const before = text.slice(0, match.index);
+      const keywordAt = Math.max(before.lastIndexOf('import'), before.lastIndexOf('export'));
+      if (keywordAt < 0) continue;
+      const lead = before.slice(keywordAt);
+      refs.push({
+        file,
+        statement: `${lead}${match[0]}`,
+        specifier: match[1],
+        isTypeOnly: /^(?:import|export)\s+type\b/.test(lead),
+        isDynamic: /^import\s*\(\s*$/.test(lead),
+      });
+    }
+  }
+  return refs;
+}
+
+describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
+  const references = collectReferences();
+
+  it('finds the references it is about to judge', () => {
+    // Fail closed: with no hits every loop below asserts nothing, so a renamed
+    // package or a broken pattern must break this test rather than pass it.
+    expect(Object.keys(sources).length).toBeGreaterThan(20);
+    expect(references.length).toBeGreaterThan(0);
+  });
+
+  it('imports only the package entry, or a documented exception', () => {
+    for (const ref of references) {
+      expect(
+        [PACKAGE, ...DEEP_PATH_EXCEPTIONS],
+        `${ref.file} reaches ${ref.specifier}, which is neither the entry nor a documented exception`,
+      ).toContain(ref.specifier);
+    }
+  });
+
+  it('reaches the contract subpath from exactly one module', () => {
+    // It is an exception, not an open door: one re-exporting module keeps the
+    // Dashboard's talk about the advertisement in one place, and keeps the
+    // number of files that could accidentally reach the ENTRY instead at one.
+    const contractRefs = references.filter(
+      (ref) => ref.specifier === `${PACKAGE}/contract`,
+    );
+
+    expect(contractRefs.map((ref) => ref.file)).toEqual(['../../copilot/advertisement.ts']);
+  });
+
+  it('reaches the package from CSS and build config only through the two documented assets', () => {
+    // Same rule, the other two doors. A stylesheet `@import` and a config
+    // `require` are imports; they simply are not TypeScript ones.
+    const found: Array<[string, string]> = [];
+    for (const [file, text] of Object.entries(nonTsSources)) {
+      for (const match of text.matchAll(
+        new RegExp(String.raw`['"](` + PACKAGE.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&') + String.raw`[^'"]*)['"]`, 'g'),
+      )) {
+        found.push([file, match[1]]);
+      }
+    }
+
+    // Fail closed: with no hits the loop asserts nothing, so a renamed package
+    // or a stylesheet that stopped importing the shared one must break this.
+    expect(found.length).toBeGreaterThan(0);
+    for (const [file, specifier] of found) {
+      expect(
+        [PACKAGE, ...DEEP_PATH_EXCEPTIONS],
+        `${file} reaches ${specifier}, which is neither the entry nor a published asset`,
+      ).toContain(specifier);
+    }
+  });
+
+  it('names each asset exception as something the package actually ships', () => {
+    // An exception list that drifted from the package would quietly permit a
+    // path that no longer exists — or forbid one that does. Read as text: the
+    // preset is CommonJS and the stylesheet is CSS, and neither should be
+    // EVALUATED just to prove it is there.
+    const shipped = import.meta.glob(
+      [
+        '/node_modules/@faultmaven/copilot-ui/styles/globals.css',
+        '/node_modules/@faultmaven/copilot-ui/tailwind-preset.cjs',
+        '/node_modules/@faultmaven/copilot-ui/contract.ts',
+      ],
+      { query: '?raw', import: 'default', eager: true },
+    );
+
+    // Presence, not content: Vite resolves a `.css` `?raw` glob to an empty
+    // string, so a length assertion would fail on a file that is plainly there.
+    expect(Object.keys(shipped)).toHaveLength(DEEP_PATH_EXCEPTIONS.length);
+  });
+
+  it('keeps the contract module dependency-FREE, which is why it is exempt', () => {
+    // The exemption rests entirely on this. A contract module that grew an
+    // import would drag the package's graph back into the entry chunk, and the
+    // exception would then be licensing the very thing it was granted to avoid.
+    const contract = import.meta.glob(
+      ['/node_modules/@faultmaven/copilot-ui/contract.ts'],
+      { query: '?raw', import: 'default', eager: true },
+    );
+    const source = Object.values(contract)[0] as unknown as string;
+
+    expect(source, 'the contract module was not found').toBeTruthy();
+    expect(source).not.toMatch(/^\s*import\s/m);
+    expect(source).not.toMatch(/\brequire\s*\(/);
+  });
+
+  it('has exactly one runtime import of the ENTRY, and it is dynamic', () => {
+    // The entry drags the whole package in, so it may only be reached lazily —
+    // that is what keeps the shared UI out of the chunk every signed-out
+    // visitor downloads. The contract subpath is exempt precisely because it
+    // drags nothing (asserted below); it is filtered out here rather than
+    // silently widening this rule.
+    const runtimeEntry = references.filter(
+      (ref) => !ref.isTypeOnly && ref.specifier === PACKAGE,
+    );
+
+    expect(runtimeEntry.map((ref) => ref.file)).toEqual(['../../copilot/CopilotPanelMount.tsx']);
+    expect(runtimeEntry[0].isDynamic).toBe(true);
+  });
+});

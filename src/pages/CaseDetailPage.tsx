@@ -119,16 +119,44 @@ export default function CaseDetailPage() {
     teamSharingEnabled && caseDetail.user_id === authState?.user?.user_id;
 
   return (
-    <div className="min-h-screen bg-fm-canvas">
+    /*
+     * VIEWPORT-BOUNDED, not content-driven — a fixed height, not `min-h-screen`.
+     *
+     * The Transcript tab hosts the Copilot panel, and a panel is only usable if
+     * its composer is on screen. While this page grew with its content the
+     * panel had to name its own height, `h-[70vh] min-h-[28rem]`, which starts
+     * wherever the case card happens to end: measured in a browser at
+     * y≈384, putting the composer at y≈943 on a 900px viewport and y≈851 on
+     * 768 — below the fold at both, so the first thing a user had to do to
+     * type was scroll.
+     *
+     * Bounding the page instead lets the panel take exactly the room that is
+     * left, which is what `/investigate` already does and why it fits. The case
+     * header stays put because it is a non-shrinking sibling rather than
+     * something the page scrolls away.
+     *
+     * `h-dvh`, not `h-screen`: `vh` ignores mobile browser toolbars, so the
+     * bottom of the page — the composer — sits under them. And `min-h-[40rem]`
+     * below the viewport height, so a genuinely short window (a laptop with
+     * devtools open, a split screen) SCROLLS the page instead of crushing the
+     * panel to nothing. Bounding the page must not mean the content has no
+     * floor; that trades one unusable layout for another.
+     */
+    <div className="h-dvh min-h-[40rem] flex flex-col bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <Link to="/cases" className="text-sm text-fm-text-secondary hover:text-fm-accent transition-colors mb-4 inline-block">
+      {/* `min-h-0` is load-bearing on every flex child down to the panel: a
+          flex item's default `min-height:auto` refuses to shrink below its
+          content, so one missing instance pushes the overflow back onto the
+          page and the composer back below the fold. */}
+      <main className="flex-1 min-h-0 w-full max-w-7xl mx-auto px-6 py-8 flex flex-col">
+        <Link to="/cases" className="flex-shrink-0 text-sm text-fm-text-secondary hover:text-fm-accent transition-colors mb-4 inline-block">
           ← Cases
         </Link>
 
-        {/* Case header */}
-        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
+        {/* Case header. `flex-shrink-0`: it stays visible while the panel
+            below it takes the remaining height. */}
+        <div className="flex-shrink-0 bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">
@@ -194,8 +222,8 @@ export default function CaseDetailPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
+        {/* Tabs: everything the case header did not use. */}
+        <div className="flex-1 min-h-0 flex flex-col bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
           <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
         </div>
 

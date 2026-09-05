@@ -62,6 +62,7 @@ src/
 │   ├── AdminCaseContentPage.tsx # Operator break-glass content view (ADR-012 D9) — audited open of one case's title/description/transcript
 │   ├── UserManagementPage.tsx # Platform admin user management
 │   ├── LLMConfigPage.tsx     # LLM provider configuration
+│   ├── InvestigatePage.tsx   # The built-in Copilot panel on a NEW investigation (ADR-016 D1/D6)
 │   ├── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
 │   └── SSOCallbackPage.tsx   # Cloud SSO callback (completion-code exchange)
 ├── components/               # Reusable UI components
@@ -75,10 +76,16 @@ src/
 │   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/State/Stage/Last Activity/[actions]) — used by CaseListPage + AdminCaseListPage (view=full)
 │   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/State/Stage/Last Activity) — no title column; "Open content" links to the audited operator route (ADR-012 D9)
 │   ├── BreakGlassRequestDialog.tsx # Request time-boxed access to one case's content (reason + TTL)
-│   ├── TranscriptView.tsx    # Presentational transcript renderer — shared by the owner tab and the operator break-glass page
+│   ├── TranscriptView.tsx    # Read-only transcript renderer — OPERATOR break-glass page only (the owner's tab is the panel now)
 │   ├── CaseStageCell.tsx     # Stage cell (Diagnosing/Mitigating/Resolving, amber `· stalled Nt`) — shared by both case tables and the detail header, so they cannot drift
 │   ├── ConfirmDialog.tsx     # Reusable confirmation modal
 │   ├── UploadModal.tsx       # File upload modal for KB
+├── copilot/                  # The web host for @faultmaven/copilot-ui (ADR-016 D2)
+│   ├── CopilotPanelMount.tsx # Installs the singletons + transport, then mounts CopilotPanel
+│   ├── webHost.ts            # store / endpoints / navigation / pageCapture
+│   ├── webSession.ts         # HostSession over the Dashboard's AuthManager
+│   ├── advertisement.ts      # data-faultmaven-dashboard-panel + FM_DASHBOARD_PANEL_AVAILABLE
+│   └── storeListing.ts       # The published Chrome Web Store URL, shared by both consumers
 ├── context/                  # AuthContext (global auth state)
 ├── hooks/                    # Custom hooks (useKBList for KB paging/search/delete)
 └── lib/                      # Core logic
@@ -128,17 +135,26 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 
 ### Component Architecture
 
+- **Post-sign-in landing**: both sign-in paths call `resolvePostSignInLanding()`
+  (`src/lib/auth/landing.ts`), which reads the account's case `total_count`
+  once: no cases → `/investigate` (ADR-016 D6), otherwise `/cases`. It fails to
+  `/cases`, because a count that could not be fetched is not evidence of an
+  empty account. The decision is made HERE, at sign-in — not inside the list
+  page, where it could not tell "no cases" from "paged past the end" or "just
+  cleared a filter".
 - **LoginPage**: Authentication interface with FaultMaven branding. Standalone: passwordless username form. Cloud: single Sign In button that hands off to the backend-advertised hosted-login URL (`oauth.hosted_login_url` from `/auth/config`), forwarding the ProtectedRoute-saved destination as `return_to`.
 - **SSOCallbackPage**: Cloud hosted-login return leg (route `/auth/sso/callback`, public — it IS the login). The backend redirects here with a single-use completion `code` (+ optional same-origin `return_to`) or a sanitized `error` slug; the page POSTs `{code}` to `/api/v1/auth/sso/exchange`, stores the standard token response exactly like a LoginPage sign-in, and forwards to `return_to` → saved destination → `/kb`. Error slugs map to friendly messages with a "Back to sign in" link; raw query content is never echoed.
 - **KBPage**: User knowledge base management (3-tier tabs: personal/team/global)
 - **AdminKBPage**: Organization KB management (admin only)
-- **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`. Renders rows via the shared `CaseTable` component.
+- **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`. Renders rows via the shared `CaseTable` component. **When the list is empty and UNFILTERED it redirects to `/investigate`** — a signed-in person with no cases lands on the panel with a new investigation, not on a blank table (ADR-016 D6). A filtered-empty list stays put and offers the panel instead of jumping to it; a failed load never redirects, so an error is never mistaken for "no cases".
+- **InvestigatePage**: Route `/investigate`, inside `ProtectedRoute`. Mounts the built-in Copilot panel with no case seeded — a new investigation. This is the surface that makes the Dashboard able to RUN an investigation rather than only review one (ADR-016 D1).
 - **AdminCaseListPage**: Cross-tenant "All Cases" list (ADR-012 D9) — every user's cases on the server (Copilot- and Slack-agent-originated). Backed by `GET /api/v1/admin/cases`; state/source filters only. Gated by `canViewAllCases(isAdmin)` → **`platform_admin` in both deployments** (route `/admin/cases` + nav item). The response is a union **discriminated on `view`**, and the page narrows on it rather than on the deployment mode, so rendered columns cannot drift from served policy: `view: "full"` (standalone) renders `CaseTable` with titles; `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids/org/state/timestamps/counts, **no title or description** (user free text is content and needs the audited break-glass path, faultmaven#815). The endpoint still 403s under `TENANT_PROVIDER=multi` (RLS would make the list silently partial); the page shows that refusal *instead of* a table. Rows on **both** arms open through `/admin/cases/{id}` (the audited operator read), never `/cases/{id}` — the latter has no operator bypass and 404s on cases the operator does not own (faultmaven#846). The organization travels on the link (`?org=`) because requesting a grant needs it.
 - **AdminCaseContentPage**: Operator break-glass content view (ADR-012 D9, faultmaven#815). Route `/admin/cases/:caseId`, same `canViewAllCases` guard as the list. Reads `GET /api/v1/admin/cases/{id}` + `/messages`; renders the case title/description/state and the transcript via the shared `TranscriptView`. The **response's `access` discriminator** decides the banner — `standing` (standalone: recorded, not gated) vs `break_glass` (cloud: names the grant, its reason and remaining TTL, with "End access now") — never the app's notion of the deployment. Without a live grant the backend refuses and the page shows the refusal plus a `BreakGlassRequestDialog`; content only ever arrives inside a successful response, so there is no state in which the page holds content it should be hiding.
 - **CaseDetailPage**: Case header (title, description, state badge, stage cell when investigating, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.
-- **TranscriptTab**: Single-column conversation view (no chat-style left/right bubbles). Each message has a role-coloured left-border accent (`fm-accent` for FaultMaven, `fm-border` for You) and an inline `You · Turn N` / `FaultMaven · Turn N` header. Turns are separated by a horizontal rule for scanability.
+- **CaseDetailPage layout**: `h-screen flex flex-col`, NOT `min-h-screen`. The Transcript tab hosts the panel, and a panel whose composer is below the fold has to be scrolled to before it can be typed in — which is what a self-named `h-[70vh] min-h-[28rem]` produced once the case card had pushed it down the page. The panel now takes the room the page has left it, and the `min-h-0` chain from the page root down to it is load-bearing: one missing instance re-creates the bug in silence. Bound by `src/test/pages/CaseDetailLayout.test.tsx`.
+- **TranscriptTab**: The built-in Copilot panel, opened on this case (ADR-016 D1). It replaced a read-only renderer that duplicated the extension's — one renderer, not two — so the transcript on this tab is interactive: a turn taken here and a turn taken in the extension are the same rows on the same server. The case is handed over as an argument (`initialCase={{ kind: 'existing', caseId }}`), and the mount is `key`ed on the case id because the panel applies that once, at its own mount. `TranscriptView` survives for the operator break-glass page only.
 - **HypothesesTab**: Renders `active_hypotheses` from `GET /cases/{id}/ui` for INVESTIGATING cases — status symbol (✓ validated / ✗ refuted / ● active / ◌ inconclusive / ○ captured-or-retired), likelihood %, evidence count, and statement. For terminal cases the `/ui` endpoint does not surface hypothesis details; falls back to a count-only note.
 - **EvidenceTab**: Evidence-first list backed by `GET /cases/{id}/evidence` (returns full `EvidenceDetails[]` in one round-trip). Each row shows category badge · summary · source filename · turn · linked-hypothesis count. Click to expand: verbatim `extract` (monospace), optional analysis, related hypotheses with stance badges (SUPPORTS / REFUTES / NEUTRAL). Footer toggle switches to a secondary file-view (uses `GET /cases/{id}/uploaded-files` + per-file detail) for the "did my upload get processed?" use case.
 - **CaseTabs**: 5 tabs shown for all cases: Transcript, Issue, Report, Hypotheses, Evidence. URL query param support (`?tab=report`, `?tab=issue`) for cross-frontend linking from copilot. All markdown content rendered via react-markdown with external links opening in new tabs.
@@ -246,6 +262,84 @@ cannot break out of the injected JS string.
 - **FaultMaven Backend**: AI-powered troubleshooting backend API
 
 This dashboard complements the copilot extension by providing dedicated KB management UI.
+
+## The Copilot UI package
+
+The investigation UI is not in this repository. `@faultmaven/copilot-ui` lives in
+`faultmaven-copilot` under `packages/copilot-ui` and is consumed here as a git
+dependency **pinned by SHA** (ADR-016 D2). Both hosts — the extension's side
+panel and this Dashboard's built-in panel — build from that one source, so a UI
+change reaches both or reaches neither.
+
+- **The host adapter is `src/copilot/`.** The package states what it needs from
+  its environment (a key-value store, where the backend is, navigation, page
+  capture, a session) and each host answers differently. Nothing in it branches
+  on `kind`; a branch on `kind` is a capability the interface failed to model.
+- **What the panel opens on is an ARGUMENT**, `initialCase` — `{ kind: 'new' }`
+  or `{ kind: 'existing', caseId }` — never a storage write. A host writing the
+  panel's own keys behind its back couples this app to a key name, an encoding
+  and a race it cannot see; two tests assert the only key this host writes is
+  `hasCompletedFirstRun`.
+- **`ApiTransport.clearSession` delegates** to the package's exported
+  `clearPersistedSession`. Which keys a session occupies is the package's to
+  know, and it is their single writer.
+- **Import the package ENTRY only.** Deep subpaths resolve and are still off
+  limits: they exist for the extension, which lives in the same repository as
+  the package and can be updated in the same commit.
+- **The one runtime import is dynamic**, in `CopilotPanelMount.tsx`. That is
+  what keeps the shared UI out of the entry chunk so nothing of it is fetched
+  before sign-in. `src/test/copilot/packageImportBoundary.test.ts` enforces both
+  rules.
+- **The theme ships with it** as a Tailwind preset, consumed in
+  `tailwind.config.cjs`; `src/index.css` imports the package's `globals.css`.
+  ADR-003 is one design system — the two configs had already drifted silently.
+  ⚠️ `content` is the ONE key Tailwind does not merge across presets: a config's
+  array REPLACES the preset's, and the package is a pnpm symlink. Get either
+  wrong and every `fm-*` class the shared UI uses is purged — no error, no
+  warning, a panel rendered unstyled. `pnpm check:shared-ui-styles` (CI job
+  `web-bundle-boundary`, after `pnpm build`) is what makes that loud.
+- **Adopting a change is moving the SHA** in `package.json` and re-running
+  `pnpm install`. `pnpm check:copilot-pin` (CI job `copilot-ui-pin`) FAILS on
+  pin shape, on a pin that is not on the copilot repo's `main`, and on the two
+  repositories' `api-contract.pin.json` disagreeing. Staleness — the package
+  having moved on — is an ADVISORY note only: copilot's main moves on its own,
+  so failing on it would redden every open PR here and forbid developing the
+  two repositories together. Whether this job is *required* depends on the
+  ruleset the owner has applied; it is not required by default.
+- **`pnpm check:web-boundary`** and **`pnpm check:shared-ui-styles`** run in the
+  `lint` job after a build (that job already installs, and `build`/`smoke`
+  already build twice — a third full build to ask two questions about `dist/`
+  is CI time for nothing). The first asserts no Copilot sign-in reached the
+  shipped bundle (ADR-016 D3); the second that the shared UI's `fm-*` classes
+  are in the stylesheet at all.
+- **The Dashboard mounts the panel with `chrome: 'embedded'`**, stated once in
+  `CopilotPanelMount` rather than at each call site. The panel's own sidebar
+  carries a case list, an account row and an "Open Dashboard" button — all three
+  of which this app already renders around it, and the last of which links to
+  the page the user is already on.
+- **Two tests render the REAL package**, `realPanelMounts.test.tsx` and
+  `embeddedChrome.test.tsx`.
+  Every other test here mocks `@faultmaven/copilot-ui`, which is right for
+  asserting the wiring and structurally blind to a package/host MISMATCH — a
+  mocked package has no dependencies, so the whole suite stayed green while the
+  panel crashed on every mount for want of a React context this app did not
+  install. Keep them rendering the real thing.
+
+### The panel advertisement
+
+`src/copilot/advertisement.ts` holds a cross-repo contract
+(faultmaven-copilot#231): the attribute `data-faultmaven-dashboard-panel` in
+`index.html` and the `FM_DASHBOARD_PANEL_AVAILABLE` window message after the
+panel mounts. It tells the extension that THIS BUILD hosts a panel, so the
+extension yields its side panel here. Values `""`, `"false"` and `"0"` do not
+advertise, which is how a build without the panel ships the same markup.
+
+## Testing
+
+`pnpm lint` deliberately does not cover `src/test/**` (`eslint.config.js`
+ignores it). Use `pnpm lint:tests` for those files, and
+`npx tsc -p tsconfig.eslint.json --noEmit` to type-check them —
+`tsconfig.json` excludes tests so they never ship in the app build.
 
 ## API Types
 

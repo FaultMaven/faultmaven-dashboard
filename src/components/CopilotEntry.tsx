@@ -3,23 +3,34 @@ import { useEffect, useState } from 'react';
 /**
  * Dashboard → Copilot entry point.
  *
- * A web page can't open a browser extension's side panel, so this is guidance,
- * not a direct action:
- * - Copilot installed  → hint to open it from the browser toolbar.
- * - Not installed      → CTA to the Chrome Web Store.
+ * What this says changed with the built-in panel (ADR-016 D1). It used to tell
+ * an installed user to open the Copilot from their toolbar — which was the only
+ * way to run an investigation, and is no longer true on this page.
+ *
+ * The wording is deliberately VERSION-AGNOSTIC. The marker says an extension is
+ * present, not which one: an extension older than the yield behaviour (D4)
+ * still opens its own side panel here, so copy asserting that the Copilot
+ * "steps aside" would be flatly wrong for that user. Pointing at where the
+ * extension is useful is true for every version.
+ *
+ * So the two states now say what is true:
+ * - Copilot installed  → where it earns its keep: beside Grafana, AWS,
+ *                        Datadog — the consoles this Dashboard is not.
+ * - Not installed      → the same store CTA as before. Nothing here requires
+ *                        the extension, and the product must never imply it
+ *                        does; the one thing it adds is reading the page you
+ *                        are looking at.
  *
  * Presence is detected via the marker the copilot's content script sets on this
  * page (it runs on the dashboard origin). Contract — keep in sync with the
  * extension's announceCopilotPresence():
  *   attribute: data-faultmaven-copilot="<version>" on <html>
  *   event:     faultmaven-copilot:ready (window)
+ *
+ * The advertisement travelling the other way — this page telling the extension
+ * it hosts a panel — is `src/copilot/advertisement.ts`.
  */
-
-// FaultMaven Copilot's published Chrome Web Store listing (#119). The trailing
-// segment is the extension ID assigned at publish; a `/detail/<slug>` URL
-// without it does not address the listing, so keep the ID when editing this.
-const COPILOT_STORE_URL =
-  'https://chromewebstore.google.com/detail/faultmaven-copilot/fghoagggojmkdopidfopijfnlmchjcng';
+import { COPILOT_STORE_URL } from '../copilot/storeListing';
 
 const PRESENCE_ATTR = 'data-faultmaven-copilot';
 const PRESENCE_EVENT = 'faultmaven-copilot:ready';
@@ -67,10 +78,10 @@ export function CopilotEntry() {
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1.5 text-sm text-fm-text-tertiary cursor-default"
-        title="Open the FaultMaven Copilot from your browser toolbar (click the extensions icon, then FaultMaven)."
+        title="Use the Copilot on Grafana, AWS or any console you are debugging in. This page runs the investigation itself."
       >
         <CopilotGlyph className="h-4 w-4" />
-        Copilot in your toolbar
+        Copilot for other tabs
       </span>
     );
   }

@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import KBPage from './pages/KBPage';
 import CaseListPage from './pages/CaseListPage';
 import CaseDetailPage from './pages/CaseDetailPage';
+import InvestigatePage from './pages/InvestigatePage';
 import LLMConfigPage from './pages/LLMConfigPage';
 import UserManagementPage from './pages/UserManagementPage';
 import OrgTeamManagementPage from './pages/OrgTeamManagementPage';
@@ -95,6 +96,19 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <CaseListPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* The built-in Copilot panel on a new investigation (ADR-016 D1,
+                D6). Inside ProtectedRoute like every other authenticated route:
+                the panel has no sign-in of its own and its host contract makes
+                the session non-nullable, so there is no value it could be
+                mounted with that lacks a signed-in user (D3). */}
+            <Route
+              path="/investigate"
+              element={
+                <ProtectedRoute>
+                  <InvestigatePage />
                 </ProtectedRoute>
               }
             />

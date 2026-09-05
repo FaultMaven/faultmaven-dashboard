@@ -1,5 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<!--
+  data-faultmaven-dashboard-panel: this build renders the Copilot panel itself,
+  so the extension yields its side panel on this origin (ADR-016 D4; contract
+  settled in faultmaven-copilot#231). It is a claim about the BUILD, not about
+  the account, the route or what is on screen — which is why it is
+  unconditional here and lives in the initial HTML: a content script at
+  document_start has to be able to answer before React exists. A build without
+  the panel ships this same markup with a falsy value ("", "false" or "0").
+  See src/copilot/advertisement.ts for the predicate and the matching window
+  message.
+-->
+<html lang="en" data-faultmaven-dashboard-panel="1">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon/square-dark.svg" />

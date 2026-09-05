@@ -25,7 +25,17 @@ export interface UseCaseListResult {
 export function useCaseList(pageSize = 20): UseCaseListResult {
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(false);
+  /**
+   * True from the FIRST render, not from the first fetch.
+   *
+   * The hook always loads on mount, so `false` here was a lie for one render —
+   * and a consumer that reads `!loading && cases.length === 0` as "this person
+   * has no cases" saw exactly that on every mount, before a single request had
+   * been made. CaseListPage now redirects such a person to the panel
+   * (ADR-016 D6), which turned that one render into an immediate bounce off a
+   * list that was about to arrive.
+   */
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [filters, setFiltersState] = useState<CaseFilters>({});

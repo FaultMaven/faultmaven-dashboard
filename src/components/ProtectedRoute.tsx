@@ -1,6 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { authManager } from '../lib/auth/AuthManager';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -30,10 +31,13 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   // Done in an effect rather than during render so it does not double-write
   // under StrictMode's double-invoked render.
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      const currentUrl = `${location.pathname}${location.search}`;
-      sessionStorage.setItem('oauth_redirect_after_login', currentUrl);
-    }
+    if (loading || isAuthenticated) return;
+    // NOT on a sign-out another tab initiated. This URL belongs to the account
+    // that just went away, so recording it would deep-link whoever signs in
+    // next straight into the previous person's case.
+    if (authManager.isCrossTabSignOut()) return;
+    const currentUrl = `${location.pathname}${location.search}`;
+    sessionStorage.setItem('oauth_redirect_after_login', currentUrl);
   }, [loading, isAuthenticated, location.pathname, location.search]);
 
   // Auth state hydrates asynchronously (AuthContext). Render nothing until it

@@ -3,6 +3,7 @@
 import config from '../../config';
 import type { AuthState } from './types';
 import { isSafeLogoutUrl } from './logoutUrl';
+import { subscribeCrossTabAuthState } from './crossTab';
 
 // Refresh the access token this long before it actually expires so an in-flight
 // request never races the expiry boundary.
@@ -170,6 +171,26 @@ export class AuthManager {
   // subscribe so the next identity never sees the previous user's values.
   private authClearedListeners = new Set<() => void>();
 
+  /**
+   * The user id this TAB believes it is signed in as.
+   *
+   * Storage is shared, so "who is signed in" cannot be read from it to decide
+   * whether another tab changed the account — by the time the event arrives,
+   * storage already holds the new identity. This is the only record of what
+   * this tab thought before that write landed.
+   */
+  private tabUserId: string | null = null;
+
+  /**
+   * Whether the sign-out this tab is in the middle of came from ANOTHER tab.
+   *
+   * Read by `ProtectedRoute`, which otherwise records the current URL as the
+   * post-login destination on its way to `/login`. On a cross-tab sign-out that
+   * URL belongs to the person who just signed out, so the NEXT account to sign
+   * in on this tab would be deep-linked straight into the previous one's case.
+   */
+  private crossTabSignOut = false;
+
   constructor() {
     // Dev-mode assertion: Ensure storage adapter is initialized
     if (import.meta.env.DEV && typeof window !== 'undefined' && !getBrowserStorage()?.storage) {
@@ -184,6 +205,9 @@ export class AuthManager {
    * Save authentication state to browser storage
    */
   async saveAuthState(authState: AuthState): Promise<void> {
+    // This tab's identity, and the end of any cross-tab sign-out it was in.
+    this.tabUserId = authState.user?.user_id ?? null;
+    this.crossTabSignOut = false;
     const browser = getBrowserStorage();
     if (browser?.storage) {
       await browser.storage.local.set({ authState });
@@ -219,6 +243,68 @@ export class AuthManager {
    * Subscribe to auth-cleared events. The listener fires after storage is wiped
    * (logout or a definitive refresh failure). Returns an unsubscribe function.
    */
+  /**
+   * Watch for another tab signing out, or signing a DIFFERENT account in.
+   *
+   * One mechanism, here, because both answers are this class's to give: it owns
+   * the credential and it is the only thing that knows which identity this tab
+   * holds. Before this, two independent subscribers each acted on `null` only —
+   * so a cross-tab sign-out reached the panel twice, and an account switch
+   * reached it not at all, leaving a tab showing user A's identity while
+   * `accessToken()` handed out user B's bearer.
+   *
+   * Rotation is not a change of identity and is deliberately ignored; another
+   * tab refreshes roughly every half hour, and treating that as a sign-out
+   * would log everyone out on a timer.
+   *
+   * Called once, by the app shell. Returns an unsubscribe.
+   */
+  watchCrossTabAuthChanges(): () => void {
+    return subscribeCrossTabAuthState((state) => {
+      if (state === null) {
+        void this.signOutFromAnotherTab();
+        return;
+      }
+      // An identity this tab never had is nothing to compare against: a tab
+      // that was signed out already has no session to end.
+      if (this.tabUserId === null) return;
+      if (state.user.user_id !== this.tabUserId) {
+        void this.signOutFromAnotherTab();
+      }
+    });
+  }
+
+  /**
+   * End this tab's session because another tab ended or replaced it.
+   *
+   * The same teardown a local sign-out runs — storage cleared, listeners
+   * notified — so every consumer (React state, the per-user caches, the
+   * Copilot panel) hears it once, on the one channel. What differs is only that
+   * no return path is recorded; see `crossTabSignOut`.
+   */
+  private async signOutFromAnotherTab(): Promise<void> {
+    this.crossTabSignOut = true;
+    this.tabUserId = null;
+    // A destination captured before this point belongs to the account that just
+    // went away. Drop it as well as suppressing the next capture.
+    try {
+      sessionStorage.removeItem('oauth_redirect_after_login');
+    } catch {
+      // sessionStorage unavailable/blocked — non-fatal.
+    }
+    await this.clearAuthState();
+  }
+
+  /**
+   * True while this tab is signing out because another tab did.
+   *
+   * `ProtectedRoute` consults it before recording a post-login destination.
+   * Cleared on the next successful sign-in.
+   */
+  isCrossTabSignOut(): boolean {
+    return this.crossTabSignOut;
+  }
+
   onAuthCleared(listener: () => void): () => void {
     this.authClearedListeners.add(listener);
     return () => {
@@ -339,6 +425,10 @@ export class AuthManager {
     try {
       if (browser?.storage) {
         const result = (await browser.storage.local.get(['authState'])) as { authState?: AuthState };
+        // Keep this tab's notion of who it is current with what it actually
+        // reads, so the cross-tab comparison has something to compare against
+        // on a tab that was restored rather than signed in.
+        if (result.authState?.user?.user_id) this.tabUserId = result.authState.user.user_id;
         return result.authState ?? null;
       }
     } catch (error: unknown) {
