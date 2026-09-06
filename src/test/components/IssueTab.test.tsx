@@ -45,6 +45,53 @@ describe('IssueTab status colour', () => {
     expect(status).toHaveClass('text-fm-text-primary');
   });
 
+  it('reads "Identified" from the backend milestone name, not from a local guess', () => {
+    // `milestones_completed` is the CaseDetail field, which the backend fills
+    // from `CaseProgress.completed_milestones` — a DERIVED map whose
+    // `root_cause_identified` entry is `cause_state == IDENTIFIED`. #675/INV-35
+    // retired the LLM-claimed milestone of the same name, and dashboard#128
+    // read that as "the label is always Not identified"; it is not, because the
+    // case-level snapshot was rewired to the derivation. This pins the reading
+    // in both directions so the name cannot go quiet unnoticed — every fixture
+    // in this file previously passed `milestones_completed: []`, so the label
+    // had no coverage at all and a real regression here would have been silent.
+    render(<IssueTab caseDetail={makeCaseDetail({ milestones_completed: ['root_cause_identified'] })} />);
+    expect(screen.getByText('Identified')).toBeInTheDocument();
+    expect(screen.queryByText('Not identified')).not.toBeInTheDocument();
+  });
+
+  it('reads "Not identified" when the engine has not identified a cause', () => {
+    // CANDIDATES and UNKNOWN both land here: the backend map emits the name
+    // only for IDENTIFIED, so the absence is the signal.
+    render(<IssueTab caseDetail={makeCaseDetail({ milestones_completed: ['symptom_verified'] })} />);
+    expect(screen.getByText('Not identified')).toBeInTheDocument();
+  });
+
+  it('reads the solution label from solution_verified', () => {
+    render(<IssueTab caseDetail={makeCaseDetail({ milestones_completed: ['solution_verified'] })} />);
+    expect(screen.getByText('Verified')).toBeInTheDocument();
+    expect(screen.queryByText('Not verified')).not.toBeInTheDocument();
+  });
+
+  it('reads "Not verified" when the solution milestone is absent', () => {
+    // The negative direction of the same label: `solution_accepted` is a
+    // different milestone and must not satisfy it.
+    render(<IssueTab caseDetail={makeCaseDetail({ milestones_completed: ['solution_accepted'] })} />);
+    expect(screen.getByText('Not verified')).toBeInTheDocument();
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+  });
+
+  it('survives a response with no milestones array at all', () => {
+    // `milestones_completed` is required in the generated contract, but the
+    // component carries a `|| []` fallback for it. Exercise that path rather
+    // than leaving the only guard against a crash untested.
+    const detail = makeCaseDetail();
+    delete (detail as { milestones_completed?: unknown }).milestones_completed;
+    render(<IssueTab caseDetail={detail} />);
+    expect(screen.getByText('Not identified')).toBeInTheDocument();
+    expect(screen.getByText('No milestones recorded.')).toBeInTheDocument();
+  });
+
   it('renders the closure reason as meaning, not as an enum key', () => {
     // The Dashboard showed the raw value under a "Resolution Notes" heading —
     // a classification presented as if it were a sentence someone wrote, on a
