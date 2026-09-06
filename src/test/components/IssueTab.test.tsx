@@ -73,6 +73,25 @@ describe('IssueTab status colour', () => {
     expect(screen.queryByText('Not verified')).not.toBeInTheDocument();
   });
 
+  it('reads "Not verified" when the solution milestone is absent', () => {
+    // The negative direction of the same label: `solution_accepted` is a
+    // different milestone and must not satisfy it.
+    render(<IssueTab caseDetail={makeCaseDetail({ milestones_completed: ['solution_accepted'] })} />);
+    expect(screen.getByText('Not verified')).toBeInTheDocument();
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+  });
+
+  it('survives a response with no milestones array at all', () => {
+    // `milestones_completed` is required in the generated contract, but the
+    // component carries a `|| []` fallback for it. Exercise that path rather
+    // than leaving the only guard against a crash untested.
+    const detail = makeCaseDetail();
+    delete (detail as { milestones_completed?: unknown }).milestones_completed;
+    render(<IssueTab caseDetail={detail} />);
+    expect(screen.getByText('Not identified')).toBeInTheDocument();
+    expect(screen.getByText('No milestones recorded.')).toBeInTheDocument();
+  });
+
   it('renders the closure reason as meaning, not as an enum key', () => {
     // The Dashboard showed the raw value under a "Resolution Notes" heading —
     // a classification presented as if it were a sentence someone wrote, on a
