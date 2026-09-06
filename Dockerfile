@@ -32,8 +32,17 @@ FROM nginx:alpine
 #                                    unbounded memory growth → DoS)
 #   - libexpat>=2.8.1-r0  → CVE-2026-45186 (expat DoS via crafted XML)
 #   - c-ares>=1.34.8-r0   → CVE-2026-33630 (c-ares UAF/double-free in query-completion handling)
+#   - libuuid>=2.42.3-r1  → the util-linux HIGH set: CVE-2026-53612/53613 (mount
+#                           TOCTOU), CVE-2026-53614 (SUID mount bypasses
+#                           nosuid/noexec), CVE-2026-76642 (failed external mount
+#                           helper still runs privileged X-mount post-hooks),
+#                           CVE-2026-78408 (nsenter --join-cgroup leaks root
+#                           cgroup migration authority), CVE-2026-78409/78410
+#                           (X-mount.subdir escape via intermediate symlinks;
+#                           restricted bind mounts do not pin the source).
+#                           libuuid is the only util-linux package in this image.
 RUN apk update && apk upgrade --no-cache \
-    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.8.1-r0" "c-ares>=1.34.8-r0"
+    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.8.1-r0" "c-ares>=1.34.8-r0" "libuuid>=2.42.3-r1"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
