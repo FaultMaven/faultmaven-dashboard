@@ -8,8 +8,8 @@
 //
 // LEXICON (ADR-017 D1). The isolation tenant is the **enterprise** on operator
 // and admin surfaces, and **your company** in end-user copy — which is what
-// this file is. The word "team account" is retired everywhere (D6): a team is a
-// group of accounts, never an account.
+// this file is. The vocabulary that called a team an account is retired (D6):
+// a team is a group of accounts, never one.
 
 import type { TeamRefusalReason } from '../../types/teams';
 

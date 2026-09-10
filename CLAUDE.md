@@ -197,8 +197,9 @@ Three consequences worth knowing before touching any of it:
   banner.
 
 **Lexicon.** The isolation tenant is **"enterprise"** on operator and admin
-surfaces and **"your company"** in end-user copy. The term **"team account" is
-retired** (ADR-017 D6): a team is a group of accounts, never an account.
+surfaces and **"your company"** in end-user copy. The vocabulary that called a
+team an **account** is **retired** (ADR-017 D6): a team is a group of accounts,
+never one.
 
 ## Development Guidelines
 
