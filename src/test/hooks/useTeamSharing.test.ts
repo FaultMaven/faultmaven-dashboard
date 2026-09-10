@@ -14,8 +14,8 @@ vi.mock('../../lib/api', () => ({
 import { useTeamSharing } from '../../hooks/useTeamSharing';
 
 const TEAMS = [
-  { team_id: 't1', name: 'SRE', organization_id: 'o1' },
-  { team_id: 't2', name: 'Platform', organization_id: 'o1' },
+  { team_id: 't1', name: 'SRE', enterprise_id: 'ent-1' },
+  { team_id: 't2', name: 'Platform', enterprise_id: 'ent-1' },
 ];
 
 describe('useTeamSharing (ADR-013 §D4)', () => {

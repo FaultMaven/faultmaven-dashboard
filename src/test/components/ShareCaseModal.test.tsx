@@ -11,8 +11,8 @@ import { shareCaseWithTeam, unshareCaseFromTeam } from '../../lib/api';
 import type { Team } from '../../types/cases';
 
 const TEAMS: Team[] = [
-  { team_id: 't1', name: 'SRE', organization_id: 'o1' },
-  { team_id: 't2', name: 'Platform', organization_id: 'o1' },
+  { team_id: 't1', name: 'SRE', enterprise_id: 'ent-1' },
+  { team_id: 't2', name: 'Platform', enterprise_id: 'ent-1' },
 ];
 
 const mockShare = shareCaseWithTeam as ReturnType<typeof vi.fn>;
