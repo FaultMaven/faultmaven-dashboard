@@ -47,10 +47,13 @@ export type CaseSummary = components['schemas']['CaseSummary'] & {
 };
 
 /**
- * A Team the caller belongs to (ADR-013 §D4), from `GET /api/v1/teams`.
- * Read-only here — team management is the Cloud admin surface.
+ * A Team the caller belongs to, from `GET /api/v1/teams`.
+ *
+ * Declared in `types/teams.ts` (its home module) and re-exported here because
+ * the case-sharing consumers — share badges, the team filter, the share picker
+ * — read their team shape alongside the case shapes.
  */
-export type Team = components['schemas']['TeamResponse'];
+export type { Team } from './teams';
 
 export type CaseDetail = components['schemas']['CaseDetail'] & {
   /** ADR-012 case origin; narrows the generated `string`. */
