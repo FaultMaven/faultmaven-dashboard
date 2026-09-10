@@ -7,7 +7,8 @@ import CaseDetailPage from './pages/CaseDetailPage';
 import InvestigatePage from './pages/InvestigatePage';
 import LLMConfigPage from './pages/LLMConfigPage';
 import UserManagementPage from './pages/UserManagementPage';
-import OrgTeamManagementPage from './pages/OrgTeamManagementPage';
+import OrganizationPage from './pages/OrganizationPage';
+import TeamsPage from './pages/TeamsPage';
 import AdminCaseListPage from './pages/AdminCaseListPage';
 import AdminCaseContentPage from './pages/AdminCaseContentPage';
 import OAuthAuthorizePage from './pages/OAuthAuthorizePage';
@@ -17,7 +18,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { useCapabilities } from './hooks/useCapabilities';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminProtectedRoute } from './components/AdminProtectedRoute';
-import { canManageConsole, canManageLlmConfig, canViewAllCases } from './lib/access';
+import { canManageConsole, canManageLlmConfig, canUseTeams, canViewAllCases } from './lib/access';
 
 function LLMConfigRoute({ children }: { children: React.ReactNode }) {
   const { isAdmin, loading, authState } = useAuth();
@@ -50,6 +51,29 @@ function ManagementConsoleRoute({ children }: { children: React.ReactNode }) {
   // Same predicate the nav item uses (anti-drift): the console is unreachable by
   // direct URL in standalone / pre-P2 cloud or for non-admins.
   if (canManageConsole(managementConsole, role)) {
+    return <>{children}</>;
+  }
+
+  return <Navigate to="/cases" replace />;
+}
+
+/**
+ * The Teams page is reachable by every signed-in account wherever the deployment
+ * has teams (ADR-017 D4) — no role, matching the nav item so the two cannot
+ * drift. Whether the caller may invite on a given team is that team's roster to
+ * say, and the backend says it.
+ */
+function TeamsRoute({ children }: { children: React.ReactNode }) {
+  const { loading, authState } = useAuth();
+  const { teamSharing, loading: capLoading } = useCapabilities();
+
+  if (loading || capLoading) return null;
+
+  if (!authState) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (canUseTeams(teamSharing)) {
     return <>{children}</>;
   }
 
@@ -145,10 +169,18 @@ export default function App() {
               }
             />
             <Route
+              path="/teams"
+              element={
+                <TeamsRoute>
+                  <TeamsPage />
+                </TeamsRoute>
+              }
+            />
+            <Route
               path="/admin/organization"
               element={
                 <ManagementConsoleRoute>
-                  <OrgTeamManagementPage />
+                  <OrganizationPage />
                 </ManagementConsoleRoute>
               }
             />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canManageConsole, canManageUsers, canViewAllCases } from '../../lib/access';
+import { canManageConsole, canManageUsers, canUseTeams, canViewAllCases } from '../../lib/access';
 
 describe('canManageUsers', () => {
   it('allows only cloud platform_admin', () => {
@@ -45,6 +45,19 @@ describe('canManageConsole', () => {
   it('denies the loading/unknown role state', () => {
     expect(canManageConsole(true, null)).toBe(false);
     expect(canManageConsole(false, null)).toBe(false);
+  });
+});
+
+describe('canUseTeams', () => {
+  it('follows the deployment capability and nothing else', () => {
+    expect(canUseTeams(true)).toBe(true);
+    expect(canUseTeams(false)).toBe(false);
+  });
+
+  it('takes no role at all — any account may create a team (ADR-017 D4)', () => {
+    // The signature is the assertion: gating sharing on `platform_admin`, as the
+    // old combined console did, would contradict the decision it implements.
+    expect(canUseTeams).toHaveLength(1);
   });
 });
 
