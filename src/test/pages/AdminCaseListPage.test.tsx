@@ -51,7 +51,7 @@ const copilotCase: CaseSummary = {
   closed_at: null,
   closure_reason: null,
   user_id: 'copilot_user',
-  organization_id: 'org1',
+  enterprise_id: 'ent-1',
   current_turn: 3,
   stage: 'diagnosis',
   turns_without_progress: 0,
@@ -87,7 +87,7 @@ const metadataCase: AdminCaseMetadata = {
   closed_at: null,
   closure_reason: null,
   user_id: 'tenant_user',
-  organization_id: 'org-acme',
+  enterprise_id: 'ent-acme',
   current_turn: 3,
   stage: 'diagnosis',
   turns_without_progress: 0,
@@ -358,7 +358,7 @@ describe('AdminCaseListPage', () => {
       const link = screen.getByRole('link', { name: /Open content/i });
       expect(link).toHaveAttribute(
         'href',
-        '/admin/cases/case-cloud-1?org=org-acme'
+        '/admin/cases/case-cloud-1?enterprise=ent-acme'
       );
       // Nothing on this arm may route into the owner-scoped case page.
       expect(document.querySelector('a[href^="/cases/"]')).toBeNull();
@@ -375,7 +375,7 @@ describe('AdminCaseListPage', () => {
       await waitFor(() => screen.getByText('case-cloud-1'));
       expect(screen.getByRole('link', { name: /Open content/i })).toHaveAttribute(
         'href',
-        expect.stringContaining('org=org-acme')
+        expect.stringContaining('enterprise=ent-acme')
       );
     });
 
@@ -493,7 +493,7 @@ describe('AdminCaseListPage', () => {
       await waitFor(() => screen.getByText('Copilot Case'));
       expect(screen.getByRole('link', { name: /Copilot Case/ })).toHaveAttribute(
         'href',
-        `/admin/cases/case-copilot?org=${encodeURIComponent(copilotCase.organization_id)}`
+        `/admin/cases/case-copilot?enterprise=${encodeURIComponent(copilotCase.enterprise_id)}`
       );
     });
   });

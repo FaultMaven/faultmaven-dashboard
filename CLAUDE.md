@@ -61,6 +61,8 @@ src/
 │   ├── AdminCaseListPage.tsx # Cross-tenant "All Cases" list (platform_admin; metadata-only in cloud)
 │   ├── AdminCaseContentPage.tsx # Operator break-glass content view (ADR-012 D9) — audited open of one case's title/description/transcript
 │   ├── UserManagementPage.tsx # Platform admin user management
+│   ├── TeamsPage.tsx         # Teams by consent (ADR-017 D4) — my teams, create, roster, invite by email, pending + revoke, my invitations (accept/decline), leave. EVERY signed-in account; gated only on the `teamSharing` capability
+│   ├── OrganizationPage.tsx  # The BILLING organization (ADR-017 D5) — members and their management roles. 404 (in no organization) renders as an empty state, not an error
 │   ├── LLMConfigPage.tsx     # LLM provider configuration
 │   ├── InvestigatePage.tsx   # The built-in Copilot panel on a NEW investigation (ADR-016 D1/D6)
 │   ├── OAuthAuthorizePage.tsx # OAuth flow for copilot extension
@@ -74,7 +76,7 @@ src/
 │   ├── DraftEditor.tsx       # Runbook draft editor with validation/quality display
 │   ├── CaseStatusBadge.tsx   # Status badge with phase colors
 │   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/State/Stage/Last Activity/[actions]) — used by CaseListPage + AdminCaseListPage (view=full)
-│   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/State/Stage/Last Activity) — no title column; "Open content" links to the audited operator route (ADR-012 D9)
+│   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/State/Stage/Last Activity) — no title column; "Open content" links to the audited operator route (ADR-012 D9), carrying `?enterprise=`
 │   ├── BreakGlassRequestDialog.tsx # Request time-boxed access to one case's content (reason + TTL)
 │   ├── TranscriptView.tsx    # Read-only transcript renderer — OPERATOR break-glass page only (the owner's tab is the panel now)
 │   ├── CaseStageCell.tsx     # Stage cell (Diagnosing/Mitigating/Resolving, amber `· stalled Nt`) — shared by both case tables and the detail header, so they cannot drift
@@ -93,6 +95,8 @@ src/
     ├── auth/                 # Auth (AuthManager, login/logout, token storage)
     ├── cases/                # Cases API (CRUD, reports, knowledge suggestions)
     ├── breakGlass/           # Operator break-glass API (grants + audited content/transcript open)
+    ├── teams/                # Teams + invitations (core /teams, /invitations) — api.ts is the client, copy.ts turns a refusal slug into a sentence
+    ├── organization/         # The BILLING organization console (cloud /admin/organization*)
     ├── knowledge/            # KB API (upload, list, delete, client utilities)
     ├── llm/                  # LLM config API
     ├── users/                # User management API
@@ -148,8 +152,10 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **AdminKBPage**: Organization KB management (admin only)
 - **CaseListPage**: Paginated case table with status/date/search filters. Search matches title and case ID via `POST /cases/search`. Renders rows via the shared `CaseTable` component. **When the list is empty and UNFILTERED it redirects to `/investigate`** — a signed-in person with no cases lands on the panel with a new investigation, not on a blank table (ADR-016 D6). A filtered-empty list stays put and offers the panel instead of jumping to it; a failed load never redirects, so an error is never mistaken for "no cases".
 - **InvestigatePage**: Route `/investigate`, inside `ProtectedRoute`. Mounts the built-in Copilot panel with no case seeded — a new investigation. This is the surface that makes the Dashboard able to RUN an investigation rather than only review one (ADR-016 D1).
-- **AdminCaseListPage**: Cross-tenant "All Cases" list (ADR-012 D9) — every user's cases on the server (Copilot- and Slack-agent-originated). Backed by `GET /api/v1/admin/cases`; state/source filters only. Gated by `canViewAllCases(isAdmin)` → **`platform_admin` in both deployments** (route `/admin/cases` + nav item). The response is a union **discriminated on `view`**, and the page narrows on it rather than on the deployment mode, so rendered columns cannot drift from served policy: `view: "full"` (standalone) renders `CaseTable` with titles; `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids/org/state/timestamps/counts, **no title or description** (user free text is content and needs the audited break-glass path, faultmaven#815). The endpoint still 403s under `TENANT_PROVIDER=multi` (RLS would make the list silently partial); the page shows that refusal *instead of* a table. Rows on **both** arms open through `/admin/cases/{id}` (the audited operator read), never `/cases/{id}` — the latter has no operator bypass and 404s on cases the operator does not own (faultmaven#846). The organization travels on the link (`?org=`) because requesting a grant needs it.
+- **AdminCaseListPage**: Cross-tenant "All Cases" list (ADR-012 D9) — every user's cases on the server (Copilot- and Slack-agent-originated). Backed by `GET /api/v1/admin/cases`; state/source filters only. Gated by `canViewAllCases(isAdmin)` → **`platform_admin` in both deployments** (route `/admin/cases` + nav item). The response is a union **discriminated on `view`**, and the page narrows on it rather than on the deployment mode, so rendered columns cannot drift from served policy: `view: "full"` (standalone) renders `CaseTable` with titles; `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids/state/timestamps/counts, **no title or description** (user free text is content and needs the audited break-glass path, faultmaven#815). The endpoint still 403s under `TENANT_PROVIDER=multi` (RLS would make the list silently partial); the page shows that refusal *instead of* a table. Rows on **both** arms open through `/admin/cases/{id}` (the audited operator read), never `/cases/{id}` — the latter has no operator bypass and 404s on cases the operator does not own (faultmaven#846). The ENTERPRISE travels on the link (`?enterprise=`) because requesting a grant needs it — `BreakGlassGrantRequest.enterprise_id`, the isolation tenant (ADR-017 D1), never the billing organization.
 - **AdminCaseContentPage**: Operator break-glass content view (ADR-012 D9, faultmaven#815). Route `/admin/cases/:caseId`, same `canViewAllCases` guard as the list. Reads `GET /api/v1/admin/cases/{id}` + `/messages`; renders the case title/description/state and the transcript via the shared `TranscriptView`. The **response's `access` discriminator** decides the banner — `standing` (standalone: recorded, not gated) vs `break_glass` (cloud: names the grant, its reason and remaining TTL, with "End access now") — never the app's notion of the deployment. Without a live grant the backend refuses and the page shows the refusal plus a `BreakGlassRequestDialog`; content only ever arrives inside a successful response, so there is no state in which the page holds content it should be hiding.
+- **TeamsPage**: Route `/teams`, inside `TeamsRoute` (`canUseTeams(teamSharing)` — no role: ADR-017 D4 says any account may create a team). Lists the offers addressed to me with accept/decline, then my teams: each card lazily loads its roster and, for a **team admin** (decided by the caller's own `team_role` on that roster, never by a deployment role), the invitations it has issued plus an invite-by-email form. Refusals render from the API's `reason` slug through `lib/teams/copy.ts`; 410 `invitation_expired` is a plain note, never an error banner. A `enterprise_is_personal` refusal replaces the invite form with the island sentence — the ONLY way this app learns the account is an island, because `/auth/me` publishes no enterprise.
+- **OrganizationPage**: Route `/admin/organization`, behind `ManagementConsoleRoute`. The **billing** organization (ADR-017 D5): its name, slug, enterprise, member count, and the members with their **management** roles. `GET /admin/organization` answering **404 means the caller is in no organization** — the normal state for every beta account — and the client turns it into `null` so the page renders an empty state rather than a failure. No team management here at all; cloud contract 2.0.0 deleted `/admin/teams*`.
 - **CaseDetailPage**: Case header (title, description, state badge, stage cell when investigating, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.
@@ -161,6 +167,39 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **DocumentCard**: Expandable card — click to load and display full document content from ChromaDB
 - **Storage Adapter**: Browser extension API compatibility layer for web
 - **Error Handling**: Graceful error display and recovery
+
+## Tenancy (ADR-017): three tiers, three questions
+
+The three ids a row can carry answer three different questions, and the UI must
+never let one stand in for another.
+
+| Tier | Question | Where it shows up here |
+|---|---|---|
+| **Enterprise** (`enterprise_id`) | *May these two accounts ever see each other's data?* | Required on `CaseSummary`, `CaseDetail`, `AdminCaseMetadata`, `TeamResponse`, `InvitationResponse`, `AdminUserListItem`, `UserDetailResponse`, `InvestigationSessionResponse`. It is the tenant `?enterprise=` carries to the break-glass page and the tenant `BreakGlassGrantRequest.enterprise_id` names. |
+| **Organization** (`organization_id`) | *Who pays for these accounts?* | **Billing only.** Nullable on the three case shapes and null for every account nobody pays for; a filter on `CaseSearchRequest`; the subject of `OrganizationPage` and `GET /auth/me`'s `organization`. Never a visibility predicate, and never rendered as one. |
+| **Team** (`team_id`) | *Who has agreed to share?* | `TeamsPage`, the share badges, the team case filter, `shared_team_ids`. Formed by consent: the invitee's own `POST /invitations/{id}/accept` is the only call that creates a membership. |
+
+Three consequences worth knowing before touching any of it:
+
+- **`GET /auth/me` publishes no enterprise.** There is no enterprise id on the
+  profile, so nothing client-side may derive one — including "is this account an
+  island?", which is rendered only from the backend's own
+  `enterprise_is_personal` refusal.
+- **`HostUser` carries no tenant.** The field was deleted from
+  `@faultmaven/copilot-ui` (copilot#253) because nothing read it, and there is
+  nothing to replace it with.
+- **Refusals on the team surface carry a slug.** 403/409/410 answer
+  `{error, detail, status_code, reason}`; branch on `reason` via
+  `teamRefusalReason`, render `src/lib/teams/copy.ts`'s sentence, and fall back
+  to the backend's `detail` when the slug is absent (a 404 carries none, by
+  design). **410 `invitation_expired` is not an error** — nobody did anything
+  wrong, the offer lapsed — so it renders as a plain note, never a failure
+  banner.
+
+**Lexicon.** The isolation tenant is **"enterprise"** on operator and admin
+surfaces and **"your company"** in end-user copy. The vocabulary that called a
+team an **account** is **retired** (ADR-017 D6): a team is a group of accounts,
+never one.
 
 ## Development Guidelines
 

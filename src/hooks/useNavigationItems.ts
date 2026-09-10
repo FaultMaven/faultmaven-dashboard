@@ -4,6 +4,7 @@ import {
   canManageConsole,
   canManageLlmConfig,
   canManageUsers,
+  canUseTeams,
   canViewAllCases,
 } from '../lib/access';
 
@@ -20,12 +21,19 @@ export interface NavItem {
  */
 export function useNavigationItems(currentPath: string): NavItem[] {
   const { deployment, role, isAdmin } = useAuth();
-  const { managementConsole } = useCapabilities();
+  const { managementConsole, teamSharing } = useCapabilities();
 
   const items: Omit<NavItem, 'active'>[] = [
     { label: 'Cases', path: '/cases' },
     { label: 'Knowledge Base', path: '/kb' },
   ];
+
+  // Teams (ADR-017 D4): every signed-in account, wherever the deployment has
+  // teams at all — see canUseTeams. Not an admin surface, which is the whole
+  // point: a team forms by consent among its own members.
+  if (canUseTeams(teamSharing)) {
+    items.push({ label: 'Teams', path: '/teams' });
+  }
 
   // All Cases (cross-tenant admin view): operator-only in both deployments —
   // see canViewAllCases. Cloud serves ambient metadata; titles need break-glass
@@ -44,9 +52,9 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     items.push({ label: 'Users', path: '/admin/users' });
   }
 
-  // Organization & Teams console (composed Cloud admin module, ADR-010 D7):
-  // gated on the managementConsole capability + platform_admin — see
-  // canManageConsole. Absent in standalone and pre-P2 cloud.
+  // Billing organization console (ADR-017 D5): gated on the managementConsole
+  // capability + platform_admin — see canManageConsole. Absent in standalone
+  // and wherever the cloud composition is not wired.
   if (canManageConsole(managementConsole, role)) {
     items.push({ label: 'Organization', path: '/admin/organization' });
   }

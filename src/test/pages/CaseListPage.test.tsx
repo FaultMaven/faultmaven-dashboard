@@ -47,7 +47,7 @@ const sampleCase: CaseSummary = {
   closed_at: null,
   closure_reason: null,
   user_id: 'u1',
-  organization_id: 'org1',
+  enterprise_id: 'ent-1',
   current_turn: 5,
   source: 'copilot',
   stage: 'diagnosis',

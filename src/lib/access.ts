@@ -18,28 +18,59 @@ export function canManageUsers(
 }
 
 /**
- * Single source of truth for "can this user reach the org/team management
- * console?" (ADR-013; ADR-010 D7 — the composed Cloud admin module).
+ * Single source of truth for "can this user reach the BILLING organization
+ * console?" (ADR-017 D5).
  *
- * The console lets an org admin manage the organization, its members + roles,
- * and its teams. It gates on TWO signals so both the nav hook and the route
- * guard stay in lockstep (anti-drift, same as the other predicates here):
+ * The console shows the organization that pays for a set of accounts, its
+ * members and their management roles. It gates on TWO signals so both the nav
+ * hook and the route guard stay in lockstep (anti-drift, same as the other
+ * predicates here):
  *
- * - `managementConsole`: the backend capability flag (`/v1/meta/capabilities`),
- *   true ONLY when a live TeamService is wired (Cloud multi-tenancy, ADR-010
- *   P2). This is the deployment-level gate — deliberately NOT `deployment ===
- *   'cloud'`, which would light the console up in Cloud before multi-tenancy is
- *   ready (the reason the flag exists; see faultmaven#749).
+ * - `managementConsole`: the backend capability flag
+ *   (`/api/v1/meta/capabilities`), true ONLY when the cloud composition is
+ *   wired. This is the deployment-level gate — deliberately NOT `deployment ===
+ *   'cloud'`, which would light the console up before it can answer (the reason
+ *   the flag exists; see faultmaven#749).
  * - `platform_admin`: the frontend's best-available admin proxy. The backend is
- *   the real authority — every admin route enforces the caller's ORG role and
- *   403s non-admins — so this only decides who is OFFERED the console. (The
- *   JWT-role vs org-role reconciliation is a known separate concern, #706.)
+ *   the real authority — the cloud module enforces the caller's ORGANIZATION
+ *   management role per request and 403s everyone else — so this only decides
+ *   who is OFFERED the console. (The JWT-role vs organization-role
+ *   reconciliation is a known separate concern, #706.)
+ *
+ * It does NOT gate teams. Teams moved to `canUseTeams` below when the org-admin
+ * team console was deleted (cloud contract 2.0.0): a billing admin has no
+ * standing over a team (ADR-017 D2), and a team forms by consent among its own
+ * members (D4).
  */
 export function canManageConsole(
   managementConsole: boolean,
   role: DashboardRole | null,
 ): boolean {
   return managementConsole && role === 'platform_admin';
+}
+
+/**
+ * Single source of truth for "can this user reach the Teams page?"
+ * (ADR-017 D4).
+ *
+ * ONE signal, and deliberately no role: **any account may create a team and is
+ * its team admin**. Gating this on `platform_admin` — as the old combined
+ * console did — would put the product's entire sharing model behind an operator
+ * role almost nobody holds, and would contradict the decision it implements.
+ *
+ * `teamSharing` is the backend's own flag for "this deployment has teams at
+ * all". Standalone has one enterprise, one default team and one account, so its
+ * `/teams` and `/invitations` routes answer 403
+ * `single_tenant_has_no_teams` / `single_tenant_has_no_invitations`; the
+ * capability is what lets a client hide the page rather than discover the
+ * refusal.
+ *
+ * Authority within a team stays the backend's: whether the caller may invite is
+ * their `team_role` on that team's roster, read per team, never a role carried
+ * here.
+ */
+export function canUseTeams(teamSharing: boolean): boolean {
+  return teamSharing;
 }
 
 /**

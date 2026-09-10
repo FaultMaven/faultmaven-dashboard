@@ -8,7 +8,8 @@ vi.mock('../../context/AuthContext', () => ({
 }));
 
 // Mock the capabilities hook: the Organization console item gates on
-// managementConsole. Default OFF so existing cases (which don't expect it) hold.
+// managementConsole and the Teams item on teamSharing. Both default OFF so
+// existing cases (which don't expect either) hold.
 const mockUseCapabilities = vi.fn();
 vi.mock('../../hooks/useCapabilities', () => ({
   useCapabilities: () => mockUseCapabilities(),
@@ -21,7 +22,7 @@ const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
 describe('useNavigationItems', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseCapabilities.mockReturnValue({ managementConsole: false });
+    mockUseCapabilities.mockReturnValue({ managementConsole: false, teamSharing: false });
   });
 
   it('standalone operator sees Cases, Knowledge Base, LLM Settings — no Users', () => {
@@ -194,14 +195,45 @@ describe('useNavigationItems', () => {
     });
 
     // Capability off (standalone / pre-P2 cloud): hidden.
-    mockUseCapabilities.mockReturnValue({ managementConsole: false });
+    mockUseCapabilities.mockReturnValue({ managementConsole: false, teamSharing: false });
     let result = renderHook(() => useNavigationItems('/cases')).result;
     expect(result.current.map((i) => i.label)).not.toContain('Organization');
 
     // Capability on (multi-tenant active): shown.
-    mockUseCapabilities.mockReturnValue({ managementConsole: true });
+    mockUseCapabilities.mockReturnValue({ managementConsole: true, teamSharing: false });
     result = renderHook(() => useNavigationItems('/cases')).result;
     expect(result.current.map((i) => i.label)).toContain('Organization');
+  });
+
+  it('EVERY signed-in account sees "Teams" wherever the deployment has them', () => {
+    // ADR-017 D4: any account may create a team. The item is deliberately not
+    // behind platform_admin — the surface it opens is the product's sharing
+    // model, not an operator console.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'standard_user',
+      isAdmin: false,
+    });
+
+    mockUseCapabilities.mockReturnValue({ managementConsole: false, teamSharing: false });
+    let result = renderHook(() => useNavigationItems('/cases')).result;
+    expect(result.current.map((i) => i.label)).not.toContain('Teams');
+
+    mockUseCapabilities.mockReturnValue({ managementConsole: false, teamSharing: true });
+    result = renderHook(() => useNavigationItems('/cases')).result;
+    expect(result.current.map((i) => i.label)).toContain('Teams');
+  });
+
+  it('standalone sees no "Teams" — one enterprise, one account, nobody to invite', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: true,
+    });
+    mockUseCapabilities.mockReturnValue({ managementConsole: false, teamSharing: false });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    expect(result.current.map((i) => i.label)).not.toContain('Teams');
   });
 
   it('cloud standard_user never sees "Organization" even when managementConsole is on', () => {
@@ -210,7 +242,7 @@ describe('useNavigationItems', () => {
       role: 'standard_user',
       isAdmin: false,
     });
-    mockUseCapabilities.mockReturnValue({ managementConsole: true });
+    mockUseCapabilities.mockReturnValue({ managementConsole: true, teamSharing: false });
 
     const { result } = renderHook(() => useNavigationItems('/cases'));
     expect(result.current.map((i) => i.label)).not.toContain('Organization');

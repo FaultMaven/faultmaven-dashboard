@@ -17,9 +17,15 @@ import type { AccountProfile } from '../lib/auth/functions';
  * The signed-in account as the panel needs it, from `/auth/me`.
  *
  * `/auth/me` rather than the stored `AuthState.user`: the stored copy is a
- * login-time snapshot whose roles can be stale and which carries no
- * organization at all on some vintages, and the panel gates an admin
+ * login-time snapshot whose roles can be stale, and the panel gates an admin
  * affordance on `roles`.
+ *
+ * No tenant is passed. `HostUser.organizationId` was deleted from the package
+ * (copilot#253) because nothing in it ever read the field — and there is
+ * nothing to replace it with: `/auth/me` publishes no enterprise at all, and
+ * its nullable `organization` is a billing summary (ADR-017 D5), null for every
+ * account nobody pays for. A field every host writes and nothing consumes is a
+ * claim about the session that nothing checks.
  */
 export function hostUserFromProfile(profile: AccountProfile): HostUser {
   return {
@@ -28,7 +34,6 @@ export function hostUserFromProfile(profile: AccountProfile): HostUser {
     displayName: profile.display_name,
     email: profile.email,
     roles: profile.roles ?? [],
-    organizationId: profile.organization?.organization_id,
   };
 }
 

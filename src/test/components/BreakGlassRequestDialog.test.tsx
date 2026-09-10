@@ -26,7 +26,7 @@ function renderDialog(overrides: Partial<Parameters<typeof BreakGlassRequestDial
   render(
     <BreakGlassRequestDialog
       caseId={CASE_ID}
-      organizationId="org-acme"
+      enterpriseId="ent-acme"
       onGranted={onGranted}
       onCancel={onCancel}
       {...overrides}
@@ -76,7 +76,7 @@ describe('BreakGlassRequestDialog', () => {
     });
 
     expect(mockRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ caseId: CASE_ID, organizationId: 'org-acme', reason: GOOD_REASON })
+      expect.objectContaining({ caseId: CASE_ID, enterpriseId: 'ent-acme', reason: GOOD_REASON })
     );
     await waitFor(() => expect(onGranted).toHaveBeenCalled());
   });

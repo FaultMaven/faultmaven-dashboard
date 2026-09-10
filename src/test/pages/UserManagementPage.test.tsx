@@ -52,7 +52,7 @@ function authAs(userId: string) {
 // `is_admin`, or `last_active_at`. The old hand-written type invented those.
 const adminUser: UserProfile = {
   user_id: 'u-admin',
-  organization_id: 'org1',
+  enterprise_id: 'ent-1',
   email: 'ada@faultmaven.local',
   full_name: 'Ada Admin',
   roles: ['user', 'admin'],
@@ -65,7 +65,7 @@ const adminUser: UserProfile = {
 
 const standardUser: UserProfile = {
   user_id: 'u-standard',
-  organization_id: 'org1',
+  enterprise_id: 'ent-1',
   email: 'stan@faultmaven.local',
   full_name: 'Stan Standard',
   roles: ['user'],

@@ -183,7 +183,7 @@ export default function AdminCaseListPage() {
             caseHref={(c) =>
               c.user_id === currentUserId
                 ? `/cases/${c.case_id}`
-                : `/admin/cases/${c.case_id}?org=${encodeURIComponent(c.organization_id)}`
+                : `/admin/cases/${c.case_id}?enterprise=${encodeURIComponent(c.enterprise_id)}`
             }
           />
         )}

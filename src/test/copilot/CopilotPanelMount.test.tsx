@@ -117,13 +117,14 @@ describe('CopilotPanelMount', () => {
 
     expect(lastHost).not.toBeNull();
     const host = lastHost as unknown as WiredHost;
+    // Exact: the host writes no tenant onto the session. `HostUser` carries no
+    // `organizationId` since copilot#253, and nothing here invents one.
     expect(host.session.user).toEqual({
       id: 'u1',
       username: 'ada',
       displayName: 'Ada L',
       email: 'ada@example.com',
       roles: ['user'],
-      organizationId: 'org-1',
     });
     // The two properties ADR-016 D3 rests on, asserted at the mount rather than
     // only in the session's own suite: there is no host value without a session,

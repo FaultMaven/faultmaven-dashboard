@@ -1,4 +1,5 @@
-// Break-glass API tests — operator transcript pagination (ADR-012 D9).
+// Break-glass API tests — the grant request's tenant field (ADR-017 D1) and
+// operator transcript pagination (ADR-012 D9).
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { CaseMessage } from '../../types/cases';
@@ -17,7 +18,7 @@ vi.mock('../knowledge/errors', () => ({
 }));
 
 import { makeAuthenticatedRequest } from '../knowledge/client';
-import { openAdminCaseTranscript } from './api';
+import { openAdminCaseTranscript, requestBreakGlassGrant } from './api';
 
 const mockRequest = makeAuthenticatedRequest as ReturnType<typeof vi.fn>;
 
@@ -25,7 +26,7 @@ const GRANT = {
   grant_id: 'grant-1',
   operator_user_id: 'op-1',
   target_case_id: 'case_a1b2c3d4e5f6',
-  target_organization_id: 'org-acme',
+  target_enterprise_id: 'ent-acme',
   reason: 'customer reports the investigation is stuck; ticket SUP-4821',
   created_at: '2026-07-26T00:00:00Z',
   expires_at: '2026-07-26T01:00:00Z',
@@ -60,6 +61,49 @@ function page(messages: CaseMessage[], total: number) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe('requestBreakGlassGrant', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('names the ENTERPRISE in the request body, and nothing else', async () => {
+    // Core contract 3.0.0 renamed the REQUEST field `organization_id` →
+    // `enterprise_id`, and declared the old name solely so it is REFUSED with a
+    // 422. There is no fallback: the enterprise is the isolation key the grant
+    // rebinds the read to, and the billing organization would not scope it.
+    mockRequest.mockResolvedValueOnce({ json: async () => GRANT });
+
+    await requestBreakGlassGrant({
+      caseId: 'case_a1b2c3d4e5f6',
+      enterpriseId: 'ent-acme',
+      reason: GRANT.reason,
+      ttlMinutes: 60,
+    });
+
+    const [url, init] = mockRequest.mock.calls[0];
+    expect(url).toBe('/api/v1/admin/grants');
+    const body = JSON.parse((init as { body: string }).body);
+    expect(body).toEqual({
+      case_id: 'case_a1b2c3d4e5f6',
+      enterprise_id: 'ent-acme',
+      reason: GRANT.reason,
+      ttl_minutes: 60,
+    });
+    expect(body).not.toHaveProperty('organization_id');
+  });
+
+  it('omits ttl_minutes when the caller does not choose one', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => GRANT });
+
+    await requestBreakGlassGrant({
+      caseId: 'case_a1b2c3d4e5f6',
+      enterpriseId: 'ent-acme',
+      reason: GRANT.reason,
+    });
+
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as { body: string }).body);
+    expect(body).not.toHaveProperty('ttl_minutes');
+  });
 });
 
 describe('openAdminCaseTranscript', () => {

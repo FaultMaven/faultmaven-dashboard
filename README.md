@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-GHCR-blue.svg)](https://github.com/FaultMaven/faultmaven-dashboard/pkgs/container/faultmaven-dashboard)
 
-> **FaultMaven Dashboard** is the web application for reviewing case investigations, managing your [FaultMaven](https://github.com/FaultMaven/faultmaven) knowledge base, configuring LLM providers, and administering users and teams.
+> **FaultMaven Dashboard** is the web application for reviewing case investigations, managing your [FaultMaven](https://github.com/FaultMaven/faultmaven) knowledge base, configuring LLM providers, sharing work through teams, and administering users.
 
 ---
 
@@ -30,7 +30,8 @@ While the [Copilot](https://github.com/FaultMaven/faultmaven-copilot) is for *re
 - **Case Investigation**: Browse and search past cases; open a case for its full detail — Transcript, Issue, auto-generated Report, Hypotheses, and Evidence tabs — and annotate or archive it
 - **Knowledge Base**: Upload runbooks, edit indexed documents, and manage the 3-tier KB (personal / team / global)
 - **LLM Configuration**: Configure providers and API keys, test connections, and set the fallback chain — hot-reloaded, no restart
-- **User & Team Administration**: Manage users, roles, organizations, and teams
+- **Teams**: Create a team, invite colleagues by email, and accept or decline the invitations addressed to you. A team is how cases and runbooks get shared, and nobody joins one without accepting
+- **Administration**: Manage users and roles, and the billing organization that covers a set of accounts — being on a subscription changes what is metered, not what anyone can see
 
 ### Dashboard vs Copilot
 
@@ -144,7 +145,8 @@ src/
 ├── lib/            # Modular API clients (cases/, knowledge/, llm/, users/, organization/,
 │                   #   teams/, auth/, meta/) + storage adapter and config
 ├── pages/          # Route pages: Login, KB, Cases (list + detail), Admin cases,
-│                   #   LLM config, User management, Org/Team management, OAuth, SSO callback
+│                   #   LLM config, User management, Teams, Organization (billing),
+│                   #   OAuth, SSO callback
 └── utils/          # Helpers
 ```
 

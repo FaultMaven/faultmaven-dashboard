@@ -26,7 +26,7 @@ function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
     last_login_at: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
-    organization_id: 'org-1',
+    enterprise_id: 'ent-1',
     ...overrides,
   } as UserProfile;
 }

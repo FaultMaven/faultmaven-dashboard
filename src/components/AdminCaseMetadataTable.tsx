@@ -17,14 +17,21 @@ interface AdminCaseMetadataTableProps {
  * them: user free text is content, reachable only through the audited
  * break-glass grant (faultmaven#815).
  *
- * No Organization column either, despite `organization_id` being on the row.
- * It would be constant in every configuration that can reach this table: under
- * `TENANT_PROVIDER=single` (what cloud runs today) every case carries the
- * Standalone org, and under `multi` the endpoint 403s rather than serve a list
- * RLS has silently narrowed to one tenant. A column with one value everywhere
- * implies a discrimination between tenants that this view cannot actually make.
- * It belongs with the bounded cross-tenant read in faultmaven#815, which is
- * what first makes org vary here.
+ * No tenant column either, despite the row carrying both ids. The ENTERPRISE
+ * (`enterprise_id`, the isolation tenant — ADR-017 D1) would be constant in
+ * every configuration that can reach this table: under `TENANT_PROVIDER=single`
+ * (what cloud runs today) every case carries the Standalone enterprise, and
+ * under `multi` the endpoint 403s rather than serve a list RLS has silently
+ * narrowed to one tenant. A column with one value everywhere implies a
+ * discrimination between tenants that this view cannot actually make. It
+ * belongs with the bounded cross-tenant read in faultmaven#815, which is what
+ * first makes the enterprise vary here.
+ *
+ * The billing `organization_id` gets no column at all, and for a different
+ * reason: it is nullable and is null for every account nobody pays for
+ * (ADR-017 D5), so a column for it would be blank down the page — and it
+ * answers a question nobody asks of an operator case list, since who pays for
+ * an account decides nothing about whose data this row is.
  *
  * This is a separate component from `CaseTable` rather than a `showTitle={false}`
  * prop on it, mirroring the backend's own choice of a separate response model
@@ -47,9 +54,10 @@ interface AdminCaseMetadataTableProps {
  * action, because reading a tenant's content should not be something a stray
  * click does.
  *
- * The organization travels with the link (`?org=`). Requesting a grant needs it,
- * and under multi-tenant cloud it cannot be read from the case — that is exactly
- * what the grant unlocks — so it has to come from the row.
+ * The ENTERPRISE travels with the link (`?enterprise=`). Requesting a grant
+ * needs it — `BreakGlassGrantRequest.enterprise_id` — and under multi-tenant
+ * cloud it cannot be read from the case, which is exactly what the grant
+ * unlocks, so it has to come from the row.
  */
 export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTableProps) {
   return (
@@ -103,7 +111,7 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
                 </td>
                 <td className="px-4 py-3 text-right">
                   <Link
-                    to={`/admin/cases/${c.case_id}?org=${encodeURIComponent(c.organization_id)}`}
+                    to={`/admin/cases/${c.case_id}?enterprise=${encodeURIComponent(c.enterprise_id)}`}
                     className="text-fm-accent hover:underline whitespace-nowrap"
                   >
                     Open content

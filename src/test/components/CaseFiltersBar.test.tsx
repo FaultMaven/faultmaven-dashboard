@@ -4,8 +4,8 @@ import { CaseFiltersBar } from '../../components/CaseFiltersBar';
 import type { CaseFilters, Team } from '../../types/cases';
 
 const TEAMS: Team[] = [
-  { team_id: 't1', name: 'SRE', organization_id: 'o1' },
-  { team_id: 't2', name: 'Platform', organization_id: 'o1' },
+  { team_id: 't1', name: 'SRE', enterprise_id: 'ent-1' },
+  { team_id: 't2', name: 'Platform', enterprise_id: 'ent-1' },
 ];
 
 describe('CaseFiltersBar', () => {
