@@ -13,6 +13,7 @@ export {
 export {
   TEAM_NAME_MAX_LENGTH,
   teamRefusalReason,
+  type AcceptInvitationResult,
   type CreateTeamRequest,
   type Invitation,
   type InvitationCreateRequest,

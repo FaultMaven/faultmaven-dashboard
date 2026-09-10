@@ -10,7 +10,7 @@
 // console these types used to describe was deleted in cloud contract 2.0.0: a
 // billing admin has no standing over a team (ADR-017 D2).
 
-import type { components } from './api.generated';
+import type { components, operations } from './api.generated';
 
 /** A team the caller belongs to — `GET /api/v1/teams`, `POST /api/v1/teams`. */
 export type Team = components['schemas']['TeamResponse'];
@@ -26,6 +26,22 @@ export type InvitationCreateRequest = components['schemas']['InvitationCreateReq
 
 /** An offer to join a team, and what became of it. */
 export type Invitation = components['schemas']['InvitationResponse'];
+
+/**
+ * What `POST /api/v1/invitations/{invitation_id}/accept` answers: the **team
+ * just joined**, not the invitation. Once accepted the offer is spent, and the
+ * team is the thing the caller now has.
+ *
+ * Derived from the generated OPERATION rather than named by hand, because a
+ * hand-written return type on a client function is checked against nothing —
+ * `response.json()` is `any`, so `Promise<Invitation>` compiles exactly as
+ * happily as `Promise<Team>` and the declaration can be silently wrong (it
+ * was). Reading it off the operation makes the declaration a claim the contract
+ * can refute: if a regeneration renames this operation or stops publishing a
+ * 200 on it, the build breaks here rather than at runtime in front of somebody.
+ */
+export type AcceptInvitationResult =
+  operations['accept_invitation_api_v1_invitations__invitation_id__accept_post']['responses'][200]['content']['application/json'];
 
 /**
  * The maximum `TeamCreateRequest.name` the backend accepts (contract 3.4.0,

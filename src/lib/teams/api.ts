@@ -17,6 +17,7 @@
 import { makeAuthenticatedRequest } from '../knowledge/client';
 import { handleAPIResponse } from '../knowledge/errors';
 import type {
+  AcceptInvitationResult,
   CreateTeamRequest,
   Invitation,
   InvitationCreateRequest,
@@ -143,13 +144,17 @@ export async function listMyInvitations(): Promise<Invitation[]> {
 /**
  * Consent — the only call on this API that creates a team membership.
  *
- * Answers 200 with the **team just joined** (`TeamResponse`), not the
- * invitation: once accepted, the offer is spent and the team is the thing the
- * caller now has. Typed off the contract rather than off the endpoint's name.
+ * Answers 200 with the **team just joined**, not the invitation: once
+ * accepted, the offer is spent and the team is the thing the caller now has.
+ * The return type is read off the generated operation (see
+ * `AcceptInvitationResult`), so the endpoint's name cannot talk anyone into
+ * `Invitation` again.
  *
  * 410 `invitation_expired` once the offer has elapsed.
  */
-export async function acceptInvitation(invitationId: string): Promise<Team> {
+export async function acceptInvitation(
+  invitationId: string
+): Promise<AcceptInvitationResult> {
   const response = await makeAuthenticatedRequest(
     `${INVITATIONS_BASE}/${encodeURIComponent(invitationId)}/accept`,
     { method: 'POST' }
