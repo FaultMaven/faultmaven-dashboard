@@ -28,7 +28,8 @@ const TTL_OPTIONS = [
 
 interface BreakGlassRequestDialogProps {
   caseId: string;
-  organizationId: string;
+  /** The enterprise the case belongs to — the isolation tenant (ADR-017 D1). */
+  enterpriseId: string;
   onGranted: (grant: BreakGlassGrant) => void;
   onCancel: () => void;
 }
@@ -49,7 +50,7 @@ interface BreakGlassRequestDialogProps {
  */
 export function BreakGlassRequestDialog({
   caseId,
-  organizationId,
+  enterpriseId,
   onGranted,
   onCancel,
 }: BreakGlassRequestDialogProps) {
@@ -80,7 +81,7 @@ export function BreakGlassRequestDialog({
     try {
       const grant = await requestBreakGlassGrant({
         caseId,
-        organizationId,
+        enterpriseId,
         reason: reason.trim(),
         ttlMinutes,
       });

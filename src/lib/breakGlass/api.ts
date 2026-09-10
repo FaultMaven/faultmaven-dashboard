@@ -27,17 +27,22 @@ const ADMIN_CASES_BASE = '/api/v1/admin/cases';
 /**
  * Mint a break-glass grant over one case.
  *
- * `organizationId` comes from the operator case list rather than being looked up
- * from the case: under multi-tenant cloud the case row is unreadable until the
- * request has rebound its RLS scope to that organization. A wrong pair is not a
- * security problem — the subsequent open simply 404s.
+ * `enterpriseId` is the ISOLATION tenant the case belongs to (ADR-017 D1), and
+ * it comes from the operator case list rather than being looked up from the
+ * case: under multi-tenant cloud the case row is unreadable until the request
+ * has rebound its RLS scope to that enterprise. A wrong pair is not a security
+ * problem — the subsequent open simply 404s.
+ *
+ * It is not the billing organization, and there is no fallback to the old
+ * `organization_id` field: core contract 3.0.0 renamed the REQUEST field, so a
+ * client still sending the old name is rejected rather than served.
  *
  * There is no extend operation, deliberately. Needing longer means requesting a
  * new grant with a fresh reason; the backend pins `expires_at` at the database.
  */
 export async function requestBreakGlassGrant(params: {
   caseId: string;
-  organizationId: string;
+  enterpriseId: string;
   reason: string;
   ttlMinutes?: number;
 }): Promise<BreakGlassGrant> {
@@ -46,7 +51,7 @@ export async function requestBreakGlassGrant(params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       case_id: params.caseId,
-      organization_id: params.organizationId,
+      enterprise_id: params.enterpriseId,
       reason: params.reason,
       ...(params.ttlMinutes !== undefined && { ttl_minutes: params.ttlMinutes }),
     }),

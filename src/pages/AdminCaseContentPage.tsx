@@ -185,15 +185,17 @@ function BreakGlassBanner({
  *   structural here: content only ever arrives inside a successful response, so
  *   there is no state in which this page holds content it should be hiding.
  *
- * The organization needed to request a grant is carried in the query string from
- * the list row (`?org=`). Under multi-tenant cloud the case's own organization
- * cannot be read before the grant exists — that is precisely what the grant
- * unlocks — so it has to travel with the navigation rather than be looked up.
+ * The ENTERPRISE needed to request a grant is carried in the query string from
+ * the list row (`?enterprise=`). It is the isolation tenant the case belongs to
+ * (ADR-017 D1), not the billing organization, and under multi-tenant cloud the
+ * case's own enterprise cannot be read before the grant exists — that is
+ * precisely what the grant unlocks — so it has to travel with the navigation
+ * rather than be looked up.
  */
 export default function AdminCaseContentPage() {
   const { caseId = '' } = useParams();
   const [searchParams] = useSearchParams();
-  const organizationId = searchParams.get('org') ?? '';
+  const enterpriseId = searchParams.get('enterprise') ?? '';
   const { clearAuthState } = useAuth();
 
   const [content, setContent] = useState<AdminCaseContentResponse | null>(null);
@@ -288,9 +290,9 @@ export default function AdminCaseContentPage() {
                   couple this page to the backend's wording. */}
               <button
                 onClick={() => setRequesting(true)}
-                disabled={!organizationId}
+                disabled={!enterpriseId}
                 title={
-                  organizationId
+                  enterpriseId
                     ? undefined
                     : 'Open this case from the All Cases list to request access'
                 }
@@ -336,7 +338,7 @@ export default function AdminCaseContentPage() {
       {requesting && (
         <BreakGlassRequestDialog
           caseId={caseId}
-          organizationId={organizationId}
+          enterpriseId={enterpriseId}
           onGranted={() => {
             setRequesting(false);
             load();

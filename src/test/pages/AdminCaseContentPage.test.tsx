@@ -74,7 +74,7 @@ const caseDetail: CaseDetail = {
   updated_at: '2026-07-01T00:00:00Z',
   last_activity_at: '2026-07-02T00:00:00Z',
   user_id: 'tenant-user-9',
-  organization_id: 'org-acme',
+  enterprise_id: 'ent-acme',
   source: 'copilot',
   current_turn: 3,
   turns_without_progress: 0,
@@ -96,7 +96,7 @@ const liveGrant = {
   operator_user_id: 'op-1',
   operator_username: 'operator@example.com',
   target_case_id: CASE_ID,
-  target_organization_id: 'org-acme',
+  target_enterprise_id: 'ent-acme',
   reason: 'customer reports the investigation is stuck; ticket SUP-4821',
   created_at: new Date().toISOString(),
   expires_at: new Date(Date.now() + 45 * 60_000).toISOString(),
@@ -115,7 +115,7 @@ const emptyTranscript = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={[`/admin/cases/${CASE_ID}?org=org-acme`]}>
+    <MemoryRouter initialEntries={[`/admin/cases/${CASE_ID}?enterprise=ent-acme`]}>
       <Routes>
         <Route path="/admin/cases/:caseId" element={<AdminCaseContentPage />} />
       </Routes>
