@@ -143,9 +143,13 @@ export async function listMyInvitations(): Promise<Invitation[]> {
 /**
  * Consent — the only call on this API that creates a team membership.
  *
+ * Answers 200 with the **team just joined** (`TeamResponse`), not the
+ * invitation: once accepted, the offer is spent and the team is the thing the
+ * caller now has. Typed off the contract rather than off the endpoint's name.
+ *
  * 410 `invitation_expired` once the offer has elapsed.
  */
-export async function acceptInvitation(invitationId: string): Promise<Invitation> {
+export async function acceptInvitation(invitationId: string): Promise<Team> {
   const response = await makeAuthenticatedRequest(
     `${INVITATIONS_BASE}/${encodeURIComponent(invitationId)}/accept`,
     { method: 'POST' }

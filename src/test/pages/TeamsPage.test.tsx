@@ -313,7 +313,8 @@ describe('TeamsPage', () => {
 
     it('accepts an offer — the only call that creates a membership', async () => {
       mockListMyInvitations.mockResolvedValue([OFFER]);
-      mockAccept.mockResolvedValue({ ...OFFER, status: 'accepted' });
+      // 200 answers the TEAM just joined, not the spent offer.
+      mockAccept.mockResolvedValue({ ...TEAM, team_id: 't9', name: 'Platform' });
 
       renderPage();
       fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));

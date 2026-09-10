@@ -132,16 +132,22 @@ describe('teams client', () => {
     expect(res).toEqual(invitations);
   });
 
-  it('acceptInvitation POSTs /accept — the only call that creates a membership', async () => {
-    const invitation = { invitation_id: 'i1', team_id: 't1', status: 'accepted' };
-    mockRequest.mockResolvedValueOnce(jsonResponse(invitation));
+  it('acceptInvitation POSTs /accept and resolves to the TEAM just joined', async () => {
+    // The contract answers 200 `TeamResponse` here, not `InvitationResponse`:
+    // once accepted the offer is spent, and the team is what the caller now
+    // has. Asserting the resolved value is what keeps the declared type honest
+    // — the endpoint's name would otherwise talk anyone into `Invitation`.
+    const joined = { team_id: 't1', name: 'SRE', description: null, enterprise_id: 'ent-1' };
+    mockRequest.mockResolvedValueOnce(jsonResponse(joined));
 
     const res = await acceptInvitation('i1');
 
     expect(mockRequest).toHaveBeenCalledWith('/api/v1/invitations/i1/accept', {
       method: 'POST',
     });
-    expect(res).toEqual(invitation);
+    expect(res).toEqual(joined);
+    expect(res.enterprise_id).toBe('ent-1');
+    expect(res).not.toHaveProperty('invitation_id');
   });
 
   it('declineInvitation DELETEs the offer', async () => {
