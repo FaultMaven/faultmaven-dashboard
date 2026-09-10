@@ -44,7 +44,11 @@ beforeEach(() => {
 });
 
 describe('hostUserFromProfile', () => {
-  it('maps /auth/me onto the host contract, organization included', () => {
+  it('maps /auth/me onto the host contract, and carries NO tenant', () => {
+    // `HostUser.organizationId` is gone from the package (copilot#253): nothing
+    // read it, and there is nothing to replace it with — `/auth/me` publishes no
+    // enterprise, and its `organization` is a billing summary (ADR-017 D5).
+    // `toEqual` is exact, so a re-added tenant key fails here.
     const profile = {
       user_id: 'u9',
       username: 'grace',
@@ -62,14 +66,14 @@ describe('hostUserFromProfile', () => {
       displayName: 'Grace H',
       email: 'grace@example.com',
       roles: ['user', 'admin'],
-      organizationId: 'org-7',
     });
   });
 
-  it('leaves organizationId undefined when the session is bound to no tenant', () => {
-    // `/auth/me` documents null as "nothing to show", never "no access". The
-    // panel must not read it as a permission signal, so it simply carries none.
-    const profile = {
+  it('is the same shape whether or not the account has a billing organization', () => {
+    // Being in no organization is the normal state for a beta account, and it
+    // says nothing about the session. The panel must not be handed a value that
+    // varies with it.
+    const withOrg = {
       user_id: 'u9',
       username: 'grace',
       display_name: 'Grace H',
@@ -77,10 +81,11 @@ describe('hostUserFromProfile', () => {
       roles: ['user'],
       is_dev_user: false,
       created_at: '2026-01-01T00:00:00Z',
-      organization: null,
+      organization: { organization_id: 'org-7', name: 'Acme' },
     } as AccountProfile;
+    const withoutOrg = { ...withOrg, organization: null } as AccountProfile;
 
-    expect(hostUserFromProfile(profile).organizationId).toBeUndefined();
+    expect(hostUserFromProfile(withoutOrg)).toEqual(hostUserFromProfile(withOrg));
   });
 });
 

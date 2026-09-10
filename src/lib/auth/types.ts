@@ -35,7 +35,11 @@ export interface AuthState {
     // cross-tenant operator role; `admin` is organization-scoped (ADR-012 D9).
     // There is no `is_admin` boolean — the backend has never sent one.
     roles?: string[];
-    organization_id?: string; // Multi-tenant organization context per backend storage fixes
+    // No tenant field. `AuthTokenResponse.user` is a `UserProfile`, which has
+    // never carried one — and there is nothing to rename the deleted
+    // `organization_id` to: the enterprise that actually isolates the session
+    // (ADR-017 D1) is a token claim the server verifies, not something published
+    // on a profile, and the billing organization (D5) is on `/auth/me` only.
   };
 }
 
