@@ -1,24 +1,34 @@
 import { useState } from 'react';
-import { ORG_ROLES, type InviteMemberRequest, type OrgRole } from '../../types/organization';
+import {
+  ORG_MANAGEMENT_ROLES,
+  type AddMemberRequest,
+  type OrgManagementRole,
+} from '../../types/organization';
 
-interface InviteMemberModalProps {
+interface AddMemberModalProps {
   onCancel: () => void;
-  /** Resolves when the invite succeeds (parent closes + refetches). */
-  onInvite: (request: InviteMemberRequest) => Promise<void>;
+  /** Resolves when the member is added (parent closes + refetches). */
+  onAdd: (request: AddMemberRequest) => Promise<void>;
 }
 
 /**
- * v1a "invite" (ADR-013; no email flow): add an EXISTING enterprise user to the
- * organization by email OR username, with a role. The backend resolves the user
- * within the caller's enterprise and rejects anyone outside it.
+ * Put an existing account of the same enterprise on the subscription.
  *
- * The parent mounts this only while open (`{showInvite && <InviteMemberModal/>}`),
+ * A **billing** act and nothing else (ADR-017 D5): it changes what is metered
+ * for that account and what its plan allows, and it grants no visibility of
+ * anybody's cases. Sharing is a team, and a team is joined by the invitee's own
+ * consent — which is why this dialog does not talk about access.
+ *
+ * The backend resolves the account within the caller's enterprise and refuses
+ * anyone outside it.
+ *
+ * The parent mounts this only while open (`{showAdd && <AddMemberModal/>}`),
  * so each open starts from fresh state — no reset effect needed.
  */
-export function InviteMemberModal({ onCancel, onInvite }: InviteMemberModalProps) {
+export function AddMemberModal({ onCancel, onAdd }: AddMemberModalProps) {
   const [identifierKind, setIdentifierKind] = useState<'email' | 'username'>('email');
   const [identifier, setIdentifier] = useState('');
-  const [role, setRole] = useState<OrgRole>('member');
+  const [role, setRole] = useState<OrgManagementRole>('member');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +45,7 @@ export function InviteMemberModal({ onCancel, onInvite }: InviteMemberModalProps
     setSubmitting(true);
     setError(null);
     try {
-      await onInvite({
+      await onAdd({
         role,
         ...(identifierKind === 'email' ? { email: value } : { username: value }),
       });
@@ -50,17 +60,18 @@ export function InviteMemberModal({ onCancel, onInvite }: InviteMemberModalProps
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="invite-member-title"
+      aria-labelledby="add-member-title"
     >
       <form
         onSubmit={handleSubmit}
         className="bg-fm-surface border border-fm-border rounded-fm-card p-6 w-full max-w-md shadow-fm-card"
       >
-        <h3 className="text-lg font-semibold text-fm-text-primary mb-1" id="invite-member-title">
+        <h3 className="text-lg font-semibold text-fm-text-primary mb-1" id="add-member-title">
           Add a member
         </h3>
         <p className="text-sm text-fm-text-secondary mb-4">
-          Add an existing user from your enterprise to this organization.
+          Put an existing account from your enterprise on this subscription. This changes what is
+          billed for them — it does not give anyone access to anyone else&apos;s cases.
         </p>
 
         <div className="mb-3">
@@ -94,16 +105,19 @@ export function InviteMemberModal({ onCancel, onInvite }: InviteMemberModalProps
         </div>
 
         <div className="mb-4">
-          <label className="block text-xs font-medium text-fm-text-secondary mb-1" htmlFor="invite-role">
-            Role
+          <label
+            className="block text-xs font-medium text-fm-text-secondary mb-1"
+            htmlFor="add-member-role"
+          >
+            Management role
           </label>
           <select
-            id="invite-role"
+            id="add-member-role"
             value={role}
-            onChange={(e) => setRole(e.target.value as OrgRole)}
+            onChange={(e) => setRole(e.target.value as OrgManagementRole)}
             className={inputClass}
           >
-            {ORG_ROLES.map((r) => (
+            {ORG_MANAGEMENT_ROLES.map((r) => (
               <option key={r} value={r}>
                 {r}
               </option>
