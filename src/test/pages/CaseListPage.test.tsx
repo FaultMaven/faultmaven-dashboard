@@ -152,7 +152,7 @@ describe('CaseListPage (read-only, D1)', () => {
     expect(screen.getByRole('heading', { name: /^Cases$/i })).toBeInTheDocument();
     expect(screen.getByText(/no cases yet/i)).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /start a new case/i }).getAttribute('href'),
+      screen.getByRole('link', { name: /\+ New Case/i }).getAttribute('href'),
     ).toBe('/investigate');
   });
 
@@ -183,7 +183,7 @@ describe('CaseListPage (read-only, D1)', () => {
     await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
     expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /start a new case/i }).getAttribute('href'),
+      screen.getByRole('link', { name: /\+ New Case/i }).getAttribute('href'),
     ).toBe('/investigate');
   });
 
@@ -270,7 +270,7 @@ describe('CaseListPage with chat in the Copilot extension (ADR-018 D3)', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText(sampleCase.title)).toBeInTheDocument());
 
-    expect(screen.queryByRole('link', { name: /^New Case$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /New Case/i })).not.toBeInTheDocument();
   });
 
   it('points the first-run empty state at the Copilot instead', async () => {
@@ -299,9 +299,10 @@ describe('CaseListPage lexicon (ADR-018 D5)', () => {
     vi.clearAllMocks();
   });
 
-  it('says "New Case" on the list CTA, and links it at the full-page surface', async () => {
-    // The positive half of the sweep. Without it the negative assertions below
-    // would pass just as happily on a page that rendered nothing at all.
+  it('carries NO create button once the list has rows — the nav owns that now', async () => {
+    // The nav renders `+ New Case` as a filled action on every page, so a
+    // second create control in this header was two affordances for one thing.
+    // The lexicon sweep still has real rendered copy to walk.
     mockListCases.mockResolvedValue({
       cases: [sampleCase],
       total_count: 1,
@@ -313,20 +314,21 @@ describe('CaseListPage lexicon (ADR-018 D5)', () => {
     await act(async () => { renderPage(); });
     await waitFor(() => expect(screen.getByText('Database Outage')).toBeInTheDocument());
 
-    const cta = screen.getByRole('link', { name: /^New Case$/ });
-    expect(cta.getAttribute('href')).toBe('/investigate');
+    expect(screen.queryByRole('link', { name: /New Case/i })).not.toBeInTheDocument();
     expect(lexiconViolations(document.body)).toEqual([]);
   });
 
-  it('says "Start a new case" in the first-run empty state', async () => {
+  it('keeps the first-run empty state pointing at the full-page surface', async () => {
     mockListCases.mockResolvedValue({ cases: [], total_count: 0, page: 0, page_size: 20, has_more: false });
 
     await act(async () => { renderPage(); });
     await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
 
+    // The empty state KEEPS its button — it is the whole point of the page —
+    // and now says the same thing the nav does.
     expect(screen.getByText('Start a new case and it will show up here.')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /^Start a new case$/ }).getAttribute('href'),
+      screen.getByRole('link', { name: /\+ New Case/ }).getAttribute('href'),
     ).toBe('/investigate');
     expect(lexiconViolations(document.body)).toEqual([]);
   });

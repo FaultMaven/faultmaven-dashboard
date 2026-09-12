@@ -27,6 +27,7 @@ vi.mock('../auth', () => ({
 }));
 
 import { makeAuthenticatedRequest, buildQueryParams } from './client';
+import { NetworkError } from './errors';
 import { authManager } from '../auth';
 
 // Get mocked functions
@@ -378,5 +379,68 @@ describe('buildQueryParams', () => {
     const result = buildQueryParams(params);
 
     expect(result).toBe('search=&filter=active');
+  });
+});
+
+/**
+ * A transport failure is not "Failed to fetch" (faultmaven-dashboard#133).
+ *
+ * `fetch` REJECTS when it cannot reach the server at all — no status, no body,
+ * nothing `handleAPIResponse` can classify — and the browser's message is the
+ * same six words for a backend that is down, a DNS failure, an offline laptop,
+ * a TLS error and a refused CORS preflight. `NetworkError` was declared and
+ * exported for exactly this case and never thrown by anything.
+ */
+describe('a request that cannot reach the server', () => {
+  it('throws NetworkError naming the endpoint, not the browser default', async () => {
+    vi.mocked(authManager.getAccessToken).mockResolvedValue('tok');
+    vi.mocked(global.fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new TypeError('Failed to fetch'),
+    );
+
+    const error = await makeAuthenticatedRequest('/api/test').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(NetworkError);
+    expect((error as NetworkError).message).not.toBe('Failed to fetch');
+    expect((error as NetworkError).message).toContain('Could not reach');
+  });
+
+  it('keeps the original as `cause`, so the real reason is still reachable', async () => {
+    // The friendly message is for the user; the TypeError is what a developer
+    // needs in the console. Replacing it outright would lose the only signal
+    // that distinguishes CORS from DNS from a dead port.
+    const original = new TypeError('Failed to fetch');
+    vi.mocked(authManager.getAccessToken).mockResolvedValue('tok');
+    vi.mocked(global.fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(original);
+
+    const error = (await makeAuthenticatedRequest('/api/test').catch((e: unknown) => e)) as NetworkError;
+
+    expect(error.cause).toBe(original);
+  });
+
+  it('lets an ABORT through unchanged', async () => {
+    // A cancelled request is the caller's own doing, not a network failure —
+    // rewriting it would break every `AbortController` caller that checks for it.
+    const abort = new DOMException('The operation was aborted.', 'AbortError');
+    vi.mocked(authManager.getAccessToken).mockResolvedValue('tok');
+    vi.mocked(global.fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(abort);
+
+    const error = await makeAuthenticatedRequest('/api/test').catch((e: unknown) => e);
+
+    expect(error).toBe(abort);
+    expect(error).not.toBeInstanceOf(NetworkError);
+  });
+
+  it('does NOT wrap an HTTP error response — that keeps its status and body', async () => {
+    // A 500 resolves normally and stays `handleAPIResponse`'s business, which
+    // has the detail the backend went to the trouble of sending.
+    vi.mocked(authManager.getAccessToken).mockResolvedValue('tok');
+    vi.mocked(global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response('{"detail":"boom"}', { status: 500 }),
+    );
+
+    const response = await makeAuthenticatedRequest('/api/test');
+
+    expect(response.status).toBe(500);
   });
 });

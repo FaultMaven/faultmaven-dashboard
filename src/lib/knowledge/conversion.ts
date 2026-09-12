@@ -445,12 +445,19 @@ export async function createRunbookManually(data: {
   causes: string;
   prevention: string;
 }): Promise<{ conversion_id: string; draft: ConversionDraft }> {
+  // An UNSET optional field is omitted, not sent as ''. `difficulty` is the one
+  // the backend defaults, so omitting it means "use the default" while `''`
+  // would be an invalid value it rejects — the difference between a real
+  // "not specified" choice and a 422.
+  const { difficulty, ...rest } = data;
+  const payload = difficulty ? { ...rest, difficulty } : rest;
+
   const response = await makeAuthenticatedRequest(
     `${CONVERT_BASE}/runbooks/create`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     },
   );
 

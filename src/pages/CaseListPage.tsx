@@ -56,11 +56,10 @@ export default function CaseListPage() {
           {/* Absent when chat lives in the extension (ADR-018 D3): that link
               leads to a full-page composer this person has asked not to have.
               The Copilot's own `+ New Case` is where they start one. */}
-          {!prefersExtension && (
-            <Link to="/investigate" className={ACCENT_BUTTON}>
-              New Case
-            </Link>
-          )}
+          {/* DROPPED from the populated header. The nav now renders `+ New Case`
+              as a filled action on every page, so a second create button a few
+              pixels below it was two affordances for one thing. It survives in
+              the empty state, where it is the whole point of the page. */}
         </div>
 
         <CaseFiltersBar filters={filters} onChange={setFilters} teams={teams} />
@@ -108,7 +107,7 @@ export default function CaseListPage() {
                 that honours it moves. */}
             {!prefersExtension && (
               <Link to="/investigate" className={ACCENT_BUTTON}>
-                Start a new case
+                + New Case
               </Link>
             )}
           </div>
