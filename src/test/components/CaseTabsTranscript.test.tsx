@@ -4,20 +4,18 @@ import { MemoryRouter } from 'react-router-dom';
 import type { CaseDetail } from '../../types/cases';
 
 /**
- * The Transcript tab is the shared Copilot UI, not a read-only copy of it
- * (ADR-016 D1).
+ * The LIVE arm of the Transcript tab — the shared Copilot UI, mounted when this
+ * tab is where the user's composer lives (ADR-016 D1, as scoped by ADR-018 D2).
  *
- * Two renderers of one transcript already existed and had drifted: this
- * repository's 120-line `TranscriptView` and the extension's 680-line
- * `ChatWindow`. Retiring the copy is the point — and so is what replaces it,
- * because a read-only tab is precisely what stopped the Dashboard from being
- * able to continue an investigation.
+ * What is asserted here is the panel arm's wiring: that it is the shared UI and
+ * not a second chat window, that it is told which case to open rather than
+ * being handed one through storage, that it survives a tab change, and that it
+ * remounts on a case change.
  *
- * `TranscriptView` itself is NOT deleted: the operator break-glass page
- * (ADR-012 D9) renders another tenant's case, under a grant, with no
- * interaction — the interactive panel cannot answer for that page. Its own
- * suite still covers it. What is asserted here is that the OWNER'S tab no
- * longer uses it.
+ * WHICH ARM a given user gets is not decided here — that is
+ * `transcriptSurface`'s one question, and `TranscriptSurface.test.tsx` binds
+ * the whole matrix. This file fixes the owner-on-this-case corner of it, which
+ * is the corner the panel occupies today.
  */
 
 let lastInitialCase: unknown;
@@ -63,7 +61,10 @@ vi.mock('../../components/TranscriptView', () => ({
   },
 }));
 
-const getCaseMessages = vi.fn();
+// Resolved, not bare: the READ-ONLY arm actually calls this, and a `vi.fn()`
+// returning undefined would fail it with a TypeError that looks nothing like
+// the thing under test. `vi.clearAllMocks()` clears calls, not implementations.
+const getCaseMessages = vi.fn().mockResolvedValue({ messages: [], total_count: 0 });
 vi.mock('../../lib/api', () => ({
   getCaseMessages: (...args: unknown[]) => getCaseMessages(...args),
   getUploadedFiles: vi.fn().mockResolvedValue([]),
@@ -144,6 +145,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   lastInitialCase = undefined;
+  // Reset to the OWNER. `currentUserId` is module state that the non-owner
+  // block below mutates, and which arm renders now depends on it — so without
+  // this, test order decides what the live-arm cases are even looking at.
+  currentUserId.value = 'u1'; // CASE.user_id
 });
 
 describe('the Transcript tab', () => {
@@ -231,20 +236,24 @@ describe('the Transcript tab', () => {
 
 
 describe('a case someone else owns', () => {
-  it('opens the panel READ-ONLY for a non-owner', async () => {
+  it('renders the READ-ONLY record for a non-owner, and mounts no panel', async () => {
     // A shared case is another person's investigation. Replacing the read-only
     // transcript with the panel handed a viewer a live composer and an upload,
     // so a teammate could post turns into an owner's case — an authoring right
-    // the old view never granted.
+    // the old view never granted. They now get the record back (ADR-018 D2),
+    // which also means they stop paying for a panel mount to be told they
+    // cannot type.
     currentUserId.value = 'someone-else';
 
     renderTabs();
-    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('read-only-transcript-view')).toBeInTheDocument());
 
-    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1', readOnly: true });
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transcript-panel-holder')).not.toBeInTheDocument();
+    expect(lastInitialCase).toBeUndefined();
   });
 
-  it('opens it writable for the owner', async () => {
+  it('opens the live panel for the owner', async () => {
     currentUserId.value = 'u1'; // CASE.user_id
 
     renderTabs();
@@ -254,13 +263,13 @@ describe('a case someone else owns', () => {
   });
 
   it('fails CLOSED when the viewer is unknown', async () => {
-    // No signed-in user id to compare against is not a match. Read-only is the
-    // safe answer; writable-by-default is not.
+    // No signed-in user id to compare against is not a match. The record is the
+    // safe answer; a composer-by-default is not.
     currentUserId.value = '';
 
     renderTabs();
-    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('read-only-transcript-view')).toBeInTheDocument());
 
-    expect(lastInitialCase).toMatchObject({ readOnly: true });
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
   });
 });

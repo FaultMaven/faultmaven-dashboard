@@ -69,7 +69,7 @@ src/
 │   └── SSOCallbackPage.tsx   # Cloud SSO callback (completion-code exchange)
 ├── components/               # Reusable UI components
 │   ├── PageHeader.tsx        # Top navigation bar
-│   ├── CaseTabs.tsx          # Tab container (Transcript, Issue, Report, Hypotheses, Evidence) — all tabs shown for every case
+│   ├── CaseTabs.tsx          # Tab container (Transcript, Issue, Report, Hypotheses, Evidence) — Hypotheses only when the case produced any; the Transcript tab picks its renderer via `lib/cases/transcriptSurface`
 │   ├── ReportTab.tsx         # View-only display of auto-generated terminal summaries
 │   ├── IssueTab.tsx          # Structured investigation outcome with case metadata
 │   ├── DocumentCard.tsx      # Expandable document card with content preview
@@ -78,7 +78,7 @@ src/
 │   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/State/Stage/Last Activity/[actions]) — used by CaseListPage + AdminCaseListPage (view=full)
 │   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/State/Stage/Last Activity) — no title column; "Open content" links to the audited operator route (ADR-012 D9), carrying `?enterprise=`
 │   ├── BreakGlassRequestDialog.tsx # Request time-boxed access to one case's content (reason + TTL)
-│   ├── TranscriptView.tsx    # Read-only transcript renderer — OPERATOR break-glass page only (the owner's tab is the panel now)
+│   ├── TranscriptView.tsx    # Read-only transcript renderer — the operator break-glass page, AND the Transcript tab's read-only arm (ADR-018 D2)
 │   ├── CaseStageCell.tsx     # Stage cell (Diagnosing/Mitigating/Resolving, amber `· stalled Nt`) — shared by both case tables and the detail header, so they cannot drift
 │   ├── ConfirmDialog.tsx     # Reusable confirmation modal
 │   ├── UploadModal.tsx       # File upload modal for KB
@@ -93,7 +93,7 @@ src/
 └── lib/                      # Core logic
     ├── api.ts                # Barrel re-exports from modular API clients
     ├── auth/                 # Auth (AuthManager, login/logout, token storage)
-    ├── cases/                # Cases API (CRUD, reports, knowledge suggestions)
+    ├── cases/                # Cases API (CRUD, reports, knowledge suggestions) + `transcriptSurface.ts`, the one rule that picks the Transcript tab's renderer
     ├── breakGlass/           # Operator break-glass API (grants + audited content/transcript open)
     ├── teams/                # Teams + invitations (core /teams, /invitations) — api.ts is the client, copy.ts turns a refusal slug into a sentence
     ├── organization/         # The BILLING organization console (cloud /admin/organization*)
@@ -159,11 +159,16 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 - **CaseDetailPage**: Case header (title, description, state badge, stage cell when investigating, case ID, created date) + tabbed content + resolution notes (terminal cases only). Archive button shown for terminal cases (subtle styling).
 - **ReportTab**: View-only display of auto-generated terminal summaries (resolution or closure). Formatted markdown rendering with download. No manual generate button.
 - **IssueTab**: Structured view of investigation outcome (problem, milestones, root cause, solutions, resolution notes). Shown for all cases.
-- **CaseDetailPage layout**: `h-screen flex flex-col`, NOT `min-h-screen`. The Transcript tab hosts the panel, and a panel whose composer is below the fold has to be scrolled to before it can be typed in — which is what a self-named `h-[70vh] min-h-[28rem]` produced once the case card had pushed it down the page. The panel now takes the room the page has left it, and the `min-h-0` chain from the page root down to it is load-bearing: one missing instance re-creates the bug in silence. Bound by `src/test/pages/CaseDetailLayout.test.tsx`.
-- **TranscriptTab**: The built-in Copilot panel, opened on this case (ADR-016 D1). It replaced a read-only renderer that duplicated the extension's — one renderer, not two — so the transcript on this tab is interactive: a turn taken here and a turn taken in the extension are the same rows on the same server. The case is handed over as an argument (`initialCase={{ kind: 'existing', caseId }}`), and the mount is `key`ed on the case id because the panel applies that once, at its own mount. `TranscriptView` survives for the operator break-glass page only.
+- **CaseDetailPage layout**: `h-screen flex flex-col`, NOT `min-h-screen`. The Transcript tab hosts the panel *on its live arm*, and a panel whose composer is below the fold has to be scrolled to before it can be typed in — which is what a self-named `h-[70vh] min-h-[28rem]` produced once the case card had pushed it down the page. The panel now takes the room the page has left it, and the `min-h-0` chain from the page root down to it is load-bearing: one missing instance re-creates the bug in silence. Bound by `src/test/pages/CaseDetailLayout.test.tsx`.
+- **Transcript tab (two arms)**: what it renders is decided by ONE question (ADR-018 D2) — *does this user have a composer somewhere else?* — answered in `src/lib/cases/transcriptSurface.ts` and nowhere else.
+  - **Read-only arm** (`RecordTranscriptTab` → the shared `TranscriptView`): one `GET /cases/{id}/messages`, no panel, **no package chunk, no session**. A transcript is record content, in the same category as the report and the evidence. This is what a non-owner gets today, and what the extension preference and the dock will route owners to in ADR-018 sequencing rows 6 and 2.
+  - **Live arm** (`LiveTranscriptTab` → `CopilotPanelMount`): the built-in panel opened on this case (ADR-016 D1), so a turn taken here and a turn taken in the extension are the same rows on the same server. The case is handed over as an argument (`initialCase={{ kind: 'existing', caseId, readOnly }}`), and the mount is `key`ed on the case id because the panel applies that once, at its own mount. `readOnly` is belt-and-braces: a non-owner never reaches this arm.
+  - The live arm is **hidden, not unmounted**, while another tab shows — unmounting tears down its session, conversation cache and any in-flight turn. The read-only arm needs no such thing and renders only when its tab is active.
+  - **`composerElsewhere` is hardwired `false` today**, because neither of the two things that make it true exists yet (the right-hand dock, row 2; the "use the Copilot extension for chat" preference, row 6). Both later rows change that VALUE and leave the rule alone.
+  - Bound by `src/test/components/TranscriptSurface.test.tsx` (the D2 matrix, and the conversation readable in every state) and `src/test/copilot/noPanelOnReadOnlyTranscript.test.tsx` (the read-only arm imports the package zero times — its own file, because a module import is cached per test file).
 - **HypothesesTab**: Renders `active_hypotheses` from `GET /cases/{id}/ui` for INVESTIGATING cases — status symbol (✓ validated / ✗ refuted / ● active / ◌ inconclusive / ○ captured-or-retired), likelihood %, evidence count, and statement. For terminal cases the `/ui` endpoint does not surface hypothesis details; falls back to a count-only note.
 - **EvidenceTab**: Evidence-first list backed by `GET /cases/{id}/evidence` (returns full `EvidenceDetails[]` in one round-trip). Each row shows category badge · summary · source filename · turn · linked-hypothesis count. Click to expand: verbatim `extract` (monospace), optional analysis, related hypotheses with stance badges (SUPPORTS / REFUTES / NEUTRAL). Footer toggle switches to a secondary file-view (uses `GET /cases/{id}/uploaded-files` + per-file detail) for the "did my upload get processed?" use case.
-- **CaseTabs**: 5 tabs shown for all cases: Transcript, Issue, Report, Hypotheses, Evidence. URL query param support (`?tab=report`, `?tab=issue`) for cross-frontend linking from copilot. All markdown content rendered via react-markdown with external links opening in new tabs.
+- **CaseTabs**: Transcript, Issue, Report, Hypotheses, Evidence — every one of them unconditional on the panel, the dock or the preference; Hypotheses alone is conditional on the case having produced any (`hypothesis_count > 0`, predating all of this). Transcript is the default tab, as it was before #124. URL query param support (`?tab=report`, `?tab=issue`) for cross-frontend linking from copilot. All markdown content rendered via react-markdown with external links opening in new tabs.
 - **DocumentCard**: Expandable card — click to load and display full document content from ChromaDB
 - **Storage Adapter**: Browser extension API compatibility layer for web
 - **Error Handling**: Graceful error display and recovery

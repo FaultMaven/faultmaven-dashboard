@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  getCaseMessages,
   getUploadedFiles,
   getUploadedFileDetails,
   getCaseEvidenceList,
@@ -8,6 +9,7 @@ import {
 } from '../lib/api';
 import type {
   CaseDetail,
+  CaseMessage,
   UploadedFile,
   UploadedFileDetails,
   EvidenceDetails,
@@ -16,8 +18,10 @@ import type {
 } from '../types/cases';
 import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
+import { TranscriptView } from './TranscriptView';
 import CopilotPanelMount from '../copilot/CopilotPanelMount';
 import { useAuth } from '../context/AuthContext';
+import { transcriptRenderer } from '../lib/cases/transcriptSurface';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
@@ -75,18 +79,61 @@ function stanceColor(stance: string): string {
 }
 
 /**
- * The transcript, and the input that continues it.
+ * The conversation as RECORD — read, not continued.
  *
- * This tab used to render `TranscriptView`, a read-only copy of a conversation
- * the extension rendered a second time and differently — the drift ADR-016 D1
- * retires. It now mounts the shared Copilot UI on this case: one renderer, and
- * the Dashboard can continue an investigation rather than only review one.
+ * One `GET /cases/{id}/messages`, rendered by `TranscriptView`: no panel, no
+ * package chunk, no session. This is what the Dashboard showed until #124
+ * replaced it with a live composer, and ADR-018 D2 restores it, because a
+ * transcript belongs in the same category as the report and the evidence —
+ * something a person reads about a case.
  *
- * The panel loads its own messages; nothing is fetched here. A turn taken here
- * and a turn taken in the extension are the same rows on the same server, so
- * neither host needs the other and each sees the other's work on reload.
+ * The renderer is shared with the operator break-glass page (ADR-012 D9): the
+ * backend serves the same message shape to both, and a second copy of this
+ * markup here would let the two drift.
  */
-function TranscriptTab({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
+function RecordTranscriptTab({ caseId }: { caseId: string }) {
+  const [messages, setMessages] = useState<CaseMessage[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await getCaseMessages(caseId);
+        if (!cancelled) setMessages(res.messages);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load transcript');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [caseId]);
+
+  if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
+  if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
+
+  return (
+    <div data-testid="transcript-record">
+      <TranscriptView messages={messages ?? []} />
+    </div>
+  );
+}
+
+/**
+ * The conversation as a SURFACE — the transcript, and the input that continues
+ * it.
+ *
+ * Mounted only when this tab is the user's composer: ADR-018 D2's question,
+ * answered in `transcriptRenderer`. The panel loads its own messages; nothing
+ * is fetched here. A turn taken here and a turn taken in the extension are the
+ * same rows on the same server, so neither host needs the other and each sees
+ * the other's work on reload.
+ */
+function LiveTranscriptTab({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
   return (
     // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
     // takes the room the page has left it; naming its own height is what put
@@ -480,6 +527,23 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
    */
   const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
 
+  /**
+   * Does this user have a composer somewhere else? (ADR-018 D2.)
+   *
+   * Two things will ever make it true, and neither exists yet: the right-hand
+   * dock on this page (sequencing row 2) and the "use the Copilot extension for
+   * chat" preference (row 6). So for now an owner's only composer is this tab —
+   * which is exactly what #124 shipped, so nobody regresses ahead of row 2. Both
+   * later rows change this VALUE and leave `transcriptRenderer` alone.
+   */
+  const composerElsewhere = false;
+
+  // One question, asked in one place. `read-only` is the base: the record is
+  // readable for everyone, and the live panel is what gets added on top when
+  // this tab is where the user's composer lives.
+  const renderer = transcriptRenderer({ isOwner, composerElsewhere });
+  const transcriptIsLive = renderer === 'panel';
+
   const requestedTab = searchParams.get('tab') as Tab | null;
   const activeTab: Tab = tabLabels.some((t) => t.id === requestedTab)
     ? (requestedTab as Tab)
@@ -514,26 +578,41 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
         ))}
       </div>
 
-      {/* The Transcript tab OWNS its scrolling: the panel scrolls its
-          transcript internally and pins its composer to the bottom, so a
-          scroll container here would give it a second one and put the composer
-          below the fold again. Every other tab is long-form content with no
-          scroller of its own, so it gets one — without it the viewport-bounded
-          page would simply clip them. */}
-      {/* HIDDEN, not unmounted, when another tab is showing.
-          Unmounting the panel tears down its session, its conversation cache
-          and any in-flight turn — so glancing at Evidence and coming back
+      {/* The LIVE arm only. It is not rendered at all when the tab is the
+          read-only record — that is what makes case detail cost no package
+          chunk, no session and no panel mount for a user whose composer is
+          elsewhere (ADR-018 D2).
+
+          The live arm OWNS its scrolling: the panel scrolls its transcript
+          internally and pins its composer to the bottom, so a scroll container
+          here would give it a second one and put the composer below the fold
+          again.
+
+          And when it IS rendered it is HIDDEN, not unmounted, while another tab
+          shows. Unmounting the panel tears down its session, its conversation
+          cache and any in-flight turn — so glancing at Evidence and coming back
           re-minted a session and re-fetched the transcript, and a turn in
           progress was lost. `hidden` costs a rendered subtree; the alternative
           costs the user's work. */}
-      <div
-        className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
-        data-testid="transcript-tab-panel"
-      >
-        <TranscriptTab caseId={caseId} readOnly={!isOwner} />
-      </div>
-      {activeTab !== 'transcript' && (
+      {transcriptIsLive && (
+        <div
+          className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
+          data-testid="transcript-tab-panel"
+        >
+          {/* `readOnly` is belt and braces, not the gate: a non-owner never
+              reaches this arm at all, because the rule above sends them to the
+              record. It stays so that a future input to that rule cannot hand
+              a viewer a composer by being wrong in one place. */}
+          <LiveTranscriptTab caseId={caseId} readOnly={!isOwner} />
+        </div>
+      )}
+      {/* Record content — long-form, with no scroller of its own, so it gets
+          one here; without it the viewport-bounded page would simply clip it.
+          The read-only transcript belongs in this container and not in the
+          live arm's: it is read, like the report and the evidence beside it. */}
+      {!(activeTab === 'transcript' && transcriptIsLive) && (
         <div className="flex-1 min-h-0 overflow-y-auto">
+          {activeTab === 'transcript' && <RecordTranscriptTab caseId={caseId} />}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
           {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
           {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
