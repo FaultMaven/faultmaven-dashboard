@@ -13,6 +13,17 @@ export interface NavItem {
   label: string;
   path: string;
   active: boolean;
+  /**
+   * Is this a thing you DO, rather than a place you go?
+   *
+   * Every other item in this nav is a destination, so an action sitting among
+   * them reads as one — "New Case" beside "Cases" looks like a filtered view of
+   * the case list rather than a button that creates something. The fix is
+   * weight, not words: the header renders this one as a filled control with a
+   * leading `+`, which is why the identical label reads correctly in the
+   * extension's sidebar (`+ New Case` there too).
+   */
+  action?: boolean;
 }
 
 /**
@@ -49,7 +60,7 @@ export function useNavigationItems(currentPath: string): NavItem[] {
      * leading to a second one. It comes straight back when they turn the
      * preference off, which is why this is safe to hide rather than disable.
      */
-    ...(prefersExtension ? [] : [{ label: 'New Case', path: '/investigate' }]),
+    ...(prefersExtension ? [] : [{ label: 'New Case', path: '/investigate', action: true }]),
     { label: 'Cases', path: '/cases' },
     { label: 'Knowledge Base', path: '/kb' },
   ];

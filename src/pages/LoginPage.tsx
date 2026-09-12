@@ -233,7 +233,7 @@ export default function LoginPage() {
           <div className="text-center mb-8 mt-6">
             <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
             <p className="text-fm-text-secondary">
-              Sign in with your organization account to access the Knowledge Base, view case metrics, and launch the AI Copilot.
+              Sign in with your organization account to search the Knowledge Base, review your cases, and start a new one with the Copilot.
             </p>
           </div>
 
@@ -300,7 +300,7 @@ export default function LoginPage() {
         <div className="text-center mb-8 mt-6">
           <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
           <p className="text-fm-text-secondary">
-            Authenticate to access the Knowledge Base, view case metrics, and launch the AI Copilot.
+            Authenticate to search the Knowledge Base, review your cases, and start a new one with the Copilot.
           </p>
         </div>
 

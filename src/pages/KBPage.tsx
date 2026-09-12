@@ -982,6 +982,47 @@ export default function KBPage() {
     setManualError(null);
     try {
       const result = await createRunbookManually(data);
+
+      /**
+       * A DRAFT THAT FAILED VALIDATION GOES STRAIGHT TO ITS EDITOR.
+       *
+       * The backend saves the draft either way and reports validation
+       * separately, so a 201 does not mean the runbook is good.
+       *
+       * KEEPING THE AUTHOR IN THE FORM IS A TRAP, which is what an earlier
+       * version of this did. The draft id is derived deterministically from
+       * (service, title) and `refuse_if_draft_slot_taken` runs BEFORE the
+       * write, so resubmitting the corrected form with the same title and
+       * service is a 409 — the invalid draft already holds the slot. The
+       * author could not get out without renaming the runbook or leaving to
+       * delete the draft.
+       *
+       * The editor is the one surface that can actually repair this: it edits
+       * the whole markdown including the frontmatter, so `symptom_class` and a
+       * missing `### Cause` are both fixable there, and saving re-runs
+       * validation on the draft that already owns the slot.
+       *
+       * The real fix for the common cases is upstream of here — the form no
+       * longer lets an off-vocabulary symptom or a Causes body with no
+       * subsection be submitted at all.
+       */
+      const validation = result.draft?.validation;
+      if (validation && !validation.passed) {
+        setConversion({
+          conversion_id: result.conversion_id,
+          status: 'completed',
+          source_file: { filename: data.title, size_bytes: 0, content_type: 'text/markdown', retained_path: '' },
+          analysis: { is_actionable: true, failure_modes: [], source_assessment: { content_type: 'manual', actionability_rating: 'high', missing_information: [] } },
+          drafts: [result.draft],
+          warnings: [],
+          created_at: new Date().toISOString(),
+        });
+        setEditingDraft(result.draft);
+        setOverlayMode('editor');
+        loadDrafts();
+        return;
+      }
+
       setConversion({
         conversion_id: result.conversion_id,
         status: 'completed',

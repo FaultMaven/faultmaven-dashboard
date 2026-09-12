@@ -30,11 +30,29 @@ export function PageHeader({ onLogout }: PageHeaderProps) {
             {navItems.map((item) => {
               const base =
                 'px-4 py-2 text-sm font-medium rounded-fm-btn transition-colors whitespace-nowrap';
-              const cls = item.active
-                ? `${base} text-white bg-fm-accent`
-                : `${base} text-fm-text-secondary border border-fm-border hover:bg-fm-elevated`;
+              // AN ACTION MUST NOT LOOK LIKE THE ACTIVE PAGE. Filling it with
+              // `bg-fm-accent` did exactly that: on /cases the nav showed two
+              // identically filled accent pills side by side, `+ New Case` and
+              // `Cases`, differing only in a `hover:` variant nobody sees at
+              // rest — so the distinction this was chosen to make, over
+              // renaming, did not exist. `active` owns the solid fill; an
+              // action gets its own token, an accent OUTLINE with an accent
+              // label, which reads as a control at rest and cannot be confused
+              // with wherever you happen to be.
+              const cls = item.action
+                ? `${base} text-fm-accent border border-fm-accent hover:bg-fm-accent/10`
+                : item.active
+                  ? `${base} text-white bg-fm-accent`
+                  : `${base} text-fm-text-secondary border border-fm-border hover:bg-fm-elevated`;
               return (
                 <Link key={item.path} to={item.path} className={cls}>
+                  {/* NOT `aria-hidden`. The `+` is half of what distinguishes
+                      this from a destination, and hiding it left the two
+                      channels disagreeing — sighted users saw `+ New Case`
+                      while the accessible name was plain "New Case", which is
+                      also the name the empty-state CTA renders literally. One
+                      name, both channels. */}
+                  {item.action && <span>+ </span>}
                   {item.label}
                 </Link>
               );

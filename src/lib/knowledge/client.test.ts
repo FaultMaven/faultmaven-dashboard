@@ -27,6 +27,7 @@ vi.mock('../auth', () => ({
 }));
 
 import { makeAuthenticatedRequest, buildQueryParams } from './client';
+import { NetworkError } from './errors';
 import { authManager } from '../auth';
 
 // Get mocked functions
@@ -378,5 +379,113 @@ describe('buildQueryParams', () => {
     const result = buildQueryParams(params);
 
     expect(result).toBe('search=&filter=active');
+  });
+});
+
+/**
+ * A transport failure is not "Failed to fetch" (faultmaven-dashboard#133).
+ *
+ * `fetch` REJECTS when it cannot reach the server at all — no status, no body,
+ * nothing `handleAPIResponse` can classify — and the browser's message is the
+ * same six words for a backend that is down, a DNS failure, an offline laptop,
+ * a TLS error and a refused CORS preflight. `NetworkError` was declared and
+ * exported for exactly this case and never thrown by anything.
+ */
+describe('a request that cannot reach the server', () => {
+  /**
+   * ITS OWN STUB. An earlier version of this block sat outside the `describe`
+   * that installs `globalThis.fetch`, so it ran against whatever mock the
+   * previous block's `beforeEach` happened to leave behind — green only by
+   * accident of file order, and reaching the REAL fetch the moment anything
+   * moved.
+   */
+  const fetchSpy = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchSpy);
+    fetchSpy.mockReset();
+    vi.mocked(authManager.getAccessToken).mockResolvedValue('tok');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('throws NetworkError naming the endpoint, not the browser default', async () => {
+    fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const error = await makeAuthenticatedRequest('/api/test').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(NetworkError);
+    expect((error as NetworkError).message).not.toBe('Failed to fetch');
+    expect((error as NetworkError).message).toContain('Could not reach');
+  });
+
+  it('keeps the original as `cause`, so the real reason is still reachable', async () => {
+    // The friendly message is for the user; the TypeError is what a developer
+    // needs in the console. Replacing it outright would lose the only signal
+    // that distinguishes CORS from DNS from a dead port.
+    const original = new TypeError('Failed to fetch');
+    fetchSpy.mockRejectedValue(original);
+
+    const error = (await makeAuthenticatedRequest('/api/test').catch((e: unknown) => e)) as NetworkError;
+
+    expect(error.cause).toBe(original);
+  });
+
+  it.each([
+    ['AbortError', new DOMException('aborted', 'AbortError')],
+    ['TimeoutError', new DOMException('timed out', 'TimeoutError')],
+    ['a custom abort reason', Object.assign(new Error('cancelled'), { name: 'AbortError' })],
+  ])('lets %s through unchanged', async (_label, reason) => {
+    // `controller.abort(reason)` rejects with the reason VERBATIM, and
+    // `AbortSignal.timeout()` rejects with TimeoutError rather than AbortError
+    // — an `instanceof DOMException` test missed both and reported the app's
+    // own cancellation as an unreachable backend.
+    fetchSpy.mockRejectedValue(reason);
+
+    const error = await makeAuthenticatedRequest('/api/test').catch((e: unknown) => e);
+
+    expect(error).toBe(reason);
+    expect(error).not.toBeInstanceOf(NetworkError);
+  });
+
+  it('names the origin it ACTUALLY requested, resolved from the URL', async () => {
+    // It used to interpolate `config.apiUrl`, which is the EMPTY STRING in the
+    // supported same-origin deployment (CLAUDE.md: `""` = same-origin) — so the
+    // message read "…the FaultMaven API at ." — and names the wrong host
+    // entirely for the absolute URLs this function also accepts.
+    //
+    // Derived from the request rather than asserted against a fixture, so this
+    // stays true whichever way the config mock is set.
+    fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const error = (await makeAuthenticatedRequest('/api/test').catch((e: unknown) => e)) as Error;
+
+    const requested = new URL(fetchSpy.mock.calls[0][0] as string, window.location.href).origin;
+    expect(error.message).toContain(requested);
+    expect(error.message).not.toMatch(/API at \. /);
+  });
+
+  it('names the host of an ABSOLUTE url, not the configured one', async () => {
+    fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const error = (await makeAuthenticatedRequest('https://elsewhere.example.com/x').catch(
+      (e: unknown) => e,
+    )) as Error;
+
+    expect(error.message).toContain('https://elsewhere.example.com');
+    expect(error.message).not.toContain('test-api.local');
+  });
+
+
+  it('does NOT wrap an HTTP error response — that keeps its status and body', async () => {
+    // A 500 resolves normally and stays `handleAPIResponse`'s business, which
+    // has the detail the backend went to the trouble of sending.
+    fetchSpy.mockResolvedValue(new Response('{"detail":"boom"}', { status: 500 }));
+
+    const response = await makeAuthenticatedRequest('/api/test');
+
+    expect(response.status).toBe(500);
   });
 });

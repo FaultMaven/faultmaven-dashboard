@@ -62,6 +62,19 @@ describe('the New Case nav item', () => {
     expect(labels()).toContain('New Case');
   });
 
+  it('is marked as an ACTION, which is what stops it reading as a destination', () => {
+    // The flag is what PageHeader renders differently. Asserting only the
+    // label and path — as the existing suite did — passes unchanged with
+    // `action` deleted, and the nav silently goes back to looking like a row
+    // of places to go.
+    const items = renderHook(() => useNavigationItems('/cases')).result.current;
+    const newCase = items.find((i) => i.label === 'New Case');
+
+    expect(newCase?.action).toBe(true);
+    // …and nothing else claims to be one.
+    expect(items.filter((i) => i.action).map((i) => i.label)).toEqual(['New Case']);
+  });
+
   it('removes ONLY that item', () => {
     const before = labels();
     setPrefersExtensionForChat(true);
