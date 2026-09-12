@@ -156,11 +156,3 @@ export function resolveCaseConversationLayout(
     viewportBounded: dockPresent || surface === 'tab-live',
   };
 }
-
-/**
- * Is the Transcript tab in the strip? (The same answer as the layout's, for
- * callers holding only a surface.)
- */
-export function transcriptTabIsShown(surface: ConversationSurface): boolean {
-  return surface !== 'dock';
-}

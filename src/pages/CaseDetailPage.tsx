@@ -33,11 +33,16 @@ export default function CaseDetailPage() {
   // storage is where it survives a reload.
   const [dockOpen, setDockOpen] = useState(() => !readDockCollapsed());
 
+  // The write is OUTSIDE the updater. React may double-invoke an updater in
+  // StrictMode and may replay or discard one when a higher-priority render
+  // interleaves, so a `localStorage` write in there can fire for a transition
+  // that is then thrown away — leaving the stored preference disagreeing with
+  // the dock on the next load. Updaters must be pure; this one reads `dockOpen`
+  // directly because the toggle is a user gesture and cannot race itself.
   const toggleDock = () => {
-    setDockOpen((wasOpen) => {
-      writeDockCollapsed(wasOpen);
-      return !wasOpen;
-    });
+    const next = !dockOpen;
+    writeDockCollapsed(!next);
+    setDockOpen(next);
   };
 
   const handleLogout = async () => {
@@ -286,6 +291,7 @@ export default function CaseDetailPage() {
               caseId={caseDetail.case_id}
               caseDetail={caseDetail}
               layout={layout}
+              readOnly={!isOwner}
             />
           </div>
 

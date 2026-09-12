@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import CopilotPanelMount from '../copilot/CopilotPanelMount';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,13 @@ import { logoutAuth } from '../lib/api';
  */
 export default function InvestigatePage() {
   const { clearAuthState } = useAuth();
+  // A NEW history entry each time, which is what `New Case` in the nav pushes
+  // even from this very page. The panel applies `initialCase` once, at its own
+  // mount, and React Router reconciles a same-path navigation rather than
+  // remounting — so without this the primary call to action was inert exactly
+  // where a user is most likely to press it: ten turns into a case, wanting a
+  // fresh one, clicking a highlighted button that did nothing at all.
+  const { key: historyKey } = useLocation();
 
   const handleLogout = async () => {
     await logoutAuth();
@@ -33,7 +41,7 @@ export default function InvestigatePage() {
     <div className="h-dvh min-h-[40rem] flex flex-col bg-fm-canvas">
       <PageHeader onLogout={handleLogout} />
       <main className="flex-1 min-h-0">
-        <CopilotPanelMount initialCase={{ kind: 'new' }} />
+        <CopilotPanelMount key={historyKey} initialCase={{ kind: 'new' }} />
       </main>
     </div>
   );

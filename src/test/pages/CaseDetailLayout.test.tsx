@@ -110,6 +110,7 @@ vi.mock('../../hooks/useCapabilities', () => ({
 }));
 
 import CaseDetailPage from '../../pages/CaseDetailPage';
+import { setViewport } from '../support/viewport';
 import { getCaseDetail } from '../../lib/api';
 
 const CASE = {
@@ -144,24 +145,6 @@ function heightClasses(el: Element): string[] {
   return Array.from(el.classList).filter((c) =>
     /^(h-|min-h-|max-h-|flex-1|flex-auto|flex-none|flex-shrink|overflow-|absolute|fixed)/.test(c),
   );
-}
-
-/**
- * A desktop or phone-class viewport, driven through `matchMedia` — the hook
- * subscribes to it, and happy-dom performs no layout of its own.
- */
-function setViewport(kind: 'wide' | 'narrow') {
-  const matches = kind === 'wide';
-  window.matchMedia = ((query: string) => ({
-    matches,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
 }
 
 async function renderCaseDetail(viewport: 'wide' | 'narrow' = 'wide') {

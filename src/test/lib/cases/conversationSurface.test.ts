@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   resolveCaseConversationLayout,
   resolveConversationSurface,
-  transcriptTabIsShown,
   type ConversationSurface,
   type ConversationSurfaceInput,
 } from '../../../lib/cases/conversationSurface';
@@ -106,7 +105,6 @@ describe('what the page derives from it', () => {
     for (const { input } of TABLE) {
       const layout = resolveCaseConversationLayout({ ...BASE, ...input });
       expect(layout.transcriptTabShown).toBe(layout.surface !== 'dock');
-      expect(transcriptTabIsShown(layout.surface)).toBe(layout.transcriptTabShown);
     }
   });
 

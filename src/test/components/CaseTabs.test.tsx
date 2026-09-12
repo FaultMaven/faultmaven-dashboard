@@ -72,6 +72,7 @@ function renderTabs(caseDetail: CaseDetail, route = '/') {
         caseId={caseDetail.case_id}
         caseDetail={caseDetail}
         layout={LAYOUTS.narrowOwner}
+        readOnly={false}
       />
     </MemoryRouter>
   );

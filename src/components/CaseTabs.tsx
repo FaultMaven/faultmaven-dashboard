@@ -43,6 +43,19 @@ interface CaseTabsProps {
    * agree are two props that can stop agreeing.
    */
   layout: CaseConversationLayout;
+
+  /**
+   * Belt and braces on the panel's own authoring guard.
+   *
+   * The rule already sends a non-owner to the record, so the live arm below is
+   * unreachable for them — this is deliberately a SECOND, independent
+   * expression of the same fact, derived from the case's `user_id` by the page.
+   * The dock states it too. If a future input to the rule is wrong in one
+   * place, a viewer must still not be handed a composer on someone else's case,
+   * and the two mount points must not disagree about whether that guard is
+   * worth having.
+   */
+  readOnly: boolean;
 }
 
 function hypothesisStatusStyle(state: HypothesisState): { color: string; symbol: string } {
@@ -467,7 +480,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
     }
     return (
       <div className="py-2 text-sm text-fm-text-tertiary">
-        No hypotheses yet — investigation hasn&apos;t produced any.
+        No hypotheses yet — this case hasn&apos;t produced any.
       </div>
     );
   }
@@ -481,7 +494,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
   );
 }
 
-export function CaseTabs({ caseId, caseDetail, layout }: CaseTabsProps) {
+export function CaseTabs({ caseId, caseDetail, layout, readOnly }: CaseTabsProps) {
   const { surface, transcriptTabShown, viewportBounded } = layout;
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -509,9 +522,7 @@ export function CaseTabs({ caseId, caseDetail, layout }: CaseTabsProps) {
 
   // The active tab is derived from the URL (single source of truth), so a
   // ?tab= deep link that changes on the same mounted case takes effect, and a
-  // click updates the URL — keeping copied links current. A deep link to a tab
-  // that isn't visible (e.g. ?tab=hypotheses on a case with none) or an unknown
-  // value falls back to Transcript rather than rendering a blank panel.
+  // click updates the URL — keeping copied links current.
   const transcriptIsLive = surface === 'tab-live';
 
   const requestedTab = searchParams.get('tab') as Tab | null;
@@ -574,10 +585,7 @@ export function CaseTabs({ caseId, caseDetail, layout }: CaseTabsProps) {
           className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
           data-testid="transcript-tab-panel"
         >
-          {/* `readOnly={false}`: this arm is reachable only for the owner —
-              `resolveConversationSurface` sends everyone else to the record —
-              and the panel's own guard is applied at the dock's mount too. */}
-          <CasePanelMount caseId={caseId} readOnly={false} />
+          <CasePanelMount caseId={caseId} readOnly={readOnly} />
         </div>
       )}
       {/* Record content — long-form, with no scroller of its own, so it gets

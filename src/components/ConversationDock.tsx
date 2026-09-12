@@ -93,15 +93,21 @@ export function ConversationDock({
         </button>
       )}
 
-      {hasOpened && (
-        <div
-          id="conversation-dock-body"
-          className={open ? 'flex-1 min-h-0 p-2' : 'hidden'}
-          data-testid="conversation-dock-body"
-        >
-          <CasePanelMount caseId={caseId} readOnly={readOnly} />
-        </div>
-      )}
+      {/* The CONTAINER is always rendered; only its contents wait for the first
+          open. Both toggles point `aria-controls` here, and a returning viewer
+          who collapsed the dock last session arrives with `hasOpened` false —
+          so gating the element itself left the rail advertising
+          `aria-expanded` against a target that did not exist, which is an ARIA
+          validity error (axe `aria-valid-attr-value`) and a region a screen
+          reader cannot resolve. An empty div costs nothing; the panel inside it
+          is still what is withheld. */}
+      <div
+        id="conversation-dock-body"
+        className={open ? 'flex-1 min-h-0 p-2' : 'hidden'}
+        data-testid="conversation-dock-body"
+      >
+        {hasOpened && <CasePanelMount caseId={caseId} readOnly={readOnly} />}
+      </div>
     </aside>
   );
 }

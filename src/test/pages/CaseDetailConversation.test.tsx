@@ -127,6 +127,8 @@ vi.mock('../../hooks/useCapabilities', () => ({
 
 import { useState } from 'react';
 import CaseDetailPage from '../../pages/CaseDetailPage';
+import { setViewport } from '../support/viewport';
+import { writeDockCollapsed } from '../../lib/cases/dockPreference';
 import { getCaseDetail } from '../../lib/api';
 
 function MountCounter({ caseId, readOnly }: { caseId: string; readOnly: string }) {
@@ -163,24 +165,6 @@ const CASE = {
   escalated: false,
   shared_team_ids: [],
 };
-
-/**
- * A phone-class or desktop-class viewport, driven through `matchMedia` because
- * that is what the hook subscribes to and happy-dom performs no layout.
- */
-function setViewport(kind: 'wide' | 'narrow') {
-  const matches = kind === 'wide';
-  window.matchMedia = ((query: string) => ({
-    matches,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
 
 async function renderPage() {
   vi.mocked(getCaseDetail).mockResolvedValue(CASE as never);
@@ -307,11 +291,18 @@ describe('the dock mounts only where it is showing', () => {
     // "A dock that has never been opened is proven to mount nothing: no package
     // chunk, no session, no transcript fetch." Seeded collapsed, as a returning
     // viewer who closed it last time would find it.
-    localStorage.setItem('faultmaven_caseDockCollapsed', 'true');
+    // Through the module that OWNS the key. `dockPreference.ts` says one module
+    // knows it; a test spelling the physical key and its JSON encoding is the
+    // second caller that invariant exists to prevent, and a rename would make
+    // this seed a silent no-op that fails pointing at the dock.
+    writeDockCollapsed(true);
     await renderPage();
     await waitFor(() => expect(screen.getByTestId('conversation-dock')).toBeInTheDocument());
 
-    expect(screen.queryByTestId('conversation-dock-body')).not.toBeInTheDocument();
+    // The CONTAINER is there — both toggles name it in `aria-controls`, and a
+    // dangling reference is an ARIA validity error — but it is EMPTY, which is
+    // the claim that matters: nothing of the panel has been reached.
+    expect(screen.getByTestId('conversation-dock-body')).toBeEmptyDOMElement();
     expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
     expect(fixtures.panel.mounts).toBe(0);
   });
@@ -340,6 +331,22 @@ describe('the dock mounts only where it is showing', () => {
 
     await renderPage();
     expect(await screen.findByRole('button', { name: /show the conversation/i })).toBeInTheDocument();
+  });
+});
+
+describe('the collapsed rail is a valid control', () => {
+  it('points aria-controls at an element that exists, even before a first open', async () => {
+    // The state a returning viewer arrives in. `aria-expanded` on a control
+    // whose target is not in the document is an ARIA validity error and leaves
+    // a screen reader with a region it cannot resolve.
+    writeDockCollapsed(true);
+    await renderPage();
+
+    const rail = await screen.findByRole('button', { name: /show the conversation/i });
+    const controlled = rail.getAttribute('aria-controls');
+    expect(controlled).toBeTruthy();
+    expect(rail).toHaveAttribute('aria-expanded', 'false');
+    expect(document.getElementById(controlled as string)).not.toBeNull();
   });
 });
 
