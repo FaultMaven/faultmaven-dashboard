@@ -38,6 +38,59 @@ afterEach(() => {
   postMessage.mockRestore();
 });
 
+describe('an extension that could not take the assertion back', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-faultmaven-copilot');
+  });
+
+  it('is never told a panel is showing', async () => {
+    // Asserting makes ANY extension yield; only one carrying
+    // faultmaven-copilot#257 can hear the retraction. Creating that state for
+    // an older install leaves a tab with NEITHER surface — so the Dashboard
+    // declines to create it, and that install keeps what it has today.
+    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+
+    render(<Harness showing />);
+    await waitFor(() => expect(postedTypes().length).toBeGreaterThan(0));
+
+    expect(postedTypes()).not.toContain(DASHBOARD_PANEL_MESSAGE);
+  });
+
+  it('is still sent the WITHDRAWAL, which costs nothing and can only help', async () => {
+    // A no-op for an extension that cannot hear it. The one thing worse than a
+    // redundant withdrawal is a missing one.
+    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+
+    render(<Harness showing />);
+
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
+  });
+
+  it('starts asserting once a NEWER extension announces itself mid-page', async () => {
+    // The bridge stamps its version at document_end and this hook can run
+    // first. Reading once at mount would see no extension, assert, and hand a
+    // yield to an install that cannot release it.
+    render(<Harness showing />);
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
+    postMessage.mockClear();
+
+    // An OLDER one appears: the assertion must stop.
+    act(() => {
+      document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+      window.dispatchEvent(new Event('faultmaven-copilot:ready'));
+    });
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
+    postMessage.mockClear();
+
+    // …and a newer one: it resumes.
+    act(() => {
+      document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
+      window.dispatchEvent(new Event('faultmaven-copilot:ready'));
+    });
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
+  });
+});
+
 describe('while a panel is showing', () => {
   it('asserts, to the page’s OWN origin and not a wildcard', async () => {
     render(<Harness showing />);

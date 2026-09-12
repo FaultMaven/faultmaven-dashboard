@@ -28,24 +28,37 @@ function documentFrom(markup: string): Document {
   return new DOMParser().parseFromString(markup, 'text/html');
 }
 
-describe('index.html advertises the built-in panel', () => {
-  it('carries the attribute on <html>, with a value that advertises', () => {
+describe('index.html carries the attribute with the flag DOWN', () => {
+  it('is present on <html>, and deliberately does not advertise', () => {
+    /**
+     * FLIPPED, and the reversal is the point of the test.
+     *
+     * An extension predating faultmaven-copilot#257 yields on THIS ATTRIBUTE at
+     * document_end and cannot hear the withdrawal that would release it — so it
+     * hides its side panel on a Dashboard that may then show none, leaving the
+     * tab with neither surface. Measured against the pre-#257 build in a real
+     * browser, and version-gating the live message alone did NOT close it: the
+     * attribute is an independent path to the same yield.
+     *
+     * The attribute stays in the markup rather than being deleted, because the
+     * contract's three falsy values exist precisely so a build can ship this
+     * same HTML with the flag down — and flipping one character back is how
+     * this migration ends.
+     */
     const doc = documentFrom(html);
 
     expect(doc.documentElement.hasAttribute(DASHBOARD_PANEL_ATTR)).toBe(true);
-    expect(dashboardAdvertisesPanel(doc)).toBe(true);
+    expect(dashboardAdvertisesPanel(doc)).toBe(false);
   });
 
-  it('would NOT advertise if the flag were flipped off', () => {
-    // The gate's own failure state, run against the real file: take the served
-    // markup, set the flag to each value the contract says does not advertise,
-    // and confirm the same predicate answers no. Without this, the assertion
-    // above could be passing on a predicate that returns true for anything.
-    for (const off of ['', 'false', '0']) {
-      const doc = documentFrom(html);
-      doc.documentElement.setAttribute(DASHBOARD_PANEL_ATTR, off);
-      expect(dashboardAdvertisesPanel(doc), `value ${JSON.stringify(off)}`).toBe(false);
-    }
+  it('WOULD advertise if the flag were flipped on', () => {
+    // This test's own failure state. Without it the assertion above could be
+    // passing on a predicate that returns false for anything — including a
+    // build that had lost the attribute or misspelled it.
+    const doc = documentFrom(html);
+    doc.documentElement.setAttribute(DASHBOARD_PANEL_ATTR, '1');
+
+    expect(dashboardAdvertisesPanel(doc)).toBe(true);
   });
 
   it('puts it on <html>, not on <body> or a <meta>', () => {
