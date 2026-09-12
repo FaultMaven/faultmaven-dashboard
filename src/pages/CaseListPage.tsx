@@ -7,9 +7,11 @@ import { useAuth } from '../context/AuthContext';
 import { useCaseList } from '../hooks/useCaseList';
 import { useTeamSharing } from '../hooks/useTeamSharing';
 import { logoutAuth } from '../lib/api';
+import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { ACCENT_BUTTON } from '../lib/ui/chip';
 
 export default function CaseListPage() {
+  const prefersExtension = usePrefersExtensionForChat();
   const { clearAuthState } = useAuth();
   const { teams, teamsById } = useTeamSharing();
   const {
@@ -51,9 +53,14 @@ export default function CaseListPage() {
             drift ADR-016 D2 exists to prevent, arriving through copy instead of
             through code.
           */}
-          <Link to="/investigate" className={ACCENT_BUTTON}>
-            New Case
-          </Link>
+          {/* Absent when chat lives in the extension (ADR-018 D3): that link
+              leads to a full-page composer this person has asked not to have.
+              The Copilot's own `+ New Case` is where they start one. */}
+          {!prefersExtension && (
+            <Link to="/investigate" className={ACCENT_BUTTON}>
+              New Case
+            </Link>
+          )}
         </div>
 
         <CaseFiltersBar filters={filters} onChange={setFilters} teams={teams} />
@@ -86,12 +93,22 @@ export default function CaseListPage() {
             </p>
             <p className="text-fm-text-secondary text-sm mb-5">
               {totalCount === 0
-                ? 'Start a new case and it will show up here.'
+                ? prefersExtension
+                  ? 'Start a new case from the Copilot and it will show up here.'
+                  : 'Start a new case and it will show up here.'
                 : 'Clear the filters to see everything, or start looking at something new.'}
             </p>
-            <Link to="/investigate" className={ACCENT_BUTTON}>
-              Start a new case
-            </Link>
+            {/* ADR-018 D3's own note on D6: with the preference on, the
+                first-run destination does not exist, so the empty state points
+                at the Copilot rather than at a surface that would redirect
+                straight back here. The RULE is unchanged — a new user starts a
+                case rather than staring at an empty table — only the surface
+                that honours it moves. */}
+            {!prefersExtension && (
+              <Link to="/investigate" className={ACCENT_BUTTON}>
+                Start a new case
+              </Link>
+            )}
           </div>
         ) : (
           <>

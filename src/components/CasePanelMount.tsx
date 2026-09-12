@@ -7,7 +7,16 @@ import CopilotPanelMount from '../copilot/CopilotPanelMount';
  * live arm — and every one of the decisions below is easy to get right in one
  * of them and forget in the other.
  */
-export function CasePanelMount({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
+export function CasePanelMount({
+  caseId,
+  readOnly,
+  visible,
+}: {
+  caseId: string;
+  readOnly: boolean;
+  /** On screen right now — not merely mounted. Drives the D0 advertisement. */
+  visible: boolean;
+}) {
   return (
     // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
     // takes the room its container has left it; naming its own height is what
@@ -20,6 +29,7 @@ export function CasePanelMount({ caseId, readOnly }: { caseId: string; readOnly:
       <CopilotPanelMount
         key={caseId}
         initialCase={{ kind: 'existing', caseId, readOnly }}
+        visible={visible}
       />
     </div>
   );

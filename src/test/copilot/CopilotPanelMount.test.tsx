@@ -1,4 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import {
+  DASHBOARD_PANEL_MESSAGE,
+  DASHBOARD_PANEL_WITHDRAWN_MESSAGE,
+} from '@faultmaven/copilot-ui/contract';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { InitialCase, WiredHost } from '@faultmaven/copilot-ui';
@@ -286,17 +290,22 @@ describe('CopilotPanelMount', () => {
     postMessage.mockRestore();
   });
 
-  it('does NOT advertise when the panel could not start', async () => {
-    // Silence means "the extension keeps its panel", which is the right answer
-    // when this one is not there. Announcing anyway would leave the user with
-    // neither.
+  it('does NOT advertise when the panel could not start — and withdraws instead', async () => {
+    // A mount that failed is not showing a panel, so the claim must not be
+    // made. Since ADR-018 D0 it must also be actively UNMADE: the extension
+    // needs to know to keep its own side panel, and silence is not a
+    // retraction. Asserted on the ADVERTISEMENT specifically rather than on
+    // postMessage as a whole, because the withdrawal travels the same channel.
     const postMessage = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
-    getAccountProfile.mockRejectedValue(new Error('profile fetch failed: 500'));
 
+    getAccountProfile.mockRejectedValue(new Error('nope'));
     mount(NEW_INVESTIGATION);
     await screen.findByTestId('copilot-panel-error');
 
-    expect(postMessage).not.toHaveBeenCalled();
+    const types = postMessage.mock.calls.map((call) => (call[0] as { type?: unknown })?.type);
+    expect(types).not.toContain(DASHBOARD_PANEL_MESSAGE);
+    expect(types).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE);
+
     postMessage.mockRestore();
   });
 });

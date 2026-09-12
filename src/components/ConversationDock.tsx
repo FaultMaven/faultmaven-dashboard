@@ -108,7 +108,9 @@ export function ConversationDock({
         className={open ? 'flex-1 min-h-0 p-2' : 'hidden'}
         data-testid="conversation-dock-body"
       >
-        {hasOpened && <CasePanelMount caseId={caseId} readOnly={readOnly} />}
+        {/* `visible={open}` — mounted but collapsed is NOT showing, so the
+            extension gets its side panel back while the rail is closed. */}
+        {hasOpened && <CasePanelMount caseId={caseId} readOnly={readOnly} visible={open} />}
       </div>
     </aside>
   );

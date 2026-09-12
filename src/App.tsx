@@ -17,6 +17,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useCapabilities } from './hooks/useCapabilities';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { usePrefersExtensionForChat } from './hooks/useChatSurface';
 import { AdminProtectedRoute } from './components/AdminProtectedRoute';
 import { canManageConsole, canManageLlmConfig, canUseTeams, canViewAllCases } from './lib/access';
 
@@ -80,6 +81,23 @@ function TeamsRoute({ children }: { children: React.ReactNode }) {
   return <Navigate to="/cases" replace />;
 }
 
+/**
+ * The full-page composer, absent when chat lives in the extension (ADR-018 D3).
+ *
+ * The nav item goes with it, but a ROUTE needs its own guard: a bookmark, a
+ * back button or a stale link would otherwise mount a second composer for
+ * someone who has explicitly asked for one surface. It redirects rather than
+ * refusing, because there is nothing wrong with the request — the surface has
+ * simply moved, and `/cases` is where this person's work is.
+ *
+ * `replace`, so the back button does not bounce them straight back into it.
+ */
+function ChatSurfaceRoute({ children }: { children: React.ReactNode }) {
+  const prefersExtension = usePrefersExtensionForChat();
+  if (prefersExtension) return <Navigate to="/cases" replace />;
+  return <>{children}</>;
+}
+
 function AllCasesRoute({ children }: { children: React.ReactNode }) {
   const { isAdmin, loading, authState } = useAuth();
 
@@ -132,7 +150,9 @@ export default function App() {
               path="/investigate"
               element={
                 <ProtectedRoute>
-                  <InvestigatePage />
+                  <ChatSurfaceRoute>
+                    <InvestigatePage />
+                  </ChatSurfaceRoute>
                 </ProtectedRoute>
               }
             />

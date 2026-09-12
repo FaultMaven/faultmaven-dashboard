@@ -7,7 +7,7 @@ import type {
   WiredHost,
 } from '@faultmaven/copilot-ui';
 import { getAccountProfile } from '../lib/auth/functions';
-import { announcePanelAvailable } from './advertisement';
+import { usePanelAdvertisement } from './usePanelAdvertisement';
 import { installPageSingletons } from './pageSingletons';
 import { createWebHostCapabilities } from './webHost';
 import { createWebSession, hostUserFromProfile } from './webSession';
@@ -46,6 +46,17 @@ interface CopilotPanelMountProps {
    * outlives its host, and no Dashboard route means it.
    */
   initialCase: InitialCase;
+
+  /**
+   * Is this panel actually on screen?
+   *
+   * Drives the D0 advertisement, and defaults to `true` for the host that has
+   * no other answer — a full-page surface is showing whenever it is mounted.
+   * The hosts that keep a panel mounted but hidden (a collapsed dock, the live
+   * Transcript arm behind another tab) pass `false`, because the extension's
+   * side panel should come back in exactly those states.
+   */
+  visible?: boolean;
 }
 
 /**
@@ -71,7 +82,10 @@ type PanelComponent = ComponentType<CopilotPanelProps>;
  */
 const DASHBOARD_CHROME: PanelChrome = 'embedded';
 
-export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProps) {
+export default function CopilotPanelMount({
+  initialCase,
+  visible = true,
+}: CopilotPanelMountProps) {
   const [panel, setPanel] = useState<{ Panel: PanelComponent; host: WiredHost } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -195,20 +209,23 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
     // the `key` at the case-detail call site.
   }, []);
 
-  // The panel is mounted: tell the extension this build hosts one, so it keeps
-  // its own side panel out of the way here (ADR-016 D4). The attribute in the
-  // initial HTML is the other half of the same claim — this is the half a page
-  // that mounts after hydration can make.
-  //
-  // Announced on mount, and that is all the "once" this needs: the effect runs
-  // when the panel first appears, and a module-level flag guarding it only
-  // mattered while a second mount could occur on the same document — which the
-  // route-level `key` already prevents, and which a stale flag would then make
-  // permanently silent.
-  useEffect(() => {
-    if (!panel) return;
-    announcePanelAvailable();
-  }, [panel]);
+  /**
+   * Tell the extension whether a panel is SHOWING here (ADR-018 D0, row 5).
+   *
+   * Was "announce once, on mount", which is all the claim could be while it was
+   * a property of the build. It is live now: a page that stops showing a panel
+   * withdraws, so the extension gets its side panel back instead of the user
+   * being left with neither surface.
+   *
+   * `showing` is the host's to decide and is never inferred here — the dock
+   * keeps its panel mounted while collapsed so an in-flight turn survives, and
+   * the live Transcript arm stays mounted behind another tab for the same
+   * reason. Mounted is not showing.
+   *
+   * Gated on `panel` as well, so a mount that is still loading its chunk, or
+   * that failed, never claims to be showing one.
+   */
+  usePanelAdvertisement(visible && !!panel);
 
   if (error) {
     return (

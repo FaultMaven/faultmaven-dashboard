@@ -23,10 +23,16 @@
 import {
   DASHBOARD_PANEL_ATTR,
   DASHBOARD_PANEL_MESSAGE,
+  DASHBOARD_PANEL_WITHDRAWN_MESSAGE,
   dashboardAdvertisesPanel,
 } from '@faultmaven/copilot-ui/contract';
 
-export { DASHBOARD_PANEL_ATTR, DASHBOARD_PANEL_MESSAGE, dashboardAdvertisesPanel };
+export {
+  DASHBOARD_PANEL_ATTR,
+  DASHBOARD_PANEL_MESSAGE,
+  DASHBOARD_PANEL_WITHDRAWN_MESSAGE,
+  dashboardAdvertisesPanel,
+};
 
 /**
  * Post the "this build renders the panel" message, once the panel is mounted.
@@ -42,4 +48,29 @@ export { DASHBOARD_PANEL_ATTR, DASHBOARD_PANEL_MESSAGE, dashboardAdvertisesPanel
  */
 export function announcePanelAvailable(win: Window = window): void {
   win.postMessage({ type: DASHBOARD_PANEL_MESSAGE }, win.location.origin);
+}
+
+/**
+ * Post the retraction: this page is no longer showing a built-in panel.
+ *
+ * THE HALF THAT MAKES THE CLAIM HONEST (ADR-018 D0). Until the extension
+ * learned to release a tab, the advertisement was monotonic — a page could say
+ * "I host a panel" and never "not any more" — so a user who turned the built-in
+ * panel off on an already-yielded tab was left with NEITHER surface, and the
+ * only way back was navigating off the origin.
+ *
+ * Posted whenever the assertion stops being true without the document going
+ * away: the preference moves chat to the extension, the dock is collapsed, the
+ * live tab is not the one showing, or the panel unmounts. A document that is
+ * actually being replaced needs nothing from us — the extension releases a tab
+ * whose document is going away on its own.
+ *
+ * ⚠️ RELEASE ORDER. An extension that predates this message ignores it and
+ * leaves the tab yielded, which is the dark-tab failure. This may only ship to
+ * users once an extension that understands it is in the field — ADR-018
+ * sequences the extension side (row 4) strictly before this one (row 5), and
+ * faultmaven-copilot#257 is that release.
+ */
+export function withdrawPanelAvailability(win: Window = window): void {
+  win.postMessage({ type: DASHBOARD_PANEL_WITHDRAWN_MESSAGE }, win.location.origin);
 }

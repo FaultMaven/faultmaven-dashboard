@@ -1,4 +1,5 @@
 import { listCases } from '../cases/api';
+import { prefersExtensionForChat } from '../copilot/chatSurfacePreference';
 
 /**
  * Where a sign-in lands when nothing else asked for a destination.
@@ -37,6 +38,14 @@ export const FIRST_RUN_LANDING = '/investigate';
  * would hide their cases from them.
  */
 export async function resolvePostSignInLanding(): Promise<string> {
+  // ADR-018 D3: with chat in the extension the first-run surface does not
+  // exist, so there is nowhere to send a zero-case account but the list — where
+  // the empty state points at the Copilot instead. D6's rule is unchanged ("a
+  // new user starts a case rather than staring at an empty table"); only the
+  // surface that honours it moves, and asking for the count would be a request
+  // whose answer cannot change the destination.
+  if (prefersExtensionForChat()) return POST_SIGN_IN_LANDING;
+
   try {
     // `pageSize: 1` — the rows are not wanted, only the total.
     const { total_count } = await listCases({}, 0, 1);
