@@ -171,8 +171,10 @@ describe('the case detail page is bounded by the viewport', () => {
     const { container } = await renderCaseDetail();
     const root = container.firstElementChild as HTMLElement;
 
-    // `min-h-screen` is the content-driven shape this replaced: it lets the
-    // page grow, which is what pushed the panel's composer past the fold.
+    // ON THIS BRANCH ONLY. `min-h-screen` is no longer banned outright — since
+    // ADR-018 D2 it is the shape a page with NO composer takes, and the case
+    // below asserts that. What must not happen is a page that carries a
+    // composer growing with its content, which is what pushed it past the fold.
     //
     // `h-dvh` and not `h-screen`: `vh` ignores mobile browser toolbars, so the
     // bottom of the page — the composer — ends up underneath them.
@@ -201,6 +203,66 @@ describe('the case detail page is bounded by the viewport', () => {
 
     expect(header).not.toBeNull();
     expect(heightClasses(header!)).toContain('flex-shrink-0');
+  });
+});
+
+describe('a page with NO composer grows with its content instead', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  /**
+   * The complement of the bounded case above, and the reason the root height is
+   * conditional at all.
+   *
+   * Bounding buys exactly one thing: a composer above the fold. On the
+   * read-only arm there is no composer anywhere on the page, so bounding it
+   * squeezes a transcript, a report and an evidence list into an inner scroller
+   * a few hundred pixels tall while the window below sits empty. Measured in a
+   * browser before this branch existed.
+   */
+  async function renderReadOnly() {
+    setViewport('wide');
+    vi.mocked(getCaseDetail).mockResolvedValue({ ...CASE, user_id: 'somebody-else' } as never);
+    const result = render(
+      <MemoryRouter initialEntries={['/cases/case-1?tab=transcript']}>
+        <Routes>
+          <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { name: 'DB Outage' });
+    return result;
+  }
+
+  it('takes min-h-screen and drops the viewport bound', async () => {
+    const { container } = await renderReadOnly();
+    const root = container.firstElementChild as HTMLElement;
+
+    expect(root.classList.contains('min-h-screen')).toBe(true);
+    expect(root.classList.contains('h-dvh')).toBe(false);
+    expect(Array.from(root.classList).some((c) => /^min-h-\[/.test(c))).toBe(false);
+  });
+
+  it('puts no inner scroller around the record', async () => {
+    // The half that actually cramps the page. A root that grows with an
+    // `overflow-y-auto` still between it and the content changes nothing.
+    await renderReadOnly();
+    const record = await screen.findByTestId('transcript-record');
+
+    for (let el = record.parentElement; el; el = el.parentElement) {
+      expect(
+        Array.from(el.classList),
+        `<${el.tagName.toLowerCase()} class="${el.className}"> scrolls the record inside a page that grows`,
+      ).not.toContain('overflow-y-auto');
+    }
+  });
+
+  it('mounts no panel at all on that page', async () => {
+    await renderReadOnly();
+    expect(screen.queryByTestId('case-panel-holder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('conversation-dock')).not.toBeInTheDocument();
   });
 });
 

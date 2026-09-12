@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { CaseDetail } from '../../types/cases';
@@ -118,6 +118,31 @@ describe('the read-only transcript', () => {
       expect(screen.getByText('Failed to get case messages')).toBeInTheDocument(),
     );
     expect(screen.queryByText('No messages yet.')).not.toBeInTheDocument();
+  });
+
+  it('survives a tab switch without re-fetching the whole transcript', async () => {
+    // `getCaseMessages` PAGES at 100 messages a request, so an unmount on every
+    // tab change cost a long case several sequential round trips and a
+    // "Loading transcript…" flash each time someone glanced at Evidence and
+    // came back. Measured before the fix: 1 call → 2. It is hidden rather than
+    // unmounted now, exactly as the live arm is and for the same reason.
+    vi.mocked(getCaseMessages).mockResolvedValue({ messages: [MESSAGE], total_count: 1 } as never);
+    renderRecord();
+    await waitFor(() =>
+      expect(screen.getByText(/stopped accepting writes at 02:14/)).toBeInTheDocument(),
+    );
+    expect(getCaseMessages).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Evidence' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Evidence' }).className).toContain('text-fm-accent'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Transcript' }));
+    await waitFor(() =>
+      expect(screen.getByText(/stopped accepting writes at 02:14/)).toBeInTheDocument(),
+    );
+
+    expect(getCaseMessages).toHaveBeenCalledTimes(1);
   });
 
   it('does NOT poison the next case with the last one’s error', async () => {

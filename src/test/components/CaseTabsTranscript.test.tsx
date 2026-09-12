@@ -13,9 +13,10 @@ import type { CaseDetail } from '../../types/cases';
  * remounts on a case change.
  *
  * WHICH ARM a given user gets is not decided here — that is
- * `transcriptSurface`'s one question, and `TranscriptSurface.test.tsx` binds
- * the whole matrix. This file fixes the owner-on-this-case corner of it, which
- * is the corner the panel occupies today.
+ * `src/lib/cases/conversationSurface.ts`'s one question, bound as a matrix in
+ * `src/test/lib/cases/conversationSurface.test.ts` and end to end in
+ * `src/test/pages/CaseDetailConversation.test.tsx`. This file fixes the
+ * live-arm corner of it.
  */
 
 let lastInitialCase: unknown;

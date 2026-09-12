@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 /**
  * A CASE'S CONVERSATION IS READABLE IN EVERY STATE (ADR-018 D2).
@@ -130,6 +130,12 @@ import CaseDetailPage from '../../pages/CaseDetailPage';
 import { setViewport } from '../support/viewport';
 import { writeDockCollapsed } from '../../lib/cases/dockPreference';
 import { getCaseDetail } from '../../lib/api';
+
+/** Publishes the router's current query string so a test can read it back. */
+function LocationProbe() {
+  const { search } = useLocation();
+  return <span data-testid="location-search">{search}</span>;
+}
 
 function MountCounter({ caseId, readOnly }: { caseId: string; readOnly: string }) {
   useState(() => {
@@ -283,6 +289,85 @@ describe('the record and the conversation, at once', () => {
     fireEvent.click(await screen.findByRole('button', { name: /collapse the conversation/i }));
 
     expect(await screen.findByRole('button', { name: 'Transcript' })).toBeInTheDocument();
+  });
+});
+
+describe('toggling the dock is a LAYOUT gesture, not a navigation', () => {
+  it('does not move the user off the default tab when the dock toggles', async () => {
+    // THE CASE THAT ACTUALLY BROKE, and the one an earlier version of this test
+    // missed: no `?tab=` in the URL at all, which is the normal state because
+    // the URL is written only when a tab is clicked. With the dock open the
+    // default resolves to Issue; collapsing puts Transcript back in the strip,
+    // and a default recomputed from the dock's state would jump there.
+    await renderPage();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Issue' }).className).toContain('text-fm-accent');
+
+    fireEvent.click(screen.getByRole('button', { name: /collapse the conversation/i }));
+    await screen.findByRole('button', { name: 'Transcript' });
+
+    expect(screen.getByRole('button', { name: 'Issue' }).className).toContain('text-fm-accent');
+    expect(screen.getByRole('button', { name: 'Transcript' }).className).not.toContain(
+      'text-fm-accent',
+    );
+  });
+
+  it('does not move the user off a tab they explicitly chose', async () => {
+    // The active tab used to fall back to `tabLabels[0]`, and the first visible
+    // tab MOVES when Transcript enters or leaves the strip. Measured on the
+    // real page: a user reading Issue who collapsed the dock to widen the
+    // record was moved onto Transcript, and vice versa. Collapsing a side panel
+    // must not change what is on screen beside it.
+    await renderPage();
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Report' }));
+    expect(screen.getByRole('button', { name: 'Report' }).className).toContain('text-fm-accent');
+
+    fireEvent.click(screen.getByRole('button', { name: /collapse the conversation/i }));
+    await screen.findByRole('button', { name: 'Transcript' });
+
+    expect(screen.getByRole('button', { name: 'Report' }).className).toContain('text-fm-accent');
+  });
+
+  it('keeps keyboard focus on the control that was pressed', async () => {
+    // The toggle used to be two buttons in mutually exclusive branches, so
+    // pressing it UNMOUNTED the element the user was standing on and dropped
+    // focus to <body> — from where they had to tab back through the header, the
+    // case card and the tab strip. A screen reader also lost the
+    // `aria-expanded` change along with the element carrying it.
+    await renderPage();
+    const collapse = await screen.findByRole('button', { name: /collapse the conversation/i });
+    collapse.focus();
+    expect(document.activeElement).toBe(collapse);
+
+    fireEvent.click(collapse);
+
+    const rail = await screen.findByRole('button', { name: /show the conversation/i });
+    expect(document.activeElement).toBe(rail);
+    expect(rail).toBe(collapse); // the SAME element, relabelled — not a replacement
+  });
+
+  it('clears a ?tab= the strip cannot honour, rather than letting the URL lie', async () => {
+    // `?tab=` is the cross-frontend linking contract with the Copilot. Opening
+    // the dock removes Transcript from the strip, so a URL still claiming
+    // `tab=transcript` describes something that is not rendered — and a link
+    // copied from the address bar would carry that claim to someone else.
+    render(
+      <MemoryRouter initialEntries={['/cases/case-1?tab=transcript']}>
+        <Routes>
+          <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+          <Route path="*" element={null} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    vi.mocked(getCaseDetail).mockResolvedValue(CASE as never);
+
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId('location-search').textContent).not.toContain('tab=transcript'),
+    );
   });
 });
 

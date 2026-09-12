@@ -1,4 +1,4 @@
-import { STORAGE_KEY_PREFIX, createPrefixedLocalStore } from '../storage';
+import { authLocalStore } from '../storage';
 
 /**
  * Whether the conversation dock is collapsed, remembered per viewer.
@@ -7,7 +7,10 @@ import { STORAGE_KEY_PREFIX, createPrefixedLocalStore } from '../storage';
  * it, and a second caller spelling the key itself is how a preference quietly
  * splits into two that disagree.
  *
- * `faultmaven_`, this app's own keyspace — deliberately NOT `fm.copilot.`,
+ * `lib/storage`'s existing instance for this app's `faultmaven_` keyspace, not
+ * a second one over the same prefix: that module exists to be the single owner
+ * of the codec, and a duplicate is a second place to update when it gains
+ * behaviour. Deliberately NOT `fm.copilot.`,
  * which belongs to the panel and whose sole writer is the package
  * (`clearPersistedSession`). A Dashboard preference living in the panel's
  * namespace would be purged on sign-out along with the panel's session, and
@@ -16,7 +19,7 @@ import { STORAGE_KEY_PREFIX, createPrefixedLocalStore } from '../storage';
  * Per browser profile rather than per account, matching what it describes: a
  * layout choice about this screen, not something the server has an opinion on.
  */
-const store = createPrefixedLocalStore(STORAGE_KEY_PREFIX);
+const store = authLocalStore;
 
 const COLLAPSED_KEY = 'caseDockCollapsed';
 

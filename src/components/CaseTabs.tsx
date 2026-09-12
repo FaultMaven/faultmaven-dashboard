@@ -24,6 +24,17 @@ import type { CaseConversationLayout } from '../lib/cases/conversationSurface';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
+/**
+ * Where to land when what was chosen is not in the strip.
+ *
+ * Only reachable when the dock has taken Transcript away, or when a deep link
+ * names a tab this case does not have. First-visible is right HERE and wrong as
+ * a general default — see the note at its call site.
+ */
+function fallbackTab(tabs: { id: Tab }[]): Tab {
+  return tabs[0].id;
+}
+
 interface CaseTabsProps {
   caseId: string;
   caseDetail: CaseDetail;
@@ -473,7 +484,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
       return (
         <div className="py-2 text-sm text-fm-text-secondary">
           {caseDetail.hypothesis_count} hypothes{caseDetail.hypothesis_count === 1 ? 'is' : 'es'} were
-          tested during this investigation. Detailed hypothesis history is available in case storage
+          tested on this case. Detailed hypothesis history is available in case storage
           but not surfaced here for terminal cases.
         </div>
       );
@@ -526,14 +537,67 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly }: CaseTabsProps
   const transcriptIsLive = surface === 'tab-live';
 
   const requestedTab = searchParams.get('tab') as Tab | null;
-  // The fallback is the FIRST VISIBLE tab, not the literal 'transcript'.
-  // Transcript is the default (as it was before #124) and is first in the list,
-  // so this is Transcript wherever Transcript exists — but while the dock is
-  // showing it does not, and hardcoding it there would land every visit on a
-  // tab that is not in the strip and render an empty body.
-  const activeTab: Tab = tabLabels.some((t) => t.id === requestedTab)
-    ? (requestedTab as Tab)
-    : tabLabels[0].id;
+
+  /**
+   * TOGGLING THE DOCK IS A LAYOUT GESTURE. It must not navigate the record.
+   *
+   * The URL is only written when a tab is CLICKED, so most of the time there is
+   * no `?tab=` and the active tab comes from a default. That default has to be
+   * sticky, and neither obvious spelling of it is:
+   *
+   *  - `tabLabels[0]` moves when Transcript enters or leaves the strip.
+   *    Measured on the real page: a user reading Issue who collapsed the dock
+   *    to widen the record was moved onto Transcript.
+   *  - `transcriptTabShown ? 'transcript' : 'issue'` has the same defect for
+   *    the same reason — it is still computed from the dock's state.
+   *
+   * So what is displayed is REMEMBERED. `chosen` starts at the URL's tab or
+   * Transcript (the default since before #124), follows the URL whenever the
+   * URL says something, and is otherwise written back from whatever was
+   * actually resolved — so the one time the fallback fires, it sticks. Opening
+   * or collapsing the dock then changes only whether Transcript is available,
+   * never what the user is looking at.
+   */
+  const [chosen, setChosen] = useState<Tab>(() => requestedTab ?? 'transcript');
+
+  // The URL wins whenever it names a tab; otherwise the last thing displayed.
+  const candidate = requestedTab ?? chosen;
+  const activeTab: Tab = tabLabels.some((t) => t.id === candidate)
+    ? candidate
+    : fallbackTab(tabLabels);
+
+  // Written back DURING RENDER, React's documented way to adjust state from a
+  // prop that has changed — not an effect, which would be a cascading render
+  // the lint rejects, and would settle one frame late. This is the line that
+  // makes the fallback stick: without it the default is recomputed from the
+  // dock's state on every render and the toggle moves the user.
+  if (activeTab !== chosen) setChosen(activeTab);
+
+  /**
+   * A `?tab=` the strip cannot honour is CLEARED, not ignored.
+   *
+   * `?tab=` is the cross-frontend linking contract with the Copilot (see
+   * CLAUDE.md), so a dropped value is a contract break rather than a cosmetic
+   * one: the address bar would keep claiming `tab=transcript` while Issue was
+   * rendered, and a link copied from it would resolve to something the URL does
+   * not describe. That is reachable now that a tab can LEAVE the strip — open
+   * the dock with `?tab=transcript` in the URL and it is gone.
+   *
+   * `replace`, so correcting the URL does not leave a dead entry in the back
+   * stack that would bounce the user straight back to it.
+   */
+  useEffect(() => {
+    if (!requestedTab) return;
+    if (tabLabels.some((t) => t.id === requestedTab)) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('tab');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [requestedTab, tabLabels, setSearchParams]);
 
   const setActiveTab = (id: Tab) => {
     setSearchParams(
@@ -600,7 +664,17 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly }: CaseTabsProps
         // report and an evidence list into an inner box a few hundred pixels
         // tall while the window below it sat empty.
         <div className={viewportBounded ? 'flex-1 min-h-0 overflow-y-auto' : 'flex-1'}>
-          {activeTab === 'transcript' && <RecordTranscriptTab caseId={caseId} />}
+          {/* HIDDEN, not unmounted, for the same reason the live arm is: the
+              effect is torn down on unmount, so a glance at Evidence and back
+              re-ran `getCaseMessages` from scratch — and it PAGES at 100
+              messages a request, so a long case cost several sequential round
+              trips and a "Loading transcript…" flash on every visit. The cost
+              of keeping it is one rendered subtree. */}
+          {transcriptTabShown && !transcriptIsLive && (
+            <div className={activeTab === 'transcript' ? undefined : 'hidden'}>
+              <RecordTranscriptTab caseId={caseId} />
+            </div>
+          )}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
           {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
           {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}

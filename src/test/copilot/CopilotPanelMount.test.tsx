@@ -14,9 +14,19 @@ import type { InitialCase, WiredHost } from '@faultmaven/copilot-ui';
 
 const setHostStore = vi.fn();
 const setHostEndpoints = vi.fn();
-const setApiTransport = vi.fn();
+let currentTransport: unknown;
+const setApiTransport = vi.fn((t: unknown) => {
+  currentTransport = t;
+});
 const clearPersistedSession = vi.fn().mockResolvedValue(undefined);
 const clearApiTransport = vi.fn();
+/**
+ * Real enough to exercise the identity guard in the cleanup: the mount clears
+ * the transport only while the one installed is still the CURRENT one, so a
+ * stub that returned nothing would take the "cannot compare" branch and never
+ * test the guard at all.
+ */
+const getApiTransport = vi.fn(() => currentTransport);
 const clearHostEndpoints = vi.fn();
 const clearHostStore = vi.fn();
 let lastHost: WiredHost | null = null;
@@ -28,6 +38,7 @@ vi.mock('@faultmaven/copilot-ui', () => ({
   setApiTransport,
   clearPersistedSession,
   clearApiTransport,
+  getApiTransport,
   clearHostEndpoints,
   clearHostStore,
   CopilotPanel: ({ host, initialCase }: { host: WiredHost; initialCase?: InitialCase }) => {
@@ -234,6 +245,28 @@ describe('CopilotPanelMount', () => {
     });
     expect(clearHostEndpoints).not.toHaveBeenCalled();
     expect(clearHostStore).not.toHaveBeenCalled();
+  });
+
+  it('does NOT clear a transport a LATER mount has already installed', async () => {
+    // The panel now moves between two mount points without the page unmounting
+    // — crossing the dock's width breakpoint swaps it between the dock and the
+    // Transcript tab (ADR-018 D2). The outgoing mount's cleanup clears the
+    // transport ASYNCHRONOUSLY, so it can land after the incoming mount has
+    // installed its own; an unguarded clear would delete the LIVE one and leave
+    // the surviving panel unable to make a single request, silently.
+    const { unmount } = mount(NEW_INVESTIGATION);
+    await screen.findByTestId('shared-copilot-ui');
+    expect(setApiTransport).toHaveBeenCalledTimes(1);
+
+    // A second mount wins the singleton before the first one's cleanup runs.
+    const later = { marker: 'installed by the mount that replaced it' };
+    setApiTransport(later);
+
+    unmount();
+    await waitFor(() => expect(getApiTransport).toHaveBeenCalled());
+
+    expect(clearApiTransport).not.toHaveBeenCalled();
+    expect(getApiTransport()).toBe(later);
   });
 
   it('advertises the panel to the extension once it has mounted', async () => {

@@ -14,20 +14,53 @@ import { useSyncExternalStore } from 'react';
  */
 export const DOCK_MEDIA_QUERY = '(min-width: 1024px)';
 
-/** The live `MediaQueryList`, or null where the platform has no `matchMedia`. */
+/**
+ * The one live `MediaQueryList` for this document, created lazily.
+ *
+ * Memoised because `readFits` is `useSyncExternalStore`'s `getSnapshot`: React
+ * calls it on every render and again after every commit to check for a change,
+ * and `subscribe` would call `matchMedia` a third time. Each call allocates a
+ * live query object registered with the document, so an unmemoised version
+ * leaked one per render — and `subscribe` and `readFits` would be watching
+ * different objects, which is exactly the kind of thing that reads as a
+ * flakey test rather than a bug.
+ *
+ * `undefined` means "not yet asked"; `null` means "asked, and this platform has
+ * no usable `matchMedia`".
+ */
+let cached: MediaQueryList | null | undefined;
+
 function mediaQueryList(): MediaQueryList | null {
+  if (cached !== undefined) return cached;
   try {
-    return typeof window === 'undefined' ? null : (window.matchMedia?.(DOCK_MEDIA_QUERY) ?? null);
+    cached =
+      typeof window === 'undefined' ? null : (window.matchMedia?.(DOCK_MEDIA_QUERY) ?? null);
   } catch {
-    return null;
+    cached = null;
   }
+  return cached;
 }
 
 function subscribe(onChange: () => void): () => void {
   const mql = mediaQueryList();
-  if (!mql) return () => {};
-  mql.addEventListener('change', onChange);
-  return () => mql.removeEventListener('change', onChange);
+  // `addEventListener` on a MediaQueryList is not universal — Safari below 14
+  // and older WebKit ship only the deprecated `addListener`. Unguarded, this
+  // threw a TypeError from inside `useSyncExternalStore` during commit and took
+  // the whole case-detail page down, rather than degrading to a static reading
+  // of a width that rarely changes mid-session.
+  if (!mql || typeof mql.addEventListener !== 'function') return () => {};
+  try {
+    mql.addEventListener('change', onChange);
+  } catch {
+    return () => {};
+  }
+  return () => {
+    try {
+      mql.removeEventListener('change', onChange);
+    } catch {
+      // The listener goes with the document either way.
+    }
+  };
 }
 
 /**
@@ -40,15 +73,13 @@ function readFits(): boolean {
 }
 
 /**
- * Does the viewport have room for the dock?
- *
- * `useSyncExternalStore` rather than `useState` + an effect. The width is
- * external state that can change between the first render and the moment a
- * subscription is attached, and the effect version of this has to re-read on
- * subscribe to close that window — which is a synchronous `setState` inside an
- * effect, a cascading render, and something the lint rules reject outright.
- * This hook is what the API exists for: one snapshot function, one subscribe.
+ * Reset the memoised query. Tests swap `window.matchMedia` between cases, and
+ * a value cached from the previous swap would make them order-dependent.
  */
+export function resetDockFitsForTests(): void {
+  cached = undefined;
+}
+
 export function useDockFits(): boolean {
   return useSyncExternalStore(subscribe, readFits, () => true);
 }
