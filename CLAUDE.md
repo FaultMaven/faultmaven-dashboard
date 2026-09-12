@@ -398,13 +398,35 @@ surface. The cost is that support cannot read it.
   hosts chat — the only correct answer for someone who has never installed
   anything, and for the population that can never have a side panel at all
   (Firefox, managed browsers, self-hosted). Only an explicit `true` moves chat.
-- **NEVER set by detection.** The Dashboard can tell the extension is installed;
-  it cannot tell whether the side panel is OPEN, so standing down on detection
-  would strand an installed-but-closed user. Detection may *offer*; only a
-  person applies. The toggle lives in the **account menu**, reachable from every
-  page — because on a self-hosted origin without a host-permission grant the
-  Dashboard never learns the extension exists, so an offer would never appear
-  for exactly the people most likely to want it.
+- **NEVER set by detection — but detection OFFERS.** `CopilotEntry` in the
+  header has three states: not installed → the store CTA; installed with chat
+  still here → **"Move chat to Copilot"**, one click, which is the "at that
+  moment" ADR-018 D3 means; installed with chat there → a plain statement, no
+  control. Applying on detection would strand three real people, because the
+  Dashboard can see "installed" and not "side panel open": someone whose panel
+  is merely closed, a **Firefox** user (MV2 has no `browser.sidePanel` at all,
+  so there is no panel to move chat INTO), and a self-hosted user without host
+  permission — where the content script never registers, so this component
+  cannot see the extension in the first place.
+- The toggle also lives in the **account menu**, reachable from every page, and
+  that is not redundant with the offer: on a self-hosted origin without a
+  host-permission grant the Dashboard never learns the extension exists, so the
+  offer never appears for exactly the people most likely to want it.
+
+### Why two chat UIs cannot normally co-exist — and the three cases where they can
+
+It is the D0 YIELD that prevents the double, not the preference. With chat here,
+the Dashboard asserts while its panel is showing and the extension hides its own
+side panel on that tab (measured: `setOptions({enabled:false})` on dock open,
+`enabled:true` on collapse). Exactly one chat UI per tab.
+
+Three gaps, and none is fixable by gating the preference on detection:
+
+| Gap | Effect | Fix |
+|---|---|---|
+| Extension older than `COPILOT_WITHDRAWAL_MIN_VERSION` | the Dashboard declines to assert, so it never yields → two panels | ends with the store release |
+| Self-hosted **without host permission** | `auth-bridge-registration.ts` silently unregisters, so the assertion is never relayed AND the extension is undetectable here | extension-side: prompt for the permission on a configured Dashboard origin (faultmaven-copilot#258) |
+| Two Dashboard tabs | one chat UI each; the server holds one ordered transcript | none needed — there is no live sync between surfaces, so a second view refetches on reload or case switch |
 - **A module store, not React context.** `resolvePostSignInLanding()` runs
   during sign-in, before the app shell exists, and the in-tree readers are
   scattered across the nav, the case page and the account menu. A provider would

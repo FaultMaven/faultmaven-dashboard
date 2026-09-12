@@ -1,6 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { CopilotEntry } from '../../components/CopilotEntry';
+import {
+  prefersExtensionForChat,
+  resetChatSurfaceForTests,
+} from '../../lib/copilot/chatSurfacePreference';
 
 /**
  * The published Chrome Web Store listing for FaultMaven Copilot (#119).
@@ -87,16 +91,42 @@ describe('Chrome Web Store install CTA', () => {
     expect(screen.queryByText(/in your toolbar/i)).not.toBeInTheDocument();
   });
 
-  it('tells an installed user where the extension still earns its keep', () => {
-    document.documentElement.setAttribute('data-faultmaven-copilot', '0.4.0');
+  it('OFFERS to move chat to the extension, rather than just describing it', async () => {
+    // ADR-018 D3: detection may OFFER the preference at the moment it learns
+    // the extension exists. It may never APPLY it — the Dashboard can see
+    // "installed", not "side panel open", and applying on detection would
+    // strand a user whose panel is merely closed, a Firefox user (no
+    // `browser.sidePanel` at all in MV2), or a self-hosted user whose content
+    // script never registered.
+    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
     render(<CopilotEntry />);
 
-    const hint = screen.getByText(/other tabs/i);
-    expect(hint).toBeInTheDocument();
-    // Beside a third-party console — the thing this Dashboard is not — and not
-    // an instruction to open something here.
-    expect(hint.closest('span')?.getAttribute('title') ?? '').toMatch(/grafana|aws|console/i);
-    expect(screen.queryByText(/get the copilot/i)).not.toBeInTheDocument();
+    const offer = screen.getByRole('button', { name: /move chat to copilot/i });
+    expect(offer).toBeInTheDocument();
+    // Nothing has been applied yet.
+    expect(prefersExtensionForChat()).toBe(false);
+  });
+
+  it('applies the preference only when the offer is TAKEN', async () => {
+    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
+    render(<CopilotEntry />);
+
+    fireEvent.click(screen.getByRole('button', { name: /move chat to copilot/i }));
+
+    expect(prefersExtensionForChat()).toBe(true);
+    // …and the offer is replaced by a statement, not repeated.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /move chat to copilot/i })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Chat is in the Copilot/i)).toBeInTheDocument();
+  });
+
+  it('never offers when the extension is absent', () => {
+    // There is nowhere to move chat TO, and the store CTA is the right ask.
+    render(<CopilotEntry />);
+
+    expect(screen.queryByRole('button', { name: /move chat to copilot/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link')).toHaveAttribute('href', expect.stringContaining('http'));
   });
 
   it('keeps the install CTA for a visitor who has not installed it', () => {
