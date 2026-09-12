@@ -1,7 +1,10 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+  CAPABILITY_PANEL_WITHDRAW,
   COPILOT_WITHDRAWAL_MIN_VERSION,
   copilotAcceptsWithdrawal,
+  copilotIsOutOfDate,
+  installedCopilotCapabilities,
   installedCopilotVersion,
 } from '../../copilot/copilotCapability';
 
@@ -19,7 +22,12 @@ import {
 
 afterEach(() => {
   document.documentElement.removeAttribute('data-faultmaven-copilot');
+  document.documentElement.removeAttribute('data-faultmaven-copilot-capabilities');
 });
+
+function withCapabilities(value: string) {
+  document.documentElement.setAttribute('data-faultmaven-copilot-capabilities', value);
+}
 
 function withVersion(version: string) {
   document.documentElement.setAttribute('data-faultmaven-copilot', version);
@@ -87,5 +95,94 @@ describe('an extension that understands it', () => {
   it('accepts the threshold itself', () => {
     withVersion(COPILOT_WITHDRAWAL_MIN_VERSION);
     expect(copilotAcceptsWithdrawal()).toBe(true);
+  });
+});
+
+
+/**
+ * CAPABILITIES BEAT THE VERSION, in both directions (ADR-019 D3).
+ *
+ * A version is a PROXY for a capability, and the proxy is wrong for exactly the
+ * builds we develop against: an unpacked build with the withdrawal listener
+ * still reports its manifest version, so the floor refuses the build the
+ * feature is being tested with. That is what motivated ADR-019.
+ */
+describe('an extension that says what it can do', () => {
+  it('is TRUSTED on the token alone, even below the version floor', () => {
+    // The dev-build case. `1.0.3` is beneath the floor and would be refused on
+    // the number; the token says it implements the behaviour, and the token is
+    // the truth.
+    withVersion('1.0.3');
+    withCapabilities(CAPABILITY_PANEL_WITHDRAW);
+
+    expect(copilotAcceptsWithdrawal()).toBe(true);
+  });
+
+  it('is REFUSED without the token, however new it is', () => {
+    // Authoritative in the other direction too: a build that told us it cannot
+    // do this must not be overridden by a version that happens to be high.
+    withVersion('9.9.9');
+    withCapabilities('page-capture');
+
+    expect(copilotAcceptsWithdrawal()).toBe(false);
+  });
+
+  it('is refused on an EMPTY list, which is an answer and not a silence', () => {
+    withVersion('9.9.9');
+    withCapabilities('');
+
+    expect(installedCopilotCapabilities()).toEqual([]);
+    expect(copilotAcceptsWithdrawal()).toBe(false);
+  });
+
+  it('tolerates whatever spacing the extension emits', () => {
+    withVersion('1.0.3');
+    withCapabilities(`  page-capture   ${CAPABILITY_PANEL_WITHDRAW}  `);
+
+    expect(copilotAcceptsWithdrawal()).toBe(true);
+  });
+});
+
+describe('an extension from before capabilities', () => {
+  it('reports null, which is NOT an empty list', () => {
+    // The distinction the fallback rests on: `null` is "it never said", `[]` is
+    // "it said none". Collapsing them would either refuse every old build the
+    // floor would have accepted, or trust every new build that declined.
+    withVersion('1.0.4');
+
+    expect(installedCopilotCapabilities()).toBeNull();
+  });
+
+  it.each([
+    ['above the floor', '1.0.4', true],
+    ['below the floor', '1.0.3', false],
+  ])('falls back to the version floor (%s)', (_label, version, expected) => {
+    withVersion(version);
+    expect(copilotAcceptsWithdrawal()).toBe(expected);
+  });
+});
+
+describe('whether to tell the user their Copilot is old', () => {
+  it('says so for a build that cannot stand its panel down', () => {
+    // Without the withdrawal it never yields, so the user sees TWO chat panels
+    // on one tab with no explanation — the symptom, pointing at neither cause
+    // nor cure (ADR-019 D4).
+    withVersion('1.0.3');
+    expect(copilotIsOutOfDate()).toBe(true);
+  });
+
+  it('says nothing when the build is current', () => {
+    withVersion(COPILOT_WITHDRAWAL_MIN_VERSION);
+    expect(copilotIsOutOfDate()).toBe(false);
+  });
+
+  it('says nothing when the token is present, whatever the number', () => {
+    withVersion('0.1.0');
+    withCapabilities(CAPABILITY_PANEL_WITHDRAW);
+    expect(copilotIsOutOfDate()).toBe(false);
+  });
+
+  it('says nothing when there is NO extension — nothing to update', () => {
+    expect(copilotIsOutOfDate()).toBe(false);
   });
 });

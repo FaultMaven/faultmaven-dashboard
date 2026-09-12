@@ -413,6 +413,30 @@ surface. The cost is that support cannot read it.
   host-permission grant the Dashboard never learns the extension exists, so the
   offer never appears for exactly the people most likely to want it.
 
+### Compatibility with the extension (ADR-019)
+
+The Dashboard deploys in minutes; the extension waits on Chrome Web Store
+review. So the field always holds Dashboards newer than the extensions talking
+to them, and three rules follow:
+
+- **The Dashboard DEGRADES, never requires.** No feature may hard-require the
+  extension or a version of it. A missing capability means "behave as though
+  nothing is installed" — a supported, tested state, not an error path.
+- **CAPABILITIES beat the version.** `data-faultmaven-copilot-capabilities` is
+  authoritative in BOTH directions when present: a build listing
+  `panel-withdraw` is trusted whatever its number says, and one omitting it is
+  refused however new it is. `COPILOT_WITHDRAWAL_MIN_VERSION` is the fallback
+  for builds from before capabilities — **one** transitional rule, not one per
+  feature. A version is a proxy for a capability and the proxy is wrong for
+  exactly the builds developers run: an unpacked build with the listener still
+  reports its manifest version.
+- **`null` and `[]` are different answers.** No attribute means "it never said",
+  so the version decides; an empty list means "it said it can do none of these",
+  which is authoritative.
+
+This side is **forward-compatible**: it already prefers the attribute, so the
+extension shipping it (faultmaven-copilot#259) needs no Dashboard release.
+
 ### Why two chat UIs cannot normally co-exist — and the three cases where they can
 
 It is the D0 YIELD that prevents the double, not the preference. With chat here,
@@ -424,7 +448,7 @@ Three gaps, and none is fixable by gating the preference on detection:
 
 | Gap | Effect | Fix |
 |---|---|---|
-| Extension older than `COPILOT_WITHDRAWAL_MIN_VERSION` | the Dashboard declines to assert, so it never yields → two panels | ends with the store release |
+| Extension that cannot withdraw | the Dashboard declines to assert, so it never yields → two panels, and the header says **"Update the Copilot"** rather than leaving the symptom unexplained (ADR-019 D4) | ends with the store release |
 | Self-hosted **without host permission** | `auth-bridge-registration.ts` silently unregisters, so the assertion is never relayed AND the extension is undetectable here | extension-side: prompt for the permission on a configured Dashboard origin (faultmaven-copilot#258) |
 | Two Dashboard tabs | one chat UI each; the server holds one ordered transcript | none needed — there is no live sync between surfaces, so a second view refetches on reload or case switch |
 - **A module store, not React context.** `resolvePostSignInLanding()` runs

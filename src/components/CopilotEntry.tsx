@@ -45,7 +45,11 @@ import { useEffect, useState } from 'react';
  * it hosts a panel — is `src/copilot/advertisement.ts`.
  */
 import { COPILOT_STORE_URL } from '../copilot/storeListing';
-import { COPILOT_PRESENCE_ATTR, COPILOT_READY_EVENT } from '../copilot/copilotCapability';
+import {
+  COPILOT_PRESENCE_ATTR,
+  COPILOT_READY_EVENT,
+  copilotIsOutOfDate,
+} from '../copilot/copilotCapability';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
 
@@ -95,6 +99,9 @@ function CopilotGlyph({ className }: { className?: string }) {
 export function CopilotEntry() {
   const installed = useCopilotPresence();
   const prefersExtension = usePrefersExtensionForChat();
+  // Re-read on the same signal presence uses, so an extension that announces
+  // itself after this mounted is judged on what it actually said.
+  const outOfDate = installed && copilotIsOutOfDate();
 
   // Chat already lives in the extension: say so, and stop offering.
   if (installed && prefersExtension) {
@@ -109,7 +116,31 @@ export function CopilotEntry() {
     );
   }
 
-  // Installed, but chat is still here — the moment to OFFER.
+  /**
+   * Installed, but too old to stand its side panel down (ADR-019 D4).
+   *
+   * Offering to move chat here would be a trap: the Dashboard declines to
+   * assert to a build that cannot hear a withdrawal, so that build never
+   * yields — the user would end up with chat in the extension AND the
+   * Dashboard's own panel, which is the two-panel state they can already see
+   * and cannot explain. Say what is wrong and what fixes it instead.
+   */
+  if (installed && outOfDate) {
+    return (
+      <a
+        href={COPILOT_STORE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-fm-btn text-fm-warning border border-fm-warning-border hover:bg-fm-warning-bg transition-colors"
+        title="Your Copilot is older than this Dashboard expects, so it cannot step aside for the chat on this page — which is why you may be seeing two. Updating it lets chat follow you onto Grafana, AWS or any console you are debugging in."
+      >
+        <CopilotGlyph className="h-4 w-4" />
+        Update the Copilot
+      </a>
+    );
+  }
+
+  // Installed, current, but chat is still here — the moment to OFFER.
   if (installed) {
     return (
       <button

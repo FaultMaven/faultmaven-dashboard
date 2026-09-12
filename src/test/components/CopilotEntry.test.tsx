@@ -42,7 +42,15 @@ const sources = import.meta.glob<string>(['../../**/*.{ts,tsx}', '!../../**/*.te
 
 describe('Chrome Web Store install CTA', () => {
   afterEach(() => {
+    // EVERY signal this component reads, not just presence. The offer test
+    // clicks the button, which writes the chat-surface preference to
+    // localStorage AND into a module-level cache — so without resetting both,
+    // every later test rendered the "chat is in the Copilot" state and the
+    // branch it meant to exercise was unreachable.
     document.documentElement.removeAttribute('data-faultmaven-copilot');
+    document.documentElement.removeAttribute('data-faultmaven-copilot-capabilities');
+    localStorage.clear();
+    resetChatSurfaceForTests();
   });
 
   it('rejects a listing URL that carries no extension ID', () => {
@@ -119,6 +127,31 @@ describe('Chrome Web Store install CTA', () => {
       expect(screen.queryByRole('button', { name: /move chat to copilot/i })).not.toBeInTheDocument(),
     );
     expect(screen.getByText(/Chat is in the Copilot/i)).toBeInTheDocument();
+  });
+
+  it('tells an OLD build to update, and does not offer', async () => {
+    // Offering would be a trap: the Dashboard declines to assert to a build
+    // that cannot hear a withdrawal, so it never yields — the user would get
+    // chat in the extension AND the Dashboard's panel, which is the two-panel
+    // state they can already see and cannot explain (ADR-019 D4).
+    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+    render(<CopilotEntry />);
+
+    expect(screen.getByRole('link', { name: /update the copilot/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /move chat to copilot/i })).not.toBeInTheDocument();
+  });
+
+  it('offers again once that build advertises the capability', async () => {
+    // The dev-build case: same version number, now saying what it can do.
+    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+    document.documentElement.setAttribute(
+      'data-faultmaven-copilot-capabilities',
+      'panel-withdraw',
+    );
+    render(<CopilotEntry />);
+
+    expect(screen.getByRole('button', { name: /move chat to copilot/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /update the copilot/i })).not.toBeInTheDocument();
   });
 
   it('never offers when the extension is absent', () => {

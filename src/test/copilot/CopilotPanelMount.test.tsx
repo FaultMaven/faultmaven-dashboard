@@ -302,9 +302,15 @@ describe('CopilotPanelMount', () => {
     mount(NEW_INVESTIGATION);
     await screen.findByTestId('copilot-panel-error');
 
-    const types = postMessage.mock.calls.map((call) => (call[0] as { type?: unknown })?.type);
-    expect(types).not.toContain(DASHBOARD_PANEL_MESSAGE);
-    expect(types).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE);
+    // AWAITED, not sampled. The withdrawal is posted from an effect, which
+    // commits AFTER the error element this test just found — so reading the
+    // spy synchronously is a race that usually wins. It lost twice, with two
+    // different symptoms: once a stray AVAILABLE, once no messages at all.
+    const types = () =>
+      postMessage.mock.calls.map((call) => (call[0] as { type?: unknown })?.type);
+
+    await waitFor(() => expect(types()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
+    expect(types()).not.toContain(DASHBOARD_PANEL_MESSAGE);
 
     postMessage.mockRestore();
   });

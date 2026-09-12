@@ -58,6 +58,46 @@ export const COPILOT_READY_EVENT = 'faultmaven-copilot:ready';
 export const COPILOT_PRESENCE_RECHECK_MS = 800;
 
 /**
+ * Set on `<html>` beside the version: a space-separated list of the behaviours
+ * this build implements (ADR-019 D2).
+ *
+ * A TOKEN MEANS "THIS BUILD DOES IT", never "this build is new enough" — which
+ * is the whole point, and the thing a version number gets wrong. An unpacked
+ * build with the withdrawal listener still reports its manifest version, so the
+ * floor below refuses the very build the feature is being tested with. A fork,
+ * a nightly and a dev build all advertise what they have.
+ *
+ * Defined in the shared package once the extension ships it
+ * (faultmaven-copilot#259); named here meanwhile, because the Dashboard side is
+ * forward-compatible and lands first — a Dashboard that prefers an absent
+ * attribute simply uses the fallback, so no second release is needed when the
+ * extension catches up.
+ */
+export const COPILOT_CAPABILITIES_ATTR = 'data-faultmaven-copilot-capabilities';
+
+/** Understands `FM_DASHBOARD_PANEL_WITHDRAWN` and releases a yielded tab. */
+export const CAPABILITY_PANEL_WITHDRAW = 'panel-withdraw';
+
+/**
+ * What the installed build says it can do, or `null` where it has not said.
+ *
+ * `null` and `[]` are DIFFERENT answers and must stay so: the first is a build
+ * from before capabilities, where the version floor is the only evidence
+ * available; the second is a build that told us it can do none of the things we
+ * asked about, which is authoritative and must not be overridden by a version
+ * that happens to be high enough.
+ */
+export function installedCopilotCapabilities(doc: Document = document): string[] | null {
+  try {
+    const raw = doc.documentElement.getAttribute(COPILOT_CAPABILITIES_ATTR);
+    if (raw === null) return null;
+    return raw.split(/\s+/).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The first Copilot release that understands `FM_DASHBOARD_PANEL_WITHDRAWN`.
  *
  * Both the pre-#257 and post-#257 builds report `1.0.3` — the version is bumped
@@ -120,8 +160,37 @@ function compareVersions(a: string, b: string): number {
  * branch that cannot produce a dark tab; only "there is demonstrably nobody
  * there" resolves the other way.
  */
-export function copilotAcceptsWithdrawal(version: string | null = installedCopilotVersion()): boolean {
+export function copilotAcceptsWithdrawal(
+  version: string | null = installedCopilotVersion(),
+  capabilities: string[] | null = installedCopilotCapabilities(),
+): boolean {
   if (version === null) return true;
+
+  // CAPABILITIES ARE AUTHORITATIVE WHEN PRESENT, in both directions (ADR-019
+  // D3): a build that lists the token is trusted whatever its version number
+  // says, and a build that omits it is refused however new it is. The version
+  // is evidence only from builds that had nothing better to offer.
+  if (capabilities !== null) return capabilities.includes(CAPABILITY_PANEL_WITHDRAW);
+
   if (version.trim() === '') return false;
   return compareVersions(version, COPILOT_WITHDRAWAL_MIN_VERSION) >= 0;
+}
+
+/**
+ * Is the installed extension too old for something the user can SEE?
+ *
+ * ADR-019 D4: an out-of-date extension is surfaced, never silent. Without the
+ * withdrawal it never yields its side panel here, so the user gets two chat
+ * panels on one tab with no explanation — the symptom that sent a maintainer
+ * looking, pointing at neither cause nor cure.
+ *
+ * False when no extension is present: there is nothing out of date, and
+ * nothing to update.
+ */
+export function copilotIsOutOfDate(
+  version: string | null = installedCopilotVersion(),
+  capabilities: string[] | null = installedCopilotCapabilities(),
+): boolean {
+  if (version === null) return false;
+  return !copilotAcceptsWithdrawal(version, capabilities);
 }
