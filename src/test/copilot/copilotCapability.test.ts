@@ -35,9 +35,17 @@ describe('no extension has announced itself', () => {
     expect(copilotAcceptsWithdrawal()).toBe(true);
   });
 
-  it('treats an empty attribute the same way', () => {
-    withVersion('');
-    expect(copilotAcceptsWithdrawal()).toBe(true);
+});
+
+describe('an extension that announced itself with no usable version', () => {
+  it.each([['empty', ''], ['whitespace', '   ']])('REFUSES the assertion (%s)', (_l, value) => {
+    // An empty attribute is an extension that IS present and told us nothing —
+    // `hasAttribute` is how the install CTA detects one, and the bridge passes
+    // the manifest version through with no validation. Reading that as "nobody
+    // is listening" and asserting is the path to a dark tab: a pre-#257 install
+    // would yield and never hear the retraction.
+    withVersion(value);
+    expect(copilotAcceptsWithdrawal()).toBe(false);
   });
 });
 

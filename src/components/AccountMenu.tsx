@@ -204,18 +204,24 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
             back. Burying it would remove that property.
           */}
           <div className="border-t border-fm-border px-4 py-3">
+            {/* The label names the control and nothing else. Wrapping the
+                helper sentence too put it in the ACCESSIBLE NAME, which then
+                changed on every toggle — a control whose name mutates with its
+                state is announced as a different control. It is a description,
+                so it is referenced as one. */}
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={prefersExtension}
                 onChange={(e) => setPrefersExtensionForChat(e.target.checked)}
+                aria-describedby="chat-surface-help"
                 className="mt-0.5 accent-fm-accent"
               />
               <span className="min-w-0">
                 <span className="block text-sm text-fm-text-primary">
                   Use the Copilot extension for chat
                 </span>
-                <span className="block text-fm-xs text-fm-text-tertiary mt-0.5">
+                <span id="chat-surface-help" className="block text-fm-xs text-fm-text-tertiary mt-0.5">
                   {prefersExtension
                     ? 'This Dashboard shows cases only. Turn this off to chat here again.'
                     : 'Chat here, beside the case record.'}

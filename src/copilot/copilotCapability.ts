@@ -29,8 +29,15 @@
  * it is the one question answerable today.
  */
 
-/** Set on `<html>` by the extension's auth bridge, valued with its version. */
-const COPILOT_PRESENCE_ATTR = 'data-faultmaven-copilot';
+/**
+ * Set on `<html>` by the extension's auth bridge, valued with its version.
+ *
+ * EXPORTED, because this and the event below are a cross-repo contract and were
+ * already spelled out a second time in `CopilotEntry`. Two copies of a name the
+ * other repository owns can drift while both sides stay green — the install CTA
+ * would keep working while the withdrawal gate silently stopped, or the reverse.
+ */
+export const COPILOT_PRESENCE_ATTR = 'data-faultmaven-copilot';
 
 /**
  * Dispatched by the auth bridge once it has stamped the attribute.
@@ -40,6 +47,15 @@ const COPILOT_PRESENCE_ATTR = 'data-faultmaven-copilot';
  * attribute and this only says "look again".
  */
 export const COPILOT_READY_EVENT = 'faultmaven-copilot:ready';
+
+/**
+ * How long to wait before re-reading the attribute anyway.
+ *
+ * The same 800ms `CopilotEntry` has always used for this signal. The event is
+ * the fast path; this is the one that catches a bridge that injected late or a
+ * dispatch this context never saw.
+ */
+export const COPILOT_PRESENCE_RECHECK_MS = 800;
 
 /**
  * The first Copilot release that understands `FM_DASHBOARD_PANEL_WITHDRAWN`.
@@ -86,17 +102,26 @@ function compareVersions(a: string, b: string): number {
 /**
  * May the Dashboard assert that it is showing a panel?
  *
- * ABSENT MEANS YES. No announced extension is either no extension at all, or
- * one whose content script never registered for this origin (host permission is
- * optional and commonly ungranted on a self-hosted Dashboard). In both cases
- * nothing is listening, so the assertion reaches no one and can strand no one —
- * and refusing to assert there would withhold the behaviour from every user who
- * installs the extension later in the same page's life.
+ * ABSENT (`null`) MEANS YES. No announced extension is either no extension at
+ * all, or one whose content script never registered for this origin (host
+ * permission is optional and commonly ungranted on a self-hosted Dashboard). In
+ * both cases nothing is listening, so the assertion reaches no one and can
+ * strand no one — and refusing there would withhold the behaviour from every
+ * user who installs the extension later in the same page's life.
  *
- * A version this cannot parse is treated as TOO OLD. "We could not tell" must
- * resolve to the branch that cannot produce a dark tab.
+ * EMPTY (`''`) MEANS NO, and the difference matters. An empty attribute is an
+ * extension that IS present and told us nothing useful — `hasAttribute` is how
+ * the install CTA detects one, and the bridge passes the manifest version
+ * straight through with no validation. Reading that as "nobody is listening"
+ * and asserting is exactly the path to a dark tab: a pre-#257 install would
+ * yield and never hear the retraction.
+ *
+ * Likewise a version this cannot parse. "We could not tell" must resolve to the
+ * branch that cannot produce a dark tab; only "there is demonstrably nobody
+ * there" resolves the other way.
  */
 export function copilotAcceptsWithdrawal(version: string | null = installedCopilotVersion()): boolean {
-  if (version === null || version === '') return true;
+  if (version === null) return true;
+  if (version.trim() === '') return false;
   return compareVersions(version, COPILOT_WITHDRAWAL_MIN_VERSION) >= 0;
 }

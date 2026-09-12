@@ -440,11 +440,28 @@ is idempotent, so the duplicate on an ordinary load costs one message, while
 depending on a property happy-dom drops entirely would trade that for a silent
 failure.
 
-⚠️ **RELEASE ORDER IS LOAD-BEARING.** An extension that predates the withdrawal
-ignores it and leaves the tab yielded. Measured against the pre-#257 build:
-turning the preference on left `enabled:false` — the Dashboard stood down and
-the extension's panel stayed hidden, so the tab had **neither surface**. This
-may only ship once an extension that understands the withdrawal is in the field.
+⚠️ **AN OLD EXTENSION MUST NEVER BE ASSERTED TO.** One predating
+faultmaven-copilot#257 ignores the withdrawal and leaves the tab yielded —
+measured: the Dashboard stood down and the extension's panel stayed hidden, so
+the tab had **neither surface**. So the Dashboard does not create that state,
+and this release does NOT wait for the Chrome Web Store:
+
+- `src/copilot/copilotCapability.ts` gates the ASSERTION on the installed
+  extension's version, read from `data-faultmaven-copilot` (which every
+  extension has always stamped). `null` — nobody announced — allows it, because
+  nothing is listening. `''` or an unparseable version REFUSES: an attribute
+  that is present but useless means an extension IS there.
+- **`index.html` ships with the flag DOWN** (`="0"`). An old extension yields on
+  that attribute at document_end, entirely independently — gating the message
+  alone still produced a yield in a real browser. Both paths had to close.
+
+Verified both arms: an old build (1.0.3) produces **zero** side-panel writes
+across the whole flow; a new one (1.0.4) does the full yield/release round trip.
+
+**Delete `COPILOT_WITHDRAWAL_MIN_VERSION`, flip the attribute back to `"1"`, and
+move the two assertions in `indexHtmlAdvertisement.test.ts`** once no install
+below 1.0.4 is plausibly in the field. That suite pins the value deliberately,
+so flipping the character alone turns the build red.
 
 ## Testing
 

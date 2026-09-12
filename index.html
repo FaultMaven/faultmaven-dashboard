@@ -14,9 +14,13 @@
   reason, and gating only the message leaves this path open — both had to close.
 
   An extension carrying #257 does not read this attribute at all (ADR-018 D0
-  row 7 removed that read), so nothing is lost today. Flip it back to "1", or
-  delete the whole migration, together with COPILOT_WITHDRAWAL_MIN_VERSION once
-  no install below that version is plausibly in the field.
+  row 7 removed that read), so nothing is lost today.
+
+  TO END THE MIGRATION: flip this to "1", delete COPILOT_WITHDRAWAL_MIN_VERSION
+  and the gate that reads it, and move the two assertions in
+  src/test/copilot/indexHtmlAdvertisement.test.ts back the other way — that
+  suite pins this value deliberately, so flipping the character alone turns the
+  build red. Do it once no install below 1.0.4 is plausibly in the field.
 
   The contract itself is faultmaven-copilot#231, settled in
   `@faultmaven/copilot-ui/contract`: the attribute is a claim about the BUILD —

@@ -61,7 +61,36 @@ export function setPrefersExtensionForChat(next: boolean): void {
 
 export function subscribeToChatSurface(onChange: () => void): () => void {
   listeners.add(onChange);
+  ensureCrossTabListener();
   return () => listeners.delete(onChange);
+}
+
+/**
+ * ACROSS TABS, because "per browser profile" has to mean it.
+ *
+ * Without this the preference was per TAB, as of page load. Turn it on in one
+ * Dashboard tab and the others keep rendering the dock, keep the `New Case`
+ * item, and — because their panel is still visible — keep asserting, so the
+ * extension's side panel stays yielded on them. The user who just asked for
+ * chat in the extension would have the Dashboard's panel and no side panel
+ * there.
+ *
+ * `storage` fires only in OTHER tabs, which is exactly the gap: this tab's own
+ * writes already notify through `setPrefersExtensionForChat`. Installed once
+ * and never removed — it is page-scoped, like the preference itself.
+ */
+let crossTabInstalled = false;
+
+function ensureCrossTabListener(): void {
+  if (crossTabInstalled || typeof window === 'undefined') return;
+  crossTabInstalled = true;
+  window.addEventListener('storage', (event) => {
+    // Only our key, and only when it actually changed. `event.key === null` is
+    // a `localStorage.clear()` elsewhere, which must also be honoured.
+    if (event.key !== null && event.key !== authLocalStore.physicalKey(KEY)) return;
+    cached = undefined;
+    for (const notify of listeners) notify();
+  });
 }
 
 /** Drop the memo. Tests swap `localStorage` between cases. */

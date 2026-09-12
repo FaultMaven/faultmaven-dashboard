@@ -65,11 +65,17 @@ export function announcePanelAvailable(win: Window = window): void {
  * actually being replaced needs nothing from us — the extension releases a tab
  * whose document is going away on its own.
  *
- * ⚠️ RELEASE ORDER. An extension that predates this message ignores it and
- * leaves the tab yielded, which is the dark-tab failure. This may only ship to
- * users once an extension that understands it is in the field — ADR-018
- * sequences the extension side (row 4) strictly before this one (row 5), and
- * faultmaven-copilot#257 is that release.
+ * ⚠️ AN EXTENSION THAT PREDATES THIS MESSAGE IGNORES IT and leaves the tab
+ * yielded, which is the dark-tab failure. That is why the Dashboard does not
+ * assert to one: `copilot/copilotCapability.ts` gates the ASSERTION on the
+ * installed extension's version, and `index.html` ships with the build-capability
+ * flag down, so an older install never yields and therefore never needs to hear
+ * this. The withdrawal itself is sent unconditionally — it is a no-op for an
+ * extension that cannot hear it, and the one thing worse than a redundant
+ * withdrawal is a missing one.
+ *
+ * So this does NOT have to wait for faultmaven-copilot#257 to reach the store.
+ * ADR-018 sequences row 4 before row 5 because without that gate it would.
  */
 export function withdrawPanelAvailability(win: Window = window): void {
   win.postMessage({ type: DASHBOARD_PANEL_WITHDRAWN_MESSAGE }, win.location.origin);

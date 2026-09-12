@@ -105,8 +105,21 @@ export function createPrefixedLocalStore(prefix: string) {
     decode,
 
     read(key: string): StoredRead {
-      const s = store();
-      return s ? decode(s.getItem(physicalKey(key))) : { present: false, value: undefined };
+      // The CALL is guarded, not only the property access. `store()` catches a
+      // `localStorage` that throws on access (a blocked origin), but `getItem`
+      // itself can throw too — Safari in private mode, a hardened profile, an
+      // extension that has replaced it — and `write` and `remove` below have
+      // always been wrapped while this was not. A read that throws propagates
+      // into callers that treat "no value" as a safe default and never expected
+      // an exception: `prefersExtensionForChat()` is called by
+      // `resolvePostSignInLanding` OUTSIDE its own try, so a throw there
+      // rejected the sign-in landing instead of falling back to `/cases`.
+      try {
+        const s = store();
+        return s ? decode(s.getItem(physicalKey(key))) : { present: false, value: undefined };
+      } catch {
+        return { present: false, value: undefined };
+      }
     },
 
     write(key: string, value: unknown): void {

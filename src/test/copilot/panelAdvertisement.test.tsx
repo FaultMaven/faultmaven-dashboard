@@ -1,10 +1,13 @@
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DASHBOARD_PANEL_MESSAGE,
   DASHBOARD_PANEL_WITHDRAWN_MESSAGE,
 } from '@faultmaven/copilot-ui/contract';
-import { usePanelAdvertisement } from '../../copilot/usePanelAdvertisement';
+import {
+  usePanelAdvertisement,
+  type PanelVisibility,
+} from '../../copilot/usePanelAdvertisement';
 
 /**
  * The advertisement is a LIVE claim, and it can be unmade (ADR-018 D0, row 5).
@@ -20,7 +23,7 @@ import { usePanelAdvertisement } from '../../copilot/usePanelAdvertisement';
  * second panel on screen (mild). Every case below resolves towards withdrawal.
  */
 
-function Harness({ showing }: { showing: boolean }) {
+function Harness({ showing }: { showing: PanelVisibility }) {
   usePanelAdvertisement(showing);
   return <div data-testid="harness" />;
 }
@@ -38,6 +41,28 @@ afterEach(() => {
   postMessage.mockRestore();
 });
 
+describe('a mount that has not settled yet', () => {
+  it('says NOTHING — pending is not a retraction', async () => {
+    // Treating "still loading its chunk" as "not showing" made every mount post
+    // a withdrawal before it ever asserted: the extension's side panel was
+    // released for the whole load and re-yielded a few hundred milliseconds
+    // later. On every page load, every `key`ed remount, every first open of the
+    // dock, and every breakpoint crossing.
+    render(<Harness showing="pending" />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(postedTypes()).toEqual([]);
+  });
+
+  it('asserts once it settles, with no withdrawal in between', async () => {
+    const { rerender } = render(<Harness showing="pending" />);
+    rerender(<Harness showing="showing" />);
+
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
+    expect(postedTypes()).not.toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE);
+  });
+});
+
 describe('an extension that could not take the assertion back', () => {
   afterEach(() => {
     document.documentElement.removeAttribute('data-faultmaven-copilot');
@@ -50,7 +75,7 @@ describe('an extension that could not take the assertion back', () => {
     // declines to create it, and that install keeps what it has today.
     document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
 
-    render(<Harness showing />);
+    render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes().length).toBeGreaterThan(0));
 
     expect(postedTypes()).not.toContain(DASHBOARD_PANEL_MESSAGE);
@@ -61,7 +86,7 @@ describe('an extension that could not take the assertion back', () => {
     // redundant withdrawal is a missing one.
     document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
 
-    render(<Harness showing />);
+    render(<Harness showing="showing" />);
 
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
   });
@@ -70,7 +95,7 @@ describe('an extension that could not take the assertion back', () => {
     // The bridge stamps its version at document_end and this hook can run
     // first. Reading once at mount would see no extension, assert, and hand a
     // yield to an install that cannot release it.
-    render(<Harness showing />);
+    render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
     postMessage.mockClear();
 
@@ -93,7 +118,7 @@ describe('an extension that could not take the assertion back', () => {
 
 describe('while a panel is showing', () => {
   it('asserts, to the page’s OWN origin and not a wildcard', async () => {
-    render(<Harness showing />);
+    render(<Harness showing="showing" />);
 
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
     // A wildcard would hand the claim to any frame embedding the Dashboard.
@@ -114,7 +139,7 @@ describe('while a panel is showing', () => {
     // on an ordinary load too costs one message, while depending on a property
     // happy-dom drops entirely — and older browsers vary on — would trade that
     // free duplicate for a silent failure to re-assert.
-    render(<Harness showing />);
+    render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
     postMessage.mockClear();
 
@@ -131,17 +156,17 @@ describe('when it stops showing', () => {
     // The collapse and tab-switch case. The dock keeps its panel mounted so an
     // in-flight turn survives — but the user is looking at no conversation, so
     // the extension's side panel must come back.
-    const { rerender } = render(<Harness showing />);
+    const { rerender } = render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
     postMessage.mockClear();
 
-    rerender(<Harness showing={false} />);
+    rerender(<Harness showing="hidden" />);
 
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
   });
 
   it('withdraws on unmount', async () => {
-    const { unmount } = render(<Harness showing />);
+    const { unmount } = render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
     postMessage.mockClear();
 
@@ -154,7 +179,7 @@ describe('when it stops showing', () => {
     // Silence is not a retraction. A tab yielded by a previous document, or by
     // a page state that has since changed, needs to be told — so a mount that
     // is not showing says so rather than saying nothing.
-    render(<Harness showing={false} />);
+    render(<Harness showing="hidden" />);
 
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
     expect(postedTypes()).not.toContain(DASHBOARD_PANEL_MESSAGE);
@@ -164,10 +189,10 @@ describe('when it stops showing', () => {
     // The listener is installed only while showing. Left behind, a bfcache
     // restore would re-assert for a panel that is no longer on screen — the
     // severe direction, and invisible until someone loses their chat surface.
-    const { rerender } = render(<Harness showing />);
+    const { rerender } = render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
 
-    rerender(<Harness showing={false} />);
+    rerender(<Harness showing="hidden" />);
     postMessage.mockClear();
 
     act(() => {

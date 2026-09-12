@@ -56,11 +56,11 @@ export interface ConversationSurfaceInput {
   /**
    * Has this browser profile asked for chat to live in the Copilot extension?
    *
-   * ADR-018 D3, sequencing row 6. Blocked on the extension learning to release a
-   * yielded tab (D0, faultmaven-copilot#256), because a Dashboard that stands
-   * down to an extension with no release path leaves the tab with neither
-   * surface. Until then this is always false and the two arms below are the
-   * only ones reachable.
+   * ADR-018 D3, sequencing row 6 — LIVE, read from
+   * `lib/copilot/chatSurfacePreference.ts`. Per browser profile, defaulting
+   * off, and never set by detection: the Dashboard can tell the extension is
+   * installed but not whether its side panel is open, so standing down on
+   * detection would strand an installed-but-closed user.
    */
   prefersExtension: boolean;
 

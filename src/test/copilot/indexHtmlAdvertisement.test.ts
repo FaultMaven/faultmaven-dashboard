@@ -61,6 +61,18 @@ describe('index.html carries the attribute with the flag DOWN', () => {
     expect(dashboardAdvertisesPanel(doc)).toBe(true);
   });
 
+  it.each(['', 'false', '0'])('treats %o as NOT advertising', (off) => {
+    // The subtle half of the shared predicate, kept against the real served
+    // markup. The contract has THREE non-advertising spellings and this repo
+    // consumes the predicate from a SHA-pinned package — a pin move that made
+    // `''` or `'false'` advertise would otherwise pass here, because the file
+    // itself only exercises `'0'`.
+    const doc = documentFrom(html);
+    doc.documentElement.setAttribute(DASHBOARD_PANEL_ATTR, off);
+
+    expect(dashboardAdvertisesPanel(doc)).toBe(false);
+  });
+
   it('puts it on <html>, not on <body> or a <meta>', () => {
     // The contract names `<html>`. A content script at document_start may have
     // no <body> yet, so an attribute anywhere else is unreadable at the moment

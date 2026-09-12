@@ -1,6 +1,18 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { announcePanelAvailable, withdrawPanelAvailability } from './advertisement';
-import { COPILOT_READY_EVENT, copilotAcceptsWithdrawal } from './copilotCapability';
+import {
+  COPILOT_PRESENCE_RECHECK_MS,
+  COPILOT_READY_EVENT,
+  copilotAcceptsWithdrawal,
+} from './copilotCapability';
+
+/**
+ * What this host can say about its panel right now.
+ *
+ * Three states, not two, because "not showing" and "do not know yet" have
+ * opposite correct actions: one is a retraction, the other is silence.
+ */
+export type PanelVisibility = 'showing' | 'hidden' | 'pending';
 
 /**
  * Keep the extension told whether a built-in panel is SHOWING on this tab
@@ -28,7 +40,7 @@ import { COPILOT_READY_EVENT, copilotAcceptsWithdrawal } from './copilotCapabili
  * this as an obligation on the page, because the extension cannot ask a page
  * what it is currently showing.
  */
-export function usePanelAdvertisement(showing: boolean): void {
+export function usePanelAdvertisement(showing: PanelVisibility): void {
   const acceptsWithdrawal = useInstalledCopilotAcceptsWithdrawal();
 
   useEffect(() => {
@@ -41,7 +53,16 @@ export function usePanelAdvertisement(showing: boolean): void {
     // The WITHDRAWAL still goes out unconditionally. It is a no-op for an
     // extension that cannot hear it, and the one thing worse than a redundant
     // withdrawal is a missing one.
-    if (!showing || !acceptsWithdrawal) {
+    // PENDING SAYS NOTHING. A mount that is still fetching its chunk is not a
+    // panel that has gone away, and treating it as one made every single mount
+    // post a withdrawal before it ever asserted — releasing the extension's
+    // side panel for the whole load and re-yielding a few hundred milliseconds
+    // later. That flash happened on every page load, every `key`ed remount,
+    // every first open of the dock and every breakpoint crossing. Silence is
+    // the only honest answer while the answer is not yet known.
+    if (showing === 'pending') return;
+
+    if (showing === 'hidden' || !acceptsWithdrawal) {
       // Also fires on the transition from showing to hidden, which is the
       // collapse and tab-switch case — not only on unmount.
       withdrawPanelAvailability();
@@ -93,7 +114,19 @@ export function usePanelAdvertisement(showing: boolean): void {
  */
 function subscribeToCopilotPresence(onChange: () => void): () => void {
   window.addEventListener(COPILOT_READY_EVENT, onChange);
-  return () => window.removeEventListener(COPILOT_READY_EVENT, onChange);
+  // A DELAYED RE-READ as well as the event, mirroring `CopilotEntry`, which has
+  // guarded the same DOM signal this way all along. The event can be missed:
+  // it may fire before this subscription exists, a bridge injected late by
+  // `chrome.scripting` after an optional host-permission grant may not dispatch
+  // it into a world this listener sees, and a regressed build may not dispatch
+  // it at all. Missing it here is worse than missing it there — the install CTA
+  // just stays on the wrong label, while this would assert to an extension that
+  // cannot take it back.
+  const timer = window.setTimeout(onChange, COPILOT_PRESENCE_RECHECK_MS);
+  return () => {
+    window.clearTimeout(timer);
+    window.removeEventListener(COPILOT_READY_EVENT, onChange);
+  };
 }
 
 function useInstalledCopilotAcceptsWithdrawal(): boolean {

@@ -96,7 +96,9 @@ export default function CaseListPage() {
                 ? prefersExtension
                   ? 'Start a new case from the Copilot and it will show up here.'
                   : 'Start a new case and it will show up here.'
-                : 'Clear the filters to see everything, or start looking at something new.'}
+                : prefersExtension
+                  ? 'Clear the filters to see everything.'
+                  : 'Clear the filters to see everything, or start looking at something new.'}
             </p>
             {/* ADR-018 D3's own note on D6: with the preference on, the
                 first-run destination does not exist, so the empty state points

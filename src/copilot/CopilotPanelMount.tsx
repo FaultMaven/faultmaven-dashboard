@@ -225,7 +225,13 @@ export default function CopilotPanelMount({
    * Gated on `panel` as well, so a mount that is still loading its chunk, or
    * that failed, never claims to be showing one.
    */
-  usePanelAdvertisement(visible && !!panel);
+  usePanelAdvertisement(
+    // `pending` while the chunk and the profile are still in flight: this mount
+    // has not failed and has not gone away, so it has nothing to say yet.
+    // An ERROR is `hidden`, not pending — that panel is never going to show,
+    // and the extension needs to know to keep its own.
+    !visible || error ? 'hidden' : panel ? 'showing' : 'pending',
+  );
 
   if (error) {
     return (

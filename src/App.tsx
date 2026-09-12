@@ -92,7 +92,7 @@ function TeamsRoute({ children }: { children: React.ReactNode }) {
  *
  * `replace`, so the back button does not bounce them straight back into it.
  */
-function ChatSurfaceRoute({ children }: { children: React.ReactNode }) {
+export function ChatSurfaceRoute({ children }: { children: React.ReactNode }) {
   const prefersExtension = usePrefersExtensionForChat();
   if (prefersExtension) return <Navigate to="/cases" replace />;
   return <>{children}</>;
