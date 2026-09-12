@@ -30,11 +30,20 @@ export function PageHeader({ onLogout }: PageHeaderProps) {
             {navItems.map((item) => {
               const base =
                 'px-4 py-2 text-sm font-medium rounded-fm-btn transition-colors whitespace-nowrap';
-              const cls = item.active
-                ? `${base} text-white bg-fm-accent`
-                : `${base} text-fm-text-secondary border border-fm-border hover:bg-fm-elevated`;
+              // An ACTION is filled and carries a leading `+`; every other item
+              // is a destination and is outlined. Without that distinction
+              // "New Case" sat among "Cases" and "Knowledge Base" and read as
+              // another view of the case list rather than a control that
+              // creates one. The `+` is also what `@faultmaven/copilot-ui`
+              // puts on the same button, so the two frontends agree.
+              const cls = item.action
+                ? `${base} text-white bg-fm-accent hover:bg-fm-accent/90`
+                : item.active
+                  ? `${base} text-white bg-fm-accent`
+                  : `${base} text-fm-text-secondary border border-fm-border hover:bg-fm-elevated`;
               return (
                 <Link key={item.path} to={item.path} className={cls}>
+                  {item.action && <span aria-hidden="true">+ </span>}
                   {item.label}
                 </Link>
               );

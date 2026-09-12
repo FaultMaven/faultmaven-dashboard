@@ -982,6 +982,30 @@ export default function KBPage() {
     setManualError(null);
     try {
       const result = await createRunbookManually(data);
+
+      /**
+       * A DRAFT THAT FAILED VALIDATION KEEPS YOU IN THE FORM.
+       *
+       * The backend saves the draft either way and reports validation
+       * separately, so a 200 does not mean the runbook is good. Jumping to the
+       * results view on a failed draft threw away every field the author had
+       * just typed and left them editing generated YAML and markdown by hand —
+       * the only place `symptom_class` or a missing `### Cause` can be repaired
+       * once the form is gone.
+       *
+       * The draft is not lost by staying here: it is saved, `loadDrafts()`
+       * below lists it under KB → Drafts, and the errors are shown against the
+       * form that produced them.
+       */
+      const validation = result.draft?.validation;
+      if (validation && !validation.passed) {
+        setManualError(
+          `Saved as a draft, but it needs fixing before it can be verified:\n${validation.errors.join('\n')}`,
+        );
+        loadDrafts();
+        return;
+      }
+
       setConversion({
         conversion_id: result.conversion_id,
         status: 'completed',
