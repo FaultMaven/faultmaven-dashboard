@@ -1,6 +1,7 @@
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import type { CaseSummary } from '../../types/cases';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { setPrefersExtensionForChat } from '../../lib/copilot/chatSurfacePreference';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import CaseListPage from '../../pages/CaseListPage';
 
@@ -253,6 +254,45 @@ function lexiconViolations(root: HTMLElement): string[] {
 
   return found;
 }
+
+describe('CaseListPage with chat in the Copilot extension (ADR-018 D3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setPrefersExtensionForChat(true);
+  });
+
+  afterEach(() => {
+    setPrefersExtensionForChat(false);
+  });
+
+  it('hides both CTAs, because they lead to a surface this person declined', async () => {
+    mockListCases.mockResolvedValue({ cases: [sampleCase], total_count: 1, page: 0, page_size: 20, has_more: false });
+    renderPage();
+    await waitFor(() => expect(screen.getByText(sampleCase.title)).toBeInTheDocument());
+
+    expect(screen.queryByRole('link', { name: /^New Case$/ })).not.toBeInTheDocument();
+  });
+
+  it('points the first-run empty state at the Copilot instead', async () => {
+    mockListCases.mockResolvedValue({ cases: [], total_count: 0, page: 0, page_size: 20, has_more: false });
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+
+    expect(screen.getByText(/Start a new case from the Copilot/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /start a new case/i })).not.toBeInTheDocument();
+  });
+
+  it('does not offer an action the page no longer has, on a filtered-empty list', async () => {
+    // The sentence used to end "…or start looking at something new" while the
+    // only control behind it was hidden — pointing at nothing on the page.
+    mockListCases.mockResolvedValue({ cases: [], total_count: 7, page: 0, page_size: 20, has_more: false });
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+
+    expect(screen.getByText('Clear the filters to see everything.')).toBeInTheDocument();
+    expect(screen.queryByText(/start looking at something new/)).not.toBeInTheDocument();
+  });
+});
 
 describe('CaseListPage lexicon (ADR-018 D5)', () => {
   beforeEach(() => {

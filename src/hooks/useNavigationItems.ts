@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { useCapabilities } from './useCapabilities';
+import { usePrefersExtensionForChat } from './useChatSurface';
 import {
   canManageConsole,
   canManageLlmConfig,
@@ -22,6 +23,7 @@ export interface NavItem {
 export function useNavigationItems(currentPath: string): NavItem[] {
   const { deployment, role, isAdmin } = useAuth();
   const { managementConsole, teamSharing } = useCapabilities();
+  const prefersExtension = usePrefersExtensionForChat();
 
   const items: Omit<NavItem, 'active'>[] = [
     /*
@@ -40,13 +42,14 @@ export function useNavigationItems(currentPath: string): NavItem[] {
      * renaming it would break `resolvePostSignInLanding()` and the case list's
      * empty state, which both already link here.
      *
-     * Ungated on purpose: every signed-in account may start a case. ADR-018
-     * row 6 makes the item conditional on the "use the Copilot extension for
-     * chat" preference (D3), which does not exist yet — standing in a
-     * capability flag for it would gate the item on something no backend serves
-     * and hide the on-ramp from everyone the moment the flag defaulted off.
+     * No ROLE gate — every signed-in account may start a case. The one thing
+     * that removes it is the person's own "use the Copilot extension for chat"
+     * preference (ADR-018 D3): that surface is a full-page composer, and
+     * someone who has moved chat to the extension does not want a nav item
+     * leading to a second one. It comes straight back when they turn the
+     * preference off, which is why this is safe to hide rather than disable.
      */
-    { label: 'New Case', path: '/investigate' },
+    ...(prefersExtension ? [] : [{ label: 'New Case', path: '/investigate' }]),
     { label: 'Cases', path: '/cases' },
     { label: 'Knowledge Base', path: '/kb' },
   ];

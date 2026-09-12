@@ -649,7 +649,15 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly }: CaseTabsProps
           className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
           data-testid="transcript-tab-panel"
         >
-          <CasePanelMount caseId={caseId} readOnly={readOnly} />
+          {/* `visible` follows the ACTIVE TAB: this arm stays mounted behind
+              Report or Evidence so an in-flight turn survives, but the user is
+              looking at no conversation there, so the extension's panel should
+              come back. */}
+          <CasePanelMount
+            caseId={caseId}
+            readOnly={readOnly}
+            visible={activeTab === 'transcript'}
+          />
         </div>
       )}
       {/* Record content — long-form, with no scroller of its own, so it gets

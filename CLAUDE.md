@@ -174,7 +174,7 @@ The dashboard communicates with the FaultMaven backend through modular API clien
 
   - `resolveCaseConversationLayout` returns `{surface, dockPresent, transcriptTabShown, viewportBounded}` **together**, because three consumers would otherwise re-derive them from the same inputs and any two disagreeing is a visible defect: two live panels on one page, a default tab that is not in the strip, or a dock with no column height.
   - **A collapsed dock is not a fifth rule.** It is still a composer one click away, so the same question sends the tab back as the *record* — which is how "exactly one surface renders the conversation" stays true through a collapse without the panel ever moving between two mount points. Narrow width is genuinely different: no dock exists, so a read-only tab would leave a guest with no composer at all.
-  - **`prefersExtension` is fixed `false`.** Sequencing row 6, blocked on `@faultmaven/copilot-ui/contract` gaining a withdrawal message (D0, faultmaven-copilot#256). Landing it is a change of INPUT, not of rule — the `true` rows are already bound in `src/test/lib/cases/conversationSurface.test.ts`.
+  - **`prefersExtension` is the user's own preference** (ADR-018 D3, row 6), read from `src/lib/copilot/chatSurfacePreference.ts` — per browser profile, defaulting OFF, never set by detection. It governs the interactive surfaces only: the dock, the `New Case` nav item and `/investigate`, and the D0 advertisement. It NEVER governs the ability to read a conversation.
   - **The page is viewport-bounded exactly when a composer is on it.** `h-dvh min-h-[40rem]` buys one thing — a composer above the fold — so a page with none goes back to `min-h-screen` and grows. Measured: the read-only arm scrolls the page (1049px of content in a 900px window) instead of squeezing the record into an inner box.
   - **The dock mounts on first open and HIDES thereafter.** Never opened → no package chunk, no session, no transcript fetch. Opened then collapsed → the same instance, hidden, so an in-flight turn survives. The flag is one-way on purpose.
   - **Known gap**: crossing the 1024px breakpoint moves the panel between the dock and the tab, which is a remount. The ADR requires the *collapse* case only; a resize mid-turn would lose it.
@@ -385,14 +385,83 @@ change reaches both or reaches neither.
   panel crashed on every mount for want of a React context this app did not
   install. Keep them rendering the real thing.
 
+### Where chat lives: the preference (ADR-018 D3)
+
+`src/lib/copilot/chatSurfacePreference.ts` + `useChatSurface.ts`. One boolean,
+`faultmaven_prefersCopilotExtensionForChat`, per **browser profile** — because
+the thing it selects between is itself per-profile: an extension is installed in
+a browser, not in an account. A server-side preference would follow someone to a
+machine where the extension does not exist and silently remove their only chat
+surface. The cost is that support cannot read it.
+
+- **Defaults OFF, and the default is load-bearing.** Off means the Dashboard
+  hosts chat — the only correct answer for someone who has never installed
+  anything, and for the population that can never have a side panel at all
+  (Firefox, managed browsers, self-hosted). Only an explicit `true` moves chat.
+- **NEVER set by detection.** The Dashboard can tell the extension is installed;
+  it cannot tell whether the side panel is OPEN, so standing down on detection
+  would strand an installed-but-closed user. Detection may *offer*; only a
+  person applies. The toggle lives in the **account menu**, reachable from every
+  page — because on a self-hosted origin without a host-permission grant the
+  Dashboard never learns the extension exists, so an offer would never appear
+  for exactly the people most likely to want it.
+- **A module store, not React context.** `resolvePostSignInLanding()` runs
+  during sign-in, before the app shell exists, and the in-tree readers are
+  scattered across the nav, the case page and the account menu. A provider would
+  reach the second group and not the first.
+- What it removes: the dock, the `New Case` nav item, the `/investigate` route
+  (guarded by `ChatSurfaceRoute`, because a bookmark would otherwise mount a
+  second composer), the case list's CTAs, and the first-run landing. What it
+  never removes: the Transcript tab.
+
 ### The panel advertisement
 
-`src/copilot/advertisement.ts` holds a cross-repo contract
-(faultmaven-copilot#231): the attribute `data-faultmaven-dashboard-panel` in
-`index.html` and the `FM_DASHBOARD_PANEL_AVAILABLE` window message after the
-panel mounts. It tells the extension that THIS BUILD hosts a panel, so the
-extension yields its side panel here. Values `""`, `"false"` and `"0"` do not
-advertise, which is how a build without the panel ships the same markup.
+`src/copilot/advertisement.ts` holds a cross-repo contract, and since ADR-018 D0
+(row 5) the claim is **live** rather than a property of the build:
+
+| Signal | Means | Yields? |
+|---|---|---|
+| `data-faultmaven-dashboard-panel` in `index.html` | this BUILD could host a panel | **no** |
+| `FM_DASHBOARD_PANEL_AVAILABLE` | a panel is showing **on this tab, for this user, on this route** | yes |
+| `FM_DASHBOARD_PANEL_WITHDRAWN` | …not any more | releases |
+
+`usePanelAdvertisement(showing)` owns the lifecycle. **SHOWING means visible,
+not mounted**: the dock keeps its panel mounted while collapsed so an in-flight
+turn survives, and the live Transcript arm stays mounted behind another tab for
+the same reason — in both states the extension's panel should come back, so each
+host passes what it knows (`visible={open}`, `visible={activeTab === 'transcript'}`).
+
+It also re-asserts on **`pageshow`**, unconditionally. The extension releases a
+tab whose document is being replaced, and `tabs.onUpdated` reports
+`status: 'loading'` for a bfcache back/forward that creates no new document —
+React does not re-run there, so without this the tab is released and never
+yields again for that document's life. Not gated on `event.persisted`: the yield
+is idempotent, so the duplicate on an ordinary load costs one message, while
+depending on a property happy-dom drops entirely would trade that for a silent
+failure.
+
+⚠️ **AN OLD EXTENSION MUST NEVER BE ASSERTED TO.** One predating
+faultmaven-copilot#257 ignores the withdrawal and leaves the tab yielded —
+measured: the Dashboard stood down and the extension's panel stayed hidden, so
+the tab had **neither surface**. So the Dashboard does not create that state,
+and this release does NOT wait for the Chrome Web Store:
+
+- `src/copilot/copilotCapability.ts` gates the ASSERTION on the installed
+  extension's version, read from `data-faultmaven-copilot` (which every
+  extension has always stamped). `null` — nobody announced — allows it, because
+  nothing is listening. `''` or an unparseable version REFUSES: an attribute
+  that is present but useless means an extension IS there.
+- **`index.html` ships with the flag DOWN** (`="0"`). An old extension yields on
+  that attribute at document_end, entirely independently — gating the message
+  alone still produced a yield in a real browser. Both paths had to close.
+
+Verified both arms: an old build (1.0.3) produces **zero** side-panel writes
+across the whole flow; a new one (1.0.4) does the full yield/release round trip.
+
+**Delete `COPILOT_WITHDRAWAL_MIN_VERSION`, flip the attribute back to `"1"`, and
+move the two assertions in `indexHtmlAdvertisement.test.ts`** once no install
+below 1.0.4 is plausibly in the field. That suite pins the value deliberately,
+so flipping the character alone turns the build red.
 
 ## Testing
 

@@ -12,6 +12,7 @@ import { useTeamSharing } from '../hooks/useTeamSharing';
 import { useDockFits } from '../hooks/useDockFits';
 import { readDockCollapsed, writeDockCollapsed } from '../lib/cases/dockPreference';
 import { resolveCaseConversationLayout } from '../lib/cases/conversationSurface';
+import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { getCaseDetail, fetchCaseMarkdown, logoutAuth } from '../lib/api';
 import type { CaseDetail } from '../types/cases';
 
@@ -28,6 +29,7 @@ export default function CaseDetailPage() {
   const [exportError, setExportError] = useState<string | null>(null);
 
   const dockFits = useDockFits();
+  const prefersExtension = usePrefersExtensionForChat();
   // Seeded from the stored preference rather than read on every render: the
   // toggle below is the only writer, so React state is the live value and
   // storage is where it survives a reload.
@@ -154,15 +156,12 @@ export default function CaseDetailPage() {
    */
   const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
 
-  // The one question, asked once for the whole page (ADR-018 D2).
-  //
-  // `prefersExtension` is fixed false until sequencing row 6, which is itself
-  // blocked on the extension learning to release a yielded tab (D0,
-  // faultmaven-copilot#256) — a Dashboard that stands down to an extension with
-  // no release path leaves the tab with neither surface.
+  // The one question, asked once for the whole page (ADR-018 D2). Every input
+  // is now real: ownership from the case, width from the viewport, the dock's
+  // own state, and the person's preference about where chat lives.
   const layout = resolveCaseConversationLayout({
     isOwner,
-    prefersExtension: false,
+    prefersExtension,
     dockFits,
     dockOpen,
   });

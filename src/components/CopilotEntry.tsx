@@ -31,9 +31,14 @@ import { useEffect, useState } from 'react';
  * it hosts a panel — is `src/copilot/advertisement.ts`.
  */
 import { COPILOT_STORE_URL } from '../copilot/storeListing';
+import { COPILOT_PRESENCE_ATTR, COPILOT_READY_EVENT } from '../copilot/copilotCapability';
 
-const PRESENCE_ATTR = 'data-faultmaven-copilot';
-const PRESENCE_EVENT = 'faultmaven-copilot:ready';
+// IMPORTED, not re-spelled. These two strings are the extension's to choose,
+// and a second copy here could drift while both sides stayed green — the
+// install CTA would keep working while the withdrawal gate silently stopped, or
+// the reverse. `copilotCapability` is where the Dashboard states them once.
+const PRESENCE_ATTR = COPILOT_PRESENCE_ATTR;
+const PRESENCE_EVENT = COPILOT_READY_EVENT;
 
 function useCopilotPresence(): boolean {
   const [present, setPresent] = useState(

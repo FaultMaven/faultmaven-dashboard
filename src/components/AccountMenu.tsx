@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FocusEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { accountInitials, elevatedRole, identityColor } from '../lib/identity';
 import { getAccountProfile, type AccountProfile } from '../lib/api';
+import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
+import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
 
 interface AccountMenuProps {
   onLogout: () => void;
@@ -15,6 +17,7 @@ interface AccountMenuProps {
  * question a user can otherwise only answer by signing out to find out.
  */
 export function AccountMenu({ onLogout }: AccountMenuProps) {
+  const prefersExtension = usePrefersExtensionForChat();
   const { authState } = useAuth();
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
@@ -184,6 +187,48 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
               </div>
             )}
           </dl>
+
+          {/*
+            WHERE CHAT LIVES (ADR-018 D3), and it must be reachable from here
+            rather than only from an offer.
+            Extension presence is reported by the auth-bridge content script,
+            which registers only once host permission for this origin has been
+            granted — on a self-hosted origin without that grant the Dashboard
+            never learns the extension exists, so an offer would never appear
+            and the preference would be unreachable for exactly the people most
+            likely to want it.
+
+            A toggle, not a link to a settings page: it is one boolean, it is
+            per browser profile rather than per account, and the whole reason it
+            is safe to have is that there is always a visible one-click way
+            back. Burying it would remove that property.
+          */}
+          <div className="border-t border-fm-border px-4 py-3">
+            {/* The label names the control and nothing else. Wrapping the
+                helper sentence too put it in the ACCESSIBLE NAME, which then
+                changed on every toggle — a control whose name mutates with its
+                state is announced as a different control. It is a description,
+                so it is referenced as one. */}
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={prefersExtension}
+                onChange={(e) => setPrefersExtensionForChat(e.target.checked)}
+                aria-describedby="chat-surface-help"
+                className="mt-0.5 accent-fm-accent"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm text-fm-text-primary">
+                  Use the Copilot extension for chat
+                </span>
+                <span id="chat-surface-help" className="block text-fm-xs text-fm-text-tertiary mt-0.5">
+                  {prefersExtension
+                    ? 'This Dashboard shows cases only. Turn this off to chat here again.'
+                    : 'Chat here, beside the case record.'}
+                </span>
+              </span>
+            </label>
+          </div>
 
           <div className="border-t border-fm-border p-1">
             <button

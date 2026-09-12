@@ -129,6 +129,10 @@ import { useState } from 'react';
 import CaseDetailPage from '../../pages/CaseDetailPage';
 import { setViewport } from '../support/viewport';
 import { writeDockCollapsed } from '../../lib/cases/dockPreference';
+import {
+  setPrefersExtensionForChat,
+  resetChatSurfaceForTests,
+} from '../../lib/copilot/chatSurfacePreference';
 import { getCaseDetail } from '../../lib/api';
 
 /** Publishes the router's current query string so a test can read it back. */
@@ -205,6 +209,7 @@ function conversationSurface(): 'dock' | 'tab-live' | 'tab-record' | null {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  resetChatSurfaceForTests();
   fixtures.panel.mounts = 0;
   viewer.id = 'owner-1';
   setViewport('wide');
@@ -289,6 +294,63 @@ describe('the record and the conversation, at once', () => {
     fireEvent.click(await screen.findByRole('button', { name: /collapse the conversation/i }));
 
     expect(await screen.findByRole('button', { name: 'Transcript' })).toBeInTheDocument();
+  });
+});
+
+describe('with chat moved to the Copilot extension (ADR-018 D3)', () => {
+  beforeEach(() => {
+    setPrefersExtensionForChat(true);
+  });
+
+  it('leaves the conversation READABLE — the preference never governs reading', async () => {
+    // The invariant an earlier draft of the ADR broke. The preference governs
+    // the interactive surfaces only; a transcript is record content, in the
+    // same category as the report and the evidence.
+    await renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText(/stopped accepting writes at 02:14/)).toBeInTheDocument(),
+    );
+    expect(conversationSurface()).toBe('tab-record');
+  });
+
+  it('renders no dock and mounts no panel at all', async () => {
+    // "Case detail loads no panel code at all" — lighter than it was before the
+    // preference existed, not merely equivalent.
+    await renderPage();
+    await waitFor(() => expect(screen.getByTestId('transcript-record')).toBeInTheDocument());
+
+    expect(screen.queryByTestId('conversation-dock')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
+    expect(fixtures.panel.mounts).toBe(0);
+  });
+
+  it('does the same at narrow width — width cannot resurrect the composer', async () => {
+    // The narrow row of D2's table gives a GUEST the live panel because they
+    // have no composer anywhere else. Someone who has moved chat to the
+    // extension does, at every width.
+    setViewport('narrow');
+    await renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText(/stopped accepting writes at 02:14/)).toBeInTheDocument(),
+    );
+    expect(conversationSurface()).toBe('tab-record');
+    expect(fixtures.panel.mounts).toBe(0);
+  });
+
+  it('comes straight back when the preference is turned off', async () => {
+    // The one-click way back is what makes the preference safe to offer: the
+    // person who set it is the person who can unset it, with no reload.
+    const { unmount } = await renderPage();
+    await waitFor(() => expect(screen.getByTestId('transcript-record')).toBeInTheDocument());
+    unmount();
+
+    setPrefersExtensionForChat(false);
+    await renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+    expect(conversationSurface()).toBe('dock');
   });
 });
 
