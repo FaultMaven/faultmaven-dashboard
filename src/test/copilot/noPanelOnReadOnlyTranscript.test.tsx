@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { CaseDetail } from '../../types/cases';
 
@@ -59,7 +59,20 @@ vi.mock('../../lib/api', () => ({
   }),
   getUploadedFiles: vi.fn().mockResolvedValue({ files: [] }),
   getUploadedFileDetails: vi.fn().mockResolvedValue(null),
-  getCaseEvidenceList: vi.fn().mockResolvedValue({ evidence: [] }),
+  getCaseEvidenceList: vi.fn().mockResolvedValue({
+    evidence: [
+      {
+        evidence_id: 'e1',
+        category: 'metric',
+        summary: 'Pool waits hit 900/min',
+        extract: null,
+        analysis: null,
+        collected_at_turn: 1,
+        source_file: null,
+        related_hypotheses: [],
+      },
+    ],
+  }),
   getCaseUI: vi.fn().mockResolvedValue({ active_hypotheses: [] }),
 }));
 
@@ -130,6 +143,16 @@ function renderTabs(tab: string) {
   );
 }
 
+beforeEach(() => {
+  // `viewer` is module state and the live-arm test below sets it to the owner.
+  // Without this reset the FIRST test renders whichever arm the last one left
+  // behind — and since `packageImports` is cumulative, a reordered run would
+  // not fail cleanly, it would fail confusingly or pass for the wrong reason.
+  // The counter is deliberately NOT reset: it is the whole measurement.
+  viewer.id = 'someone-else';
+  localStorage.clear();
+});
+
 describe('the read-only Transcript tab', () => {
   it('reads the conversation without importing the shared UI at all', async () => {
     // Ordered first deliberately, and the only test in this file that renders
@@ -141,11 +164,13 @@ describe('the read-only Transcript tab', () => {
 
     expect(packageImports).toBe(0);
 
-    // And not merely because nothing has settled yet: the other tabs are
-    // reachable from here, and none of them reaches for the panel either.
+    // And not merely because nothing has settled yet. The tab strip renders
+    // synchronously, so awaiting a BUTTON would prove nothing — this waits for
+    // content that only exists once the Evidence tab's own fetch has resolved,
+    // which is the latest point at which a lazy import could still have fired.
     unmount();
     renderTabs('evidence');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Evidence' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Pool waits hit 900/min')).toBeInTheDocument());
     expect(packageImports).toBe(0);
   });
 

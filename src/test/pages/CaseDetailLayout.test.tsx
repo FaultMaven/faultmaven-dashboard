@@ -31,6 +31,12 @@ vi.mock('../../lib/api', () => ({
   getCaseDetail: vi.fn(),
   fetchCaseMarkdown: vi.fn(),
   logoutAuth: vi.fn(),
+  // Unused while the mocked viewer OWNS the case — which is what puts this file
+  // on the live arm, and is the only reason it can assert a panel holder at all.
+  // Present anyway: without it, flipping this fixture's `user_id` (or landing
+  // ADR-018 row 6, which routes owners to the record) fails with "No export is
+  // defined on the mock" from inside a layout assertion, which points nowhere.
+  getCaseMessages: vi.fn().mockResolvedValue({ messages: [], total_count: 0 }),
   getUploadedFiles: vi.fn().mockResolvedValue([]),
   getUploadedFileDetails: vi.fn().mockResolvedValue(null),
   getCaseEvidenceList: vi.fn().mockResolvedValue([]),

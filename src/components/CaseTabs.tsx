@@ -100,6 +100,13 @@ function RecordTranscriptTab({ caseId }: { caseId: string }) {
     let cancelled = false;
     async function load() {
       setLoading(true);
+      // Cleared on every attempt, not only set on failure. `CaseTabs` has no
+      // `key` on the route's `:caseId`, so this instance survives a move from
+      // one case to the next — and the error guard below wins over `messages`,
+      // so without this a single failed load would keep showing its error over
+      // every later case's transcript that loaded perfectly well. The same bug,
+      // with the same cause, is already commented in `CaseDetailPage.loadCase`.
+      setError(null);
       try {
         const res = await getCaseMessages(caseId);
         if (!cancelled) setMessages(res.messages);

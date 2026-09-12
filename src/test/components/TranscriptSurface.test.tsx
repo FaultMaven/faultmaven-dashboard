@@ -252,6 +252,31 @@ describe('the conversation is readable in every state the app can produce', () =
       expect(screen.getByText('Failed to get case messages')).toBeInTheDocument(),
     );
   });
+
+  it('and a failure on one case does not poison the next one', async () => {
+    // `CaseTabs` carries no `key` on the route's `:caseId`, so this component
+    // instance SURVIVES a move from one case to another — and the error guard
+    // wins over loaded messages. Without clearing the error at the top of each
+    // attempt, one failed case shows its error over every later transcript that
+    // loaded perfectly well, for as long as the page stays open.
+    viewer.id = 'someone-else';
+    getCaseMessages.mockRejectedValueOnce(new Error('Failed to get case messages'));
+    const { rerender } = renderTabs();
+    await waitFor(() =>
+      expect(screen.getByText('Failed to get case messages')).toBeInTheDocument(),
+    );
+
+    rerender(
+      <MemoryRouter initialEntries={['/?tab=transcript']}>
+        <CaseTabs caseId="case-8" caseDetail={{ ...CASE, case_id: 'case-8' }} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/stopped accepting writes at 02:14/)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Failed to get case messages')).not.toBeInTheDocument();
+  });
 });
 
 describe('exactly one surface renders the conversation', () => {

@@ -25,7 +25,7 @@ vi.mock('@faultmaven/copilot-ui', () => ({
 }));
 
 vi.mock('../../lib/api', () => ({
-  getCaseMessages: vi.fn().mockResolvedValue([]),
+  getCaseMessages: vi.fn().mockResolvedValue({ messages: [], total_count: 0 }),
   getUploadedFiles: vi.fn().mockResolvedValue([]),
   getUploadedFileDetails: vi.fn().mockResolvedValue(null),
   getCaseEvidenceList: vi.fn().mockResolvedValue([]),
