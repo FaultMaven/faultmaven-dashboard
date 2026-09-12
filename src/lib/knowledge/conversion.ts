@@ -181,8 +181,16 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
   },
   ALREADY_A_RUNBOOK: {
     title: 'Already a runbook',
-    message: 'This document appears to already be a FaultMaven runbook.',
-    action: 'Use the Upload feature instead to add it directly to the knowledge base.',
+    message:
+      'This document is already a FaultMaven runbook. Converting it would re-derive a new one from its prose, splitting its causes into separate runbooks and resetting its verification status.',
+    // Names both authoring routes rather than only "Upload". Add Runbook posts
+    // to POST /knowledge/documents, which is operator-only AND global-only, so
+    // a non-operator reading the old copy was sent to a menu item they cannot
+    // see — a dead end, since Convert is the path they just came from. Write
+    // Runbook is open to every user at personal/team scope. Stays correct
+    // whichever way faultmaven#1377 decides the direct-import gap.
+    action:
+      'Add it to the knowledge base directly instead: use Add Runbook if you are an operator, or Write Runbook to enter it at your own scope.',
   },
   LLM_UNAVAILABLE: {
     title: 'AI provider not available',
