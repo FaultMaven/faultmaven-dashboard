@@ -74,13 +74,23 @@ async function send(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, init);
   } catch (cause) {
-    // An abort is the caller's own doing — a cancelled request is not a
-    // network failure, and rewriting it would break `AbortController` callers
-    // that check for it.
-    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+    // CANCELLATION IS NOT A NETWORK FAILURE, and it is recognised by NAME
+    // rather than by constructor. `controller.abort(reason)` rejects with the
+    // reason verbatim — a plain Error, if the caller passed one — and
+    // `AbortSignal.timeout()` rejects with `TimeoutError`, not `AbortError`.
+    // An `instanceof DOMException` test misses both and reports the app's own
+    // cancellation to the user as an unreachable backend.
+    const name = (cause as { name?: unknown } | null)?.name;
+    if (name === 'AbortError' || name === 'TimeoutError') throw cause;
+
+    // THE URL ACTUALLY REQUESTED, not `config.apiUrl`. That value is the EMPTY
+    // STRING in the supported same-origin deployment (CLAUDE.md: `""` =
+    // same-origin, for the cloud reverse-proxy model), which rendered as
+    // "Could not reach the FaultMaven API at ." — and it names the wrong host
+    // entirely for the absolute-URL requests this function also accepts.
     throw new NetworkError(
-      `Could not reach the FaultMaven API at ${config.apiUrl}. It may be offline, ` +
-        'unreachable from this network, or rejecting this origin.',
+      `Could not reach the FaultMaven API at ${new URL(url, window.location.href).origin}. ` +
+        'It may be offline, unreachable from this network, or rejecting this origin.',
       cause instanceof Error ? cause : undefined,
     );
   }

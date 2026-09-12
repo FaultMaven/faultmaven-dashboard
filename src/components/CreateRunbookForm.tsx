@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -128,6 +128,22 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
     form.scope === '' || availableScopes.includes(form.scope as never) ? form.scope : 'personal';
 
   /**
+   * TEAM IS NOT OFFERED, because this form cannot satisfy it.
+   *
+   * The backend refuses team scope without a `team_id`
+   * (`conversion_routes.py`: "team_id is required for team scope") and this
+   * request has no field to carry one. Offering the option produces a
+   * guaranteed 400 with nothing the author can do about it — and that became
+   * far more likely the moment the scope stopped defaulting to `personal`,
+   * since every author now has to choose something deliberately.
+   *
+   * Hiding it is the honest stopgap: it is better to not offer a capability
+   * than to offer one that always fails. The real fix is a team picker
+   * alongside this select, which needs the request to carry `team_id`.
+   */
+  const selectableScopes = availableScopes.filter((scope) => scope !== 'team');
+
+  /**
    * The two rules the browser cannot enforce, checked before we submit.
    *
    * Both were reachable before: a chip group is not a `required` input, and the
@@ -140,15 +156,33 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
   if (form.symptom_class.length === 0) {
     localErrors.push('Pick at least one symptom class.');
   }
-  if (form.causes.trim() !== '' && !/^###\s+Cause\b/m.test(form.causes)) {
+  // THE BACKEND'S OWN GRAMMAR, not an approximation of it:
+  // `^### Cause ([A-Z]):\s*(.+?)\s*$` (runbook_grammar.py). A looser check here
+  // is worse than none — it waves through `### Cause 1:`, `### Cause AB:` and a
+  // bare `### Cause`, each of which then fails on the server, saves an invalid
+  // draft, and takes the author to the editor to repair by hand. Exactly one
+  // space, a single capital letter, a colon, and a non-empty name.
+  if (form.causes.trim() !== '' && !/^### Cause [A-Z]:[ \t]*\S.*$/m.test(form.causes)) {
     localErrors.push(
-      'Causes must contain at least one "### Cause" subsection — see the hint under the field.',
+      'Causes needs a heading of the form "### Cause A: <name>" — a single capital letter and a name.',
     );
   }
 
+  const errorRef = useRef<HTMLDivElement>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (localErrors.length > 0) return;
+    if (localErrors.length > 0) {
+      // A SILENT RETURN IS INDISTINGUISHABLE FROM A BROKEN BUTTON. The warning
+      // renders at the top of a form with sixteen chips and five tall
+      // textareas, so from the author's seat at the Create button nothing
+      // happened at all. Bring it to them, and make it the focus so a screen
+      // reader announces it rather than leaving them on a button that appears
+      // inert.
+      errorRef.current?.scrollIntoView({ block: 'center' });
+      errorRef.current?.focus();
+      return;
+    }
     const data = {
       ...form,
       scope: effectiveScope,
@@ -160,11 +194,17 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
 
   // "Has the author touched anything yet?" — so the checks above surface as
   // guidance while they work rather than as a complaint about a blank form.
+  // ANY field, not a sample of four. Sampling meant an author who had filled
+  // the three selects, the tags and four of the five sections was still "not
+  // started", so the guidance the block exists to give stayed hidden until they
+  // clicked Create and met the blocked submit above.
   const dirty =
-    form.title !== '' ||
-    form.service !== '' ||
     form.symptom_class.length > 0 ||
-    form.causes !== '';
+    form.tags.length > 0 ||
+    Object.entries(form).some(
+      ([key, value]) =>
+        key !== 'symptom_class' && key !== 'tags' && typeof value === 'string' && value !== '',
+    );
 
   const toggleSymptom = (symptom: string) => {
     setForm((prev) => ({
@@ -204,7 +244,12 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
       {/* Shown only once the author has started filling the form, so an empty
           form is not scolded before anyone has done anything. */}
       {localErrors.length > 0 && dirty && (
-        <div className="text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border rounded-fm-btn p-3">
+        <div
+          ref={errorRef}
+          tabIndex={-1}
+          role="alert"
+          className="text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border rounded-fm-btn p-3 focus:outline-none focus:ring-2 focus:ring-fm-warning"
+        >
           <ul className="list-disc list-inside space-y-0.5">
             {localErrors.map((e) => (
               <li key={e}>{e}</li>
@@ -306,7 +351,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
             className={inputClass}
           >
             <option value="">Select…</option>
-            {availableScopes.map((s) => (
+            {selectableScopes.map((s) => (
               <option key={s} value={s}>{SCOPE_LABELS[s] ?? s}</option>
             ))}
           </select>

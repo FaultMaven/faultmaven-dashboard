@@ -36,30 +36,17 @@ export default function CaseListPage() {
       <PageHeader onLogout={handleLogout} />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="mb-6">
           <div>
             <h2 className="text-fm-heading font-bold text-fm-text-primary mb-1">Cases</h2>
             <p className="text-fm-text-secondary text-sm">
               {totalCount} case{totalCount !== 1 ? 's' : ''}
             </p>
           </div>
-          {/*
-            `New Case`, not "New investigation" (ADR-018 D5). ADR-005 makes an
-            investigation a PHASE a case enters past INQUIRY — `inquiry_only`
-            names one that never did — so this control cannot create an
-            investigation; it creates a case that may become one. It is also the
-            word `@faultmaven/copilot-ui` already uses for the same button
-            (`+ New Case`), and one product naming one button two things is the
-            drift ADR-016 D2 exists to prevent, arriving through copy instead of
-            through code.
-          */}
-          {/* Absent when chat lives in the extension (ADR-018 D3): that link
-              leads to a full-page composer this person has asked not to have.
-              The Copilot's own `+ New Case` is where they start one. */}
-          {/* DROPPED from the populated header. The nav now renders `+ New Case`
-              as a filled action on every page, so a second create button a few
-              pixels below it was two affordances for one thing. It survives in
-              the empty state, where it is the whole point of the page. */}
+          {/* The create control lives in the NAV now — `+ New Case`, on every
+              page — so this header carries the title and count only. The
+              empty state keeps its own button, where it is the point of the
+              page. */}
         </div>
 
         <CaseFiltersBar filters={filters} onChange={setFilters} teams={teams} />

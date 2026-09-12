@@ -94,7 +94,36 @@ describe('the Causes structure', () => {
     fireEvent.change(causes, { target: { value: 'Just some prose about what went wrong.' } });
 
     fireEvent.submit(screen.getByRole('button', { name: /create/i }).closest('form')!);
-    await waitFor(() => expect(screen.getByText(/must contain at least one "### Cause"/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/Causes needs a heading of the form/)).toBeInTheDocument(),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a numeric label', '### Cause 1: Pool exhaustion'],
+    ['two letters', '### Cause AB: Pool exhaustion'],
+    ['extra spaces', '###   Cause A: Pool exhaustion'],
+    ['no colon or name', '### Cause'],
+    ['a colon with no name', '### Cause A:'],
+  ])('rejects %s, which the backend grammar also rejects', async (_label, causesText) => {
+    // A check looser than the parser it fronts is worse than none: each of
+    // these cleared the old `/^###\s+Cause\b/m` gate, was submitted, saved,
+    // and then failed server-side — landing the author in the editor to repair
+    // a draft by hand. The backend's grammar is
+    // `^### Cause ([A-Z]):\s*(.+?)\s*$`.
+    renderForm();
+    fillRequiredText();
+    fireEvent.click(screen.getByRole('button', { name: 'latency' }));
+
+    const causes = screen.getAllByRole('textbox').find((el) => el.tagName === 'TEXTAREA' &&
+      (el as HTMLTextAreaElement).placeholder.includes('### Cause A'))!;
+    fireEvent.change(causes, { target: { value: causesText } });
+
+    fireEvent.submit(screen.getByRole('button', { name: /create/i }).closest('form')!);
+    await waitFor(() =>
+      expect(screen.getByText(/Causes needs a heading of the form/)).toBeInTheDocument(),
+    );
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -110,7 +139,7 @@ describe('the Causes structure', () => {
     });
 
     await waitFor(() =>
-      expect(screen.queryByText(/must contain at least one "### Cause"/)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/Causes needs a heading of the form/)).not.toBeInTheDocument(),
     );
   });
 
@@ -138,7 +167,7 @@ describe('what the form tells you is required', () => {
     renderForm();
     const control = screen.getByLabelText(new RegExp(`^${label}`), {
       selector: 'input,select',
-    });
+    }) as HTMLInputElement | HTMLSelectElement;
 
     expect(control).toBeRequired();
     // The marker lives in the label, next to the name — `getByLabelText`
@@ -152,7 +181,9 @@ describe('what the form tells you is required', () => {
     // authors into choosing a value they have no opinion about — which is the
     // whole defect the unset selects fixed.
     renderForm();
-    const control = screen.getByLabelText(/^Difficulty/, { selector: 'select' });
+    const control = screen.getByLabelText(/^Difficulty/, {
+      selector: 'select',
+    }) as HTMLSelectElement;
 
     expect(control).not.toBeRequired();
     expect(control.labels?.[0]?.textContent ?? '').not.toContain('*');
