@@ -19,15 +19,30 @@ import type {
 import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
 import { TranscriptView } from './TranscriptView';
-import CopilotPanelMount from '../copilot/CopilotPanelMount';
-import { useAuth } from '../context/AuthContext';
-import { transcriptRenderer } from '../lib/cases/transcriptSurface';
+import { CasePanelMount } from './CasePanelMount';
+import type { CaseConversationLayout } from '../lib/cases/conversationSurface';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
 
 interface CaseTabsProps {
   caseId: string;
   caseDetail: CaseDetail;
+  /**
+   * How the page resolved ADR-018 D2's one question — decided ONCE, by the
+   * page, and handed down whole.
+   *
+   * Passed in rather than re-derived here because `CaseDetailPage` renders the
+   * dock and owns the page's height, and two components answering the same
+   * question from the same inputs is two chances to disagree: a page that
+   * docked the conversation while this component also offered it as a tab
+   * would put two live panels on one screen (ADR-018 D6 forbids it outright),
+   * and a page that grew with its content while this component scrolled
+   * internally would cramp the record inside a page with room to spare.
+   *
+   * Whole, not one field at a time, for the same reason — two props that must
+   * agree are two props that can stop agreeing.
+   */
+  layout: CaseConversationLayout;
 }
 
 function hypothesisStatusStyle(state: HypothesisState): { color: string; symbol: string } {
@@ -126,34 +141,6 @@ function RecordTranscriptTab({ caseId }: { caseId: string }) {
   return (
     <div data-testid="transcript-record">
       <TranscriptView messages={messages ?? []} />
-    </div>
-  );
-}
-
-/**
- * The conversation as a SURFACE — the transcript, and the input that continues
- * it.
- *
- * Mounted only when this tab is the user's composer: ADR-018 D2's question,
- * answered in `transcriptRenderer`. The panel loads its own messages; nothing
- * is fetched here. A turn taken here and a turn taken in the extension are the
- * same rows on the same server, so neither host needs the other and each sees
- * the other's work on reload.
- */
-function LiveTranscriptTab({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
-  return (
-    // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
-    // takes the room the page has left it; naming its own height is what put
-    // the composer below the fold (see CaseDetailPage).
-    <div className="h-full min-h-0" data-testid="transcript-panel-holder">
-      {/* `key` because the panel applies `initialCase` ONCE, at its own mount:
-          React Router keeps this component instance across a `:caseId` change,
-          so without a remount a move from one case to the next would leave the
-          previous case's transcript on screen. */}
-      <CopilotPanelMount
-        key={caseId}
-        initialCase={{ kind: 'existing', caseId, readOnly }}
-      />
     </div>
   );
 }
@@ -494,9 +481,9 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
   );
 }
 
-export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
+export function CaseTabs({ caseId, caseDetail, layout }: CaseTabsProps) {
+  const { surface, transcriptTabShown, viewportBounded } = layout;
   const [searchParams, setSearchParams] = useSearchParams();
-  const { authState } = useAuth();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
   // so many cases have none. Show the tab only when the case actually produced
@@ -512,49 +499,30 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
     { id: 'hypotheses', label: 'Hypotheses' },
     { id: 'evidence', label: 'Evidence' },
   ];
-  const tabLabels = allTabs.filter((t) => t.id !== 'hypotheses' || showHypotheses);
+  const tabLabels = allTabs.filter(
+    (t) =>
+      // Transcript is HIDDEN while the dock is showing the conversation, and
+      // present whenever it is not — so exactly one surface renders the
+      // conversation and "where is the transcript?" has one answer (D2).
+      (t.id !== 'hypotheses' || showHypotheses) && (t.id !== 'transcript' || transcriptTabShown),
+  );
 
   // The active tab is derived from the URL (single source of truth), so a
   // ?tab= deep link that changes on the same mounted case takes effect, and a
   // click updates the URL — keeping copied links current. A deep link to a tab
   // that isn't visible (e.g. ?tab=hypotheses on a case with none) or an unknown
   // value falls back to Transcript rather than rendering a blank panel.
-  /**
-   * Whether this case belongs to the person looking at it.
-   *
-   * A shared case is someone else's investigation. Before the panel replaced
-   * the read-only transcript, a teammate opening one simply could not type; the
-   * panel brought a live composer and an upload with it, so a viewer became
-   * able to post turns into an owner's case. `readOnly` puts that back — and it
-   * is derived from the case's own `user_id`, not from whether this page
-   * happens to offer a Share button.
-   *
-   * Fails CLOSED: an unknown viewer or an unknown owner is not a match, so the
-   * panel is read-only rather than writable by default.
-   */
-  const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
-
-  /**
-   * Does this user have a composer somewhere else? (ADR-018 D2.)
-   *
-   * Two things will ever make it true, and neither exists yet: the right-hand
-   * dock on this page (sequencing row 2) and the "use the Copilot extension for
-   * chat" preference (row 6). So for now an owner's only composer is this tab —
-   * which is exactly what #124 shipped, so nobody regresses ahead of row 2. Both
-   * later rows change this VALUE and leave `transcriptRenderer` alone.
-   */
-  const composerElsewhere = false;
-
-  // One question, asked in one place. `read-only` is the base: the record is
-  // readable for everyone, and the live panel is what gets added on top when
-  // this tab is where the user's composer lives.
-  const renderer = transcriptRenderer({ isOwner, composerElsewhere });
-  const transcriptIsLive = renderer === 'panel';
+  const transcriptIsLive = surface === 'tab-live';
 
   const requestedTab = searchParams.get('tab') as Tab | null;
+  // The fallback is the FIRST VISIBLE tab, not the literal 'transcript'.
+  // Transcript is the default (as it was before #124) and is first in the list,
+  // so this is Transcript wherever Transcript exists — but while the dock is
+  // showing it does not, and hardcoding it there would land every visit on a
+  // tab that is not in the strip and render an empty body.
   const activeTab: Tab = tabLabels.some((t) => t.id === requestedTab)
     ? (requestedTab as Tab)
-    : 'transcript';
+    : tabLabels[0].id;
 
   const setActiveTab = (id: Tab) => {
     setSearchParams(
@@ -606,11 +574,10 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
           className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
           data-testid="transcript-tab-panel"
         >
-          {/* `readOnly` is belt and braces, not the gate: a non-owner never
-              reaches this arm at all, because the rule above sends them to the
-              record. It stays so that a future input to that rule cannot hand
-              a viewer a composer by being wrong in one place. */}
-          <LiveTranscriptTab caseId={caseId} readOnly={!isOwner} />
+          {/* `readOnly={false}`: this arm is reachable only for the owner —
+              `resolveConversationSurface` sends everyone else to the record —
+              and the panel's own guard is applied at the dock's mount too. */}
+          <CasePanelMount caseId={caseId} readOnly={false} />
         </div>
       )}
       {/* Record content — long-form, with no scroller of its own, so it gets
@@ -618,7 +585,13 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
           The read-only transcript belongs in this container and not in the
           live arm's: it is read, like the report and the evidence beside it. */}
       {!(activeTab === 'transcript' && transcriptIsLive) && (
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        // A SCROLLER ONLY WHERE THE PAGE IS BOUNDED. Bounding exists to keep a
+        // composer above the fold, so on a page with no composer at all the
+        // record is long-form content and the PAGE scrolls, as it did before
+        // #124. Keeping this scroller there would squeeze a transcript, a
+        // report and an evidence list into an inner box a few hundred pixels
+        // tall while the window below it sat empty.
+        <div className={viewportBounded ? 'flex-1 min-h-0 overflow-y-auto' : 'flex-1'}>
           {activeTab === 'transcript' && <RecordTranscriptTab caseId={caseId} />}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
           {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}

@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { CaseTabs } from '../../components/CaseTabs';
+import { LAYOUTS } from '../support/caseConversationLayout';
 import { getCaseUI } from '../../lib/api';
 import type { CaseDetail, HypothesisSummary } from '../../types/cases';
 
@@ -64,7 +65,14 @@ function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
 function renderTabs(caseDetail: CaseDetail, route = '/') {
   return render(
     <MemoryRouter initialEntries={[route]}>
-      <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
+      {/* The narrow-owner row of ADR-018 D2's table: no dock at this width, so
+          the Transcript tab is present and live — which is the arrangement
+          every assertion in this file was written against. */}
+      <CaseTabs
+        caseId={caseDetail.case_id}
+        caseDetail={caseDetail}
+        layout={LAYOUTS.narrowOwner}
+      />
     </MemoryRouter>
   );
 }

@@ -151,7 +151,7 @@ describe('CaseListPage (read-only, D1)', () => {
     expect(screen.getByRole('heading', { name: /^Cases$/i })).toBeInTheDocument();
     expect(screen.getByText(/no cases yet/i)).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /start an investigation/i }).getAttribute('href'),
+      screen.getByRole('link', { name: /start a new case/i }).getAttribute('href'),
     ).toBe('/investigate');
   });
 
@@ -182,7 +182,7 @@ describe('CaseListPage (read-only, D1)', () => {
     await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
     expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /start an investigation/i }).getAttribute('href'),
+      screen.getByRole('link', { name: /start a new case/i }).getAttribute('href'),
     ).toBe('/investigate');
   });
 
@@ -209,5 +209,114 @@ describe('CaseListPage (read-only, D1)', () => {
     await waitFor(() => {
       expect(screen.getByText('API unreachable')).toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * ADR-018 D5, asserted against the RENDERED COPY rather than by review.
+ *
+ * A sweep rather than three string assertions. The three violations the ADR
+ * names — "New investigation", "Start an investigation", "Start an
+ * investigation and it will show up here." — are the ones that existed on the
+ * day it was written; pinning exactly those would say nothing about the fourth
+ * one added beside them next month, which is the only failure mode this
+ * requirement has.
+ *
+ * What is banned is the NOUN. "Investigating" is the ADR-005 case state and is
+ * correct copy — it is on the status badge and on a filter chip of this very
+ * page — so the pattern demands the whole word plus a boundary, which
+ * "Investigating" does not supply.
+ */
+const INVESTIGATION_NOUN = /investigations?\b/i;
+
+function lexiconViolations(root: HTMLElement): string[] {
+  const found: string[] = [];
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = (node.textContent ?? '').trim();
+    if (INVESTIGATION_NOUN.test(text)) found.push(`text: ${text}`);
+  }
+
+  // Copy a person reads that a text sweep cannot see: an icon-only control's
+  // accessible name, a tooltip, an input's placeholder. A button labelled only
+  // by `aria-label` is exactly where this would come back unnoticed.
+  const carriers = ['aria-label', 'title', 'placeholder', 'alt'] as const;
+  for (const el of Array.from(
+    root.querySelectorAll<HTMLElement>('[aria-label], [title], [placeholder], [alt]'),
+  )) {
+    for (const attr of carriers) {
+      const value = el.getAttribute(attr);
+      if (value && INVESTIGATION_NOUN.test(value)) found.push(`${attr}: ${value}`);
+    }
+  }
+
+  return found;
+}
+
+describe('CaseListPage lexicon (ADR-018 D5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('says "New Case" on the list CTA, and links it at the full-page surface', async () => {
+    // The positive half of the sweep. Without it the negative assertions below
+    // would pass just as happily on a page that rendered nothing at all.
+    mockListCases.mockResolvedValue({
+      cases: [sampleCase],
+      total_count: 1,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByText('Database Outage')).toBeInTheDocument());
+
+    const cta = screen.getByRole('link', { name: /^New Case$/ });
+    expect(cta.getAttribute('href')).toBe('/investigate');
+    expect(lexiconViolations(document.body)).toEqual([]);
+  });
+
+  it('says "Start a new case" in the first-run empty state', async () => {
+    mockListCases.mockResolvedValue({ cases: [], total_count: 0, page: 0, page_size: 20, has_more: false });
+
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+
+    expect(screen.getByText('Start a new case and it will show up here.')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /^Start a new case$/ }).getAttribute('href'),
+    ).toBe('/investigate');
+    expect(lexiconViolations(document.body)).toEqual([]);
+  });
+
+  it('says nothing about an "investigation" in the filtered-empty state either', async () => {
+    // The other empty state, which renders different copy and is the one a
+    // sweep over a single fixture would miss.
+    mockListCases.mockResolvedValue({ cases: [], total_count: 42, page: 9, page_size: 20, has_more: false });
+
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+
+    expect(lexiconViolations(document.body)).toEqual([]);
+  });
+
+  it('leaves the ADR-005 STATE word alone — "Investigating" is not the banned noun', async () => {
+    // The sweep has to be survivable by correct copy, or the next person
+    // deletes it. A case in the investigating phase renders that word on its
+    // badge and on a filter chip, and both are right.
+    mockListCases.mockResolvedValue({
+      cases: [sampleCase],
+      total_count: 1,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getAllByText('Investigating').length).toBeGreaterThan(0));
+
+    expect(lexiconViolations(document.body)).toEqual([]);
   });
 });

@@ -27,10 +27,19 @@ import type { CaseDetail } from '../../types/cases';
  * renamed would keep the first test green for the wrong reason.
  */
 
-let packageImports = 0;
+/**
+ * `vi.hoisted`, not a top-level `let`.
+ *
+ * `vi.mock` factories are hoisted above this file's own bindings and evaluated
+ * during module loading, so a factory closing over a plain `let` throws
+ * `Cannot access 'X' before initialization` the moment anything in the static
+ * graph imports a value from the mocked module. That is not hypothetical — the
+ * sibling page test hit exactly this when its fixtures moved into a factory.
+ */
+const pkg = vi.hoisted(() => ({ imports: 0 }));
 
 vi.mock('@faultmaven/copilot-ui', () => {
-  packageImports += 1;
+  pkg.imports += 1;
   return {
     setHostStore: vi.fn(),
     setHostEndpoints: vi.fn(),
@@ -98,9 +107,8 @@ vi.mock('../../lib/auth/functions', () => ({
   }),
 }));
 
-const viewer = { id: 'someone-else' };
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ authState: { user: { user_id: viewer.id } } }),
+  useAuth: () => ({ authState: { user: { user_id: 'someone-else' } } }),
 }));
 
 vi.mock('../../config', () => ({
@@ -108,6 +116,8 @@ vi.mock('../../config', () => ({
 }));
 
 import { CaseTabs } from '../../components/CaseTabs';
+import { LAYOUTS } from '../support/caseConversationLayout';
+import type { CaseConversationLayout } from '../../lib/cases/conversationSurface';
 
 const CASE: CaseDetail = {
   case_id: 'case-9',
@@ -135,21 +145,18 @@ const CASE: CaseDetail = {
   escalated: false,
 };
 
-function renderTabs(tab: string) {
+function renderTabs(tab: string, layout: CaseConversationLayout = LAYOUTS.nonOwner) {
   return render(
     <MemoryRouter initialEntries={[`/?tab=${tab}`]}>
-      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} />
+      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} />
     </MemoryRouter>,
   );
 }
 
 beforeEach(() => {
-  // `viewer` is module state and the live-arm test below sets it to the owner.
-  // Without this reset the FIRST test renders whichever arm the last one left
-  // behind — and since `packageImports` is cumulative, a reordered run would
-  // not fail cleanly, it would fail confusingly or pass for the wrong reason.
-  // The counter is deliberately NOT reset: it is the whole measurement.
-  viewer.id = 'someone-else';
+  // The arm is chosen per render by the LAYOUT now, not by module state, so
+  // nothing here can leak between tests. `pkg.imports` is deliberately NOT
+  // reset: it is cumulative, and it is the whole measurement.
   localStorage.clear();
 });
 
@@ -162,7 +169,7 @@ describe('the read-only Transcript tab', () => {
       expect(screen.getByText(/Writes started failing at 02:14/)).toBeInTheDocument(),
     );
 
-    expect(packageImports).toBe(0);
+    expect(pkg.imports).toBe(0);
 
     // And not merely because nothing has settled yet. The tab strip renders
     // synchronously, so awaiting a BUTTON would prove nothing — this waits for
@@ -171,14 +178,13 @@ describe('the read-only Transcript tab', () => {
     unmount();
     renderTabs('evidence');
     await waitFor(() => expect(screen.getByText('Pool waits hit 900/min')).toBeInTheDocument());
-    expect(packageImports).toBe(0);
+    expect(pkg.imports).toBe(0);
   });
 
   it('and the live arm DOES import it — so the assertion above is not vacuous', async () => {
-    viewer.id = 'owner-1'; // the case's user_id
-    renderTabs('transcript');
+    renderTabs('transcript', LAYOUTS.narrowOwner);
 
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
-    expect(packageImports).toBe(1);
+    expect(pkg.imports).toBe(1);
   });
 });
