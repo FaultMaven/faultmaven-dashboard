@@ -216,7 +216,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
       {/* Metadata row */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
+          <label htmlFor="runbook-title" className="block text-sm font-medium text-fm-text-secondary mb-1">
             Title <span className="text-fm-critical">*</span>
           </label>
           <input
@@ -227,11 +227,12 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
             value={form.title}
             onChange={(e) => update('title', e.target.value)}
             className={inputClass}
+            id="runbook-title"
             placeholder="e.g. PostgreSQL Connection Pool Exhaustion"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
+          <label htmlFor="runbook-service" className="block text-sm font-medium text-fm-text-secondary mb-1">
             Service <span className="text-fm-critical">*</span>
           </label>
           <input
@@ -240,6 +241,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
             value={form.service}
             onChange={(e) => update('service', e.target.value)}
             className={inputClass}
+            id="runbook-service"
             placeholder="e.g. postgresql, nginx, kubernetes"
           />
         </div>
@@ -313,9 +315,11 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
+          {/* Not `htmlFor` — a chip group is not a form control, so the name
+              is carried by `aria-label` on the group itself below. */}
+          <span className="block text-sm font-medium text-fm-text-secondary mb-1">
             Symptom Classes <span className="text-fm-critical">*</span>
-          </label>
+          </span>
           {/* CHOSEN, not typed. The backend rejects anything off this list as a
               hard error, so a free-text box could only ever produce a draft that
               fails validation after it has been saved — repairable then solely
@@ -349,12 +353,13 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
           </p>
         </div>
         <div>
-          <label className="block text-sm font-medium text-fm-text-secondary mb-1">Tags</label>
+          <label htmlFor="runbook-tags" className="block text-sm font-medium text-fm-text-secondary mb-1">Tags</label>
           <input
             type="text"
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
             className={inputClass}
+            id="runbook-tags"
             placeholder="e.g. postgresql, connection-pool, database"
           />
           <p className="text-xs text-fm-text-tertiary mt-1">Comma-separated, lowercase with hyphens</p>
@@ -372,10 +377,14 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
         ] as [keyof RunbookFormData, string][]
       ).map(([field, label]) => (
         <div key={field}>
-          <label className="block text-sm font-medium text-fm-text-secondary mb-1">
+          <label
+            htmlFor={`runbook-${field}`}
+            className="block text-sm font-medium text-fm-text-secondary mb-1"
+          >
             {label} <span className="text-fm-critical">*</span>
           </label>
           <textarea
+            id={`runbook-${field}`}
             required
             minLength={10}
             value={form[field] as string}

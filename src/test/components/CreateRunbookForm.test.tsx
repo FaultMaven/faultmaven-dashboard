@@ -122,6 +122,50 @@ describe('the Causes structure', () => {
   });
 });
 
+describe('what the form tells you is required', () => {
+  /**
+   * The asterisk and the `required` attribute must agree, on every field.
+   *
+   * They are two halves of one statement — one to the eye, one to the browser
+   * and to assistive tech — and they drifted the moment `domain`, `severity`
+   * and `scope` became required: the controls enforced it while the labels
+   * still looked optional. Asserted as a PAIR rather than field by field, so
+   * the next field added cannot ship with one half.
+   */
+  const REQUIRED = ['Title', 'Service', 'Domain', 'Severity', 'KB Scope'];
+
+  it.each(REQUIRED)('marks %s with an asterisk AND enforces it', (label) => {
+    renderForm();
+    const control = screen.getByLabelText(new RegExp(`^${label}`), {
+      selector: 'input,select',
+    });
+
+    expect(control).toBeRequired();
+    // The marker lives in the label, next to the name — `getByLabelText`
+    // matched on the name alone, so this checks what a reader actually sees.
+    const text = control.labels?.[0]?.textContent ?? '';
+    expect(text, `${label} is required but its label carries no asterisk`).toContain('*');
+  });
+
+  it('marks Difficulty NEITHER way, because it is genuinely optional', () => {
+    // The backend defaults it, so an asterisk here would be a lie that pushes
+    // authors into choosing a value they have no opinion about — which is the
+    // whole defect the unset selects fixed.
+    renderForm();
+    const control = screen.getByLabelText(/^Difficulty/, { selector: 'select' });
+
+    expect(control).not.toBeRequired();
+    expect(control.labels?.[0]?.textContent ?? '').not.toContain('*');
+  });
+
+  it('marks Symptom Classes required, though no input can enforce it', () => {
+    // A chip group is not a form control, so the asterisk is the ONLY signal
+    // before submission — which is why the submit guard exists alongside it.
+    renderForm();
+    expect(screen.getByText(/Symptom Classes/).textContent).toContain('*');
+  });
+});
+
 describe('the required selects', () => {
   it.each(['Domain', 'Severity', 'KB Scope'])('start UNCHOSEN (%s)', (label) => {
     // Pre-filling them wrote metadata the author never chose into every
