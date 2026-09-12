@@ -13,15 +13,23 @@ export function PageHeader({ onLogout }: PageHeaderProps) {
 
   return (
     <header className="bg-fm-surface border-b border-fm-border px-6 py-4">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-y-3">
         <div className="flex items-center">
           <img src="/icon/design-transparent.svg" alt="FaultMaven" className="h-10" />
         </div>
 
         <div className="flex items-center gap-4">
-          <nav className="flex gap-2">
+          {/* WRAPS. A cloud `platform_admin` with both capabilities on now gets
+              eight items — New Case, Cases, Knowledge Base, Teams, All Cases,
+              LLM Settings, Users, Organization — roughly 900px of pills sharing
+              a `max-w-7xl` row with the logo, the Copilot entry and the account
+              menu. Without wrapping they squeeze and their labels break
+              mid-word on anything under ~1400px. `whitespace-nowrap` keeps each
+              label intact so it is the ROW that gives, not the words. */}
+          <nav className="flex flex-wrap justify-end gap-2">
             {navItems.map((item) => {
-              const base = 'px-4 py-2 text-sm font-medium rounded-fm-btn transition-colors';
+              const base =
+                'px-4 py-2 text-sm font-medium rounded-fm-btn transition-colors whitespace-nowrap';
               const cls = item.active
                 ? `${base} text-white bg-fm-accent`
                 : `${base} text-fm-text-secondary border border-fm-border hover:bg-fm-elevated`;

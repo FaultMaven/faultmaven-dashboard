@@ -85,6 +85,9 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
 
   useEffect(() => {
     let cancelled = false;
+    // What THIS mount installed, if it got that far. The cleanup compares
+    // identity before clearing — see the note there.
+    let installedTransport: unknown;
 
     // Held so the cleanup below can clear exactly what this mount installed,
     // without importing the package a second time.
@@ -116,7 +119,8 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
 
       const session = createWebSession(hostUserFromProfile(profile));
 
-      ui.setApiTransport({
+      // Held so the cleanup can tell OUR transport from a later mount's.
+      const transport = {
         baseUrl: () => capabilities.endpoints.apiUrl(),
         accessToken: () => session.accessToken(),
         // Through the same store everything else reads this key from. A direct
@@ -133,7 +137,9 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
         // POST presents it to resume rather than start cold).
         clearSession: () => ui.clearPersistedSession(),
         onUnauthorized: () => session.onUnauthorized(),
-      });
+      };
+      ui.setApiTransport(transport);
+      installedTransport = transport;
 
       if (cancelled) return;
       setPanel({ Panel: ui.CopilotPanel, host: { ...capabilities, session } });
@@ -156,6 +162,25 @@ export default function CopilotPanelMount({ initialCase }: CopilotPanelMountProp
       // authenticated request with a stale transport either way.
       void loadedUi
         .then((ui) => {
+          // ONLY IF IT IS STILL OURS. The transport is a module singleton and
+          // this clear is asynchronous, so a mount that replaces this one can
+          // install its transport before this `.then` runs — and an unguarded
+          // clear would then delete the LIVE one, leaving the surviving panel
+          // unable to make a single request, silently, until it remounts.
+          //
+          // Two mounts now swap in one commit for a reason that has nothing to
+          // do with navigation: crossing the dock's width breakpoint moves the
+          // panel between the dock and the Transcript tab (ADR-018 D2). Before
+          // that, the panel only moved when the whole page unmounted.
+          //
+          // The guard is SKIPPED where the comparison is unavailable rather
+          // than failing closed: a package without `getApiTransport` is the
+          // world before this race existed, and silently never clearing would
+          // leak a credential-bound singleton for the life of the page.
+          const canCompare = typeof ui.getApiTransport === 'function';
+          if (installedTransport && canCompare && ui.getApiTransport() !== installedTransport) {
+            return;
+          }
           ui.clearApiTransport();
         })
         .catch(() => {

@@ -13,6 +13,12 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
  * both. `/investigate`, which sizes the panel to the room the page has left,
  * fitted exactly.
  *
+ * WHERE THE COMPOSER NOW IS. Since ADR-018 D2 the panel is docked beside the
+ * record at desktop width, so the chain runs through the dock; below the
+ * breakpoint there is no dock and it runs through the Transcript tab instead.
+ * Both are asserted, because both put a composer on the page and the trap is
+ * identical on each path.
+ *
  * WHAT THIS FILE CAN AND CANNOT DO. jsdom performs no layout: every element is
  * 0×0, so an assertion about y≈943 is unavailable here and the geometry above
  * was measured in a real browser (see the PR body). What IS checkable is the
@@ -31,6 +37,12 @@ vi.mock('../../lib/api', () => ({
   getCaseDetail: vi.fn(),
   fetchCaseMarkdown: vi.fn(),
   logoutAuth: vi.fn(),
+  // Unused while the mocked viewer OWNS the case — which is what puts this file
+  // on the live arm, and is the only reason it can assert a panel holder at all.
+  // Present anyway: without it, flipping this fixture's `user_id` (or landing
+  // ADR-018 row 6, which routes owners to the record) fails with "No export is
+  // defined on the mock" from inside a layout assertion, which points nowhere.
+  getCaseMessages: vi.fn().mockResolvedValue({ messages: [], total_count: 0 }),
   getUploadedFiles: vi.fn().mockResolvedValue([]),
   getUploadedFileDetails: vi.fn().mockResolvedValue(null),
   getCaseEvidenceList: vi.fn().mockResolvedValue([]),
@@ -98,6 +110,7 @@ vi.mock('../../hooks/useCapabilities', () => ({
 }));
 
 import CaseDetailPage from '../../pages/CaseDetailPage';
+import { setViewport } from '../support/viewport';
 import { getCaseDetail } from '../../lib/api';
 
 const CASE = {
@@ -134,7 +147,8 @@ function heightClasses(el: Element): string[] {
   );
 }
 
-async function renderCaseDetail() {
+async function renderCaseDetail(viewport: 'wide' | 'narrow' = 'wide') {
+  setViewport(viewport);
   vi.mocked(getCaseDetail).mockResolvedValue(CASE as never);
   const result = render(
     <MemoryRouter initialEntries={['/cases/case-1?tab=transcript']}>
@@ -143,7 +157,7 @@ async function renderCaseDetail() {
       </Routes>
     </MemoryRouter>,
   );
-  await waitFor(() => expect(screen.getByTestId('transcript-panel-holder')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByTestId('case-panel-holder')).toBeInTheDocument());
   return result;
 }
 
@@ -157,8 +171,10 @@ describe('the case detail page is bounded by the viewport', () => {
     const { container } = await renderCaseDetail();
     const root = container.firstElementChild as HTMLElement;
 
-    // `min-h-screen` is the content-driven shape this replaced: it lets the
-    // page grow, which is what pushed the panel's composer past the fold.
+    // ON THIS BRANCH ONLY. `min-h-screen` is no longer banned outright — since
+    // ADR-018 D2 it is the shape a page with NO composer takes, and the case
+    // below asserts that. What must not happen is a page that carries a
+    // composer growing with its content, which is what pushed it past the fold.
     //
     // `h-dvh` and not `h-screen`: `vh` ignores mobile browser toolbars, so the
     // bottom of the page — the composer — ends up underneath them.
@@ -190,6 +206,66 @@ describe('the case detail page is bounded by the viewport', () => {
   });
 });
 
+describe('a page with NO composer grows with its content instead', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  /**
+   * The complement of the bounded case above, and the reason the root height is
+   * conditional at all.
+   *
+   * Bounding buys exactly one thing: a composer above the fold. On the
+   * read-only arm there is no composer anywhere on the page, so bounding it
+   * squeezes a transcript, a report and an evidence list into an inner scroller
+   * a few hundred pixels tall while the window below sits empty. Measured in a
+   * browser before this branch existed.
+   */
+  async function renderReadOnly() {
+    setViewport('wide');
+    vi.mocked(getCaseDetail).mockResolvedValue({ ...CASE, user_id: 'somebody-else' } as never);
+    const result = render(
+      <MemoryRouter initialEntries={['/cases/case-1?tab=transcript']}>
+        <Routes>
+          <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { name: 'DB Outage' });
+    return result;
+  }
+
+  it('takes min-h-screen and drops the viewport bound', async () => {
+    const { container } = await renderReadOnly();
+    const root = container.firstElementChild as HTMLElement;
+
+    expect(root.classList.contains('min-h-screen')).toBe(true);
+    expect(root.classList.contains('h-dvh')).toBe(false);
+    expect(Array.from(root.classList).some((c) => /^min-h-\[/.test(c))).toBe(false);
+  });
+
+  it('puts no inner scroller around the record', async () => {
+    // The half that actually cramps the page. A root that grows with an
+    // `overflow-y-auto` still between it and the content changes nothing.
+    await renderReadOnly();
+    const record = await screen.findByTestId('transcript-record');
+
+    for (let el = record.parentElement; el; el = el.parentElement) {
+      expect(
+        Array.from(el.classList),
+        `<${el.tagName.toLowerCase()} class="${el.className}"> scrolls the record inside a page that grows`,
+      ).not.toContain('overflow-y-auto');
+    }
+  });
+
+  it('mounts no panel at all on that page', async () => {
+    await renderReadOnly();
+    expect(screen.queryByTestId('case-panel-holder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('conversation-dock')).not.toBeInTheDocument();
+  });
+});
+
 describe('the panel takes the room the page has left', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -201,7 +277,7 @@ describe('the panel takes the room the page has left', () => {
     // panel's size independent of where it starts, so it overhangs whatever is
     // above it.
     await renderCaseDetail();
-    const holder = screen.getByTestId('transcript-panel-holder');
+    const holder = screen.getByTestId('case-panel-holder');
 
     for (const cls of heightClasses(holder)) {
       expect(cls, `${cls} sizes the panel independently of its container`).not.toMatch(
@@ -211,13 +287,19 @@ describe('the panel takes the room the page has left', () => {
     expect(holder.classList.contains('h-full')).toBe(true);
   });
 
-  it('has an UNBROKEN min-h-0 chain from the page root down to it', async () => {
+  it.each(['wide', 'narrow'] as const)(
+    'has an UNBROKEN min-h-0 chain from the page root down to it (%s)',
+    async (viewport) => {
     // One missing `min-h-0` anywhere on this path re-creates the bug in
     // silence: the flex item refuses to shrink below its content, the overflow
     // lands back on the page, and the composer goes under the fold again.
-    const { container } = await renderCaseDetail();
+    //
+    // Both viewports, because the panel hangs off a different branch in each —
+    // the dock at desktop width, the Transcript tab below it — and a chain
+    // fixed on one says nothing about the other.
+    const { container } = await renderCaseDetail(viewport);
     const root = container.firstElementChild as HTMLElement;
-    const holder = screen.getByTestId('transcript-panel-holder');
+    const holder = screen.getByTestId('case-panel-holder');
 
     const chain: HTMLElement[] = [];
     for (let el = holder.parentElement; el && el !== root; el = el.parentElement) {
@@ -237,14 +319,17 @@ describe('the panel takes the room the page has left', () => {
         ).toContain('min-h-0');
       }
     }
-  });
+    },
+  );
 
   it('does not put a second scroll container around the panel', async () => {
     // The panel scrolls its own transcript and pins its own composer. A
     // scroller here would give it a second one — the composer would sit at the
     // bottom of an inner scroll region, off screen again.
-    await renderCaseDetail();
-    const holder = screen.getByTestId('transcript-panel-holder');
+    // Narrow: the arm where the panel IS the tab body, which is the only place
+    // a second scroller around it could be introduced.
+    await renderCaseDetail('narrow');
+    const holder = screen.getByTestId('case-panel-holder');
     const tabPanel = screen.getByTestId('transcript-tab-panel');
 
     for (const el of [holder, tabPanel]) {

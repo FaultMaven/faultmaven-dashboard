@@ -41,8 +41,18 @@ export default function CaseListPage() {
               {totalCount} case{totalCount !== 1 ? 's' : ''}
             </p>
           </div>
+          {/*
+            `New Case`, not "New investigation" (ADR-018 D5). ADR-005 makes an
+            investigation a PHASE a case enters past INQUIRY — `inquiry_only`
+            names one that never did — so this control cannot create an
+            investigation; it creates a case that may become one. It is also the
+            word `@faultmaven/copilot-ui` already uses for the same button
+            (`+ New Case`), and one product naming one button two things is the
+            drift ADR-016 D2 exists to prevent, arriving through copy instead of
+            through code.
+          */}
           <Link to="/investigate" className={ACCENT_BUTTON}>
-            New investigation
+            New Case
           </Link>
         </div>
 
@@ -76,11 +86,11 @@ export default function CaseListPage() {
             </p>
             <p className="text-fm-text-secondary text-sm mb-5">
               {totalCount === 0
-                ? 'Start an investigation and it will show up here.'
+                ? 'Start a new case and it will show up here.'
                 : 'Clear the filters to see everything, or start looking at something new.'}
             </p>
             <Link to="/investigate" className={ACCENT_BUTTON}>
-              Start an investigation
+              Start a new case
             </Link>
           </div>
         ) : (

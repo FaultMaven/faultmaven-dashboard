@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  getCaseMessages,
   getUploadedFiles,
   getUploadedFileDetails,
   getCaseEvidenceList,
@@ -8,6 +9,7 @@ import {
 } from '../lib/api';
 import type {
   CaseDetail,
+  CaseMessage,
   UploadedFile,
   UploadedFileDetails,
   EvidenceDetails,
@@ -16,14 +18,55 @@ import type {
 } from '../types/cases';
 import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
-import CopilotPanelMount from '../copilot/CopilotPanelMount';
-import { useAuth } from '../context/AuthContext';
+import { TranscriptView } from './TranscriptView';
+import { CasePanelMount } from './CasePanelMount';
+import type { CaseConversationLayout } from '../lib/cases/conversationSurface';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
+
+/**
+ * Where to land when what was chosen is not in the strip.
+ *
+ * Only reachable when the dock has taken Transcript away, or when a deep link
+ * names a tab this case does not have. First-visible is right HERE and wrong as
+ * a general default — see the note at its call site.
+ */
+function fallbackTab(tabs: { id: Tab }[]): Tab {
+  return tabs[0].id;
+}
 
 interface CaseTabsProps {
   caseId: string;
   caseDetail: CaseDetail;
+  /**
+   * How the page resolved ADR-018 D2's one question — decided ONCE, by the
+   * page, and handed down whole.
+   *
+   * Passed in rather than re-derived here because `CaseDetailPage` renders the
+   * dock and owns the page's height, and two components answering the same
+   * question from the same inputs is two chances to disagree: a page that
+   * docked the conversation while this component also offered it as a tab
+   * would put two live panels on one screen (ADR-018 D6 forbids it outright),
+   * and a page that grew with its content while this component scrolled
+   * internally would cramp the record inside a page with room to spare.
+   *
+   * Whole, not one field at a time, for the same reason — two props that must
+   * agree are two props that can stop agreeing.
+   */
+  layout: CaseConversationLayout;
+
+  /**
+   * Belt and braces on the panel's own authoring guard.
+   *
+   * The rule already sends a non-owner to the record, so the live arm below is
+   * unreachable for them — this is deliberately a SECOND, independent
+   * expression of the same fact, derived from the case's `user_id` by the page.
+   * The dock states it too. If a future input to the rule is wrong in one
+   * place, a viewer must still not be handed a composer on someone else's case,
+   * and the two mount points must not disagree about whether that guard is
+   * worth having.
+   */
+  readOnly: boolean;
 }
 
 function hypothesisStatusStyle(state: HypothesisState): { color: string; symbol: string } {
@@ -75,31 +118,53 @@ function stanceColor(stance: string): string {
 }
 
 /**
- * The transcript, and the input that continues it.
+ * The conversation as RECORD — read, not continued.
  *
- * This tab used to render `TranscriptView`, a read-only copy of a conversation
- * the extension rendered a second time and differently — the drift ADR-016 D1
- * retires. It now mounts the shared Copilot UI on this case: one renderer, and
- * the Dashboard can continue an investigation rather than only review one.
+ * One `GET /cases/{id}/messages`, rendered by `TranscriptView`: no panel, no
+ * package chunk, no session. This is what the Dashboard showed until #124
+ * replaced it with a live composer, and ADR-018 D2 restores it, because a
+ * transcript belongs in the same category as the report and the evidence —
+ * something a person reads about a case.
  *
- * The panel loads its own messages; nothing is fetched here. A turn taken here
- * and a turn taken in the extension are the same rows on the same server, so
- * neither host needs the other and each sees the other's work on reload.
+ * The renderer is shared with the operator break-glass page (ADR-012 D9): the
+ * backend serves the same message shape to both, and a second copy of this
+ * markup here would let the two drift.
  */
-function TranscriptTab({ caseId, readOnly }: { caseId: string; readOnly: boolean }) {
+function RecordTranscriptTab({ caseId }: { caseId: string }) {
+  const [messages, setMessages] = useState<CaseMessage[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      // Cleared on every attempt, not only set on failure. `CaseTabs` has no
+      // `key` on the route's `:caseId`, so this instance survives a move from
+      // one case to the next — and the error guard below wins over `messages`,
+      // so without this a single failed load would keep showing its error over
+      // every later case's transcript that loaded perfectly well. The same bug,
+      // with the same cause, is already commented in `CaseDetailPage.loadCase`.
+      setError(null);
+      try {
+        const res = await getCaseMessages(caseId);
+        if (!cancelled) setMessages(res.messages);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load transcript');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [caseId]);
+
+  if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
+  if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
+
   return (
-    // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
-    // takes the room the page has left it; naming its own height is what put
-    // the composer below the fold (see CaseDetailPage).
-    <div className="h-full min-h-0" data-testid="transcript-panel-holder">
-      {/* `key` because the panel applies `initialCase` ONCE, at its own mount:
-          React Router keeps this component instance across a `:caseId` change,
-          so without a remount a move from one case to the next would leave the
-          previous case's transcript on screen. */}
-      <CopilotPanelMount
-        key={caseId}
-        initialCase={{ kind: 'existing', caseId, readOnly }}
-      />
+    <div data-testid="transcript-record">
+      <TranscriptView messages={messages ?? []} />
     </div>
   );
 }
@@ -419,14 +484,14 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
       return (
         <div className="py-2 text-sm text-fm-text-secondary">
           {caseDetail.hypothesis_count} hypothes{caseDetail.hypothesis_count === 1 ? 'is' : 'es'} were
-          tested during this investigation. Detailed hypothesis history is available in case storage
+          tested on this case. Detailed hypothesis history is available in case storage
           but not surfaced here for terminal cases.
         </div>
       );
     }
     return (
       <div className="py-2 text-sm text-fm-text-tertiary">
-        No hypotheses yet — investigation hasn&apos;t produced any.
+        No hypotheses yet — this case hasn&apos;t produced any.
       </div>
     );
   }
@@ -440,9 +505,9 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
   );
 }
 
-export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
+export function CaseTabs({ caseId, caseDetail, layout, readOnly }: CaseTabsProps) {
+  const { surface, transcriptTabShown, viewportBounded } = layout;
   const [searchParams, setSearchParams] = useSearchParams();
-  const { authState } = useAuth();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
   // so many cases have none. Show the tab only when the case actually produced
@@ -458,32 +523,81 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
     { id: 'hypotheses', label: 'Hypotheses' },
     { id: 'evidence', label: 'Evidence' },
   ];
-  const tabLabels = allTabs.filter((t) => t.id !== 'hypotheses' || showHypotheses);
+  const tabLabels = allTabs.filter(
+    (t) =>
+      // Transcript is HIDDEN while the dock is showing the conversation, and
+      // present whenever it is not — so exactly one surface renders the
+      // conversation and "where is the transcript?" has one answer (D2).
+      (t.id !== 'hypotheses' || showHypotheses) && (t.id !== 'transcript' || transcriptTabShown),
+  );
 
   // The active tab is derived from the URL (single source of truth), so a
   // ?tab= deep link that changes on the same mounted case takes effect, and a
-  // click updates the URL — keeping copied links current. A deep link to a tab
-  // that isn't visible (e.g. ?tab=hypotheses on a case with none) or an unknown
-  // value falls back to Transcript rather than rendering a blank panel.
-  /**
-   * Whether this case belongs to the person looking at it.
-   *
-   * A shared case is someone else's investigation. Before the panel replaced
-   * the read-only transcript, a teammate opening one simply could not type; the
-   * panel brought a live composer and an upload with it, so a viewer became
-   * able to post turns into an owner's case. `readOnly` puts that back — and it
-   * is derived from the case's own `user_id`, not from whether this page
-   * happens to offer a Share button.
-   *
-   * Fails CLOSED: an unknown viewer or an unknown owner is not a match, so the
-   * panel is read-only rather than writable by default.
-   */
-  const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
+  // click updates the URL — keeping copied links current.
+  const transcriptIsLive = surface === 'tab-live';
 
   const requestedTab = searchParams.get('tab') as Tab | null;
-  const activeTab: Tab = tabLabels.some((t) => t.id === requestedTab)
-    ? (requestedTab as Tab)
-    : 'transcript';
+
+  /**
+   * TOGGLING THE DOCK IS A LAYOUT GESTURE. It must not navigate the record.
+   *
+   * The URL is only written when a tab is CLICKED, so most of the time there is
+   * no `?tab=` and the active tab comes from a default. That default has to be
+   * sticky, and neither obvious spelling of it is:
+   *
+   *  - `tabLabels[0]` moves when Transcript enters or leaves the strip.
+   *    Measured on the real page: a user reading Issue who collapsed the dock
+   *    to widen the record was moved onto Transcript.
+   *  - `transcriptTabShown ? 'transcript' : 'issue'` has the same defect for
+   *    the same reason — it is still computed from the dock's state.
+   *
+   * So what is displayed is REMEMBERED. `chosen` starts at the URL's tab or
+   * Transcript (the default since before #124), follows the URL whenever the
+   * URL says something, and is otherwise written back from whatever was
+   * actually resolved — so the one time the fallback fires, it sticks. Opening
+   * or collapsing the dock then changes only whether Transcript is available,
+   * never what the user is looking at.
+   */
+  const [chosen, setChosen] = useState<Tab>(() => requestedTab ?? 'transcript');
+
+  // The URL wins whenever it names a tab; otherwise the last thing displayed.
+  const candidate = requestedTab ?? chosen;
+  const activeTab: Tab = tabLabels.some((t) => t.id === candidate)
+    ? candidate
+    : fallbackTab(tabLabels);
+
+  // Written back DURING RENDER, React's documented way to adjust state from a
+  // prop that has changed — not an effect, which would be a cascading render
+  // the lint rejects, and would settle one frame late. This is the line that
+  // makes the fallback stick: without it the default is recomputed from the
+  // dock's state on every render and the toggle moves the user.
+  if (activeTab !== chosen) setChosen(activeTab);
+
+  /**
+   * A `?tab=` the strip cannot honour is CLEARED, not ignored.
+   *
+   * `?tab=` is the cross-frontend linking contract with the Copilot (see
+   * CLAUDE.md), so a dropped value is a contract break rather than a cosmetic
+   * one: the address bar would keep claiming `tab=transcript` while Issue was
+   * rendered, and a link copied from it would resolve to something the URL does
+   * not describe. That is reachable now that a tab can LEAVE the strip — open
+   * the dock with `?tab=transcript` in the URL and it is gone.
+   *
+   * `replace`, so correcting the URL does not leave a dead entry in the back
+   * stack that would bounce the user straight back to it.
+   */
+  useEffect(() => {
+    if (!requestedTab) return;
+    if (tabLabels.some((t) => t.id === requestedTab)) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('tab');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [requestedTab, tabLabels, setSearchParams]);
 
   const setActiveTab = (id: Tab) => {
     setSearchParams(
@@ -514,26 +628,53 @@ export function CaseTabs({ caseId, caseDetail }: CaseTabsProps) {
         ))}
       </div>
 
-      {/* The Transcript tab OWNS its scrolling: the panel scrolls its
-          transcript internally and pins its composer to the bottom, so a
-          scroll container here would give it a second one and put the composer
-          below the fold again. Every other tab is long-form content with no
-          scroller of its own, so it gets one — without it the viewport-bounded
-          page would simply clip them. */}
-      {/* HIDDEN, not unmounted, when another tab is showing.
-          Unmounting the panel tears down its session, its conversation cache
-          and any in-flight turn — so glancing at Evidence and coming back
+      {/* The LIVE arm only. It is not rendered at all when the tab is the
+          read-only record — that is what makes case detail cost no package
+          chunk, no session and no panel mount for a user whose composer is
+          elsewhere (ADR-018 D2).
+
+          The live arm OWNS its scrolling: the panel scrolls its transcript
+          internally and pins its composer to the bottom, so a scroll container
+          here would give it a second one and put the composer below the fold
+          again.
+
+          And when it IS rendered it is HIDDEN, not unmounted, while another tab
+          shows. Unmounting the panel tears down its session, its conversation
+          cache and any in-flight turn — so glancing at Evidence and coming back
           re-minted a session and re-fetched the transcript, and a turn in
           progress was lost. `hidden` costs a rendered subtree; the alternative
           costs the user's work. */}
-      <div
-        className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
-        data-testid="transcript-tab-panel"
-      >
-        <TranscriptTab caseId={caseId} readOnly={!isOwner} />
-      </div>
-      {activeTab !== 'transcript' && (
-        <div className="flex-1 min-h-0 overflow-y-auto">
+      {transcriptIsLive && (
+        <div
+          className={activeTab === 'transcript' ? 'flex-1 min-h-0' : 'hidden'}
+          data-testid="transcript-tab-panel"
+        >
+          <CasePanelMount caseId={caseId} readOnly={readOnly} />
+        </div>
+      )}
+      {/* Record content — long-form, with no scroller of its own, so it gets
+          one here; without it the viewport-bounded page would simply clip it.
+          The read-only transcript belongs in this container and not in the
+          live arm's: it is read, like the report and the evidence beside it. */}
+      {!(activeTab === 'transcript' && transcriptIsLive) && (
+        // A SCROLLER ONLY WHERE THE PAGE IS BOUNDED. Bounding exists to keep a
+        // composer above the fold, so on a page with no composer at all the
+        // record is long-form content and the PAGE scrolls, as it did before
+        // #124. Keeping this scroller there would squeeze a transcript, a
+        // report and an evidence list into an inner box a few hundred pixels
+        // tall while the window below it sat empty.
+        <div className={viewportBounded ? 'flex-1 min-h-0 overflow-y-auto' : 'flex-1'}>
+          {/* HIDDEN, not unmounted, for the same reason the live arm is: the
+              effect is torn down on unmount, so a glance at Evidence and back
+              re-ran `getCaseMessages` from scratch — and it PAGES at 100
+              messages a request, so a long case cost several sequential round
+              trips and a "Loading transcript…" flash on every visit. The cost
+              of keeping it is one rendered subtree. */}
+          {transcriptTabShown && !transcriptIsLive && (
+            <div className={activeTab === 'transcript' ? undefined : 'hidden'}>
+              <RecordTranscriptTab caseId={caseId} />
+            </div>
+          )}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
           {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
           {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}

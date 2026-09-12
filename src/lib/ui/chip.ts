@@ -10,8 +10,8 @@ export const chipInactive =
  * The accent call-to-action button.
  *
  * Two copies of this class list had already appeared on the case list — the
- * header's "New investigation" and the empty state's "Start an investigation" —
- * which is exactly how a design system drifts one button at a time.
+ * header's "New Case" and the empty state's "Start a new case" — which is
+ * exactly how a design system drifts one button at a time.
  */
 export const ACCENT_BUTTON =
   'inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-fm-btn ' +

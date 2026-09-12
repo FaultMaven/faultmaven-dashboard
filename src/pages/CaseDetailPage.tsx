@@ -4,10 +4,14 @@ import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
 import { CaseStageCell } from '../components/CaseStageCell';
 import { CaseTabs } from '../components/CaseTabs';
+import { ConversationDock } from '../components/ConversationDock';
 import { TeamShareBadge } from '../components/TeamShareBadge';
 import { ShareCaseModal } from '../components/ShareCaseModal';
 import { useAuth } from '../context/AuthContext';
 import { useTeamSharing } from '../hooks/useTeamSharing';
+import { useDockFits } from '../hooks/useDockFits';
+import { readDockCollapsed, writeDockCollapsed } from '../lib/cases/dockPreference';
+import { resolveCaseConversationLayout } from '../lib/cases/conversationSurface';
 import { getCaseDetail, fetchCaseMarkdown, logoutAuth } from '../lib/api';
 import type { CaseDetail } from '../types/cases';
 
@@ -22,6 +26,24 @@ export default function CaseDetailPage() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  const dockFits = useDockFits();
+  // Seeded from the stored preference rather than read on every render: the
+  // toggle below is the only writer, so React state is the live value and
+  // storage is where it survives a reload.
+  const [dockOpen, setDockOpen] = useState(() => !readDockCollapsed());
+
+  // The write is OUTSIDE the updater. React may double-invoke an updater in
+  // StrictMode and may replay or discard one when a higher-priority render
+  // interleaves, so a `localStorage` write in there can fire for a transition
+  // that is then thrown away — leaving the stored preference disagreeing with
+  // the dock on the next load. Updaters must be pure; this one reads `dockOpen`
+  // directly because the toggle is a user gesture and cannot race itself.
+  const toggleDock = () => {
+    const next = !dockOpen;
+    writeDockCollapsed(!next);
+    setDockOpen(next);
+  };
 
   const handleLogout = async () => {
     await logoutAuth();
@@ -118,6 +140,33 @@ export default function CaseDetailPage() {
   const canShare =
     teamSharingEnabled && caseDetail.user_id === authState?.user?.user_id;
 
+  /**
+   * Whether this case belongs to the person looking at it.
+   *
+   * A shared case is someone else's investigation, and a viewer must not be
+   * handed a composer for it — before the panel replaced the read-only
+   * transcript a teammate simply could not type, and the panel brought a live
+   * composer and an upload with it.
+   *
+   * Derived from the case's own `user_id`, not from whether this page offers a
+   * Share button, and it FAILS CLOSED: an unknown viewer or an unknown owner is
+   * not a match.
+   */
+  const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
+
+  // The one question, asked once for the whole page (ADR-018 D2).
+  //
+  // `prefersExtension` is fixed false until sequencing row 6, which is itself
+  // blocked on the extension learning to release a yielded tab (D0,
+  // faultmaven-copilot#256) — a Dashboard that stands down to an extension with
+  // no release path leaves the tab with neither surface.
+  const layout = resolveCaseConversationLayout({
+    isOwner,
+    prefersExtension: false,
+    dockFits,
+    dockOpen,
+  });
+
   return (
     /*
      * VIEWPORT-BOUNDED, not content-driven — a fixed height, not `min-h-screen`.
@@ -142,7 +191,12 @@ export default function CaseDetailPage() {
      * panel to nothing. Bounding the page must not mean the content has no
      * floor; that trades one unusable layout for another.
      */
-    <div className="h-dvh min-h-[40rem] flex flex-col bg-fm-canvas">
+    <div
+      data-testid="case-detail-root"
+      className={`flex flex-col bg-fm-canvas ${
+        layout.viewportBounded ? 'h-dvh min-h-[40rem]' : 'min-h-screen'
+      }`}
+    >
       <PageHeader onLogout={handleLogout} />
 
       {/* `min-h-0` is load-bearing on every flex child down to the panel: a
@@ -222,9 +276,33 @@ export default function CaseDetailPage() {
           </div>
         </div>
 
-        {/* Tabs: everything the case header did not use. */}
-        <div className="flex-1 min-h-0 flex flex-col bg-fm-surface rounded-fm-card border border-fm-border p-5 mb-5">
-          <CaseTabs caseId={caseDetail.case_id} caseDetail={caseDetail} />
+        {/* THE RECORD ON THE LEFT, THE CONVERSATION ON THE RIGHT — the whole
+            point of the dock (ADR-018 D2), and the workflow #124 removed by
+            making them mutually exclusive tabs. The case header above spans
+            both: it identifies the case, and neither column owns that.
+
+            `min-w-0` on the record column so a wide table or a long unbroken
+            token inside a tab cannot push the dock off the side — a flex item
+            refuses to shrink below its content without it, the same trap as
+            `min-h-0` one axis over. */}
+        <div className="flex-1 min-h-0 flex gap-5 mb-5">
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-fm-surface rounded-fm-card border border-fm-border p-5">
+            <CaseTabs
+              caseId={caseDetail.case_id}
+              caseDetail={caseDetail}
+              layout={layout}
+              readOnly={!isOwner}
+            />
+          </div>
+
+          {layout.dockPresent && (
+            <ConversationDock
+              caseId={caseDetail.case_id}
+              readOnly={!isOwner}
+              open={dockOpen}
+              onToggle={toggleDock}
+            />
+          )}
         </div>
 
       </main>

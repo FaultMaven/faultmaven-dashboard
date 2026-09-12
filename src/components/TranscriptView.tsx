@@ -49,20 +49,31 @@ const KIND_PRESENTATION: Record<MessageKind, { accent: string; labelColor: strin
 };
 
 /**
- * Renders a case transcript for the OPERATOR break-glass page (ADR-012 D9).
+ * Renders a case transcript as RECORD — read, never continued.
  *
- * Purely presentational — it takes messages and does not know where they came
- * from. It used to render the owner's Transcript tab as well, and that is the
- * copy ADR-016 D1 retired: the owner's tab now mounts the shared Copilot UI, so
- * the Dashboard and the extension render one investigation through one
- * component instead of two that drifted.
+ * Purely presentational: it takes messages and does not know where they came
+ * from. Two pages use it, and both are reading rather than investigating.
  *
- * This one is NOT that renderer and must not be replaced by it. The break-glass
- * page reads someone else's case through the audited
- * `GET /api/v1/admin/cases/{id}/messages`, under a grant, with no interaction
- * of any kind — the shared panel is an interactive shell bound to the signed-in
- * user's own cases and could not answer for that page even if it were asked to.
- * A read-only operator view is exactly what this is for.
+ * - The OPERATOR break-glass page (ADR-012 D9) reads someone else's case
+ *   through the audited `GET /api/v1/admin/cases/{id}/messages`, under a grant,
+ *   with no interaction of any kind.
+ * - The owner-facing Transcript tab, whenever that user's composer lives
+ *   somewhere else (ADR-018 D2) — the extension, the dock, or nowhere at all
+ *   for a non-owner.
+ *
+ * ADR-016 D1 had retired it from the second of those in the name of "one
+ * renderer, not two", and ADR-018 deliberately reverses that half: rendering a
+ * transcript and running an investigation are different jobs, and conflating
+ * them is what made the case record and the conversation about it mutually
+ * exclusive tabs. The drift risk that reversal re-opens is bounded — this
+ * renders a finished conversation and the panel renders a live one, so the two
+ * can differ in presentation but not in capability, and capability is what bit
+ * last time. Whichever is showing, there is only ever one.
+ *
+ * So it is NOT interchangeable with the shared panel in either direction. The
+ * panel is an interactive shell bound to the signed-in user's own cases and
+ * could not answer for the break-glass page even if it were asked to; and it
+ * carries a composer, which is the thing a record view must not have.
  */
 export function TranscriptView({ messages }: TranscriptViewProps) {
   if (!messages.length) {

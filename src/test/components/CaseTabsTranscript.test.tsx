@@ -4,20 +4,19 @@ import { MemoryRouter } from 'react-router-dom';
 import type { CaseDetail } from '../../types/cases';
 
 /**
- * The Transcript tab is the shared Copilot UI, not a read-only copy of it
- * (ADR-016 D1).
+ * The LIVE arm of the Transcript tab — the shared Copilot UI, mounted when this
+ * tab is where the user's composer lives (ADR-016 D1, as scoped by ADR-018 D2).
  *
- * Two renderers of one transcript already existed and had drifted: this
- * repository's 120-line `TranscriptView` and the extension's 680-line
- * `ChatWindow`. Retiring the copy is the point — and so is what replaces it,
- * because a read-only tab is precisely what stopped the Dashboard from being
- * able to continue an investigation.
+ * What is asserted here is the panel arm's wiring: that it is the shared UI and
+ * not a second chat window, that it is told which case to open rather than
+ * being handed one through storage, that it survives a tab change, and that it
+ * remounts on a case change.
  *
- * `TranscriptView` itself is NOT deleted: the operator break-glass page
- * (ADR-012 D9) renders another tenant's case, under a grant, with no
- * interaction — the interactive panel cannot answer for that page. Its own
- * suite still covers it. What is asserted here is that the OWNER'S tab no
- * longer uses it.
+ * WHICH ARM a given user gets is not decided here — that is
+ * `src/lib/cases/conversationSurface.ts`'s one question, bound as a matrix in
+ * `src/test/lib/cases/conversationSurface.test.ts` and end to end in
+ * `src/test/pages/CaseDetailConversation.test.tsx`. This file fixes the
+ * live-arm corner of it.
  */
 
 let lastInitialCase: unknown;
@@ -63,7 +62,10 @@ vi.mock('../../components/TranscriptView', () => ({
   },
 }));
 
-const getCaseMessages = vi.fn();
+// Resolved, not bare: the READ-ONLY arm actually calls this, and a `vi.fn()`
+// returning undefined would fail it with a TypeError that looks nothing like
+// the thing under test. `vi.clearAllMocks()` clears calls, not implementations.
+const getCaseMessages = vi.fn().mockResolvedValue({ messages: [], total_count: 0 });
 vi.mock('../../lib/api', () => ({
   getCaseMessages: (...args: unknown[]) => getCaseMessages(...args),
   getUploadedFiles: vi.fn().mockResolvedValue([]),
@@ -81,9 +83,11 @@ vi.mock('../../lib/auth/AuthManager', () => ({
   },
 }));
 
-const currentUserId = { value: 'u1' };
+// `CaseTabs` no longer asks who is signed in — ownership reaches it through the
+// resolved layout, decided once by the page. The mock stays only because other
+// modules in this render tree read the context.
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ authState: { user: { user_id: currentUserId.value } } }),
+  useAuth: () => ({ authState: { user: { user_id: 'u1' } } }),
 }));
 
 vi.mock('../../lib/auth/functions', () => ({
@@ -104,6 +108,8 @@ vi.mock('../../config', () => ({
 }));
 
 import { CaseTabs } from '../../components/CaseTabs';
+import { LAYOUTS } from '../support/caseConversationLayout';
+import type { CaseConversationLayout } from '../../lib/cases/conversationSurface';
 import { PANEL_STORAGE_NAMESPACE } from '../../copilot/webHost';
 
 const CASE: CaseDetail = {
@@ -132,10 +138,16 @@ const CASE: CaseDetail = {
   escalated: false,
 };
 
-function renderTabs() {
+/**
+ * The narrow-owner row of ADR-018 D2's table by default: no dock at that width,
+ * so the Transcript tab is present and carries the live panel. That is the arm
+ * this file is about; WHICH arm a user gets is decided by the page and covered
+ * in `CaseDetailConversation.test.tsx`.
+ */
+function renderTabs(layout: CaseConversationLayout = LAYOUTS.narrowOwner) {
   return render(
     <MemoryRouter initialEntries={['/?tab=transcript']}>
-      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} />
+      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} readOnly={false} />
     </MemoryRouter>,
   );
 }
@@ -219,7 +231,12 @@ describe('the Transcript tab', () => {
 
     rerender(
       <MemoryRouter initialEntries={['/?tab=transcript']}>
-        <CaseTabs caseId="case-2" caseDetail={{ ...CASE, case_id: 'case-2' }} />
+        <CaseTabs
+          caseId="case-2"
+          caseDetail={{ ...CASE, case_id: 'case-2' }}
+          layout={LAYOUTS.narrowOwner}
+          readOnly={false}
+        />
       </MemoryRouter>,
     );
 
@@ -230,37 +247,36 @@ describe('the Transcript tab', () => {
 });
 
 
-describe('a case someone else owns', () => {
-  it('opens the panel READ-ONLY for a non-owner', async () => {
+describe('the arm the page chose', () => {
+  it('renders the READ-ONLY record when the conversation is not this tab’s job', async () => {
     // A shared case is another person's investigation. Replacing the read-only
     // transcript with the panel handed a viewer a live composer and an upload,
     // so a teammate could post turns into an owner's case — an authoring right
-    // the old view never granted.
-    currentUserId.value = 'someone-else';
+    // the old view never granted. They get the record back (ADR-018 D2), and
+    // stop paying for a panel mount to be told they cannot type.
+    renderTabs(LAYOUTS.nonOwner);
+    await waitFor(() => expect(screen.getByTestId('read-only-transcript-view')).toBeInTheDocument());
 
-    renderTabs();
-    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
-
-    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1', readOnly: true });
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('case-panel-holder')).not.toBeInTheDocument();
+    expect(lastInitialCase).toBeUndefined();
   });
 
-  it('opens it writable for the owner', async () => {
-    currentUserId.value = 'u1'; // CASE.user_id
+  it('renders the record for a user whose chat lives in the extension', async () => {
+    renderTabs(LAYOUTS.prefersExtension);
+    await waitFor(() => expect(screen.getByTestId('read-only-transcript-view')).toBeInTheDocument());
 
-    renderTabs();
-    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
-
-    expect(lastInitialCase).toEqual({ kind: 'existing', caseId: 'case-1', readOnly: false });
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
   });
 
-  it('fails CLOSED when the viewer is unknown', async () => {
-    // No signed-in user id to compare against is not a match. Read-only is the
-    // safe answer; writable-by-default is not.
-    currentUserId.value = '';
+  it('is not in the strip at all while the dock is showing the conversation', async () => {
+    // Exactly one surface renders the conversation. The dock itself belongs to
+    // the page, so all this component can do — and must do — is stand down.
+    renderTabs(LAYOUTS.docked);
 
-    renderTabs();
-    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
-
-    expect(lastInitialCase).toMatchObject({ readOnly: true });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Issue' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Transcript' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('read-only-transcript-view')).not.toBeInTheDocument();
   });
 });

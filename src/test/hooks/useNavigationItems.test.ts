@@ -236,6 +236,75 @@ describe('useNavigationItems', () => {
     expect(result.current.map((i) => i.label)).not.toContain('Teams');
   });
 
+  it('"New Case" is the FIRST item, for any signed-in account, ungated', () => {
+    // ADR-018 D2 point 3 + D5. The full-page surface used to be reachable only
+    // by redirect — from sign-in and from an empty case list — so an account
+    // that had one case could not get back to it from the nav at all. It is the
+    // primary call to action, so it leads; `@faultmaven/copilot-ui` orders its
+    // own `+ New Case` the same way.
+    //
+    // Asserted for the LEAST privileged account there is, because row 3 gates it
+    // on nothing: no role, no capability. Row 6 will gate it on a preference
+    // that does not exist yet.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'standard_user',
+      isAdmin: false,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+
+    expect(result.current[0]).toMatchObject({ label: 'New Case', path: '/investigate' });
+  });
+
+  it('"New Case" is present in standalone too, where there is no role to gate on', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      role: 'individual',
+      isAdmin: false,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    const newCase = result.current.find((i) => i.path === '/investigate');
+
+    expect(newCase?.label).toBe('New Case');
+  });
+
+  it('marks "New Case" active on /investigate, and nothing else', () => {
+    // The route path is `/investigate` while the label is `New Case` (D5 —
+    // routes are not copy), so the item is the one place in this hook where the
+    // two disagree. If active matching were ever keyed off the label the item
+    // would sit unhighlighted on its own page.
+    mockUseAuth.mockReturnValue({ deployment: 'standalone', role: 'individual' });
+
+    const { result } = renderHook(() => useNavigationItems('/investigate'));
+    const active = result.current.filter((i) => i.active);
+
+    expect(active.map((i) => i.label)).toEqual(['New Case']);
+  });
+
+  it('no navigation label calls a case an "investigation" (ADR-018 D5)', () => {
+    // A sweep, not an assertion about the one label this change added: the
+    // point of D5 is that the NEXT nav label cannot reintroduce the word
+    // either. ADR-005 makes an investigation a phase a case enters past
+    // INQUIRY, so no navigation item can offer one.
+    //
+    // The fullest nav there is, so the sweep sees every item the hook can emit.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'platform_admin',
+      isAdmin: true,
+    });
+    mockUseCapabilities.mockReturnValue({ managementConsole: true, teamSharing: true });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+
+    expect(result.current.length).toBeGreaterThan(5);
+    for (const item of result.current) {
+      expect(item.label).not.toMatch(/investigations?\b/i);
+    }
+  });
+
   it('cloud standard_user never sees "Organization" even when managementConsole is on', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
