@@ -123,6 +123,12 @@ export interface DraftSummary {
 // =============================================================================
 
 export interface ConversionErrorInfo {
+  /**
+   * The backend `error_code` this entry was selected by, carried through so a
+   * consumer can key an affordance on the CODE rather than on translated prose.
+   * Absent on the `detail` fallback, which has no code to report.
+   */
+  code?: string;
   title: string;
   message: string;
   action: string;
@@ -181,16 +187,23 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
   },
   ALREADY_A_RUNBOOK: {
     title: 'Already a runbook',
+    // "the new one" is explicit. With a bare "its", the nearest antecedent is
+    // "this document" — the file the user just uploaded — so the sentence reads
+    // as a threat to something they own. Conversion never touches the source;
+    // the reset lands on the derived draft.
     message:
-      'This document is already a FaultMaven runbook. Converting it would re-derive a new one from its prose, splitting its causes into separate runbooks and resetting its verification status.',
-    // Names both authoring routes rather than only "Upload". Add Runbook posts
-    // to POST /knowledge/documents, which is operator-only AND global-only, so
-    // a non-operator reading the old copy was sent to a menu item they cannot
-    // see — a dead end, since Convert is the path they just came from. Write
-    // Runbook is open to every user at personal/team scope. Stays correct
-    // whichever way faultmaven#1377 decides the direct-import gap.
+      'Converting it would re-derive a new runbook from its prose — splitting its causes into several, and giving the new one a fresh draft status rather than the verification this one already carries.',
+    // Names no menu item, deliberately. The copy this replaces named "Upload",
+    // i.e. `Add Runbook`, which posts to POST /knowledge/documents: operator-only,
+    // global-only, and refused for EVERY role under TENANT_PROVIDER=multi
+    // (ensure_global_authoring_allowed), so in cloud it is a dead end even for an
+    // operator. Naming a control is the wrong shape here regardless — NewDropdown
+    // is unmounted for the whole lifetime of this overlay, so any label named is
+    // off-screen as it is read. ConvertUpload renders a button for the one route
+    // that works for every user in every deployment instead. The gating rationale
+    // lives at KBPage's NewDropdown; this does not restate it.
     action:
-      'Add it to the knowledge base directly instead: use Add Runbook if you are an operator, or Write Runbook to enter it at your own scope.',
+      'FaultMaven cannot import a finished runbook yet (faultmaven#1377), so bring it in through the runbook template — each section can be pasted across unchanged.',
   },
   LLM_UNAVAILABLE: {
     title: 'AI provider not available',
@@ -216,8 +229,22 @@ export function translateConversionError(
   errorBody: { detail?: string; error_code?: string } | null,
   fallbackMessage: string,
 ): ConversionErrorInfo {
-  if (errorBody?.error_code && errorBody.error_code in ERROR_TRANSLATIONS) {
-    return ERROR_TRANSLATIONS[errorBody.error_code];
+  // `hasOwnProperty.call`, never `in`: `in` walks the prototype chain, so an
+  // `error_code` of "toString" / "constructor" / "valueOf" — from a mis-shaped
+  // proxy body, say — passes the guard and yields a Function typed as
+  // ConversionErrorInfo through the index signature. The panel then renders three
+  // empty lines, and the `detail` fallback below, the branch that would have shown
+  // the real message, never runs. (`Object.hasOwn` would read better but needs an
+  // es2022 lib target; not worth a repo-wide tsconfig change for one call.)
+  //
+  // Spread, never the entry itself: the table is module-level and KBPage stores
+  // this value in React state, so a consumer that personalised a message in place
+  // would edit the shared copy for every later error in the session.
+  if (
+    errorBody?.error_code &&
+    Object.prototype.hasOwnProperty.call(ERROR_TRANSLATIONS, errorBody.error_code)
+  ) {
+    return { ...ERROR_TRANSLATIONS[errorBody.error_code], code: errorBody.error_code };
   }
   return {
     title: 'Conversion failed',

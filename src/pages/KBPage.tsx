@@ -644,6 +644,7 @@ interface OverlayPanelProps {
   convertError: ConversionErrorInfo | null;
   converting: boolean;
   onConvert: (file: File, scope: string) => Promise<void>;
+  onWriteRunbook: () => void;
   // Manual
   manualLoading: boolean;
   manualError: string | null;
@@ -749,7 +750,7 @@ function OverlayPanel(props: OverlayPanelProps) {
   if (mode === 'convert') {
     return (
       <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
-        <ConvertUpload onConvert={props.onConvert} onCancel={props.onClose} loading={props.converting} error={props.convertError} />
+        <ConvertUpload onConvert={props.onConvert} onCancel={props.onClose} loading={props.converting} error={props.convertError} onWriteRunbook={props.onWriteRunbook} />
       </div>
     );
   }
@@ -1301,6 +1302,10 @@ export default function KBPage() {
           conversion={conversion}
           convertError={convertError}
           converting={converting}
+          onWriteRunbook={() => {
+            setConvertError(null);
+            setOverlayMode('manual');
+          }}
           onConvert={handleConvert}
           manualLoading={manualLoading}
           manualError={manualError}

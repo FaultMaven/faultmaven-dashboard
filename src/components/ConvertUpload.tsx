@@ -14,9 +14,24 @@ interface ConvertUploadProps {
   onCancel: () => void;
   loading: boolean;
   error: ConversionErrorInfo | null;
+  /**
+   * Switch to the runbook template. Supplied for refusals whose remedy is
+   * authoring rather than a different file. An error MESSAGE cannot carry that
+   * remedy here: NewDropdown is unmounted for the whole lifetime of this
+   * overlay, so every control it could name is off-screen as it is read.
+   */
+  onWriteRunbook?: () => void;
 }
 
-export function ConvertUpload({ onConvert, onCancel, loading, error }: ConvertUploadProps) {
+/**
+ * Error codes whose remedy is "author it instead", and which are therefore
+ * offered the template button. Keyed on the CODE, not on the copy — the message
+ * is translated text and must stay free to change without silently dropping the
+ * affordance.
+ */
+const AUTHORING_REMEDY_CODES = new Set(['ALREADY_A_RUNBOOK']);
+
+export function ConvertUpload({ onConvert, onCancel, loading, error, onWriteRunbook }: ConvertUploadProps) {
   const { scopes: availableScopes } = useAvailableScopes();
   const [file, setFile] = useState<File | null>(null);
   const [scope, setScope] = useState<string>('personal');
@@ -106,7 +121,20 @@ export function ConvertUpload({ onConvert, onCancel, loading, error }: ConvertUp
             <div className="mb-4 text-sm bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
               <p className="font-medium text-fm-critical">{error.title}</p>
               <p className="text-fm-text-secondary mt-1">{error.message}</p>
-              <p className="text-fm-text-tertiary mt-1 text-xs">{error.action}</p>
+              {/* The way out reads at the same size as the diagnosis. It was
+                  text-xs tertiary: the smallest, lowest-contrast, last-read line
+                  of a red panel whose first two lines say the operation failed —
+                  the visual half of a dead end, however the sentence is worded. */}
+              <p className="text-fm-text-secondary mt-2">{error.action}</p>
+              {onWriteRunbook && error.code && AUTHORING_REMEDY_CODES.has(error.code) && (
+                <button
+                  type="button"
+                  onClick={onWriteRunbook}
+                  className="mt-3 px-3 py-1.5 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors"
+                >
+                  Write Runbook
+                </button>
+              )}
             </div>
           )}
 
