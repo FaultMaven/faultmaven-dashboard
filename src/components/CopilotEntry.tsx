@@ -38,10 +38,11 @@ import { useEffect, useState } from 'react';
  * person who set it is the person who can unset it.
  *
  * Presence is detected via the marker the copilot's content script sets on this
- * page (it runs on the dashboard origin). Contract — keep in sync with the
- * extension's announceCopilotPresence():
- *   attribute: data-faultmaven-copilot="<version>" on <html>
- *   event:     faultmaven-copilot:ready (window)
+ * page (it runs on the dashboard origin): {@link COPILOT_PRESENCE_ATTR}, and
+ * {@link COPILOT_PRESENCE_EVENT} to say "look again". THE VALUES ARE NOT
+ * REPEATED HERE — they belong to `@faultmaven/copilot-ui/contract`, and prose
+ * naming them is a copy that a rename leaves asserting the old names with
+ * nothing red. There is nothing left to "keep in sync" by hand.
  *
  * The advertisement travelling the other way — this page telling the extension
  * it hosts a panel — is `src/copilot/advertisement.ts`.
@@ -55,29 +56,22 @@ import {
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
 
-// IMPORTED, not re-spelled. These two strings are the extension's to choose,
-// and a second copy here could drift while both sides stayed green — the
-// install CTA would keep working while the withdrawal gate silently stopped, or
-// the reverse. `copilotCapability` is where the Dashboard states them once.
-const PRESENCE_ATTR = COPILOT_PRESENCE_ATTR;
-const PRESENCE_EVENT = COPILOT_PRESENCE_EVENT;
-
 function useCopilotPresence(): boolean {
   const [present, setPresent] = useState(
-    () => typeof document !== 'undefined' && document.documentElement.hasAttribute(PRESENCE_ATTR),
+    () => typeof document !== 'undefined' && document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR),
   );
 
   useEffect(() => {
     if (present) return;
     const mark = () => setPresent(true);
-    window.addEventListener(PRESENCE_EVENT, mark);
+    window.addEventListener(COPILOT_PRESENCE_EVENT, mark);
     // The content script runs at document_end; re-check shortly after mount in
     // case the marker was set before this listener attached.
     const timer = window.setTimeout(() => {
-      if (document.documentElement.hasAttribute(PRESENCE_ATTR)) setPresent(true);
+      if (document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR)) setPresent(true);
     }, COPILOT_PRESENCE_RECHECK_MS);
     return () => {
-      window.removeEventListener(PRESENCE_EVENT, mark);
+      window.removeEventListener(COPILOT_PRESENCE_EVENT, mark);
       window.clearTimeout(timer);
     };
   }, [present]);

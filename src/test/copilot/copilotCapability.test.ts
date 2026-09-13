@@ -58,40 +58,84 @@ describe('the wire values this repo implements against', () => {
     expect(COPILOT_PRESENCE_EVENT).toBe('faultmaven-copilot:ready');
   });
 
-  it('declares none of them itself — asserted against the SOURCE', async () => {
-    // A value comparison cannot show this. A local literal holding the CORRECT
+  it('declares none of them itself — asserted against the SOURCE', () => {
+    // A value comparison cannot show this: a local literal holding the CORRECT
     // value satisfies every assertion above exactly as a re-export does, so
-    // only a DRIFTED literal would fail — which the pin already catches. What
-    // has to stay true is structural: this module declares none of these names,
-    // it takes them from the package. The copilot side pins the mirror image of
-    // this in `presence-marker.test.ts`.
-    const source = await readSource('copilot/copilotCapability.ts');
+    // only a DRIFTED literal would fail — which the pin already catches.
+    //
+    // ⚠️ AND `export const NAME =` IS NOT THE ONLY WAY TO DECLARE ONE. The
+    // first version of this guard matched that form alone, which is blind to
+    // `const NAME = '…'; export { NAME };` — the very form this file uses for
+    // its re-exports, and so the most likely shape a regression would take. The
+    // pattern below matches a declaration in ANY form.
+    expect(LOCAL_DECLARATION.test(capabilitySource())).toBe(false);
 
-    expect(source).not.toMatch(
-      /export\s+const\s+(COPILOT_PRESENCE_ATTR|COPILOT_PRESENCE_EVENT|COPILOT_CAPABILITIES_ATTR|CAPABILITY_PANEL_WITHDRAW)\s*=/,
-    );
-    expect(source).toMatch(/from\s+'@faultmaven\/copilot-ui\/contract'/);
+    // …and each name is bound TO THE SPECIFIER. A bare "imports from /contract
+    // somewhere" passes on any file that keeps one contract import while
+    // hand-declaring the rest — this file has imported from there since before
+    // the presence pair moved, so that assertion proved nothing about them.
+    for (const name of CONTRACT_NAMES) {
+      expect(
+        new RegExp(`${name}[\\s\\S]{0,600}from '@faultmaven/copilot-ui/contract'`).test(
+          capabilitySource(),
+        ),
+        `${name} is not bound to the contract import`,
+      ).toBe(true);
+    }
   });
 
-  it('proves that source check can fail', () => {
-    // The pattern shown rejecting a local declaration, so it cannot pass
-    // vacuously if the names are ever renamed out from under it.
-    const local = "export const COPILOT_PRESENCE_ATTR = 'data-faultmaven-copilot';";
-    expect(
-      /export\s+const\s+(COPILOT_PRESENCE_ATTR|COPILOT_PRESENCE_EVENT|COPILOT_CAPABILITIES_ATTR|CAPABILITY_PANEL_WITHDRAW)\s*=/.test(local),
-    ).toBe(true);
+  it('proves the guard fires on the real file, in both declaration forms', () => {
+    // Run over a MUTATED COPY OF THE ACTUAL SOURCE rather than a hand-written
+    // one-liner: a counterexample in the shape the guard already catches
+    // reports "the check can fail" while the check is blind to the shape that
+    // matters. One regex, used by the guard and by this proof, so the two
+    // cannot drift apart.
+    const real = capabilitySource();
+    expect(LOCAL_DECLARATION.test(real)).toBe(false);
+
+    const asExportConst = `${real}\nexport const COPILOT_PRESENCE_EVENT = 'faultmaven-copilot:ready';`;
+    const asExportList = `${real}\nconst COPILOT_PRESENCE_EVENT = 'faultmaven-copilot:ready';\nexport { COPILOT_PRESENCE_EVENT };`;
+
+    expect(LOCAL_DECLARATION.test(asExportConst)).toBe(true);
+    expect(LOCAL_DECLARATION.test(asExportList)).toBe(true);
   });
 });
 
 /**
- * Read a source file RELATIVE TO THIS TEST, never `process.cwd()`, which vitest
- * does not set — an IDE runner or a run from another directory would otherwise
- * throw ENOENT instead of reporting the assertion.
+ * The module under guard, read as TEXT through Vite's `?raw`.
+ *
+ * Not `node:fs`: this repo ships no `@types/node` (`tsconfig.json` pins
+ * `types` to vite/react deliberately), so a `node:fs` import adds an error to
+ * `tsc -p tsconfig.eslint.json`, the command CLAUDE.md prescribes for test
+ * files. `packageImportBoundary.test.ts` and `CopilotEntry.test.tsx` both read
+ * sources this way and both say why.
  */
-async function readSource(relativeToSrc: string): Promise<string> {
-  const { readFileSync } = await import('node:fs');
-  return readFileSync(new URL('../../' + relativeToSrc, import.meta.url), 'utf8');
+const capabilitySources = import.meta.glob<string>('../../copilot/copilotCapability.ts', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+function capabilitySource(): string {
+  const [text] = Object.values(capabilitySources);
+  // Fail closed: a moved or renamed module must break this, not silently make
+  // every assertion below vacuous against an empty string.
+  if (!text) throw new Error('copilotCapability.ts not found by import.meta.glob');
+  return text;
 }
+
+/** The four names, and any local declaration of one — in ANY form. */
+const CONTRACT_NAMES = [
+  'COPILOT_PRESENCE_ATTR',
+  'COPILOT_PRESENCE_EVENT',
+  'COPILOT_CAPABILITIES_ATTR',
+  'CAPABILITY_PANEL_WITHDRAW',
+] as const;
+
+const LOCAL_DECLARATION = new RegExp(
+  String.raw`(?:^|\n)\s*(?:export\s+)?(?:const|let|var)\s+(?:${CONTRACT_NAMES.join('|')})\s*[=:]`,
+);
+
 
 describe('no extension has announced itself', () => {
   it('ALLOWS the assertion — it reaches nobody', () => {
