@@ -136,7 +136,7 @@ describe('a cross-tab sign-out', () => {
     manager.watchCrossTabAuthChanges();
 
     harness.fireStorage(null);
-    await vi.waitFor(() => expect(manager.isCrossTabSignOut()).toBe(true));
+    await vi.waitFor(() => expect(manager.isSigningOut()).toBe(true));
 
     expect(sessionStorage.getItem('oauth_redirect_after_login')).toBeNull();
   });
@@ -154,7 +154,7 @@ describe('a cross-tab ACCOUNT SWITCH', () => {
     harness.fireStorage(JSON.stringify(OTHER_AUTH_STATE));
     await vi.waitFor(() => expect(cleared).toHaveBeenCalledTimes(1));
 
-    expect(manager.isCrossTabSignOut()).toBe(true);
+    expect(manager.isSigningOut()).toBe(true);
   });
 });
 
@@ -171,7 +171,7 @@ describe('a cross-tab ROTATION', () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(cleared).not.toHaveBeenCalled();
-    expect(manager.isCrossTabSignOut()).toBe(false);
+    expect(manager.isSigningOut()).toBe(false);
   });
 
   it('ignores a write to an unrelated key', async () => {

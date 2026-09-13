@@ -35,9 +35,17 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     // NOT on a sign-out another tab initiated. This URL belongs to the account
     // that just went away, so recording it would deep-link whoever signs in
     // next straight into the previous person's case.
-    if (authManager.isCrossTabSignOut()) return;
+    if (authManager.isSigningOut()) return;
     const currentUrl = `${location.pathname}${location.search}`;
-    sessionStorage.setItem('oauth_redirect_after_login', currentUrl);
+    try {
+      sessionStorage.setItem('oauth_redirect_after_login', currentUrl);
+    } catch {
+      // Storage denied (private mode, blocked site data, quota). Losing the
+      // return destination costs the user a click; letting the throw escape an
+      // effect unwinds to the ErrorBoundary and shows an error screen to
+      // someone whose session merely expired — the exact outcome #133 is about.
+      // Every sibling write in this flow is guarded the same way.
+    }
   }, [loading, isAuthenticated, location.pathname, location.search]);
 
   // Auth state hydrates asynchronously (AuthContext). Render nothing until it

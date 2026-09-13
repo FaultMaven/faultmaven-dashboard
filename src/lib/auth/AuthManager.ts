@@ -189,7 +189,7 @@ export class AuthManager {
    * URL belongs to the person who just signed out, so the NEXT account to sign
    * in on this tab would be deep-linked straight into the previous one's case.
    */
-  private crossTabSignOut = false;
+  private signingOut = false;
 
   constructor() {
     // Dev-mode assertion: Ensure storage adapter is initialized
@@ -205,9 +205,9 @@ export class AuthManager {
    * Save authentication state to browser storage
    */
   async saveAuthState(authState: AuthState): Promise<void> {
-    // This tab's identity, and the end of any cross-tab sign-out it was in.
+    // This tab's identity, and the end of any sign-out it was in.
     this.tabUserId = authState.user?.user_id ?? null;
-    this.crossTabSignOut = false;
+    this.signingOut = false;
     const browser = getBrowserStorage();
     if (browser?.storage) {
       await browser.storage.local.set({ authState });
@@ -283,26 +283,57 @@ export class AuthManager {
    * no return path is recorded; see `crossTabSignOut`.
    */
   private async signOutFromAnotherTab(): Promise<void> {
-    this.crossTabSignOut = true;
     this.tabUserId = null;
-    // A destination captured before this point belongs to the account that just
-    // went away. Drop it as well as suppressing the next capture.
+    this.beginSignOut();
+    await this.clearAuthState();
+  }
+
+  /**
+   * A DELIBERATE sign-out is starting — here or in another tab.
+   *
+   * Two things, and both are needed: suppress the next destination capture, and
+   * drop any destination captured before this point. Either alone leaks.
+   *
+   * ⚠️ CALL THIS FOR A LOCAL SIGN-OUT TOO. Only the cross-tab path used to, and
+   * `logoutAuth` — the button every user actually presses — did not. So signing
+   * out on `/cases/case-123?tab=report` left that URL in
+   * `oauth_redirect_after_login`; `LoginPage` reads it on the next successful
+   * sign-in and navigates there, and the cloud path forwards it to the IdP as
+   * `return_to`, where it survives even a cleared sessionStorage. The next
+   * person to sign in on that tab was deep-linked into the previous person's
+   * case. The cross-tab branch was written against exactly this risk; the local
+   * branch simply never got it.
+   *
+   * A session that DIES — an expired or revoked token — must not call this. The
+   * same person is still there and returning them to their page is the point of
+   * faultmaven-dashboard#133.
+   */
+  beginSignOut(): void {
+    this.signingOut = true;
+    // A destination captured before this point belongs to the account that is
+    // leaving. Drop it as well as suppressing the next capture.
     try {
       sessionStorage.removeItem('oauth_redirect_after_login');
     } catch {
       // sessionStorage unavailable/blocked — non-fatal.
     }
-    await this.clearAuthState();
   }
 
   /**
-   * True while this tab is signing out because another tab did.
+   * True while a DELIBERATE sign-out is in progress — this tab's or another's.
    *
-   * `ProtectedRoute` consults it before recording a post-login destination.
-   * Cleared on the next successful sign-in.
+   * Named for what it decides rather than for how it started, because that is
+   * the question its one consumer asks: `ProtectedRoute` consults it before
+   * recording a post-login destination, and the answer is the same either way —
+   * the account is leaving on purpose, so the URL in the bar is not a place to
+   * send whoever signs in next.
+   *
+   * It was named for the cross-tab case alone, which named the ORIGIN and
+   * thereby answered only half the question. Cleared on the next successful
+   * sign-in.
    */
-  isCrossTabSignOut(): boolean {
-    return this.crossTabSignOut;
+  isSigningOut(): boolean {
+    return this.signingOut;
   }
 
   onAuthCleared(listener: () => void): () => void {

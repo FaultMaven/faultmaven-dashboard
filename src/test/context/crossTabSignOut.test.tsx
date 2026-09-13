@@ -51,7 +51,7 @@ vi.mock('../../lib/api', () => ({
     saveAuthState: vi.fn(),
     clearAuthState: vi.fn().mockResolvedValue(undefined),
     getAccessToken: vi.fn().mockResolvedValue('tok-live'),
-    isCrossTabSignOut: vi.fn().mockReturnValue(true),
+    isSigningOut: vi.fn().mockReturnValue(true),
     watchCrossTabAuthChanges: (...args: unknown[]) => watchCrossTabAuthChanges(...args),
     // The one channel every kind of session end arrives on.
     onAuthCleared: (listener: () => void) => {

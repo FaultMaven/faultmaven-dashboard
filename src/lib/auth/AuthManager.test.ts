@@ -222,6 +222,60 @@ describe('AuthManager', () => {
     });
   });
 
+  describe('beginSignOut — a DELIBERATE sign-out, here or in another tab', () => {
+    const KEY = 'oauth_redirect_after_login';
+
+    beforeEach(() => {
+      sessionStorage.clear();
+    });
+
+    it('drops a destination captured BEFORE the sign-out', () => {
+      // Suppressing the next capture is only half of it. A URL recorded
+      // earlier in the session is still sitting there for the next account:
+      // `LoginPage` navigates whoever signs in next straight to it, and the
+      // cloud path forwards it to the IdP as `return_to`, where it outlives a
+      // cleared sessionStorage.
+      sessionStorage.setItem(KEY, '/cases/ada-private?tab=report');
+
+      authManager.beginSignOut();
+
+      expect(sessionStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('suppresses the NEXT capture too', () => {
+      expect(authManager.isSigningOut()).toBe(false);
+
+      authManager.beginSignOut();
+
+      expect(authManager.isSigningOut()).toBe(true);
+    });
+
+    it('is over once someone signs in', async () => {
+      authManager.beginSignOut();
+
+      await authManager.saveAuthState(mockAuthState);
+
+      // Otherwise the flag outlives the sign-out and the NEW user never gets a
+      // return destination recorded for the rest of the tab's life.
+      expect(authManager.isSigningOut()).toBe(false);
+    });
+
+    it('survives storage being denied', () => {
+      // Private mode / blocked site data. Losing the removal must not take the
+      // sign-out down with it — the suppression is the half that still works.
+      const spy = vi
+        .spyOn(Storage.prototype, 'removeItem')
+        .mockImplementation(() => {
+          throw new DOMException('denied', 'SecurityError');
+        });
+
+      expect(() => authManager.beginSignOut()).not.toThrow();
+      expect(authManager.isSigningOut()).toBe(true);
+
+      spy.mockRestore();
+    });
+  });
+
   describe('getAccessToken', () => {
     it('should return access token when valid auth state exists', async () => {
       mockGet.mockResolvedValueOnce({ authState: mockAuthState });
