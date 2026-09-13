@@ -31,9 +31,11 @@ const caseDetail = {
   is_terminal: true,
 } as unknown as CaseDetail;
 
+// `turn_number` is not decoration here: the label comes from the ROW now, so a
+// fixture without one describes a row the server never sent and gets no label.
 const messages = [
-  { message_id: 'm0', role: 'user', content: 'DB is down' },
-  { message_id: 'm1', role: 'assistant', content: 'Checking connections' },
+  { message_id: 'm0', role: 'user', content: 'DB is down', turn_number: 1 },
+  { message_id: 'm1', role: 'assistant', content: 'Checking connections', turn_number: 1 },
 ] as unknown as CaseMessage[];
 
 const evidence = [
@@ -90,10 +92,10 @@ describe('buildCaseMarkdown', () => {
     // Attribution consistency with the on-screen renderer is asserted in
     // src/test/lib/messageAttribution.test.tsx — this covers the export path.
     const withNotice = [
-      { message_id: 'm0', role: 'user', content: 'DB is down' },
-      { message_id: 'm1', role: 'assistant', content: 'Checking connections' },
-      { message_id: 'm2', role: 'system', content: 'Your runbook draft is ready.' },
-      { message_id: 'm3', role: 'tool', content: 'Something a future backend sent' },
+      { message_id: 'm0', role: 'user', content: 'DB is down', turn_number: 1 },
+      { message_id: 'm1', role: 'assistant', content: 'Checking connections', turn_number: 1 },
+      { message_id: 'm2', role: 'system', content: 'Your runbook draft is ready.', turn_number: 1 },
+      { message_id: 'm3', role: 'tool', content: 'Something a future backend sent', turn_number: 1 },
     ] as unknown as CaseMessage[];
 
     const md = buildCaseMarkdown({ caseDetail, messages: withNotice, evidence, hypotheses });

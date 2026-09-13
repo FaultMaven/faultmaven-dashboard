@@ -88,7 +88,10 @@ export function TranscriptView({ messages }: TranscriptViewProps) {
     <div className="py-2">
       {messages.map((msg, idx) => {
         const kind = messageKind(msg.role);
-        const isTurnStart = kind === 'user';
+        // A NEW TURN, not a new user row. An aside shares the turn before it,
+        // so keying the divider on the role drew a heavy rule and a fresh block
+        // that repeated the number above it — reading as a duplicated turn.
+        const isTurnStart = turnNumbers[idx] !== null && turnNumbers[idx] !== turnNumbers[idx - 1];
         const isFirst = idx === 0;
         const wrapperClass = isFirst
           ? ''

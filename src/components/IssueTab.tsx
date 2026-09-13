@@ -1,5 +1,6 @@
 import type { CaseDetail } from '../types/cases';
 import { closureReasonDisplay } from '../lib/cases/closureReason';
+import { caseTurnCount } from '../lib/cases/turnLabel';
 
 interface IssueTabProps {
   caseDetail: CaseDetail;
@@ -57,7 +58,7 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
           )}
           <div>
             <span className="text-fm-text-tertiary">Turns: </span>
-            <span>{caseDetail.current_turn}</span>
+            <span>{caseTurnCount(caseDetail)}</span>
           </div>
         </div>
       </section>

@@ -1,0 +1,43 @@
+/**
+ * Which turn this app PRINTS — the Dashboard's door to the shared rules.
+ *
+ * The rules live in `@faultmaven/copilot-ui/turn-label` because the Dashboard
+ * and the panel render the same case on the same page, and two answers to
+ * "which number do I print" is two numbers for one exchange. That is the defect
+ * API contract 3.5.0 exists to end (faultmaven#1387), and it is not one a
+ * second implementation here could avoid — it IS the second implementation.
+ *
+ * `/turn-label`, never the package entry: the entry pulls the panel, the store
+ * and the transport into the eager graph (+200 kB in the signed-out chunk,
+ * ADR-016 D3). That module imports nothing, which is the same reason `contract`
+ * is an exception. One door per subject, and this is the third:
+ * `advertisement.ts` owns the panel messages, `copilotCapability.ts` the
+ * capability names, this one the turn labels.
+ */
+export {
+  displayedTurn,
+  investigationTurnFor,
+  serverSuppliesInvestigationTurn,
+  turnLabelFor,
+} from '@faultmaven/copilot-ui/turn-label';
+export type { TurnLabelled } from '@faultmaven/copilot-ui/turn-label';
+
+
+/**
+ * The turn to print for a CASE, as opposed to a row — the header, the issue
+ * summary, the export's front matter.
+ *
+ * `current_turn` is the message clock, so a case with two asides said "8 turns"
+ * over a transcript whose last row said "Turn 6". Contract 3.5.0 added
+ * `investigation_turn` to `CaseDetail` for exactly this, and the backend note
+ * for #1389 is explicit that shipping only the rows "leaves the same panel
+ * showing the bug one line higher".
+ *
+ * `??` not `||`, for the reason the package gives: 0 is a real answer.
+ */
+export function caseTurnCount(caseDetail: {
+  current_turn: number;
+  investigation_turn?: number | null;
+}): number {
+  return caseDetail.investigation_turn ?? caseDetail.current_turn;
+}

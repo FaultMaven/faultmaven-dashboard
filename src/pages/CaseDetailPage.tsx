@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
 import { CaseStageCell } from '../components/CaseStageCell';
+import { caseTurnCount } from '../lib/cases/turnLabel';
 import { CaseTabs } from '../components/CaseTabs';
 import { ConversationDock } from '../components/ConversationDock';
 import { TeamShareBadge } from '../components/TeamShareBadge';
@@ -271,7 +272,7 @@ export default function CaseDetailPage() {
             <span>&middot;</span>
             <span>Created {new Date(caseDetail.created_at).toLocaleDateString()}</span>
             <span>&middot;</span>
-            <span>{caseDetail.current_turn} turn{caseDetail.current_turn !== 1 ? 's' : ''}</span>
+            <span>{caseTurnCount(caseDetail)} turn{caseTurnCount(caseDetail) !== 1 ? 's' : ''}</span>
           </div>
         </div>
 

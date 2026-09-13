@@ -26,6 +26,7 @@
  */
 
 import type { CaseMessage } from '../../types/cases';
+import { turnLabelFor } from './turnLabel';
 
 /** The three ways a transcript row can be presented. */
 export type MessageKind = 'user' | 'assistant' | 'notice';
@@ -80,11 +81,17 @@ export function messageAuthorLabel(role: string): string {
  * so the two Dashboard surfaces would have printed different numbers for one
  * exchange (faultmaven#1387).
  *
- * COUNTING POSITIONS IS THE FALLBACK, unchanged, for a server that predates the
- * field: the field is nullable precisely so an older server reads as "did not
- * say" rather than as turn zero. The counter advances on every user message
- * whether or not the field is present, so a response that carried it on only
- * some rows still degrades to the old behaviour rather than to nonsense.
+ * THE RULES ARE THE PACKAGE'S, not this file's. `turnLabelFor` decides both
+ * halves: what the turn IS (`investigation_turn ?? turn_number` — `??` because
+ * 0 is a real answer) and whether to PRINT it (no, at 0: "Turn 0" names a turn
+ * the investigation has not reached).
+ *
+ * An earlier version of this counted POSITIONS as its fallback and suppressed
+ * nothing at 0. Both were wrong in the same way: the panel beside this
+ * transcript falls back to `turn_number` and prints no label at 0, so the dock
+ * and the tab numbered one conversation two ways and the number moved when you
+ * collapsed the dock — the exact defect this change exists to remove. A second
+ * implementation of "which number" cannot avoid that; it is that.
  *
  * Each user message opens a turn and the assistant reply shares it. A notice
  * gets `null` — it owns no turn and must not print one. The counter advances
@@ -105,11 +112,7 @@ export function messageAuthorLabel(role: string): string {
  * the ordinal would break "jump to turn" silently.
  */
 export function transcriptTurnNumbers(messages: readonly CaseMessage[]): (number | null)[] {
-  let positional = 0;
-  return messages.map((msg) => {
-    const kind = messageKind(msg.role);
-    if (kind === 'user') positional += 1;
-    if (kind === 'notice') return null;
-    return msg.investigation_turn ?? positional;
-  });
+  return messages.map((msg) =>
+    messageKind(msg.role) === 'notice' ? null : (turnLabelFor(msg) ?? null),
+  );
 }

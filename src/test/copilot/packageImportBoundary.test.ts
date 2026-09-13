@@ -59,6 +59,11 @@ const nonTsSources = import.meta.glob<string>(
  *
  *  - the STYLESHEET and the PRESET, because an `index.ts` cannot export a file
  *    for a CSS `@import` or a CommonJS `require` to consume;
+ *  - the TURN-LABEL rules, for the same reason as the contract and measured
+ *    the same way: `turn-label.ts` imports nothing, while the entry would cost
+ *    the whole panel. The Dashboard and the panel print turn numbers for the
+ *    same case on the same page, so the rules deciding WHICH number have to be
+ *    one implementation (faultmaven#1387);
  *  - the CONTRACT, because importing those three values from the ENTRY pulls
  *    the whole package into the eager graph. Measured: it moved the host store,
  *    transport and persistence internals into this app's entry chunk (+200 kB
@@ -69,6 +74,7 @@ const DEEP_PATH_EXCEPTIONS = [
   `${PACKAGE}/styles/globals.css`,
   `${PACKAGE}/tailwind-preset.cjs`,
   `${PACKAGE}/contract`,
+  `${PACKAGE}/turn-label`,
 ];
 
 interface Reference {
@@ -228,6 +234,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
         '/node_modules/@faultmaven/copilot-ui/styles/globals.css',
         '/node_modules/@faultmaven/copilot-ui/tailwind-preset.cjs',
         '/node_modules/@faultmaven/copilot-ui/contract.ts',
+        '/node_modules/@faultmaven/copilot-ui/turn-label.ts',
       ],
       { query: '?raw', import: 'default', eager: true },
     );
@@ -237,19 +244,33 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     expect(Object.keys(shipped)).toHaveLength(DEEP_PATH_EXCEPTIONS.length);
   });
 
-  it('keeps the contract module dependency-FREE, which is why it is exempt', () => {
+  it('keeps the exempt modules dependency-FREE, which is why they are exempt', () => {
     // The exemption rests entirely on this. A contract module that grew an
     // import would drag the package's graph back into the entry chunk, and the
     // exception would then be licensing the very thing it was granted to avoid.
-    const contract = import.meta.glob(
-      ['/node_modules/@faultmaven/copilot-ui/contract.ts'],
+    const exempt = import.meta.glob(
+      [
+        '/node_modules/@faultmaven/copilot-ui/contract.ts',
+        '/node_modules/@faultmaven/copilot-ui/turn-label.ts',
+      ],
       { query: '?raw', import: 'default', eager: true },
     );
-    const source = Object.values(contract)[0] as unknown as string;
+    const sources = Object.entries(exempt) as unknown as [string, string][];
 
-    expect(source, 'the contract module was not found').toBeTruthy();
-    expect(source).not.toMatch(/^\s*import\s/m);
-    expect(source).not.toMatch(/\brequire\s*\(/);
+    // Both of them, not just the first: `turn-label` was granted the same
+    // exemption on the same measurement, and an exemption that stopped being
+    // checked is an exemption that stops being true.
+    expect(sources).toHaveLength(2);
+    for (const [file, source] of sources) {
+      expect(source, `${file} was not found`).toBeTruthy();
+      // Its own `./lib/state/*` re-exports are the point of the module and are
+      // themselves dependency-free; anything else would drag the graph back in.
+      const specifiers = [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
+      for (const s of specifiers) {
+        expect(s, `${file} reaches ${s}`).toMatch(/^\.\/lib\/state\//);
+      }
+      expect(source, `${file} uses require()`).not.toMatch(/\brequire\s*\(/);
+    }
   });
 
   it('has exactly one runtime import of the ENTRY, and it is dynamic', () => {

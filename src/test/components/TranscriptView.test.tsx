@@ -95,10 +95,13 @@ describe('TranscriptView — message attribution', () => {
     render(
       <TranscriptView
         messages={[
-          makeMessage({ message_id: 'm1', role: 'user', content: 'First question' }),
-          makeMessage({ message_id: 'm2', role: 'assistant', content: 'First answer' }),
-          makeMessage({ message_id: 'm3', role: 'system', content: 'Draft ready' }),
-          makeMessage({ message_id: 'm4', role: 'user', content: 'Second question' }),
+          // Real clock turns. The fixture carried `turn_number: 1` on every row
+          // while numbering came from POSITIONS; now the number is the row's
+          // own, so a fixture that repeats one clock turn describes one turn.
+          makeMessage({ message_id: 'm1', role: 'user', content: 'First question', turn_number: 1 }),
+          makeMessage({ message_id: 'm2', role: 'assistant', content: 'First answer', turn_number: 1 }),
+          makeMessage({ message_id: 'm3', role: 'system', content: 'Draft ready', turn_number: 1 }),
+          makeMessage({ message_id: 'm4', role: 'user', content: 'Second question', turn_number: 2 }),
         ]}
       />
     );
