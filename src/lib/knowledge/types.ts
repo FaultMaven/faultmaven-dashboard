@@ -60,6 +60,10 @@ export interface UploadDocumentParams {
   file: File;
   title: string;
   document_type: string;
+  /** Which tier to publish at. `global` requires platform admin. */
+  scope: string;
+  /** Required when scope is `team`. */
+  team_id?: string;
   category?: string;
   tags?: string;
   source_url?: string;
