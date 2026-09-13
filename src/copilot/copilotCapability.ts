@@ -66,59 +66,64 @@ export const COPILOT_READY_EVENT = 'faultmaven-copilot:ready';
 export const COPILOT_PRESENCE_RECHECK_MS = 800;
 
 /**
- * Set on `<html>` beside the version: a space-separated list of the behaviours
- * this build implements (ADR-019 D2).
+ * The capability attribute and the one token this module gates on — BOTH FROM
+ * THE PACKAGE now that faultmaven-copilot#260 has shipped them.
  *
- * A TOKEN MEANS "THIS BUILD DOES IT", never "this build is new enough" — which
- * is the whole point, and the thing a version number gets wrong. An unpacked
- * build with the withdrawal listener still reports its manifest version, so the
- * floor below refuses the very build the feature is being tested with. A fork,
- * a nightly and a dev build all advertise what they have.
+ * They were spelled out here while the Dashboard side landed first, with a note
+ * to move them the moment the extension defined them. This is that move. A
+ * literal in each repository can drift while both stay green — a rename
+ * upstream would have left this repo silently refusing every build, with
+ * nothing red on either side.
  *
- * Defined in the shared package once the extension ships it
- * (faultmaven-copilot#259); named here meanwhile, because the Dashboard side is
- * forward-compatible and lands first — a Dashboard that prefers an absent
- * attribute simply uses the fallback, so no second release is needed when the
- * extension catches up.
+ * Re-exported rather than merely imported, the way `advertisement.ts` re-exports
+ * the panel names, so `copilotCapability` stays this app's single door to the
+ * handshake and callers never reach past it.
  */
-export const COPILOT_CAPABILITIES_ATTR = 'data-faultmaven-copilot-capabilities';
+import {
+  CAPABILITY_PANEL_WITHDRAW,
+  COPILOT_CAPABILITIES_ATTR,
+  copilotCapabilities,
+  type CopilotCapability,
+} from '@faultmaven/copilot-ui/contract';
+
+export { CAPABILITY_PANEL_WITHDRAW, COPILOT_CAPABILITIES_ATTR };
 
 /**
- * Understands `FM_DASHBOARD_PANEL_WITHDRAWN` and releases a yielded tab.
+ * The branded token type, carried through the same door.
  *
- * ⚠️ A SECOND COPY, deliberately and temporarily. ADR-019 D2 puts this token in
- * `@faultmaven/copilot-ui/contract` — which this repo already imports for the
- * panel names, and which `packageImportBoundary.test.ts` permits as a deep path
- * for exactly these cheap constants. It is spelled here only because the
- * package does not define it yet (faultmaven-copilot#259), and this side
- * deliberately lands first.
- *
- * MOVE IT the moment #259 merges — re-export it from the contract module the
- * way `advertisement.ts` re-exports the panel names, and delete this literal.
- * Until then a rename upstream leaves this repo silently refusing every build,
- * with nothing red on either side: the drift this file's own header warns
- * about.
+ * Upstream added it in the commit that shipped the names, to stop a
+ * hand-written `'panel-withdrawal'` compiling into something that claims a
+ * capability. Without it re-exported here a caller that wants a typed token has
+ * no legal route: reaching the subpath directly is what the boundary test
+ * forbids, so the door has to carry the type or the type is unusable.
  */
-export const CAPABILITY_PANEL_WITHDRAW = 'panel-withdraw';
+export type { CopilotCapability };
 
 /**
  * What the installed build says it can do, or `null` where it has not said.
  *
- * `null` and `[]` are DIFFERENT answers and must stay so: the first is a build
- * from before capabilities, where the version floor is the only evidence
- * available; the second is a build that told us it can do none of the things we
- * asked about, which is authoritative and must not be overridden by a version
- * that happens to be high enough.
+ * DELEGATES to the package's reader. The names were never the subtle part —
+ * the READING RULE is, and this repo had its own copy of it: absent vs empty vs
+ * token, and how the list is split. Two implementations of that rule are two
+ * chances to disagree, and a disagreement is invisible from both sides (one
+ * degrades forever while every test stays green). `dashboardAdvertisesPanel`
+ * lives in the contract for exactly this reason; so does this now.
+ *
+ * `null` and `[]` remain DIFFERENT answers and the package keeps them apart:
+ * the first is a build from before capabilities, where the version floor is the
+ * only evidence available; the second is a build that told us it can do none of
+ * the things we asked about, which is authoritative and must not be overridden
+ * by a version that happens to be high enough.
+ *
+ * Kept as a named wrapper rather than re-exporting `copilotCapabilities`
+ * directly, for the naming alone: every reader in this app asks "what is
+ * INSTALLED", and the package's own name does not say that. The `doc` parameter
+ * is passed through for parity with `installedCopilotVersion` — no call site
+ * uses it today, and an earlier version of this comment claimed the tests did,
+ * which was simply untrue.
  */
-export function installedCopilotCapabilities(doc?: Document): string[] | null {
-  try {
-    // Read inside the try — see `installedCopilotVersion`.
-    const raw = (doc ?? document).documentElement.getAttribute(COPILOT_CAPABILITIES_ATTR);
-    if (raw === null) return null;
-    return raw.split(/\s+/).filter(Boolean);
-  } catch {
-    return null;
-  }
+export function installedCopilotCapabilities(doc?: Document): readonly string[] | null {
+  return copilotCapabilities(doc);
 }
 
 /**
@@ -191,19 +196,22 @@ function compareVersions(a: string, b: string): number {
  */
 export function copilotAcceptsWithdrawal(
   version: string | null = installedCopilotVersion(),
-  capabilities: string[] | null = installedCopilotCapabilities(),
+  capabilities: readonly string[] | null = installedCopilotCapabilities(),
 ): boolean {
-  // CAPABILITIES FIRST — before even the presence check, which is the order
-  // ADR-019 D3 states and not a preference among equals. The two attributes are
-  // written by the same script but nothing guarantees the same tick, and a
-  // build that has stamped capabilities and not yet its version would, under a
-  // presence-first check, look like "no extension". "No extension" means
-  // ASSERT, which hands a yield to a build that may have no way to release it —
-  // the dark tab this module exists to prevent, reachable in the gap between
-  // two attribute writes.
+  // CAPABILITIES FIRST, which is the order ADR-019 D3 states and not a
+  // preference among equals: the attribute is AUTHORITATIVE IN BOTH DIRECTIONS.
+  // A build listing the token is trusted whatever its number says — the dev-build
+  // case the floor got wrong — and one omitting it is refused however new it is.
+  // A version-first check would let a high number override an explicit "I cannot
+  // do this", which is the dark tab.
   //
-  // Authoritative in BOTH directions: a build listing the token is trusted
-  // whatever its number says, and one omitting it is refused however new it is.
+  // ⚠️ NOT because a half-written marker could be caught mid-update. An earlier
+  // version of this comment argued that, and it was wrong: the bridge stamps
+  // both attributes in one synchronous task and the isolated world shares this
+  // page's event loop, so no read here can land between the two writes. The
+  // reachable state is that NEITHER attribute is set yet (the bridge runs at
+  // `document_end`) — which this function already handles as "nobody is
+  // listening", and which the readiness event and the re-check below cover.
   if (capabilities !== null) return capabilities.includes(CAPABILITY_PANEL_WITHDRAW);
 
   // Nothing said anything: no extension, or a content script that never

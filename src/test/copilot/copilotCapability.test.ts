@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   CAPABILITY_PANEL_WITHDRAW,
+  COPILOT_CAPABILITIES_ATTR,
+  COPILOT_PRESENCE_ATTR,
   COPILOT_WITHDRAWAL_MIN_VERSION,
   copilotAcceptsWithdrawal,
   installedCopilotCapabilities,
@@ -20,17 +22,40 @@ import {
  */
 
 afterEach(() => {
-  document.documentElement.removeAttribute('data-faultmaven-copilot');
-  document.documentElement.removeAttribute('data-faultmaven-copilot-capabilities');
+  document.documentElement.removeAttribute(COPILOT_PRESENCE_ATTR);
+  document.documentElement.removeAttribute(COPILOT_CAPABILITIES_ATTR);
 });
 
+// Driven off the CONSTANTS, not re-spelled literals. Both names now travel with
+// the package pin, so a helper writing a hardcoded attribute would keep writing
+// the old one after a rename while the reader read the new one — and the
+// failure would surface as `expected null to deeply equal []` several
+// assertions away from the cause.
 function withCapabilities(value: string) {
-  document.documentElement.setAttribute('data-faultmaven-copilot-capabilities', value);
+  document.documentElement.setAttribute(COPILOT_CAPABILITIES_ATTR, value);
 }
 
 function withVersion(version: string) {
-  document.documentElement.setAttribute('data-faultmaven-copilot', version);
+  document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, version);
 }
+
+/**
+ * The wire values, pinned HERE as well as upstream.
+ *
+ * They used to be literals in this repo, so they were pinned by construction.
+ * Now they arrive with the SHA — which is the right place for them to live, but
+ * it means nothing in this repository states what they are, and a pin bump that
+ * changed one would fail somewhere downstream instead of at the sentence that
+ * names it. Both sides of a cross-repo contract assert it; that is what makes
+ * it a contract rather than a shared guess.
+ */
+describe('the wire values this repo implements against', () => {
+  it('names the attribute and the token', () => {
+    expect(COPILOT_CAPABILITIES_ATTR).toBe('data-faultmaven-copilot-capabilities');
+    expect(CAPABILITY_PANEL_WITHDRAW).toBe('panel-withdraw');
+    expect(COPILOT_PRESENCE_ATTR).toBe('data-faultmaven-copilot');
+  });
+});
 
 describe('no extension has announced itself', () => {
   it('ALLOWS the assertion — it reaches nobody', () => {
@@ -135,17 +160,24 @@ describe('an extension that says what it can do', () => {
   });
 
   it.each([
-    ['with the token', 'panel-withdraw', true],
+    ['with the token', CAPABILITY_PANEL_WITHDRAW, true],
     ['without it', 'page-capture', false],
   ])(
-    'is answered from the capability list even before the VERSION is stamped (%s)',
+    'decides from the list ALONE, with no version to fall back on (%s)',
     (_label, caps, expected) => {
-      // The two attributes are written by the same script but nothing
-      // guarantees the same tick. Checking presence FIRST made a build that had
-      // stamped capabilities and not yet its version look like "no extension" —
-      // and "no extension" means ASSERT, handing a yield to a build that may
-      // have no way to release it. That is the dark tab this module exists to
-      // prevent, reachable in the gap between two attribute writes.
+      // What this pins is that the capability list needs no corroboration: the
+      // function reaches its answer with `installedCopilotVersion()` null, so a
+      // presence-first implementation — which returns `true` the moment no
+      // version is announced — fails the second row.
+      //
+      // ⚠️ It is NOT a race test, and an earlier version of this comment said it
+      // was: "reachable in the gap between two attribute writes". That gap does
+      // not exist. The bridge stamps both attributes in one synchronous task and
+      // the isolated world shares this page's event loop, so no read here can
+      // land between them. The claim was withdrawn in the source
+      // (`copilotCapability.ts`) and upstream in copilot#260; leaving it here
+      // would have left two contradicting explanations of one safety gate, and
+      // defending an unreachable state is how a test ends up asserting nothing.
       withCapabilities(caps);
 
       expect(installedCopilotVersion()).toBeNull();

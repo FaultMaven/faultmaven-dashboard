@@ -346,10 +346,18 @@ change reaches both or reaches neither.
 - **Import the package ENTRY only.** Deep subpaths resolve and are still off
   limits: they exist for the extension, which lives in the same repository as
   the package and can be updated in the same commit.
+- **`/contract` is the one code exception, through TWO doors — one per
+  subject.** It carries the cross-repo names both repositories must agree on,
+  and it is cheap (constants and two DOM readers, no panel). `advertisement.ts`
+  owns the panel attribute and window messages; `copilotCapability.ts` owns the
+  capability attribute, its tokens and its reader. Nothing else may reach the
+  subpath, and neither door may pull the other's names — routing capabilities
+  through `advertisement.ts` would make the capability GATE depend on the module
+  it gates. Both the file list and the per-file name sets are asserted.
 - **The one runtime import is dynamic**, in `CopilotPanelMount.tsx`. That is
   what keeps the shared UI out of the entry chunk so nothing of it is fetched
-  before sign-in. `src/test/copilot/packageImportBoundary.test.ts` enforces both
-  rules.
+  before sign-in. `src/test/copilot/packageImportBoundary.test.ts` enforces all
+  of these.
 - **The theme ships with it** as a Tailwind preset, consumed in
   `tailwind.config.cjs`; `src/index.css` imports the package's `globals.css`.
   ADR-003 is one design system — the two configs had already drifted silently.
@@ -442,8 +450,13 @@ to them, and three rules follow:
   so the version decides; an empty list means "it said it can do none of these",
   which is authoritative.
 
-This side is **forward-compatible**: it already prefers the attribute, so the
-extension shipping it (faultmaven-copilot#259) needs no Dashboard release.
+That forward-compatibility was the point and it held: the Dashboard shipped
+preferring an attribute nothing published yet, so faultmaven-copilot#260 adding
+it needed no Dashboard release. Both the names and the READING RULE
+(`copilotCapabilities()`) now live in `@faultmaven/copilot-ui/contract`, reached
+through `copilotCapability.ts` — this repo no longer spells either one. The
+names were never the subtle part; absent-vs-empty-vs-token is, and two copies of
+that rule can disagree while every test on both sides stays green.
 
 ### Why two chat UIs cannot normally co-exist — and the three cases where they can
 

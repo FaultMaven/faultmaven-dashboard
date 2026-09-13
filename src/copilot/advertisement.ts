@@ -67,8 +67,9 @@ export function announcePanelAvailable(win: Window = window): void {
  *
  * ⚠️ AN EXTENSION THAT PREDATES THIS MESSAGE IGNORES IT and leaves the tab
  * yielded, which is the dark-tab failure. That is why the Dashboard does not
- * assert to one: `copilot/copilotCapability.ts` gates the ASSERTION on the
- * installed extension's version, and `index.html` ships with the build-capability
+ * assert to one: `copilot/copilotCapability.ts` gates the ASSERTION on what the
+ * installed extension ADVERTISES — its capability list first, falling back to
+ * its version for builds from before capabilities — and `index.html` ships with the build-capability
  * flag down, so an older install never yields and therefore never needs to hear
  * this. The withdrawal itself is sent unconditionally — it is a no-op for an
  * extension that cannot hear it, and the one thing worse than a redundant
