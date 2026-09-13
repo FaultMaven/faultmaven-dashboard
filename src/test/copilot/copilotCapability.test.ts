@@ -1,7 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+  CAPABILITY_PANEL_WITHDRAW,
   COPILOT_WITHDRAWAL_MIN_VERSION,
   copilotAcceptsWithdrawal,
+  installedCopilotCapabilities,
   installedCopilotVersion,
 } from '../../copilot/copilotCapability';
 
@@ -19,7 +21,12 @@ import {
 
 afterEach(() => {
   document.documentElement.removeAttribute('data-faultmaven-copilot');
+  document.documentElement.removeAttribute('data-faultmaven-copilot-capabilities');
 });
+
+function withCapabilities(value: string) {
+  document.documentElement.setAttribute('data-faultmaven-copilot-capabilities', value);
+}
 
 function withVersion(version: string) {
   document.documentElement.setAttribute('data-faultmaven-copilot', version);
@@ -87,5 +94,117 @@ describe('an extension that understands it', () => {
   it('accepts the threshold itself', () => {
     withVersion(COPILOT_WITHDRAWAL_MIN_VERSION);
     expect(copilotAcceptsWithdrawal()).toBe(true);
+  });
+});
+
+
+/**
+ * CAPABILITIES BEAT THE VERSION, in both directions (ADR-019 D3).
+ *
+ * A version is a PROXY for a capability, and the proxy is wrong for exactly the
+ * builds we develop against: an unpacked build with the withdrawal listener
+ * still reports its manifest version, so the floor refuses the build the
+ * feature is being tested with. That is what motivated ADR-019.
+ */
+describe('an extension that says what it can do', () => {
+  it('is TRUSTED on the token alone, even below the version floor', () => {
+    // The dev-build case. `1.0.3` is beneath the floor and would be refused on
+    // the number; the token says it implements the behaviour, and the token is
+    // the truth.
+    withVersion('1.0.3');
+    withCapabilities(CAPABILITY_PANEL_WITHDRAW);
+
+    expect(copilotAcceptsWithdrawal()).toBe(true);
+  });
+
+  it('is REFUSED without the token, however new it is', () => {
+    // Authoritative in the other direction too: a build that told us it cannot
+    // do this must not be overridden by a version that happens to be high.
+    withVersion('9.9.9');
+    withCapabilities('page-capture');
+
+    expect(copilotAcceptsWithdrawal()).toBe(false);
+  });
+
+  it('is refused on an EMPTY list, which is an answer and not a silence', () => {
+    withVersion('9.9.9');
+    withCapabilities('');
+
+    expect(installedCopilotCapabilities()).toEqual([]);
+    expect(copilotAcceptsWithdrawal()).toBe(false);
+  });
+
+  it.each([
+    ['with the token', 'panel-withdraw', true],
+    ['without it', 'page-capture', false],
+  ])(
+    'is answered from the capability list even before the VERSION is stamped (%s)',
+    (_label, caps, expected) => {
+      // The two attributes are written by the same script but nothing
+      // guarantees the same tick. Checking presence FIRST made a build that had
+      // stamped capabilities and not yet its version look like "no extension" —
+      // and "no extension" means ASSERT, handing a yield to a build that may
+      // have no way to release it. That is the dark tab this module exists to
+      // prevent, reachable in the gap between two attribute writes.
+      withCapabilities(caps);
+
+      expect(installedCopilotVersion()).toBeNull();
+      expect(copilotAcceptsWithdrawal()).toBe(expected);
+    },
+  );
+
+  it('tolerates whatever spacing the extension emits', () => {
+    withVersion('1.0.3');
+    withCapabilities(`  page-capture   ${CAPABILITY_PANEL_WITHDRAW}  `);
+
+    expect(copilotAcceptsWithdrawal()).toBe(true);
+  });
+});
+
+describe('an extension from before capabilities', () => {
+  it('reports null, which is NOT an empty list', () => {
+    // The distinction the fallback rests on: `null` is "it never said", `[]` is
+    // "it said none". Collapsing them would either refuse every old build the
+    // floor would have accepted, or trust every new build that declined.
+    withVersion('1.0.4');
+
+    expect(installedCopilotCapabilities()).toBeNull();
+  });
+
+  it.each([
+    ['above the floor', '1.0.4', true],
+    ['below the floor', '1.0.3', false],
+  ])('falls back to the version floor (%s)', (_label, version, expected) => {
+    withVersion(version);
+    expect(copilotAcceptsWithdrawal()).toBe(expected);
+  });
+});
+
+describe('an environment with no DOM at all', () => {
+  it('degrades rather than throwing out of the readers', () => {
+    /**
+     * ADR-019 D1: a missing capability is "a supported, tested state, not an
+     * error path". These readers are the `getSnapshot` of a
+     * `useSyncExternalStore`, so a throw here is a RENDER CRASH rather than a
+     * degrade.
+     *
+     * `doc: Document = document` evaluates the default in PARAMETER scope,
+     * outside the function body — so a missing `document` throws a
+     * ReferenceError the try/catch never sees. Reading it inside the body is
+     * what makes the guard reachable, and this is the only test that can tell
+     * the two apart.
+     */
+    const realDocument = globalThis.document;
+    delete (globalThis as { document?: unknown }).document;
+    try {
+      expect(() => installedCopilotVersion()).not.toThrow();
+      expect(() => installedCopilotCapabilities()).not.toThrow();
+      expect(installedCopilotVersion()).toBeNull();
+      expect(installedCopilotCapabilities()).toBeNull();
+      // And the decision built on them still answers, on the safe side.
+      expect(() => copilotAcceptsWithdrawal()).not.toThrow();
+    } finally {
+      (globalThis as { document?: unknown }).document = realDocument;
+    }
   });
 });
