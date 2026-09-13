@@ -22,6 +22,7 @@ vi.mock('./AuthManager', async () => {
       peekIdpLogoutUrl: vi.fn().mockResolvedValue(null),
       peekSessionId: vi.fn().mockResolvedValue(null),
       clearAuthState: vi.fn().mockResolvedValue(undefined),
+      beginSignOut: vi.fn(),
     },
   };
 });
@@ -288,6 +289,28 @@ describe('logoutAuth', () => {
     expect(mockGetAccessToken).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalled();
     expect(mockClearAuthState).toHaveBeenCalled();
+  });
+
+  it('declares the sign-out BEFORE clearing, so no return destination is kept', async () => {
+    // A deliberate sign-out must not leave the page the user was on in
+    // `oauth_redirect_after_login`: `LoginPage` navigates the NEXT person who
+    // signs in on this tab straight to it, and the cloud path forwards it to
+    // the IdP as `return_to`, where it outlives a cleared sessionStorage.
+    //
+    // ORDER IS THE WHOLE POINT. `clearAuthState` fires `onAuthCleared`,
+    // AuthContext drops its state and ProtectedRoute's effect runs — so a
+    // `beginSignOut` called afterwards would be overwritten by the very capture
+    // it exists to suppress. Only the cross-tab path did this; the button every
+    // user actually presses did not.
+    const beginSignOut = authManager.beginSignOut as ReturnType<typeof vi.fn>;
+    const order: string[] = [];
+    beginSignOut.mockImplementation(() => { order.push('beginSignOut'); });
+    mockClearAuthState.mockImplementation(async () => { order.push('clearAuthState'); });
+
+    await logoutAuth();
+
+    expect(order).toEqual(['beginSignOut', 'clearAuthState']);
+    mockClearAuthState.mockResolvedValue(undefined);
   });
 
   it('should clear auth state even when no token exists', async () => {

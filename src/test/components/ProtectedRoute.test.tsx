@@ -8,9 +8,9 @@ vi.mock('../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
-const isCrossTabSignOut = vi.fn().mockReturnValue(false);
+const isSigningOut = vi.fn().mockReturnValue(false);
 vi.mock('../../lib/auth/AuthManager', () => ({
-  authManager: { isCrossTabSignOut: () => isCrossTabSignOut() },
+  authManager: { isSigningOut: () => isSigningOut() },
 }));
 
 import { useAuth } from '../../context/AuthContext';
@@ -83,7 +83,7 @@ describe('ProtectedRoute', () => {
 describe('the post-login destination it records', () => {
   beforeEach(() => {
     sessionStorage.clear();
-    isCrossTabSignOut.mockReturnValue(false);
+    isSigningOut.mockReturnValue(false);
   });
 
   it('records where the user was, for an ordinary bounce to login', () => {
@@ -100,7 +100,7 @@ describe('the post-login destination it records', () => {
     // The URL in the bar belongs to the account that just went away. Recording
     // it would deep-link whoever signs in next straight into the previous
     // person's case — a cross-account leak by way of a convenience feature.
-    isCrossTabSignOut.mockReturnValue(true);
+    isSigningOut.mockReturnValue(true);
 
     renderAt({ isAuthenticated: false, loading: false }, '/cases');
 
@@ -108,7 +108,7 @@ describe('the post-login destination it records', () => {
   });
 
   it('does not overwrite an existing destination on a cross-tab sign-out', () => {
-    isCrossTabSignOut.mockReturnValue(true);
+    isSigningOut.mockReturnValue(true);
     sessionStorage.setItem('oauth_redirect_after_login', '/auth/authorize?client_id=copilot');
 
     renderAt({ isAuthenticated: false, loading: false }, '/cases');

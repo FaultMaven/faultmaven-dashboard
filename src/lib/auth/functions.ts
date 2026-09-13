@@ -259,6 +259,11 @@ export async function logoutAuth(): Promise<LogoutOutcome> {
   } catch (error) {
     console.error('Logout error:', error);
   } finally {
+    // BEFORE the clear, so the destination capture is suppressed rather than
+    // raced: clearing fires `onAuthCleared`, AuthContext drops its state, and
+    // ProtectedRoute's effect would otherwise record the URL of the account
+    // that is signing out. See `beginSignOut`.
+    authManager.beginSignOut();
     await authManager.clearAuthState();
   }
 
