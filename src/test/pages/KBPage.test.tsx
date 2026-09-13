@@ -247,15 +247,18 @@ describe('KBPage — authoring affordances match the backend gates', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
-  it('hides "Add Runbook" from a non-operator', async () => {
-    // It posts to `POST /knowledge/documents`, which is unconditionally
-    // operator-only and always publishes at global scope — a form a
-    // non-operator could fill in but never submit.
+  it('offers "Add Runbook" to a non-operator too', async () => {
+    // Uploading a finished file is an INPUT METHOD, not a publishing tier.
+    // `POST /knowledge/documents` used to be operator-only AND always global,
+    // so a user holding a `.md` had nowhere to put it while the same content
+    // was authorable through Convert or Write. The route now takes a scope and
+    // gates `global` the way the other two do
+    // (FaultMaven/faultmaven#1377), so the menu gates nothing.
     await renderAs(false);
 
     fireEvent.click(screen.getByRole('button', { name: /New/i }));
 
-    expect(screen.queryByText('Add Runbook')).not.toBeInTheDocument();
+    expect(screen.getByText('Add Runbook')).toBeInTheDocument();
   });
 
   it('offers "Add Runbook" to an operator', async () => {
@@ -264,5 +267,24 @@ describe('KBPage — authoring affordances match the backend gates', () => {
     fireEvent.click(screen.getByRole('button', { name: /New/i }));
 
     expect(screen.getByText('Add Runbook')).toBeInTheDocument();
+  });
+
+  it('offers only the scopes the user may publish at', async () => {
+    // The operator gate moved to the SCOPE, so the picker is where it shows.
+    // `useAvailableScopes` is the backend's answer to "what may I publish at",
+    // and the upload form reads the same hook Convert already does — so a
+    // non-operator is never shown a Global option they would get a 403 for.
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    await renderAs(false);
+
+    fireEvent.click(screen.getByRole('button', { name: /New/i }));
+    fireEvent.click(screen.getByText('Add Runbook'));
+
+    expect(screen.queryByText('Global (platform)')).not.toBeInTheDocument();
   });
 });

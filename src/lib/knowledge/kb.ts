@@ -18,13 +18,18 @@ const KB_BASE = '/api/v1/knowledge/documents';
 
 /**
  * Upload a document to the knowledge base.
- * Requires admin privileges on the backend.
+ *
+ * Any authenticated user may upload at their own scope; `global` — the platform
+ * tier every tenant reads — requires the platform-admin role, which the backend
+ * enforces on the SCOPE rather than on the route (FaultMaven/faultmaven#1377).
  */
 export async function uploadDocument(params: UploadDocumentParams): Promise<KBDocument> {
   const formData = new FormData();
   formData.append('file', params.file);
   formData.append('title', params.title);
   formData.append('document_type', params.document_type);
+  formData.append('scope', params.scope);
+  if (params.team_id) formData.append('team_id', params.team_id);
 
   if (params.category) formData.append('category', params.category);
   if (params.tags) formData.append('tags', params.tags);

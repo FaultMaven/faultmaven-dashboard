@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { logoutAuth, uploadDocument, type KBDocument, type AdminKBDocument } from '../lib/api';
 import {
   convertDocument,
@@ -49,25 +50,24 @@ type KBTab = 'documents' | 'drafts';
 // =============================================================================
 
 interface NewDropdownProps {
+  // No `isAdmin`: every item here is available to every authenticated user.
+  // The operator role gates the GLOBAL scope inside each flow, not the menu.
   onUpload: () => void;
   onConvert: () => void;
   onManual: () => void;
-  isAdmin: boolean;
 }
 
-function NewDropdown({ onUpload, onConvert, onManual, isAdmin }: NewDropdownProps) {
+function NewDropdown({ onUpload, onConvert, onManual }: NewDropdownProps) {
   const [open, setOpen] = useState(false);
 
-  // Convert and Write go through the conversion routes, which gate only the
-  // GLOBAL scope on the operator role — every authenticated user can author at
-  // personal scope. "Add Runbook" is different: it posts to
-  // `POST /knowledge/documents`, which is unconditionally operator-only AND
-  // always publishes at global scope, so offering it to a non-operator is a
-  // form they can fill in and can never submit.
+  // All three are input methods for the same act — authoring a runbook — and
+  // each gates only the GLOBAL scope on the operator role, because global is the
+  // platform tier every tenant reads. "Add Runbook" used to be the exception:
+  // its route was operator-only AND always published globally, so uploading a
+  // finished file was a privilege rather than a way of writing one, and a user
+  // holding a `.md` had nowhere to put it (FaultMaven/faultmaven#1377).
   const items = [
-    ...(isAdmin
-      ? [{ label: 'Add Runbook', description: 'Upload a validated runbook file directly', onClick: onUpload }]
-      : []),
+    { label: 'Add Runbook', description: 'Upload a finished runbook file', onClick: onUpload },
     { label: 'Convert to Runbook', description: 'AI extracts runbooks from a document', onClick: onConvert },
     { label: 'Write Runbook', description: 'Create from the standard template', onClick: onManual },
   ];
@@ -638,7 +638,7 @@ type OverlayMode = null | 'upload' | 'convert' | 'manual' | 'results' | 'editor'
 interface OverlayPanelProps {
   mode: OverlayMode;
   // Upload
-  onUploadFile: (params: { file: File; title: string; document_type: string; tags: string; description: string }) => Promise<void>;
+  onUploadFile: (params: { file: File; title: string; document_type: string; tags: string; description: string; scope: string }) => Promise<void>;
   // Convert
   conversion: ConversionResponse | null;
   convertError: ConversionErrorInfo | null;
@@ -660,6 +660,12 @@ interface OverlayPanelProps {
   onClose: () => void;
 }
 
+const UPLOAD_SCOPE_LABELS: Record<string, string> = {
+  personal: 'Personal',
+  team: 'Team',
+  global: 'Global (platform)',
+};
+
 function OverlayPanel(props: OverlayPanelProps) {
   const { mode } = props;
 
@@ -667,7 +673,12 @@ function OverlayPanel(props: OverlayPanelProps) {
   // any early return so the hook count is stable across renders (rules of hooks).
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadForm, setUploadForm] = useState({ title: '', document_type: 'runbook', tags: '', description: '' });
+  const [uploadForm, setUploadForm] = useState({ title: '', document_type: 'runbook', tags: '', description: '', scope: 'personal' });
+  // Read here rather than threaded from KBPage: the picker lives in this
+  // component, and hoisting it made every render of the page fetch scopes it
+  // had no use for (and broke tests that render the page without the overlay).
+  // Same hook ConvertUpload reads for the same purpose.
+  const { scopes: availableScopes } = useAvailableScopes();
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -733,6 +744,18 @@ function OverlayPanel(props: OverlayPanelProps) {
               <option value="reference" />
               <option value="how_to" />
             </datalist>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-fm-text-secondary mb-1">Scope</label>
+            <select
+              value={uploadForm.scope}
+              onChange={(e) => setUploadForm({ ...uploadForm, scope: e.target.value })}
+              className={inputClass}
+            >
+              {availableScopes.map((s) => (
+                <option key={s} value={s}>{UPLOAD_SCOPE_LABELS[s] ?? s}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-fm-text-secondary mb-1">Tags (comma-separated)</label>
@@ -955,8 +978,8 @@ export default function KBPage() {
     setManualError(null);
   };
 
-  const handleUploadFile = async (params: { file: File; title: string; document_type: string; tags: string; description: string }) => {
-    await uploadDocument({ file: params.file, title: params.title, document_type: params.document_type, tags: params.tags, description: params.description });
+  const handleUploadFile = async (params: { file: File; title: string; document_type: string; tags: string; description: string; scope: string }) => {
+    await uploadDocument({ file: params.file, title: params.title, document_type: params.document_type, tags: params.tags, description: params.description, scope: params.scope });
   };
 
   const handleConvert = async (file: File, scope: string) => {
@@ -1229,7 +1252,6 @@ export default function KBPage() {
           </div>
           {!overlayMode && (
             <NewDropdown
-              isAdmin={isAdmin}
               onUpload={() => setOverlayMode('upload')}
               onConvert={() => setOverlayMode('convert')}
               onManual={() => setOverlayMode('manual')}
