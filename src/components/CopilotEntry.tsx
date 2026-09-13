@@ -39,7 +39,7 @@ import { useState, useSyncExternalStore } from 'react';
  *
  * Presence is detected via the marker the copilot's content script sets on this
  * page (it runs on the dashboard origin): {@link COPILOT_PRESENCE_ATTR}, and
- * {@link COPILOT_PRESENCE_EVENT} to say "look again". THE VALUES ARE NOT
+ * the readiness event to say "look again". THE VALUES ARE NOT
  * REPEATED HERE — they belong to `@faultmaven/copilot-ui/contract`, and prose
  * naming them is a copy that a rename leaves asserting the old names with
  * nothing red. There is nothing left to "keep in sync" by hand.
@@ -51,7 +51,6 @@ import { COPILOT_STORE_URL } from '../copilot/storeListing';
 import {
   COPILOT_PRESENCE_ATTR,
   subscribeToCopilotPresence,
-  COPILOT_PRESENCE_EVENT,
 } from '../copilot/copilotCapability';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
