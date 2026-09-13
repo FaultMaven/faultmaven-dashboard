@@ -73,11 +73,20 @@ import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference
  * anything is there. What that build can DO is `copilotAcceptsWithdrawal`'s
  * question, and conflating them is what the version floor got wrong.
  */
+// Module scope, not an inline arrow: `useSyncExternalStore` calls getSnapshot
+// on every render and compares identities for the subscribe effect, so a fresh
+// closure each render makes React re-run that effect on every header render.
+function copilotIsAnnouncing(): boolean {
+  return (
+    typeof document !== 'undefined'
+    && document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR)
+  );
+}
+
 function useCopilotPresence(): boolean {
   return useSyncExternalStore(
     subscribeToCopilotPresence,
-    () => typeof document !== 'undefined'
-      && document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR),
+    copilotIsAnnouncing,
     // Server snapshot: never rendered on a server, but the API wants an answer.
     // FALSE is the no-extension case, which is what a server would see.
     () => false,

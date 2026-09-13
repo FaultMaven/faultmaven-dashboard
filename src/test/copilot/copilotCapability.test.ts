@@ -3,6 +3,8 @@ import {
   CAPABILITY_PANEL_WITHDRAW,
   COPILOT_CAPABILITIES_ATTR,
   COPILOT_PRESENCE_ATTR,
+  installedCopilotMarker,
+  subscribeToCopilotPresence,
   COPILOT_PRESENCE_EVENT,
   COPILOT_WITHDRAWAL_MIN_VERSION,
   copilotAcceptsWithdrawal,
@@ -136,6 +138,81 @@ const LOCAL_DECLARATION = new RegExp(
   String.raw`(?:^|\n)\s*(?:export\s+)?(?:const|let|var)\s+(?:${CONTRACT_NAMES.join('|')})\s*[=:]`,
 );
 
+
+describe('the advertisement marker', () => {
+  it('changes when a capable build ARRIVES, though the verdict does not', () => {
+    // The whole reason the marker exists. `copilotAcceptsWithdrawal()` is true
+    // for "nothing installed" AND for "a build that can withdraw", so a
+    // subscriber watching the verdict cannot see the arrival and never re-posts
+    // the assertion the newcomer was not around to hear (#144).
+    const empty = installedCopilotMarker();
+    expect(copilotAcceptsWithdrawal()).toBe(true);
+
+    withCapabilities(CAPABILITY_PANEL_WITHDRAW);
+    withVersion('1.0.4');
+
+    expect(copilotAcceptsWithdrawal()).toBe(true);
+    expect(installedCopilotMarker()).not.toBe(empty);
+  });
+
+  it('keeps "said nothing" and "said it can do nothing" apart', () => {
+    // ADR-019 D3 makes `null` and `[]` different answers, so the marker has to
+    // keep them different too — collapsing them hides the transition between a
+    // pre-capabilities build and one that explicitly claims nothing.
+    withVersion('1.0.3');
+    const noAttribute = installedCopilotMarker();
+
+    withCapabilities('');
+    const emptyList = installedCopilotMarker();
+
+    expect(emptyList).not.toBe(noAttribute);
+  });
+
+  it('is stable while nothing changes, so React does not loop', () => {
+    withVersion('1.0.4');
+    expect(installedCopilotMarker()).toBe(installedCopilotMarker());
+  });
+});
+
+describe('subscribing to presence', () => {
+  it('degrades to a no-op where there is no MutationObserver', () => {
+    // A DOM without the observer — an older embedded webview, a partial
+    // polyfill, a stripped shim. `new MutationObserver` throwing inside React's
+    // subscribe effect unmounts the tree, which is the render crash ADR-019 D1
+    // forbids. The guard has to cover it as well as a missing `document`.
+    const real = globalThis.MutationObserver;
+    // @ts-expect-error — deliberately removing it for this case.
+    delete globalThis.MutationObserver;
+    try {
+      const unsubscribe = subscribeToCopilotPresence(() => {});
+      expect(() => unsubscribe()).not.toThrow();
+    } finally {
+      globalThis.MutationObserver = real;
+    }
+  });
+
+  it('stops watching once the last subscriber goes', async () => {
+    // One source subscription for the whole app, torn down after the last
+    // listener — otherwise a page with nothing mounted keeps observing.
+    const seen: string[] = [];
+    const stopA = subscribeToCopilotPresence(() => seen.push('a'));
+    const stopB = subscribeToCopilotPresence(() => seen.push('b'));
+
+    // A mutation record is delivered as a MICROTASK, not synchronously, so
+    // every assertion about the observer has to flush first.
+    withVersion('1.0.4');
+    await Promise.resolve();
+    expect(seen).toContain('a');
+    expect(seen).toContain('b');
+
+    stopA();
+    stopB();
+    seen.length = 0;
+    withVersion('9.9.9');
+    await Promise.resolve();
+    expect(seen).toEqual([]);
+  });
+});
 
 describe('no extension has announced itself', () => {
   it('ALLOWS the assertion — it reaches nobody', () => {

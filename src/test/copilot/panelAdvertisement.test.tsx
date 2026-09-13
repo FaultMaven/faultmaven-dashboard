@@ -245,20 +245,29 @@ describe('an extension that announces itself after the page has already decided'
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
   });
 
-  it('keeps asserting when the build that shows up CAN retract', async () => {
+  it('RE-ASSERTS when a CAPABLE build arrives after the claim was already made', async () => {
+    // The other end of #144, and the half the observer alone does not fix.
+    // `copilotAcceptsWithdrawal()` is `true` both when nothing is installed and
+    // when a build that can withdraw is — so keying the effect on that boolean
+    // meant a capable extension ARRIVING changed nothing, and the assertion it
+    // was never around to hear was never re-posted. It has no other way to
+    // learn: the static attribute path is inert and the contract has no "ask
+    // again" message, so the tab kept two chat panels until navigation.
     render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
+    const before = postedTypes().length;
 
     await act(async () => {
-      // Capabilities first, as the bridge writes them.
       document.documentElement.setAttribute(COPILOT_CAPABILITIES_ATTR, CAPABILITY_PANEL_WITHDRAW);
       document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
     });
 
-    // Fail closed on the other side too: withdrawing from a build that can hear
-    // the retraction costs the user their second panel for nothing.
-    await new Promise((r) => setTimeout(r, 0));
-    expect(postedTypes()).not.toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE);
+    // Something was said to the newcomer…
+    await waitFor(() => expect(postedTypes().length).toBeGreaterThan(before));
+    // …and what it ends on is the claim, so it yields. The effect's cleanup
+    // posts a withdrawal first; that is idempotent and self-correcting, and the
+    // state the extension settles in is what matters.
+    expect(postedTypes().at(-1)).toBe(DASHBOARD_PANEL_MESSAGE);
   });
 
   it('notices a capability list stamped after the version', async () => {

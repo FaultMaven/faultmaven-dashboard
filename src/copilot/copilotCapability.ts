@@ -87,11 +87,75 @@
  * `getSnapshot` of a `useSyncExternalStore`, so a throw here surfaces as a
  * render crash instead of the degrade ADR-019 D1 requires.
  */
-export function subscribeToCopilotPresence(onChange: () => void): () => void {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
+/** Nothing advertised — distinct from an extension that advertises emptiness. */
+const NOTHING_ADVERTISED = '\u0000';
 
-  window.addEventListener(COPILOT_PRESENCE_EVENT, onChange);
-  const observer = new MutationObserver(onChange);
+/**
+ * Everything the installed extension is advertising, as ONE comparable string.
+ *
+ * WHY A MARKER AND NOT THE DERIVED BOOLEAN. `copilotAcceptsWithdrawal()`
+ * collapses this to yes/no, and two very different worlds share the answer
+ * `true`: "no extension at all, so the assertion reaches nobody" and "a build
+ * that says it can withdraw". A subscriber watching only the boolean therefore
+ * cannot see a capable extension ARRIVE — the value it reads is `true` before
+ * and after — so it never re-posts the assertion the new arrival was never
+ * around to hear. Two chat panels, for the life of the document, which is #144
+ * again from the other end.
+ *
+ * The marker changes on any of those transitions, so an effect keyed on it
+ * re-runs and re-asserts. `null` and `''` stay distinguishable, because ADR-019
+ * D3 makes them different answers.
+ */
+export function installedCopilotMarker(doc?: Document): string {
+  const version = installedCopilotVersion(doc);
+  const capabilities = installedCopilotCapabilities(doc);
+  return [
+    version ?? NOTHING_ADVERTISED,
+    capabilities === null ? NOTHING_ADVERTISED : capabilities.join(' '),
+  ].join('|');
+}
+
+/** What {@link installedCopilotMarker} reads when there is no DOM to read. */
+export const NO_COPILOT_MARKER = [NOTHING_ADVERTISED, NOTHING_ADVERTISED].join('|');
+
+const presenceListeners = new Set<() => void>();
+let stopWatchingPresence: (() => void) | null = null;
+
+/**
+ * ONE observer for the whole app, not one per subscriber.
+ *
+ * `CopilotEntry` sits in the header on every route and the gate mounts with the
+ * dock and the live Transcript arm, so a per-subscriber observer means several
+ * independent `MutationObserver`s on `<html>` and several `ready` listeners,
+ * each recomputing the identical answer on every attribute write. One source
+ * subscription fanning out to a listener `Set` is the shape
+ * `chatSurfacePreference.ts` and `useAvailableScopes.ts` already use here.
+ *
+ * The source is attached on the first subscriber and torn down after the last,
+ * so a page with nothing mounted watches nothing.
+ */
+function startWatchingPresence(): () => void {
+  if (
+    typeof window === 'undefined' ||
+    typeof document === 'undefined' ||
+    typeof MutationObserver === 'undefined'
+  ) {
+    // MutationObserver is checked as well as the DOM: an environment can have
+    // one and not the other (an older embedded webview, a partial polyfill, a
+    // stripped test shim), and `new MutationObserver` throwing inside React's
+    // subscribe effect unmounts the tree — the render crash the degrade rule
+    // exists to prevent (ADR-019 D1).
+    return () => {};
+  }
+
+  const notify = () => {
+    // Copied before iterating: a listener that unsubscribes in response would
+    // otherwise mutate the Set mid-iteration.
+    for (const listener of [...presenceListeners]) listener();
+  };
+
+  window.addEventListener(COPILOT_PRESENCE_EVENT, notify);
+  const observer = new MutationObserver(notify);
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: [COPILOT_PRESENCE_ATTR, COPILOT_CAPABILITIES_ATTR],
@@ -99,7 +163,20 @@ export function subscribeToCopilotPresence(onChange: () => void): () => void {
 
   return () => {
     observer.disconnect();
-    window.removeEventListener(COPILOT_PRESENCE_EVENT, onChange);
+    window.removeEventListener(COPILOT_PRESENCE_EVENT, notify);
+  };
+}
+
+export function subscribeToCopilotPresence(onChange: () => void): () => void {
+  presenceListeners.add(onChange);
+  if (!stopWatchingPresence) stopWatchingPresence = startWatchingPresence();
+
+  return () => {
+    presenceListeners.delete(onChange);
+    if (presenceListeners.size === 0) {
+      stopWatchingPresence?.();
+      stopWatchingPresence = null;
+    }
   };
 }
 
