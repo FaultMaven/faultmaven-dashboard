@@ -87,8 +87,6 @@
  * `getSnapshot` of a `useSyncExternalStore`, so a throw here surfaces as a
  * render crash instead of the degrade ADR-019 D1 requires.
  */
-/** Nothing advertised — distinct from an extension that advertises emptiness. */
-const NOTHING_ADVERTISED = '\u0000';
 
 /**
  * Everything the installed extension is advertising, as ONE comparable string.
@@ -107,16 +105,27 @@ const NOTHING_ADVERTISED = '\u0000';
  * D3 makes them different answers.
  */
 export function installedCopilotMarker(doc?: Document): string {
-  const version = installedCopilotVersion(doc);
-  const capabilities = installedCopilotCapabilities(doc);
   return [
-    version ?? NOTHING_ADVERTISED,
-    capabilities === null ? NOTHING_ADVERTISED : capabilities.join(' '),
+    describe(installedCopilotVersion(doc)),
+    describe(installedCopilotCapabilities(doc)?.join(' ') ?? null),
   ].join('|');
 }
 
+/**
+ * `null` and `''` as two visibly different strings, WITHOUT a magic character.
+ *
+ * A reserved sentinel string has to be one no real value can ever equal,
+ * which is a claim about every future value rather than something the
+ * encoding guarantees. A leading presence flag guarantees it: `0`
+ * is "said nothing" and `1` is "said this", so an extension that literally
+ * advertises the sentinel still cannot forge absence.
+ */
+function describe(value: string | null): string {
+  return value === null ? '0' : `1:${value}`;
+}
+
 /** What {@link installedCopilotMarker} reads when there is no DOM to read. */
-export const NO_COPILOT_MARKER = [NOTHING_ADVERTISED, NOTHING_ADVERTISED].join('|');
+export const NO_COPILOT_MARKER = [describe(null), describe(null)].join('|');
 
 const presenceListeners = new Set<() => void>();
 let stopWatchingPresence: (() => void) | null = null;
