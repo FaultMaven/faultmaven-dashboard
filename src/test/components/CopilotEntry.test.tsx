@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { CopilotEntry } from '../../components/CopilotEntry';
 import {
@@ -195,6 +195,28 @@ describe('Chrome Web Store install CTA', () => {
 
     expect(screen.queryByRole('button', { name: /move chat to copilot/i })).not.toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute('href', expect.stringContaining('http'));
+  });
+
+  it('notices an extension that starts announcing AFTER the first render', async () => {
+    // #144's mild twin. A self-hosted user grants the host permission from the
+    // options page and comes back to the tab they already had open;
+    // `chrome.scripting` injects the bridge, which stamps the attribute.
+    //
+    // NO READY EVENT IS DISPATCHED HERE, deliberately — that is what makes this
+    // prove the MutationObserver rather than the event listener, and it is the
+    // case the old one-shot 800ms re-check could not see at all, because it had
+    // fired long before the click.
+    render(<CopilotEntry />);
+    expect(screen.getByText(/get the copilot/i)).toBeInTheDocument();
+
+    await act(async () => {
+      document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /move chat to copilot/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/get the copilot/i)).not.toBeInTheDocument();
   });
 
   it('keeps the install CTA for a visitor who has not installed it', () => {

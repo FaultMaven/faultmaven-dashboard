@@ -56,13 +56,138 @@
  */
 
 /**
- * How long to wait before re-reading the attribute anyway.
+ * Tell me when what the installed extension advertises CHANGES.
  *
- * The same 800ms `CopilotEntry` has always used for this signal. The event is
- * the fast path; this is the one that catches a bridge that injected late or a
- * dispatch this context never saw.
+ * OBSERVES THE ATTRIBUTES, and that is the point. This used to be the ready
+ * event plus a single 800ms re-read, which covers a signal missed EARLY and
+ * nothing else. A host-permission grant happens on a user click at an arbitrary
+ * time: on a self-hosted origin the content script is not registered, the page
+ * reads "no extension" (which means ASSERT — nobody is listening), the user
+ * grants the permission a minute later, `chrome.scripting` injects the bridge,
+ * and the timer fired fifty-nine seconds ago. Nothing re-read, so a pre-#260
+ * build yields to an assertion already made and never hears the retraction: a
+ * tab with neither surface, for the life of the document (#144).
+ *
+ * A `MutationObserver` on `<html>` has no window to miss. It watches the signal
+ * ITSELF rather than a notification about it, so it does not depend on the
+ * event reaching this listener — which the old comment already conceded it
+ * might not, for a bridge injected into a world this context cannot hear.
+ *
+ * Both attributes, because both feed the answer: `copilotAcceptsWithdrawal`
+ * consults capabilities first and falls back to the version (ADR-019 D3), so a
+ * build that stamps its capability list after its version must re-open the
+ * question.
+ *
+ * The event stays as the fast path — it fires in the same task as the stamp,
+ * while a mutation record is delivered as a microtask — and it costs one
+ * listener. Callers get a double notify in the common case, which is free:
+ * every consumer re-reads a cheap DOM attribute and compares.
+ *
+ * No DOM means no subscription rather than a crash: these readers are the
+ * `getSnapshot` of a `useSyncExternalStore`, so a throw here surfaces as a
+ * render crash instead of the degrade ADR-019 D1 requires.
  */
-export const COPILOT_PRESENCE_RECHECK_MS = 800;
+
+/**
+ * Everything the installed extension is advertising, as ONE comparable string.
+ *
+ * WHY A MARKER AND NOT THE DERIVED BOOLEAN. `copilotAcceptsWithdrawal()`
+ * collapses this to yes/no, and two very different worlds share the answer
+ * `true`: "no extension at all, so the assertion reaches nobody" and "a build
+ * that says it can withdraw". A subscriber watching only the boolean therefore
+ * cannot see a capable extension ARRIVE — the value it reads is `true` before
+ * and after — so it never re-posts the assertion the new arrival was never
+ * around to hear. Two chat panels, for the life of the document, which is #144
+ * again from the other end.
+ *
+ * The marker changes on any of those transitions, so an effect keyed on it
+ * re-runs and re-asserts. `null` and `''` stay distinguishable, because ADR-019
+ * D3 makes them different answers.
+ */
+export function installedCopilotMarker(doc?: Document): string {
+  return [
+    describe(installedCopilotVersion(doc)),
+    describe(installedCopilotCapabilities(doc)?.join(' ') ?? null),
+  ].join('|');
+}
+
+/**
+ * `null` and `''` as two visibly different strings, WITHOUT a magic character.
+ *
+ * A reserved sentinel string has to be one no real value can ever equal,
+ * which is a claim about every future value rather than something the
+ * encoding guarantees. A leading presence flag guarantees it: `0`
+ * is "said nothing" and `1` is "said this", so an extension that literally
+ * advertises the sentinel still cannot forge absence.
+ */
+function describe(value: string | null): string {
+  return value === null ? '0' : `1:${value}`;
+}
+
+/** What {@link installedCopilotMarker} reads when there is no DOM to read. */
+export const NO_COPILOT_MARKER = [describe(null), describe(null)].join('|');
+
+const presenceListeners = new Set<() => void>();
+let stopWatchingPresence: (() => void) | null = null;
+
+/**
+ * ONE observer for the whole app, not one per subscriber.
+ *
+ * `CopilotEntry` sits in the header on every route and the gate mounts with the
+ * dock and the live Transcript arm, so a per-subscriber observer means several
+ * independent `MutationObserver`s on `<html>` and several `ready` listeners,
+ * each recomputing the identical answer on every attribute write. One source
+ * subscription fanning out to a listener `Set` is the shape
+ * `chatSurfacePreference.ts` and `useAvailableScopes.ts` already use here.
+ *
+ * The source is attached on the first subscriber and torn down after the last,
+ * so a page with nothing mounted watches nothing.
+ */
+function startWatchingPresence(): () => void {
+  if (
+    typeof window === 'undefined' ||
+    typeof document === 'undefined' ||
+    typeof MutationObserver === 'undefined'
+  ) {
+    // MutationObserver is checked as well as the DOM: an environment can have
+    // one and not the other (an older embedded webview, a partial polyfill, a
+    // stripped test shim), and `new MutationObserver` throwing inside React's
+    // subscribe effect unmounts the tree — the render crash the degrade rule
+    // exists to prevent (ADR-019 D1).
+    return () => {};
+  }
+
+  const notify = () => {
+    // Copied before iterating: a listener that unsubscribes in response would
+    // otherwise mutate the Set mid-iteration.
+    for (const listener of [...presenceListeners]) listener();
+  };
+
+  window.addEventListener(COPILOT_PRESENCE_EVENT, notify);
+  const observer = new MutationObserver(notify);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [COPILOT_PRESENCE_ATTR, COPILOT_CAPABILITIES_ATTR],
+  });
+
+  return () => {
+    observer.disconnect();
+    window.removeEventListener(COPILOT_PRESENCE_EVENT, notify);
+  };
+}
+
+export function subscribeToCopilotPresence(onChange: () => void): () => void {
+  presenceListeners.add(onChange);
+  if (!stopWatchingPresence) stopWatchingPresence = startWatchingPresence();
+
+  return () => {
+    presenceListeners.delete(onChange);
+    if (presenceListeners.size === 0) {
+      stopWatchingPresence?.();
+      stopWatchingPresence = null;
+    }
+  };
+}
 
 /**
  * EVERY name in this handshake, from the package — the presence pair

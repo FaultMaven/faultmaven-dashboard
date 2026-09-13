@@ -1,8 +1,9 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { announcePanelAvailable, withdrawPanelAvailability } from './advertisement';
 import {
-  COPILOT_PRESENCE_RECHECK_MS,
-  COPILOT_PRESENCE_EVENT,
+  subscribeToCopilotPresence,
+  installedCopilotMarker,
+  NO_COPILOT_MARKER,
   copilotAcceptsWithdrawal,
 } from './copilotCapability';
 
@@ -41,7 +42,12 @@ export type PanelVisibility = 'showing' | 'hidden' | 'pending';
  * what it is currently showing.
  */
 export function usePanelAdvertisement(showing: PanelVisibility): void {
-  const acceptsWithdrawal = useInstalledCopilotAcceptsWithdrawal();
+  // One subscription, two readings of it: the marker drives WHEN the effect
+  // re-runs, and the derived boolean drives WHAT it does. Deriving the boolean
+  // from the same render's DOM keeps them consistent — the marker only changes
+  // because that DOM changed.
+  const marker = useInstalledCopilotMarker();
+  const acceptsWithdrawal = copilotAcceptsWithdrawal();
 
   useEffect(() => {
     // NEVER ASSERT TO AN EXTENSION THAT COULD NOT TAKE IT BACK. Asserting makes
@@ -92,12 +98,19 @@ export function usePanelAdvertisement(showing: PanelVisibility): void {
       // also covers a route change inside the SPA, where it does not.
       withdrawPanelAvailability();
     };
-  }, [showing, acceptsWithdrawal]);
+    // MARKER IN THE DEPS, not just the derived boolean. `acceptsWithdrawal` is
+    // `true` both when nothing is installed and when a build that CAN withdraw
+    // is — so a capable extension arriving mid-session does not change it, the
+    // effect never re-runs, and the assertion it was not around to hear is
+    // never re-posted. It has no other way to learn: the static attribute path
+    // is inert since ADR-018 D0 row 7 and `index.html` ships the flag down, and
+    // the contract has no "ask again" message. That left the tab with two chat
+    // panels until navigation — #144 from the other end.
+  }, [showing, acceptsWithdrawal, marker]);
 }
 
 /**
- * Whether the installed extension can take an assertion back — re-read when one
- * announces itself.
+ * What the installed extension is advertising, re-read whenever it changes.
  *
  * The extension's auth bridge stamps its version at document_end, and this hook
  * can run before that: the panel mounts after React hydrates, which is usually
@@ -108,33 +121,21 @@ export function usePanelAdvertisement(showing: PanelVisibility): void {
  * `useSyncExternalStore`, matching `useDockFits` and `usePrefersExtensionForChat`:
  * the value lives outside React (in a DOM attribute another world writes), it
  * can change between the first render and the moment a subscription attaches,
- * and the alternative is a synchronous `setState` inside an effect. Absent the
- * extension's ready event nothing ever changes, which is the correct no-op for
- * a page with no extension on it.
+ * and the alternative is a synchronous `setState` inside an effect. React
+ * re-reads the snapshot after subscribing, which closes that gap without a
+ * timer; `subscribeToCopilotPresence` closes every later one by observing the
+ * attribute rather than waiting a fixed 800ms for it.
+ *
+ * The SNAPSHOT IS THE MARKER, not the yes/no answer, so that every change in
+ * what is advertised reaches the effect — see `installedCopilotMarker`.
  */
-function subscribeToCopilotPresence(onChange: () => void): () => void {
-  window.addEventListener(COPILOT_PRESENCE_EVENT, onChange);
-  // A DELAYED RE-READ as well as the event, mirroring `CopilotEntry`, which has
-  // guarded the same DOM signal this way all along. The event can be missed:
-  // it may fire before this subscription exists, a bridge injected late by
-  // `chrome.scripting` after an optional host-permission grant may not dispatch
-  // it into a world this listener sees, and a regressed build may not dispatch
-  // it at all. Missing it here is worse than missing it there — the install CTA
-  // just stays on the wrong label, while this would assert to an extension that
-  // cannot take it back.
-  const timer = window.setTimeout(onChange, COPILOT_PRESENCE_RECHECK_MS);
-  return () => {
-    window.clearTimeout(timer);
-    window.removeEventListener(COPILOT_PRESENCE_EVENT, onChange);
-  };
-}
-
-function useInstalledCopilotAcceptsWithdrawal(): boolean {
+function useInstalledCopilotMarker(): string {
   return useSyncExternalStore(
     subscribeToCopilotPresence,
-    copilotAcceptsWithdrawal,
+    installedCopilotMarker,
     // Server snapshot: never rendered on a server, but the API wants an answer.
-    // TRUE matches the no-extension case, which is what a server would see.
-    () => true,
+    // Nothing advertised is what a server would see, and it is the case that
+    // permits the assertion — nobody is listening to be stranded by it.
+    () => NO_COPILOT_MARKER,
   );
 }
