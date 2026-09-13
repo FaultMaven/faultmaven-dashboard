@@ -8,6 +8,10 @@ import {
   usePanelAdvertisement,
   type PanelVisibility,
 } from '../../copilot/usePanelAdvertisement';
+import {
+  COPILOT_PRESENCE_ATTR,
+  COPILOT_PRESENCE_EVENT,
+} from '../../copilot/copilotCapability';
 
 /**
  * The advertisement is a LIVE claim, and it can be unmade (ADR-018 D0, row 5).
@@ -65,7 +69,7 @@ describe('a mount that has not settled yet', () => {
 
 describe('an extension that could not take the assertion back', () => {
   afterEach(() => {
-    document.documentElement.removeAttribute('data-faultmaven-copilot');
+    document.documentElement.removeAttribute(COPILOT_PRESENCE_ATTR);
   });
 
   it('is never told a panel is showing', async () => {
@@ -73,7 +77,7 @@ describe('an extension that could not take the assertion back', () => {
     // faultmaven-copilot#257 can hear the retraction. Creating that state for
     // an older install leaves a tab with NEITHER surface — so the Dashboard
     // declines to create it, and that install keeps what it has today.
-    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.3');
 
     render(<Harness showing="showing" />);
     await waitFor(() => expect(postedTypes().length).toBeGreaterThan(0));
@@ -84,7 +88,7 @@ describe('an extension that could not take the assertion back', () => {
   it('is still sent the WITHDRAWAL, which costs nothing and can only help', async () => {
     // A no-op for an extension that cannot hear it. The one thing worse than a
     // redundant withdrawal is a missing one.
-    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.3');
 
     render(<Harness showing="showing" />);
 
@@ -101,16 +105,16 @@ describe('an extension that could not take the assertion back', () => {
 
     // An OLDER one appears: the assertion must stop.
     act(() => {
-      document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
-      window.dispatchEvent(new Event('faultmaven-copilot:ready'));
+      document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.3');
+      window.dispatchEvent(new Event(COPILOT_PRESENCE_EVENT));
     });
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
     postMessage.mockClear();
 
     // …and a newer one: it resumes.
     act(() => {
-      document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
-      window.dispatchEvent(new Event('faultmaven-copilot:ready'));
+      document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
+      window.dispatchEvent(new Event(COPILOT_PRESENCE_EVENT));
     });
     await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
   });

@@ -38,23 +38,22 @@
  */
 
 /**
- * Set on `<html>` by the extension's auth bridge, valued with its version.
+ * The presence pair — FROM THE CONTRACT, now that faultmaven-copilot#262 has
+ * moved them there. This is the last of the handshake's names to stop being
+ * spelled out twice.
  *
- * EXPORTED, because this and the event below are a cross-repo contract and were
- * already spelled out a second time in `CopilotEntry`. Two copies of a name the
- * other repository owns can drift while both sides stay green — the install CTA
- * would keep working while the withdrawal gate silently stopped, or the reverse.
- */
-export const COPILOT_PRESENCE_ATTR = 'data-faultmaven-copilot';
-
-/**
- * Dispatched by the auth bridge once it has stamped the attribute.
+ * Of the whole set this is the one whose drift hurt most: rename it upstream
+ * only and `installedCopilotVersion()` returns null for every build stamping
+ * the new name. For an install with no capability attribute — anything from
+ * before copilot#260 — `copilotAcceptsWithdrawal` reads that as "nobody is
+ * listening", ASSERTS, and hands a yield to an extension with no way to release
+ * it. A tab with neither surface, and nothing red on either side.
  *
- * The event carries no detail — `CustomEvent.detail` can be dropped crossing
- * the content-script → page world boundary, so the VERSION is read back off the
- * attribute and this only says "look again".
+ * The event was `COPILOT_READY_EVENT` here and `COPILOT_PRESENCE_EVENT` in the
+ * extension — one signal, two names, the same drift in miniature. This repo
+ * takes the contract's name rather than aliasing it, so there is one spelling
+ * to grep for across both repositories.
  */
-export const COPILOT_READY_EVENT = 'faultmaven-copilot:ready';
 
 /**
  * How long to wait before re-reading the attribute anyway.
@@ -66,27 +65,36 @@ export const COPILOT_READY_EVENT = 'faultmaven-copilot:ready';
 export const COPILOT_PRESENCE_RECHECK_MS = 800;
 
 /**
- * The capability attribute and the one token this module gates on — BOTH FROM
- * THE PACKAGE now that faultmaven-copilot#260 has shipped them.
+ * EVERY name in this handshake, from the package — the presence pair
+ * (faultmaven-copilot#262) beside the capability pair (#260). None of them is
+ * spelled out in this repository any more.
  *
- * They were spelled out here while the Dashboard side landed first, with a note
- * to move them the moment the extension defined them. This is that move. A
- * literal in each repository can drift while both stay green — a rename
- * upstream would have left this repo silently refusing every build, with
- * nothing red on either side.
+ * ONE import, ONE re-export clause built from it. The upstream mirror,
+ * `presence-marker.ts`, states the rule and the reason: three statements naming
+ * the same specifier is three binding lists to keep in sync, and an
+ * `export … from` creates no local binding — so a body use of one of those
+ * names needs a second import of the same module, which is how this file had
+ * `COPILOT_PRESENCE_ATTR` in two places at once. `advertisement.ts` already
+ * uses this form.
  *
- * Re-exported rather than merely imported, the way `advertisement.ts` re-exports
- * the panel names, so `copilotCapability` stays this app's single door to the
- * handshake and callers never reach past it.
+ * Re-exported rather than merely imported, so `copilotCapability` stays this
+ * app's single door to the handshake and callers never reach past it.
  */
 import {
   CAPABILITY_PANEL_WITHDRAW,
   COPILOT_CAPABILITIES_ATTR,
+  COPILOT_PRESENCE_ATTR,
+  COPILOT_PRESENCE_EVENT,
   copilotCapabilities,
   type CopilotCapability,
 } from '@faultmaven/copilot-ui/contract';
 
-export { CAPABILITY_PANEL_WITHDRAW, COPILOT_CAPABILITIES_ATTR };
+export {
+  CAPABILITY_PANEL_WITHDRAW,
+  COPILOT_CAPABILITIES_ATTR,
+  COPILOT_PRESENCE_ATTR,
+  COPILOT_PRESENCE_EVENT,
+};
 
 /**
  * The branded token type, carried through the same door.

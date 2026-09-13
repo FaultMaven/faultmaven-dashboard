@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { announcePanelAvailable, withdrawPanelAvailability } from './advertisement';
 import {
   COPILOT_PRESENCE_RECHECK_MS,
-  COPILOT_READY_EVENT,
+  COPILOT_PRESENCE_EVENT,
   copilotAcceptsWithdrawal,
 } from './copilotCapability';
 
@@ -113,7 +113,7 @@ export function usePanelAdvertisement(showing: PanelVisibility): void {
  * a page with no extension on it.
  */
 function subscribeToCopilotPresence(onChange: () => void): () => void {
-  window.addEventListener(COPILOT_READY_EVENT, onChange);
+  window.addEventListener(COPILOT_PRESENCE_EVENT, onChange);
   // A DELAYED RE-READ as well as the event, mirroring `CopilotEntry`, which has
   // guarded the same DOM signal this way all along. The event can be missed:
   // it may fire before this subscription exists, a bridge injected late by
@@ -125,7 +125,7 @@ function subscribeToCopilotPresence(onChange: () => void): () => void {
   const timer = window.setTimeout(onChange, COPILOT_PRESENCE_RECHECK_MS);
   return () => {
     window.clearTimeout(timer);
-    window.removeEventListener(COPILOT_READY_EVENT, onChange);
+    window.removeEventListener(COPILOT_PRESENCE_EVENT, onChange);
   };
 }
 

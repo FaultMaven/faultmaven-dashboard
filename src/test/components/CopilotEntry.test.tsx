@@ -6,6 +6,10 @@ import {
   resetChatSurfaceForTests,
   setPrefersExtensionForChat,
 } from '../../lib/copilot/chatSurfacePreference';
+import {
+  COPILOT_CAPABILITIES_ATTR,
+  COPILOT_PRESENCE_ATTR,
+} from '../../copilot/copilotCapability';
 
 /**
  * The published Chrome Web Store listing for FaultMaven Copilot (#119).
@@ -48,8 +52,8 @@ describe('Chrome Web Store install CTA', () => {
     // localStorage AND into a module-level cache — so without resetting both,
     // every later test rendered the "chat is in the Copilot" state and the
     // branch it meant to exercise was unreachable.
-    document.documentElement.removeAttribute('data-faultmaven-copilot');
-    document.documentElement.removeAttribute('data-faultmaven-copilot-capabilities');
+    document.documentElement.removeAttribute(COPILOT_PRESENCE_ATTR);
+    document.documentElement.removeAttribute(COPILOT_CAPABILITIES_ATTR);
     localStorage.clear();
     resetChatSurfaceForTests();
   });
@@ -94,7 +98,7 @@ describe('Chrome Web Store install CTA', () => {
     // The Dashboard now hosts the panel itself, and the extension YIELDS its
     // side panel on this origin (ADR-016 D4). "Copilot in your toolbar" pointed
     // at a panel that deliberately will not open — worse than saying nothing.
-    document.documentElement.setAttribute('data-faultmaven-copilot', '0.4.0');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '0.4.0');
     render(<CopilotEntry />);
 
     expect(screen.queryByText(/in your toolbar/i)).not.toBeInTheDocument();
@@ -107,7 +111,7 @@ describe('Chrome Web Store install CTA', () => {
     // strand a user whose panel is merely closed, a Firefox user (no
     // `browser.sidePanel` at all in MV2), or a self-hosted user whose content
     // script never registered.
-    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
     render(<CopilotEntry />);
 
     const offer = screen.getByRole('button', { name: /move chat to copilot/i });
@@ -117,7 +121,7 @@ describe('Chrome Web Store install CTA', () => {
   });
 
   it('applies the preference only when the offer is TAKEN', async () => {
-    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
     render(<CopilotEntry />);
 
     fireEvent.click(screen.getByRole('button', { name: /move chat to copilot/i }));
@@ -137,7 +141,7 @@ describe('Chrome Web Store install CTA', () => {
     // both panels. That was INVERTED: with the preference on the Dashboard
     // renders no panel at all, so the offer is precisely the one click that
     // fixes the two-panel state an old extension causes.
-    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.3');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.3');
     render(<CopilotEntry />);
 
     expect(screen.getByRole('button', { name: /move chat to copilot/i })).toBeInTheDocument();
@@ -149,7 +153,7 @@ describe('Chrome Web Store install CTA', () => {
     // question and any in-flight turn are gone and the back button cannot
     // recover them. Correct once meant; far too easy to hit by accident from a
     // header button beside the navigation.
-    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
     render(<CopilotEntry />);
 
     fireEvent.click(screen.getByRole('button', { name: /move chat to copilot/i }));
@@ -160,7 +164,7 @@ describe('Chrome Web Store install CTA', () => {
   });
 
   it('forgets the half-taken offer when focus leaves it', async () => {
-    document.documentElement.setAttribute('data-faultmaven-copilot', '1.0.4');
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
     render(<CopilotEntry />);
 
     const button = screen.getByRole('button', { name: /move chat to copilot/i });
