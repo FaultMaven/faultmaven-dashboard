@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
 /**
  * Dashboard → Copilot entry point.
@@ -50,33 +50,39 @@ import { useEffect, useState } from 'react';
 import { COPILOT_STORE_URL } from '../copilot/storeListing';
 import {
   COPILOT_PRESENCE_ATTR,
-  COPILOT_PRESENCE_RECHECK_MS,
+  subscribeToCopilotPresence,
   COPILOT_PRESENCE_EVENT,
 } from '../copilot/copilotCapability';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
 
+/**
+ * Is the extension announcing itself — now, and whenever that changes.
+ *
+ * `useSyncExternalStore` over the same subscription the withdrawal gate uses,
+ * which is the pattern CLAUDE.md names for state that lives outside React in a
+ * DOM attribute another world writes.
+ *
+ * It replaces a hand-rolled `useState` + one-shot 800ms re-check that shared
+ * the gate's blind spot (#144): an extension that starts announcing LATER — a
+ * self-hosted user granting the host permission from the options page and
+ * coming back to the tab they already had open — was never noticed, so this
+ * component kept offering "Get the Copilot" to someone who had just installed
+ * it. Mild next to the gate's dark tab, and the same bug.
+ *
+ * `hasAttribute` rather than reading the version: this asks only whether
+ * anything is there. What that build can DO is `copilotAcceptsWithdrawal`'s
+ * question, and conflating them is what the version floor got wrong.
+ */
 function useCopilotPresence(): boolean {
-  const [present, setPresent] = useState(
-    () => typeof document !== 'undefined' && document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR),
+  return useSyncExternalStore(
+    subscribeToCopilotPresence,
+    () => typeof document !== 'undefined'
+      && document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR),
+    // Server snapshot: never rendered on a server, but the API wants an answer.
+    // FALSE is the no-extension case, which is what a server would see.
+    () => false,
   );
-
-  useEffect(() => {
-    if (present) return;
-    const mark = () => setPresent(true);
-    window.addEventListener(COPILOT_PRESENCE_EVENT, mark);
-    // The content script runs at document_end; re-check shortly after mount in
-    // case the marker was set before this listener attached.
-    const timer = window.setTimeout(() => {
-      if (document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR)) setPresent(true);
-    }, COPILOT_PRESENCE_RECHECK_MS);
-    return () => {
-      window.removeEventListener(COPILOT_PRESENCE_EVENT, mark);
-      window.clearTimeout(timer);
-    };
-  }, [present]);
-
-  return present;
 }
 
 function CopilotGlyph({ className }: { className?: string }) {

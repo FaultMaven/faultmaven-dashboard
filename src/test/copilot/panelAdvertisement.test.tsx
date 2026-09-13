@@ -9,6 +9,8 @@ import {
   type PanelVisibility,
 } from '../../copilot/usePanelAdvertisement';
 import {
+  CAPABILITY_PANEL_WITHDRAW,
+  COPILOT_CAPABILITIES_ATTR,
   COPILOT_PRESENCE_ATTR,
   COPILOT_PRESENCE_EVENT,
 } from '../../copilot/copilotCapability';
@@ -204,5 +206,78 @@ describe('when it stops showing', () => {
     });
 
     expect(postedTypes()).not.toContain(DASHBOARD_PANEL_MESSAGE);
+  });
+});
+
+/**
+ * An extension that starts announcing itself LATE (#144).
+ *
+ * The old subscription was the ready event plus one 800ms re-read, which covers
+ * a signal missed EARLY and nothing else. A host-permission grant lands on a
+ * user click at an arbitrary time: the page reads "no extension" — which means
+ * ASSERT, because nobody is listening — the user grants the permission a minute
+ * later, `chrome.scripting` injects the bridge, and the timer fired long ago.
+ *
+ * NO READY EVENT IS DISPATCHED IN THESE TESTS, deliberately. That is what makes
+ * them prove the MutationObserver rather than the event listener, and it is the
+ * case the old code's own comment conceded it could not see: a bridge injected
+ * into a world whose events this listener never receives.
+ */
+describe('an extension that announces itself after the page has already decided', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute(COPILOT_PRESENCE_ATTR);
+    document.documentElement.removeAttribute(COPILOT_CAPABILITIES_ATTR);
+  });
+
+  it('WITHDRAWS when a build that cannot retract shows up mid-session', async () => {
+    // Nothing installed: the assertion reaches nobody, so it is made.
+    render(<Harness showing="showing" />);
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
+
+    // The grant lands. A pre-#260 build stamps its version and NO capability
+    // list — it has no withdrawal listener, so an assertion it hears is a yield
+    // it can never give back.
+    await act(async () => {
+      document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.3');
+    });
+
+    // The claim has to come down: the tab would otherwise have neither surface.
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE));
+  });
+
+  it('keeps asserting when the build that shows up CAN retract', async () => {
+    render(<Harness showing="showing" />);
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
+
+    await act(async () => {
+      // Capabilities first, as the bridge writes them.
+      document.documentElement.setAttribute(COPILOT_CAPABILITIES_ATTR, CAPABILITY_PANEL_WITHDRAW);
+      document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
+    });
+
+    // Fail closed on the other side too: withdrawing from a build that can hear
+    // the retraction costs the user their second panel for nothing.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(postedTypes()).not.toContain(DASHBOARD_PANEL_WITHDRAWN_MESSAGE);
+  });
+
+  it('notices a capability list stamped after the version', async () => {
+    // The two attributes are one answer: `copilotAcceptsWithdrawal` consults
+    // capabilities first and falls back to the version, so a list arriving
+    // second must re-open the question. Observing only the presence attribute
+    // would miss this.
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.3');
+    render(<Harness showing="showing" />);
+    // Below the floor and claiming nothing, so the claim is withheld — the page
+    // stands down rather than yield to a build that cannot give it back.
+    await waitFor(() => expect(postedTypes()).not.toContain(DASHBOARD_PANEL_MESSAGE));
+
+    await act(async () => {
+      document.documentElement.setAttribute(COPILOT_CAPABILITIES_ATTR, CAPABILITY_PANEL_WITHDRAW);
+    });
+
+    // A build below the floor that nonetheless says it can withdraw is trusted
+    // (ADR-019 D3) — the dev-build case the floor got wrong.
+    await waitFor(() => expect(postedTypes()).toContain(DASHBOARD_PANEL_MESSAGE));
   });
 });

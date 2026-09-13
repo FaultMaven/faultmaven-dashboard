@@ -1,8 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { announcePanelAvailable, withdrawPanelAvailability } from './advertisement';
 import {
-  COPILOT_PRESENCE_RECHECK_MS,
-  COPILOT_PRESENCE_EVENT,
+  subscribeToCopilotPresence,
   copilotAcceptsWithdrawal,
 } from './copilotCapability';
 
@@ -96,8 +95,8 @@ export function usePanelAdvertisement(showing: PanelVisibility): void {
 }
 
 /**
- * Whether the installed extension can take an assertion back — re-read when one
- * announces itself.
+ * Whether the installed extension can take an assertion back — re-read whenever
+ * what it advertises changes.
  *
  * The extension's auth bridge stamps its version at document_end, and this hook
  * can run before that: the panel mounts after React hydrates, which is usually
@@ -108,26 +107,11 @@ export function usePanelAdvertisement(showing: PanelVisibility): void {
  * `useSyncExternalStore`, matching `useDockFits` and `usePrefersExtensionForChat`:
  * the value lives outside React (in a DOM attribute another world writes), it
  * can change between the first render and the moment a subscription attaches,
- * and the alternative is a synchronous `setState` inside an effect. Absent the
- * extension's ready event nothing ever changes, which is the correct no-op for
- * a page with no extension on it.
+ * and the alternative is a synchronous `setState` inside an effect. React
+ * re-reads the snapshot after subscribing, which closes that gap without a
+ * timer; `subscribeToCopilotPresence` closes every later one by observing the
+ * attribute rather than waiting a fixed 800ms for it.
  */
-function subscribeToCopilotPresence(onChange: () => void): () => void {
-  window.addEventListener(COPILOT_PRESENCE_EVENT, onChange);
-  // A DELAYED RE-READ as well as the event, mirroring `CopilotEntry`, which has
-  // guarded the same DOM signal this way all along. The event can be missed:
-  // it may fire before this subscription exists, a bridge injected late by
-  // `chrome.scripting` after an optional host-permission grant may not dispatch
-  // it into a world this listener sees, and a regressed build may not dispatch
-  // it at all. Missing it here is worse than missing it there — the install CTA
-  // just stays on the wrong label, while this would assert to an extension that
-  // cannot take it back.
-  const timer = window.setTimeout(onChange, COPILOT_PRESENCE_RECHECK_MS);
-  return () => {
-    window.clearTimeout(timer);
-    window.removeEventListener(COPILOT_PRESENCE_EVENT, onChange);
-  };
-}
 
 function useInstalledCopilotAcceptsWithdrawal(): boolean {
   return useSyncExternalStore(

@@ -56,13 +56,52 @@
  */
 
 /**
- * How long to wait before re-reading the attribute anyway.
+ * Tell me when what the installed extension advertises CHANGES.
  *
- * The same 800ms `CopilotEntry` has always used for this signal. The event is
- * the fast path; this is the one that catches a bridge that injected late or a
- * dispatch this context never saw.
+ * OBSERVES THE ATTRIBUTES, and that is the point. This used to be the ready
+ * event plus a single 800ms re-read, which covers a signal missed EARLY and
+ * nothing else. A host-permission grant happens on a user click at an arbitrary
+ * time: on a self-hosted origin the content script is not registered, the page
+ * reads "no extension" (which means ASSERT — nobody is listening), the user
+ * grants the permission a minute later, `chrome.scripting` injects the bridge,
+ * and the timer fired fifty-nine seconds ago. Nothing re-read, so a pre-#260
+ * build yields to an assertion already made and never hears the retraction: a
+ * tab with neither surface, for the life of the document (#144).
+ *
+ * A `MutationObserver` on `<html>` has no window to miss. It watches the signal
+ * ITSELF rather than a notification about it, so it does not depend on the
+ * event reaching this listener — which the old comment already conceded it
+ * might not, for a bridge injected into a world this context cannot hear.
+ *
+ * Both attributes, because both feed the answer: `copilotAcceptsWithdrawal`
+ * consults capabilities first and falls back to the version (ADR-019 D3), so a
+ * build that stamps its capability list after its version must re-open the
+ * question.
+ *
+ * The event stays as the fast path — it fires in the same task as the stamp,
+ * while a mutation record is delivered as a microtask — and it costs one
+ * listener. Callers get a double notify in the common case, which is free:
+ * every consumer re-reads a cheap DOM attribute and compares.
+ *
+ * No DOM means no subscription rather than a crash: these readers are the
+ * `getSnapshot` of a `useSyncExternalStore`, so a throw here surfaces as a
+ * render crash instead of the degrade ADR-019 D1 requires.
  */
-export const COPILOT_PRESENCE_RECHECK_MS = 800;
+export function subscribeToCopilotPresence(onChange: () => void): () => void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
+
+  window.addEventListener(COPILOT_PRESENCE_EVENT, onChange);
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [COPILOT_PRESENCE_ATTR, COPILOT_CAPABILITIES_ATTR],
+  });
+
+  return () => {
+    observer.disconnect();
+    window.removeEventListener(COPILOT_PRESENCE_EVENT, onChange);
+  };
+}
 
 /**
  * EVERY name in this handshake, from the package — the presence pair
