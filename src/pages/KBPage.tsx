@@ -679,6 +679,17 @@ function OverlayPanel(props: OverlayPanelProps) {
   // had no use for (and broke tests that render the page without the overlay).
   // Same hook ConvertUpload reads for the same purpose.
   const { scopes: availableScopes } = useAvailableScopes();
+  // Team is offered only where a team can actually be named. This form collects
+  // no team_id and the route answers 400 without one — which is exactly the "a
+  // form they could fill in and never submit" this change set out to remove, so
+  // offering it would re-create that defect in a new place.
+  const uploadScopes = availableScopes.filter((s) => s !== 'team');
+  // Derived, never the raw selection: `useAvailableScopes` refetches on window
+  // focus, so a user who picked Global and then lost the role would hold a value
+  // matching no option — the <select> would show the first entry while the state
+  // still posted the stale one. Same guard ConvertUpload applies for the same
+  // reason.
+  const effectiveUploadScope = (uploadScopes as string[]).includes(uploadForm.scope) ? uploadForm.scope : 'personal';
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -696,7 +707,7 @@ function OverlayPanel(props: OverlayPanelProps) {
     setUploading(true);
     setUploadError(null);
     try {
-      await props.onUploadFile({ file: selectedFile, ...uploadForm });
+      await props.onUploadFile({ file: selectedFile, ...uploadForm, scope: effectiveUploadScope });
       props.onClose();
     } catch (error: unknown) {
       setUploadError(error instanceof Error ? error.message : 'Upload failed');
@@ -748,11 +759,11 @@ function OverlayPanel(props: OverlayPanelProps) {
           <div>
             <label className="block text-sm font-medium text-fm-text-secondary mb-1">Scope</label>
             <select
-              value={uploadForm.scope}
+              value={effectiveUploadScope}
               onChange={(e) => setUploadForm({ ...uploadForm, scope: e.target.value })}
               className={inputClass}
             >
-              {availableScopes.map((s) => (
+              {uploadScopes.map((s) => (
                 <option key={s} value={s}>{UPLOAD_SCOPE_LABELS[s] ?? s}</option>
               ))}
             </select>
