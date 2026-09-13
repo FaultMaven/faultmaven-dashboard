@@ -67,6 +67,25 @@ export function messageAuthorLabel(role: string): string {
 /**
  * Turn number per message, positionally aligned with `messages`.
  *
+ * THE ROW'S OWN `investigation_turn` WHEN THE SERVER SENDS ONE (#127, contract
+ * 3.5.0). That is the per-row ORDINAL — the message clock at that row minus the
+ * out-of-band turns at or before it — so an aside (small talk, trivia, a
+ * question about FaultMaven itself) shares the number of the exchange before
+ * it instead of pushing every later turn along by one. `State: investigating
+ * Turn 8` after a haiku was the symptom (faultmaven#1329).
+ *
+ * It has to come from the server. Counting locally would need the whole history
+ * from turn 1 AND a second implementation of what counts as out-of-band, and
+ * the live panel next to this one cannot count at all — its store is trimmed —
+ * so the two Dashboard surfaces would have printed different numbers for one
+ * exchange (faultmaven#1387).
+ *
+ * COUNTING POSITIONS IS THE FALLBACK, unchanged, for a server that predates the
+ * field: the field is nullable precisely so an older server reads as "did not
+ * say" rather than as turn zero. The counter advances on every user message
+ * whether or not the field is present, so a response that carried it on only
+ * some rows still degrades to the old behaviour rather than to nonsense.
+ *
  * Each user message opens a turn and the assistant reply shares it. A notice
  * gets `null` — it owns no turn and must not print one. The counter advances
  * only on a user message, so a notice would otherwise inherit whichever turn
@@ -79,12 +98,18 @@ export function messageAuthorLabel(role: string): string {
  * labels do: a turn number is part of the attribution claim, so the two
  * surfaces must not be able to disagree about it either. Notices are still
  * walked, so the turns on either side of one are unaffected.
+ *
+ * ⚠️ THIS IS FOR DISPLAY ONLY. `turn_number` stays the message clock and is what
+ * evidence `uploaded_at_turn` and the conversation anchors are keyed on — so
+ * anything that ADDRESSES a turn must keep using it. Re-basing an anchor onto
+ * the ordinal would break "jump to turn" silently.
  */
 export function transcriptTurnNumbers(messages: readonly CaseMessage[]): (number | null)[] {
-  let turn = 0;
+  let positional = 0;
   return messages.map((msg) => {
     const kind = messageKind(msg.role);
-    if (kind === 'user') turn++;
-    return kind === 'notice' ? null : turn;
+    if (kind === 'user') positional += 1;
+    if (kind === 'notice') return null;
+    return msg.investigation_turn ?? positional;
   });
 }
