@@ -38,23 +38,26 @@
  */
 
 /**
- * Set on `<html>` by the extension's auth bridge, valued with its version.
+ * The presence pair — FROM THE CONTRACT, now that faultmaven-copilot#262 has
+ * moved them there. This is the last of the handshake's names to stop being
+ * spelled out twice.
  *
- * EXPORTED, because this and the event below are a cross-repo contract and were
- * already spelled out a second time in `CopilotEntry`. Two copies of a name the
- * other repository owns can drift while both sides stay green — the install CTA
- * would keep working while the withdrawal gate silently stopped, or the reverse.
- */
-export const COPILOT_PRESENCE_ATTR = 'data-faultmaven-copilot';
-
-/**
- * Dispatched by the auth bridge once it has stamped the attribute.
+ * Of the whole set this is the one whose drift hurt most: rename it upstream
+ * only and `installedCopilotVersion()` returns null for every build stamping
+ * the new name. For an install with no capability attribute — anything from
+ * before copilot#260 — `copilotAcceptsWithdrawal` reads that as "nobody is
+ * listening", ASSERTS, and hands a yield to an extension with no way to release
+ * it. A tab with neither surface, and nothing red on either side.
  *
- * The event carries no detail — `CustomEvent.detail` can be dropped crossing
- * the content-script → page world boundary, so the VERSION is read back off the
- * attribute and this only says "look again".
+ * The event was `COPILOT_READY_EVENT` here and `COPILOT_PRESENCE_EVENT` in the
+ * extension — one signal, two names, the same drift in miniature. This repo
+ * takes the contract's name rather than aliasing it, so there is one spelling
+ * to grep for across both repositories.
  */
-export const COPILOT_READY_EVENT = 'faultmaven-copilot:ready';
+export {
+  COPILOT_PRESENCE_ATTR,
+  COPILOT_PRESENCE_EVENT,
+} from '@faultmaven/copilot-ui/contract';
 
 /**
  * How long to wait before re-reading the attribute anyway.
@@ -82,6 +85,7 @@ export const COPILOT_PRESENCE_RECHECK_MS = 800;
 import {
   CAPABILITY_PANEL_WITHDRAW,
   COPILOT_CAPABILITIES_ATTR,
+  COPILOT_PRESENCE_ATTR,
   copilotCapabilities,
   type CopilotCapability,
 } from '@faultmaven/copilot-ui/contract';

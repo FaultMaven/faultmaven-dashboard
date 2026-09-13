@@ -3,6 +3,7 @@ import {
   CAPABILITY_PANEL_WITHDRAW,
   COPILOT_CAPABILITIES_ATTR,
   COPILOT_PRESENCE_ATTR,
+  COPILOT_PRESENCE_EVENT,
   COPILOT_WITHDRAWAL_MIN_VERSION,
   copilotAcceptsWithdrawal,
   installedCopilotCapabilities,
@@ -54,8 +55,43 @@ describe('the wire values this repo implements against', () => {
     expect(COPILOT_CAPABILITIES_ATTR).toBe('data-faultmaven-copilot-capabilities');
     expect(CAPABILITY_PANEL_WITHDRAW).toBe('panel-withdraw');
     expect(COPILOT_PRESENCE_ATTR).toBe('data-faultmaven-copilot');
+    expect(COPILOT_PRESENCE_EVENT).toBe('faultmaven-copilot:ready');
+  });
+
+  it('declares none of them itself — asserted against the SOURCE', async () => {
+    // A value comparison cannot show this. A local literal holding the CORRECT
+    // value satisfies every assertion above exactly as a re-export does, so
+    // only a DRIFTED literal would fail — which the pin already catches. What
+    // has to stay true is structural: this module declares none of these names,
+    // it takes them from the package. The copilot side pins the mirror image of
+    // this in `presence-marker.test.ts`.
+    const source = await readSource('copilot/copilotCapability.ts');
+
+    expect(source).not.toMatch(
+      /export\s+const\s+(COPILOT_PRESENCE_ATTR|COPILOT_PRESENCE_EVENT|COPILOT_CAPABILITIES_ATTR|CAPABILITY_PANEL_WITHDRAW)\s*=/,
+    );
+    expect(source).toMatch(/from\s+'@faultmaven\/copilot-ui\/contract'/);
+  });
+
+  it('proves that source check can fail', () => {
+    // The pattern shown rejecting a local declaration, so it cannot pass
+    // vacuously if the names are ever renamed out from under it.
+    const local = "export const COPILOT_PRESENCE_ATTR = 'data-faultmaven-copilot';";
+    expect(
+      /export\s+const\s+(COPILOT_PRESENCE_ATTR|COPILOT_PRESENCE_EVENT|COPILOT_CAPABILITIES_ATTR|CAPABILITY_PANEL_WITHDRAW)\s*=/.test(local),
+    ).toBe(true);
   });
 });
+
+/**
+ * Read a source file RELATIVE TO THIS TEST, never `process.cwd()`, which vitest
+ * does not set — an IDE runner or a run from another directory would otherwise
+ * throw ENOENT instead of reporting the assertion.
+ */
+async function readSource(relativeToSrc: string): Promise<string> {
+  const { readFileSync } = await import('node:fs');
+  return readFileSync(new URL('../../' + relativeToSrc, import.meta.url), 'utf8');
+}
 
 describe('no extension has announced itself', () => {
   it('ALLOWS the assertion — it reaches nobody', () => {

@@ -50,7 +50,7 @@ import { COPILOT_STORE_URL } from '../copilot/storeListing';
 import {
   COPILOT_PRESENCE_ATTR,
   COPILOT_PRESENCE_RECHECK_MS,
-  COPILOT_READY_EVENT,
+  COPILOT_PRESENCE_EVENT,
 } from '../copilot/copilotCapability';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
@@ -60,7 +60,7 @@ import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference
 // install CTA would keep working while the withdrawal gate silently stopped, or
 // the reverse. `copilotCapability` is where the Dashboard states them once.
 const PRESENCE_ATTR = COPILOT_PRESENCE_ATTR;
-const PRESENCE_EVENT = COPILOT_READY_EVENT;
+const PRESENCE_EVENT = COPILOT_PRESENCE_EVENT;
 
 function useCopilotPresence(): boolean {
   const [present, setPresent] = useState(
