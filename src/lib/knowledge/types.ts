@@ -74,6 +74,10 @@ export interface UploadDocumentParams {
  * Parameters for uploading a document to admin KB
  */
 export interface UploadAdminDocumentParams {
+  /** Publishing tier. Required since FaultMaven/faultmaven#1377 — the upload
+   *  route no longer assumes global, and a missing value stringifies to the
+   *  literal "undefined" in the FormData the client builds. */
+  scope: string;
   file: File;
   title: string;
   document_type: string;

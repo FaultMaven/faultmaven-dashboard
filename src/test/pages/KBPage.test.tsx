@@ -271,9 +271,13 @@ describe('KBPage — authoring affordances match the backend gates', () => {
 
   it('offers only the scopes the user may publish at', async () => {
     // The operator gate moved to the SCOPE, so the picker is where it shows.
-    // `useAvailableScopes` is the backend's answer to "what may I publish at",
-    // and the upload form reads the same hook Convert already does — so a
-    // non-operator is never shown a Global option they would get a 403 for.
+    //
+    // A FILE must be selected first: the picker lives inside <UploadModal
+    // isOpen={showUploadModal}>, which returns null until `handleFileSelect`
+    // fires. The first version of this test clicked through to "Add Runbook"
+    // and asserted immediately — on a modal that never rendered, so it passed
+    // with `global` in the mocked scopes too. Mutation-verified: it is the
+    // upload of the file that makes this test able to fail at all.
     mockUseAvailableScopes.mockReturnValue({
       scopes: ['personal'],
       loading: false,
@@ -285,6 +289,40 @@ describe('KBPage — authoring affordances match the backend gates', () => {
     fireEvent.click(screen.getByRole('button', { name: /New/i }));
     fireEvent.click(screen.getByText('Add Runbook'));
 
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    await act(async () => {
+      fireEvent.change(input, {
+        target: { files: [new File(['# rb'], 'redis.md', { type: 'text/markdown' })] },
+      });
+    });
+
+    // The picker is on screen now — a positive control, so "Global is absent"
+    // cannot pass by the whole form being absent.
+    expect(screen.getByText('Personal')).toBeInTheDocument();
     expect(screen.queryByText('Global (platform)')).not.toBeInTheDocument();
   });
-});
+
+  it('never offers Team, which the upload form cannot satisfy', async () => {
+    // The form collects no team_id and the route answers 400 without one.
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal', 'team', 'global'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    await renderAs(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /New/i }));
+    fireEvent.click(screen.getByText('Add Runbook'));
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, {
+        target: { files: [new File(['# rb'], 'redis.md', { type: 'text/markdown' })] },
+      });
+    });
+
+    expect(screen.getByText('Global (platform)')).toBeInTheDocument();
+    expect(screen.queryByText('Team')).not.toBeInTheDocument();
+  });});
