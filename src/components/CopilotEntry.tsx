@@ -7,11 +7,10 @@ import { useEffect, useState } from 'react';
  * an installed user to open the Copilot from their toolbar — which was the only
  * way to run an investigation, and is no longer true on this page.
  *
- * The wording is deliberately VERSION-AGNOSTIC. The marker says an extension is
- * present, not which one: an extension older than the yield behaviour (D4)
- * still opens its own side panel here, so copy asserting that the Copilot
- * "steps aside" would be flatly wrong for that user. Pointing at where the
- * extension is useful is true for every version.
+ * The wording carries no version claim. The marker says an extension is
+ * present, not what it can do — and since the OFFER is the cure for the
+ * two-panel state an older build causes, the copy never needs to distinguish
+ * them (ADR-019 D4).
  *
  * So the three states now say what is true:
  * - Installed, chat HERE  → an OFFER to move chat to the extension (ADR-018
@@ -19,8 +18,11 @@ import { useEffect, useState } from 'react';
  *                           the Dashboard has just learned the extension
  *                           exists, which is exactly when proposing it makes
  *                           sense.
- * - Installed, chat THERE → a statement of where chat now lives. Not a
- *                           control; the account menu owns the reversal.
+ * - CHAT THERE           → a statement of where chat now lives. Keyed on the
+ *                           PREFERENCE, not detection: the preference is the
+ *                           authority on where chat is, and a self-hosted user
+ *                           we cannot detect was otherwise told to go and get
+ *                           the extension they are already chatting in.
  * - Not installed         → the same store CTA as before. Nothing here
  *                           requires the extension, and the product must never
  *                           imply it does; the one thing it adds is reading the
@@ -47,8 +49,8 @@ import { useEffect, useState } from 'react';
 import { COPILOT_STORE_URL } from '../copilot/storeListing';
 import {
   COPILOT_PRESENCE_ATTR,
+  COPILOT_PRESENCE_RECHECK_MS,
   COPILOT_READY_EVENT,
-  copilotIsOutOfDate,
 } from '../copilot/copilotCapability';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
@@ -73,7 +75,7 @@ function useCopilotPresence(): boolean {
     // case the marker was set before this listener attached.
     const timer = window.setTimeout(() => {
       if (document.documentElement.hasAttribute(PRESENCE_ATTR)) setPresent(true);
-    }, 800);
+    }, COPILOT_PRESENCE_RECHECK_MS);
     return () => {
       window.removeEventListener(PRESENCE_EVENT, mark);
       window.clearTimeout(timer);
@@ -99,12 +101,32 @@ function CopilotGlyph({ className }: { className?: string }) {
 export function CopilotEntry() {
   const installed = useCopilotPresence();
   const prefersExtension = usePrefersExtensionForChat();
-  // Re-read on the same signal presence uses, so an extension that announces
-  // itself after this mounted is judged on what it actually said.
-  const outOfDate = installed && copilotIsOutOfDate();
 
-  // Chat already lives in the extension: say so, and stop offering.
-  if (installed && prefersExtension) {
+  /**
+   * TWO CLICKS, because one is destructive.
+   *
+   * Taking the offer removes the Dashboard's chat surface immediately: on
+   * `/investigate` the route guard redirects to `/cases` with `replace`, so a
+   * half-typed question and any in-flight turn are gone and the back button
+   * cannot recover them; on case detail the live panel becomes a read-only
+   * transcript. That is correct once the user means it, and far too easy to
+   * hit by accident from a header button beside the navigation.
+   *
+   * Blur resets it, so a mis-click that wanders away costs nothing.
+   */
+  const [confirming, setConfirming] = useState(false);
+
+  /**
+   * Chat already lives in the extension: say so, and stop offering.
+   *
+   * Keyed on the PREFERENCE, not on detection. The preference is the authority
+   * on where chat lives; detection only decides whether to propose moving it.
+   * Gating this on `installed` too meant a self-hosted user without host
+   * permission — where the content script never registers, so we cannot see the
+   * extension — was told to "Get the Copilot" on a page that had already
+   * removed its own chat because they are using the one they have.
+   */
+  if (prefersExtension) {
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1.5 text-sm text-fm-text-tertiary cursor-default"
@@ -116,41 +138,18 @@ export function CopilotEntry() {
     );
   }
 
-  /**
-   * Installed, but too old to stand its side panel down (ADR-019 D4).
-   *
-   * Offering to move chat here would be a trap: the Dashboard declines to
-   * assert to a build that cannot hear a withdrawal, so that build never
-   * yields — the user would end up with chat in the extension AND the
-   * Dashboard's own panel, which is the two-panel state they can already see
-   * and cannot explain. Say what is wrong and what fixes it instead.
-   */
-  if (installed && outOfDate) {
-    return (
-      <a
-        href={COPILOT_STORE_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-fm-btn text-fm-warning border border-fm-warning-border hover:bg-fm-warning-bg transition-colors"
-        title="Your Copilot is older than this Dashboard expects, so it cannot step aside for the chat on this page — which is why you may be seeing two. Updating it lets chat follow you onto Grafana, AWS or any console you are debugging in."
-      >
-        <CopilotGlyph className="h-4 w-4" />
-        Update the Copilot
-      </a>
-    );
-  }
-
-  // Installed, current, but chat is still here — the moment to OFFER.
+  // Installed, and chat is still here — the moment to OFFER.
   if (installed) {
     return (
       <button
         type="button"
-        onClick={() => setPrefersExtensionForChat(true)}
+        onClick={() => (confirming ? setPrefersExtensionForChat(true) : setConfirming(true))}
+        onBlur={() => setConfirming(false)}
         className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-fm-btn text-fm-accent border border-fm-accent hover:bg-fm-accent/10 transition-colors"
-        title="Chat in the Copilot side panel instead, so it follows you onto Grafana, AWS or any console you are debugging in. Reversible from the account menu."
+        title="Chat in the Copilot side panel instead, so it follows you onto Grafana, AWS or any console you are debugging in. If you are seeing two chat panels, this collapses them to one. Reversible from the account menu."
       >
         <CopilotGlyph className="h-4 w-4" />
-        Move chat to Copilot
+        {confirming ? 'Close this chat and move?' : 'Move chat to Copilot'}
       </button>
     );
   }

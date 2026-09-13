@@ -3,7 +3,6 @@ import {
   CAPABILITY_PANEL_WITHDRAW,
   COPILOT_WITHDRAWAL_MIN_VERSION,
   copilotAcceptsWithdrawal,
-  copilotIsOutOfDate,
   installedCopilotCapabilities,
   installedCopilotVersion,
 } from '../../copilot/copilotCapability';
@@ -135,6 +134,25 @@ describe('an extension that says what it can do', () => {
     expect(copilotAcceptsWithdrawal()).toBe(false);
   });
 
+  it.each([
+    ['with the token', 'panel-withdraw', true],
+    ['without it', 'page-capture', false],
+  ])(
+    'is answered from the capability list even before the VERSION is stamped (%s)',
+    (_label, caps, expected) => {
+      // The two attributes are written by the same script but nothing
+      // guarantees the same tick. Checking presence FIRST made a build that had
+      // stamped capabilities and not yet its version look like "no extension" —
+      // and "no extension" means ASSERT, handing a yield to a build that may
+      // have no way to release it. That is the dark tab this module exists to
+      // prevent, reachable in the gap between two attribute writes.
+      withCapabilities(caps);
+
+      expect(installedCopilotVersion()).toBeNull();
+      expect(copilotAcceptsWithdrawal()).toBe(expected);
+    },
+  );
+
   it('tolerates whatever spacing the extension emits', () => {
     withVersion('1.0.3');
     withCapabilities(`  page-capture   ${CAPABILITY_PANEL_WITHDRAW}  `);
@@ -162,27 +180,31 @@ describe('an extension from before capabilities', () => {
   });
 });
 
-describe('whether to tell the user their Copilot is old', () => {
-  it('says so for a build that cannot stand its panel down', () => {
-    // Without the withdrawal it never yields, so the user sees TWO chat panels
-    // on one tab with no explanation — the symptom, pointing at neither cause
-    // nor cure (ADR-019 D4).
-    withVersion('1.0.3');
-    expect(copilotIsOutOfDate()).toBe(true);
-  });
-
-  it('says nothing when the build is current', () => {
-    withVersion(COPILOT_WITHDRAWAL_MIN_VERSION);
-    expect(copilotIsOutOfDate()).toBe(false);
-  });
-
-  it('says nothing when the token is present, whatever the number', () => {
-    withVersion('0.1.0');
-    withCapabilities(CAPABILITY_PANEL_WITHDRAW);
-    expect(copilotIsOutOfDate()).toBe(false);
-  });
-
-  it('says nothing when there is NO extension — nothing to update', () => {
-    expect(copilotIsOutOfDate()).toBe(false);
+describe('an environment with no DOM at all', () => {
+  it('degrades rather than throwing out of the readers', () => {
+    /**
+     * ADR-019 D1: a missing capability is "a supported, tested state, not an
+     * error path". These readers are the `getSnapshot` of a
+     * `useSyncExternalStore`, so a throw here is a RENDER CRASH rather than a
+     * degrade.
+     *
+     * `doc: Document = document` evaluates the default in PARAMETER scope,
+     * outside the function body — so a missing `document` throws a
+     * ReferenceError the try/catch never sees. Reading it inside the body is
+     * what makes the guard reachable, and this is the only test that can tell
+     * the two apart.
+     */
+    const realDocument = globalThis.document;
+    delete (globalThis as { document?: unknown }).document;
+    try {
+      expect(() => installedCopilotVersion()).not.toThrow();
+      expect(() => installedCopilotCapabilities()).not.toThrow();
+      expect(installedCopilotVersion()).toBeNull();
+      expect(installedCopilotCapabilities()).toBeNull();
+      // And the decision built on them still answers, on the safe side.
+      expect(() => copilotAcceptsWithdrawal()).not.toThrow();
+    } finally {
+      (globalThis as { document?: unknown }).document = realDocument;
+    }
   });
 });

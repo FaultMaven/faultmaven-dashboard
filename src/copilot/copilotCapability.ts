@@ -22,11 +22,19 @@
  * behaviour it has today — its side panel beside the Dashboard's own dock, two
  * panels, which is the MILD failure this whole module prefers at every branch.
  *
- * WHY A VERSION AND NOT A CAPABILITY HANDSHAKE. A capability signal would have
- * to be added to the extension, which is the side that lags — the new signal
- * would be missing from exactly the installs it exists to identify. The version
- * attribute is already in the field on every install that has ever shipped, so
- * it is the one question answerable today.
+ * WHY A PUBLISHED ATTRIBUTE AND NOT A NEGOTIATION HANDSHAKE. A request/response
+ * probe would prove a capability rather than take the extension's word for it,
+ * and it needs a timeout — in which an absent reply is indistinguishable from an
+ * absent extension. The attribute is synchronous, already on the page, and
+ * answers the same question (ADR-019 D6).
+ *
+ * WHY THE VERSION SURVIVES AT ALL. The capability attribute is itself new, so it
+ * is missing from exactly the builds it exists to identify. The floor below is
+ * the fallback for those — ONE transitional rule with a stated deletion
+ * condition, not one constant per feature (ADR-019 D3). An earlier version of
+ * this comment argued the opposite, that a version was the only question
+ * answerable today; capabilities answer it better for every build that has them,
+ * and the floor is what carries the ones that do not.
  */
 
 /**
@@ -75,7 +83,22 @@ export const COPILOT_PRESENCE_RECHECK_MS = 800;
  */
 export const COPILOT_CAPABILITIES_ATTR = 'data-faultmaven-copilot-capabilities';
 
-/** Understands `FM_DASHBOARD_PANEL_WITHDRAWN` and releases a yielded tab. */
+/**
+ * Understands `FM_DASHBOARD_PANEL_WITHDRAWN` and releases a yielded tab.
+ *
+ * ⚠️ A SECOND COPY, deliberately and temporarily. ADR-019 D2 puts this token in
+ * `@faultmaven/copilot-ui/contract` — which this repo already imports for the
+ * panel names, and which `packageImportBoundary.test.ts` permits as a deep path
+ * for exactly these cheap constants. It is spelled here only because the
+ * package does not define it yet (faultmaven-copilot#259), and this side
+ * deliberately lands first.
+ *
+ * MOVE IT the moment #259 merges — re-export it from the contract module the
+ * way `advertisement.ts` re-exports the panel names, and delete this literal.
+ * Until then a rename upstream leaves this repo silently refusing every build,
+ * with nothing red on either side: the drift this file's own header warns
+ * about.
+ */
 export const CAPABILITY_PANEL_WITHDRAW = 'panel-withdraw';
 
 /**
@@ -87,9 +110,10 @@ export const CAPABILITY_PANEL_WITHDRAW = 'panel-withdraw';
  * asked about, which is authoritative and must not be overridden by a version
  * that happens to be high enough.
  */
-export function installedCopilotCapabilities(doc: Document = document): string[] | null {
+export function installedCopilotCapabilities(doc?: Document): string[] | null {
   try {
-    const raw = doc.documentElement.getAttribute(COPILOT_CAPABILITIES_ATTR);
+    // Read inside the try — see `installedCopilotVersion`.
+    const raw = (doc ?? document).documentElement.getAttribute(COPILOT_CAPABILITIES_ATTR);
     if (raw === null) return null;
     return raw.split(/\s+/).filter(Boolean);
   } catch {
@@ -112,9 +136,14 @@ export function installedCopilotCapabilities(doc: Document = document): string[]
 export const COPILOT_WITHDRAWAL_MIN_VERSION = '1.0.4';
 
 /** The installed extension's version, or null where none has announced itself. */
-export function installedCopilotVersion(doc: Document = document): string | null {
+export function installedCopilotVersion(doc?: Document): string | null {
+  // The DEFAULT IS READ INSIDE THE TRY. `doc: Document = document` evaluates in
+  // parameter scope, outside the body, so an environment with no `document`
+  // throws a ReferenceError this catch never sees — and because these readers
+  // are the `getSnapshot` of a `useSyncExternalStore`, that surfaces as a render
+  // crash rather than the degrade ADR-019 D1 requires.
   try {
-    return doc.documentElement.getAttribute(COPILOT_PRESENCE_ATTR);
+    return (doc ?? document).documentElement.getAttribute(COPILOT_PRESENCE_ATTR);
   } catch {
     return null;
   }
@@ -164,33 +193,23 @@ export function copilotAcceptsWithdrawal(
   version: string | null = installedCopilotVersion(),
   capabilities: string[] | null = installedCopilotCapabilities(),
 ): boolean {
-  if (version === null) return true;
-
-  // CAPABILITIES ARE AUTHORITATIVE WHEN PRESENT, in both directions (ADR-019
-  // D3): a build that lists the token is trusted whatever its version number
-  // says, and a build that omits it is refused however new it is. The version
-  // is evidence only from builds that had nothing better to offer.
+  // CAPABILITIES FIRST — before even the presence check, which is the order
+  // ADR-019 D3 states and not a preference among equals. The two attributes are
+  // written by the same script but nothing guarantees the same tick, and a
+  // build that has stamped capabilities and not yet its version would, under a
+  // presence-first check, look like "no extension". "No extension" means
+  // ASSERT, which hands a yield to a build that may have no way to release it —
+  // the dark tab this module exists to prevent, reachable in the gap between
+  // two attribute writes.
+  //
+  // Authoritative in BOTH directions: a build listing the token is trusted
+  // whatever its number says, and one omitting it is refused however new it is.
   if (capabilities !== null) return capabilities.includes(CAPABILITY_PANEL_WITHDRAW);
+
+  // Nothing said anything: no extension, or a content script that never
+  // registered. Nobody is listening, so the assertion can strand no one.
+  if (version === null) return true;
 
   if (version.trim() === '') return false;
   return compareVersions(version, COPILOT_WITHDRAWAL_MIN_VERSION) >= 0;
-}
-
-/**
- * Is the installed extension too old for something the user can SEE?
- *
- * ADR-019 D4: an out-of-date extension is surfaced, never silent. Without the
- * withdrawal it never yields its side panel here, so the user gets two chat
- * panels on one tab with no explanation — the symptom that sent a maintainer
- * looking, pointing at neither cause nor cure.
- *
- * False when no extension is present: there is nothing out of date, and
- * nothing to update.
- */
-export function copilotIsOutOfDate(
-  version: string | null = installedCopilotVersion(),
-  capabilities: string[] | null = installedCopilotCapabilities(),
-): boolean {
-  if (version === null) return false;
-  return !copilotAcceptsWithdrawal(version, capabilities);
 }

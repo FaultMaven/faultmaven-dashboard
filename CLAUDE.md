@@ -412,6 +412,14 @@ surface. The cost is that support cannot read it.
   that is not redundant with the offer: on a self-hosted origin without a
   host-permission grant the Dashboard never learns the extension exists, so the
   offer never appears for exactly the people most likely to want it.
+- **A module store, not React context.** `resolvePostSignInLanding()` runs
+  during sign-in, before the app shell exists, and the in-tree readers are
+  scattered across the nav, the case page and the account menu. A provider would
+  reach the second group and not the first.
+- What it removes: the dock, the `New Case` nav item, the `/investigate` route
+  (guarded by `ChatSurfaceRoute`, because a bookmark would otherwise mount a
+  second composer), the case list's CTAs, and the first-run landing. What it
+  never removes: the Transcript tab.
 
 ### Compatibility with the extension (ADR-019)
 
@@ -448,18 +456,9 @@ Three gaps, and none is fixable by gating the preference on detection:
 
 | Gap | Effect | Fix |
 |---|---|---|
-| Extension that cannot withdraw | the Dashboard declines to assert, so it never yields → two panels, and the header says **"Update the Copilot"** rather than leaving the symptom unexplained (ADR-019 D4) | ends with the store release |
+| Extension that cannot withdraw | the Dashboard declines to assert, so it never yields → two panels. The header's **"Move chat to Copilot"** offer is the one-click cure: with the preference on the Dashboard renders no panel, so the two collapse to one (ADR-019 D4) | ends with the store release |
 | Self-hosted **without host permission** | `auth-bridge-registration.ts` silently unregisters, so the assertion is never relayed AND the extension is undetectable here | extension-side: prompt for the permission on a configured Dashboard origin (faultmaven-copilot#258) |
 | Two Dashboard tabs | one chat UI each; the server holds one ordered transcript | none needed — there is no live sync between surfaces, so a second view refetches on reload or case switch |
-- **A module store, not React context.** `resolvePostSignInLanding()` runs
-  during sign-in, before the app shell exists, and the in-tree readers are
-  scattered across the nav, the case page and the account menu. A provider would
-  reach the second group and not the first.
-- What it removes: the dock, the `New Case` nav item, the `/investigate` route
-  (guarded by `ChatSurfaceRoute`, because a bookmark would otherwise mount a
-  second composer), the case list's CTAs, and the first-run landing. What it
-  never removes: the Transcript tab.
-
 ### The panel advertisement
 
 `src/copilot/advertisement.ts` holds a cross-repo contract, and since ADR-018 D0
