@@ -158,6 +158,43 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     ]);
   });
 
+  it('keeps each door to its own subject', () => {
+    // The file list alone does NOT enforce the split it is justified by:
+    // `copilotCapability.ts` could start importing `DASHBOARD_PANEL_MESSAGE` and
+    // posting window messages, or `advertisement.ts` could import
+    // `CAPABILITY_PANEL_WITHDRAW` and gate on it, and the list would be
+    // unchanged. Widening the exception from one file to two without also
+    // asserting WHAT each pulls is exactly where an exception becomes the open
+    // door the rule above denies it is.
+    const subject = {
+      '../../copilot/advertisement.ts': /^DASHBOARD_PANEL_|^dashboardAdvertisesPanel$/,
+      '../../copilot/copilotCapability.ts': /^COPILOT_|^CAPABILITY_|^copilotCapabilities$|^CopilotCapability$/,
+    } as const;
+
+    const contractRefs = references.filter((ref) => ref.specifier === `${PACKAGE}/contract`);
+    expect(contractRefs.length).toBeGreaterThan(0);
+
+    for (const ref of contractRefs) {
+      const allowed = subject[ref.file as keyof typeof subject];
+      expect(allowed, `${ref.file} is not a documented contract door`).toBeDefined();
+
+      // The braces of the statement this reference was read from, split on
+      // commas and stripped of `type` markers and aliases.
+      const names = (ref.statement.match(/\{([^}]*)\}/)?.[1] ?? '')
+        .split(',')
+        .map((n) => n.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim())
+        .filter(Boolean);
+
+      expect(names.length, `${ref.file} reaches the contract but names nothing`).toBeGreaterThan(0);
+      for (const name of names) {
+        expect(
+          allowed.test(name),
+          `${ref.file} pulls ${name}, which belongs to the other door's subject`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it('reaches the package from CSS and build config only through the two documented assets', () => {
     // Same rule, the other two doors. A stylesheet `@import` and a config
     // `require` are imports; they simply are not TypeScript ones.

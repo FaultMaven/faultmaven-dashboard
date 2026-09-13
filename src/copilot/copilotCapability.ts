@@ -79,15 +79,25 @@ export const COPILOT_PRESENCE_RECHECK_MS = 800;
  * the panel names, so `copilotCapability` stays this app's single door to the
  * handshake and callers never reach past it.
  */
-export {
-  COPILOT_CAPABILITIES_ATTR,
-  CAPABILITY_PANEL_WITHDRAW,
-} from '@faultmaven/copilot-ui/contract';
-
 import {
   CAPABILITY_PANEL_WITHDRAW,
+  COPILOT_CAPABILITIES_ATTR,
   copilotCapabilities,
+  type CopilotCapability,
 } from '@faultmaven/copilot-ui/contract';
+
+export { CAPABILITY_PANEL_WITHDRAW, COPILOT_CAPABILITIES_ATTR };
+
+/**
+ * The branded token type, carried through the same door.
+ *
+ * Upstream added it in the commit that shipped the names, to stop a
+ * hand-written `'panel-withdrawal'` compiling into something that claims a
+ * capability. Without it re-exported here a caller that wants a typed token has
+ * no legal route: reaching the subpath directly is what the boundary test
+ * forbids, so the door has to carry the type or the type is unusable.
+ */
+export type { CopilotCapability };
 
 /**
  * What the installed build says it can do, or `null` where it has not said.
@@ -106,8 +116,11 @@ import {
  * by a version that happens to be high enough.
  *
  * Kept as a named wrapper rather than re-exporting `copilotCapabilities`
- * directly: every call site here reads "what is INSTALLED", and the tests inject
- * a `doc`, so the seam is worth the one line.
+ * directly, for the naming alone: every reader in this app asks "what is
+ * INSTALLED", and the package's own name does not say that. The `doc` parameter
+ * is passed through for parity with `installedCopilotVersion` — no call site
+ * uses it today, and an earlier version of this comment claimed the tests did,
+ * which was simply untrue.
  */
 export function installedCopilotCapabilities(doc?: Document): readonly string[] | null {
   return copilotCapabilities(doc);
