@@ -119,6 +119,90 @@ describe('message attribution — the shared derivation', () => {
   });
 });
 
+/**
+ * The displayed turn is the INVESTIGATION turn, not the message clock (#127).
+ *
+ * `turn_number` advances on every exchange, asides included, so a haiku pushed
+ * every later turn along by one and the user saw `Turn 8` for their sixth piece
+ * of actual work — faultmaven#1329's symptom. Contract 3.5.0 puts the per-row
+ * ordinal on each row; this is where it gets read.
+ */
+describe('the turn a transcript DISPLAYS', () => {
+  const aside = (id: string, role: string, clock: number, ordinal: number) =>
+    message({ message_id: id, role, turn_number: clock, investigation_turn: ordinal });
+
+  it('prefers the row ordinal over its position in the list', () => {
+    // Position would say 1, 1, 2, 2. The server says the second exchange was an
+    // aside, so it carries the first exchange's ordinal.
+    const rows = [
+      aside('a1', 'user', 1, 1),
+      aside('a2', 'assistant', 1, 1),
+      aside('a3', 'user', 2, 1),
+      aside('a4', 'assistant', 2, 1),
+    ];
+
+    expect(transcriptTurnNumbers(rows)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('does not advance across an aside, and does advance across real work', () => {
+    // The acceptance criterion, stated directly: clock 1 (work), 2 (aside),
+    // 3 (work) displays as 1, 1, 2.
+    const rows = [
+      aside('b1', 'user', 1, 1),
+      aside('b2', 'user', 2, 1),
+      aside('b3', 'user', 3, 2),
+    ];
+
+    expect(transcriptTurnNumbers(rows)).toEqual([1, 1, 2]);
+  });
+
+  it('falls back to counting positions when the server did not say', () => {
+    // Nullable on purpose: an older server reads as "did not say", never as
+    // turn zero. This is the behaviour every case above this block asserts, and
+    // it must not change.
+    const rows = [
+      message({ message_id: 'c1', role: 'user' }),
+      message({ message_id: 'c2', role: 'assistant' }),
+      message({ message_id: 'c3', role: 'user' }),
+    ];
+
+    expect(transcriptTurnNumbers(rows)).toEqual([1, 1, 2]);
+  });
+
+  it('keeps the fallback counter honest when only some rows carry the field', () => {
+    // Not a shape the backend sends, but the counter must not be corrupted by
+    // it: the positional count keeps advancing on every user message so a row
+    // without the field still lands where it would have.
+    const rows = [
+      aside('d1', 'user', 1, 1),
+      message({ message_id: 'd2', role: 'user' }),
+    ];
+
+    expect(transcriptTurnNumbers(rows)).toEqual([1, 2]);
+  });
+
+  it('still gives a notice no turn, whatever the row claims', () => {
+    // A notice owns no turn. The backend stamps one on it anyway, and now can
+    // stamp an ordinal too — neither may be printed.
+    const rows = [
+      aside('e1', 'user', 1, 1),
+      aside('e2', 'system', 1, 1),
+      aside('e3', 'user', 2, 2),
+    ];
+
+    expect(transcriptTurnNumbers(rows)).toEqual([1, null, 2]);
+  });
+
+  it('reads zero as a number, not as absence', () => {
+    // `?? positional` rather than `|| positional`: a case whose only exchanges
+    // so far were asides legitimately reports ordinal 0, and `||` would replace
+    // it with the position — printing Turn 1 for work that has not happened.
+    const rows = [aside('f1', 'user', 1, 0)];
+
+    expect(transcriptTurnNumbers(rows)).toEqual([0]);
+  });
+});
+
 describe('message attribution — the two renderers cannot disagree', () => {
   it('labels every message identically on screen and in the export', () => {
     const markdown = buildCaseMarkdown({
