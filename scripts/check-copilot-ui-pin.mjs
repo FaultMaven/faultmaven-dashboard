@@ -32,6 +32,26 @@
  *     compiles. Both legs are needed: correctness alone allows the two to be
  *     pinned at different contracts, and consistency alone allows N copies to be
  *     wrong together.
+ *  5. GENERATOR PARITY — the copilot repository declares the same
+ *     `openapi-typescript` version we do. `packageParity` asserts the two
+ *     generated clients are BYTE-IDENTICAL, so the generator is as much a part
+ *     of the output as the spec is. A minor release landing in one lockfile
+ *     first fails that test with a diff nobody authored, while this gate passed
+ *     because it compared pin files rather than generated ones. Both repos pin
+ *     the generator exactly; this is what keeps the two pins equal.
+ *
+ * And two ADVISORY reports, which never fail:
+ *
+ *  - CONTRACT STALENESS. Whether the contract pin has fallen behind the API's
+ *    `main`, said out loud for the same reason (3) is: the package pin got a
+ *    "here is a decision to take" and the contract pin got silence, which is
+ *    how both clients sat on 3.5.0 while the API served 3.7.0 with every check
+ *    green. Reporting is not requiring — consent, not currency.
+ *  - THE THIRD CLIENT. `faultmaven-slack-agent` pins the same contract and is
+ *    outside (4) deliberately: it does not share this bundle, so its pin is not
+ *    a correctness property of this build. But "nobody is watching" and "we
+ *    decided not to watch" should be distinguishable, so its position is
+ *    printed.
  *
  * Reads `GITHUB_TOKEN` when set (CI), and works without it at the
  * unauthenticated rate limit.
@@ -59,6 +79,15 @@ function githubHeaders() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
+}
+
+/** A raw file from a repository at a ref, parsed as JSON. */
+async function fetchJsonAtRef(repo, ref, path) {
+  const response = await fetch(`https://raw.githubusercontent.com/${repo}/${ref}/${path}`, {
+    headers: { 'User-Agent': 'faultmaven-dashboard-copilot-ui-pin-check' },
+  });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return JSON.parse(await response.text());
 }
 
 /** The copilot repository's own API-contract pin, at a given commit. */
@@ -191,6 +220,85 @@ for (const field of ['repository', 'ref', 'contractVersion']) {
         '    structural typing means most of that compiles. Move whichever pin is behind.',
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// 5. Generator parity: byte-identical output needs an identical generator.
+// ---------------------------------------------------------------------------
+
+const GENERATOR = 'openapi-typescript';
+const ourGenerator = JSON.parse(readFileSync('package.json', 'utf8')).devDependencies?.[GENERATOR];
+
+try {
+  const theirPackage = await fetchJsonAtRef(COPILOT_REPO, pinnedSha, 'package.json');
+  const theirGenerator = theirPackage.devDependencies?.[GENERATOR];
+
+  if (!ourGenerator || !theirGenerator) {
+    fail(
+      `Could not read a \`${GENERATOR}\` version from both repositories ` +
+        `(here: ${ourGenerator ?? 'absent'}, there: ${theirGenerator ?? 'absent'}).\n` +
+        '    `packageParity` compares generated output byte for byte, so an\n' +
+        '    unknown generator is an unknown client.',
+    );
+  } else if (ourGenerator !== theirGenerator) {
+    fail(
+      `\`${GENERATOR}\` mismatch: this repository pins ${ourGenerator}, ` +
+        `${PACKAGE_NAME} at ${pinnedSha.slice(0, 12)} pins ${theirGenerator}.\n` +
+        '    The generator is as much a part of the output as the spec is, and\n' +
+        '    `packageParity` requires the two clients byte-identical — so a\n' +
+        '    release landing in one lockfile first fails it with a diff nobody\n' +
+        '    authored. Move whichever is behind.',
+    );
+  } else if (/^[\^~]/.test(ourGenerator)) {
+    fail(
+      `\`${GENERATOR}\` is range-pinned (${ourGenerator}) in both repositories.\n` +
+        '    Equal ranges are not equal resolutions: the two lockfiles can drift\n' +
+        '    apart on the next install and fail `packageParity`. Pin exactly.',
+    );
+  }
+} catch (error) {
+  fail(
+    `Could not read the copilot repository's package.json at ${pinnedSha}: ${error.message}\n` +
+      '    Unverifiable is not a pass.',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Advisory: where this contract pin sits, and where the third client sits.
+// ---------------------------------------------------------------------------
+
+const API_REPO = ourContract.repository ?? 'FaultMaven/faultmaven';
+const SLACK_REPO = 'FaultMaven/faultmaven-slack-agent';
+
+try {
+  const live = await fetchJsonAtRef(API_REPO, 'main', 'docs/reference/api/openapi.json');
+  const served = live?.info?.version;
+  if (served && served !== ourContract.contractVersion) {
+    console.warn(
+      `\nNOTE: the API contract pin is ${ourContract.contractVersion}; ` +
+        `${API_REPO}@main serves ${served}.\n` +
+        '      Adopt by moving `ref` and `contractVersion` together and regenerating.\n' +
+        '      Advisory: the gate enforces CONSENT, not currency — a contract\n' +
+        '      reaches this client when this repository says so, never on merge.\n',
+    );
+  }
+} catch (error) {
+  console.warn(`\nNOTE: could not read the live contract version (${error.message}); skipping.\n`);
+}
+
+try {
+  const slack = await fetchJsonAtRef(SLACK_REPO, 'main', 'api-contract.pin.json');
+  if (slack?.contractVersion && slack.contractVersion !== ourContract.contractVersion) {
+    console.warn(
+      `\nNOTE: ${SLACK_REPO} pins contract ${slack.contractVersion}; this repository pins ` +
+        `${ourContract.contractVersion}.\n` +
+        '      Not a failure and not this build\'s correctness: that client does not\n' +
+        '      share this bundle, which is why it is outside the parity rule above.\n' +
+        '      Printed so an unadopted contract is visible rather than merely unwatched.\n',
+    );
+  }
+} catch (error) {
+  console.warn(`\nNOTE: could not read ${SLACK_REPO}'s contract pin (${error.message}); skipping.\n`);
 }
 
 report();
