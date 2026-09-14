@@ -1,6 +1,7 @@
 import { getCaseMessages, getCaseEvidenceList, getCaseUI } from './api';
 import { closureReasonDisplay } from './closureReason';
 import { messageAuthorLabel, transcriptTurnNumbers } from './messageAttribution';
+import { caseTurnCount } from './turnLabel';
 import type {
   CaseDetail,
   CaseMessage,
@@ -50,7 +51,9 @@ export function buildCaseMarkdown({
   lines.push(`- **Created:** ${formatDate(caseDetail.created_at)}`);
   if (caseDetail.resolved_at) lines.push(`- **Resolved:** ${formatDate(caseDetail.resolved_at)}`);
   if (caseDetail.closed_at) lines.push(`- **Closed:** ${formatDate(caseDetail.closed_at)}`);
-  lines.push(`- **Turns:** ${caseDetail.current_turn}`);
+  // The INVESTIGATION turn, matching the headings below it. The clock here
+  // over ordinals there made one archival document contradict itself.
+  lines.push(`- **Turns:** ${caseTurnCount(caseDetail)}`);
   lines.push('');
 
   // Issue

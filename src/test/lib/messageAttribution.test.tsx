@@ -60,8 +60,8 @@ function message(overrides: Partial<CaseMessage> & { message_id: string }): Case
  * the backend starts sending something it does not yet know about.
  */
 const MESSAGES: CaseMessage[] = [
-  message({ message_id: 'm1', role: 'user', content: 'The database is down' }),
-  message({ message_id: 'm2', role: 'assistant', content: 'When did it start?' }),
+  message({ message_id: 'm1', role: 'user', content: 'The database is down', turn_number: 1 }),
+  message({ message_id: 'm2', role: 'assistant', content: 'When did it start?', turn_number: 1 }),
   message({
     message_id: 'm3',
     role: 'system',
@@ -75,7 +75,7 @@ const MESSAGES: CaseMessage[] = [
     created_at: '2026-07-01T00:00:00Z',
     turn_number: 1,
   } as unknown as CaseMessage,
-  message({ message_id: 'm5', role: 'user', content: 'It started at noon' }),
+  message({ message_id: 'm5', role: 'user', content: 'It started at noon', turn_number: 2 }),
 ];
 
 /** The label the on-screen renderer shows for a message. */
@@ -128,17 +128,20 @@ describe('message attribution — the shared derivation', () => {
  * ordinal on each row; this is where it gets read.
  */
 describe('the turn a transcript DISPLAYS', () => {
-  const aside = (id: string, role: string, clock: number, ordinal: number) =>
+  // `row`, not `aside`: these build ordinary investigation rows as often as
+  // asides, and a helper named for one of the two reads as the opposite of
+  // what half the fixtures assert.
+  const row = (id: string, role: string, clock: number, ordinal: number) =>
     message({ message_id: id, role, turn_number: clock, investigation_turn: ordinal });
 
   it('prefers the row ordinal over its position in the list', () => {
     // Position would say 1, 1, 2, 2. The server says the second exchange was an
     // aside, so it carries the first exchange's ordinal.
     const rows = [
-      aside('a1', 'user', 1, 1),
-      aside('a2', 'assistant', 1, 1),
-      aside('a3', 'user', 2, 1),
-      aside('a4', 'assistant', 2, 1),
+      row('a1', 'user', 1, 1),
+      row('a2', 'assistant', 1, 1),
+      row('a3', 'user', 2, 1),
+      row('a4', 'assistant', 2, 1),
     ];
 
     expect(transcriptTurnNumbers(rows)).toEqual([1, 1, 1, 1]);
@@ -148,58 +151,72 @@ describe('the turn a transcript DISPLAYS', () => {
     // The acceptance criterion, stated directly: clock 1 (work), 2 (aside),
     // 3 (work) displays as 1, 1, 2.
     const rows = [
-      aside('b1', 'user', 1, 1),
-      aside('b2', 'user', 2, 1),
-      aside('b3', 'user', 3, 2),
+      row('b1', 'user', 1, 1),
+      row('b2', 'user', 2, 1),
+      row('b3', 'user', 3, 2),
     ];
 
     expect(transcriptTurnNumbers(rows)).toEqual([1, 1, 2]);
   });
 
-  it('falls back to counting positions when the server did not say', () => {
+  it('falls back to the MESSAGE CLOCK when the server did not say', () => {
     // Nullable on purpose: an older server reads as "did not say", never as
-    // turn zero. This is the behaviour every case above this block asserts, and
-    // it must not change.
+    // turn zero.
+    //
+    // The clock, not a count of positions. This file used to count, which
+    // diverged from the panel beside it — `displayedTurn` falls back to
+    // `turn_number` — so on a pre-3.5.0 server the dock and the tab numbered
+    // one conversation two ways and the number moved when you collapsed the
+    // dock. Same rule, one implementation, no divergence to have.
     const rows = [
-      message({ message_id: 'c1', role: 'user' }),
-      message({ message_id: 'c2', role: 'assistant' }),
-      message({ message_id: 'c3', role: 'user' }),
+      message({ message_id: 'c1', role: 'user', turn_number: 1 }),
+      message({ message_id: 'c2', role: 'assistant', turn_number: 1 }),
+      message({ message_id: 'c3', role: 'user', turn_number: 2 }),
     ];
 
     expect(transcriptTurnNumbers(rows)).toEqual([1, 1, 2]);
   });
 
-  it('keeps the fallback counter honest when only some rows carry the field', () => {
-    // Not a shape the backend sends, but the counter must not be corrupted by
-    // it: the positional count keeps advancing on every user message so a row
-    // without the field still lands where it would have.
+  it('does NOT mix the two counters when only some rows carry the field', () => {
+    // A case that ran across the 3.5.0 deploy: older rows have no ordinal,
+    // newer ones do. Answering per row from whatever it happens to carry puts
+    // both counters in one transcript — with asides early on the number goes
+    // BACKWARD at the seam, and the header beside it agrees with neither.
+    //
+    // Decided ONCE for the conversation instead: when the server supplies
+    // ordinals, a row without one gets no label rather than a clock number
+    // wearing the ordinal's clothes.
     const rows = [
-      aside('d1', 'user', 1, 1),
-      message({ message_id: 'd2', role: 'user' }),
+      row('d1', 'user', 1, 1),
+      message({ message_id: 'd2', role: 'user', turn_number: 9 }),
     ];
 
-    expect(transcriptTurnNumbers(rows)).toEqual([1, 2]);
+    expect(transcriptTurnNumbers(rows)).toEqual([1, null]);
   });
 
   it('still gives a notice no turn, whatever the row claims', () => {
     // A notice owns no turn. The backend stamps one on it anyway, and now can
     // stamp an ordinal too — neither may be printed.
     const rows = [
-      aside('e1', 'user', 1, 1),
-      aside('e2', 'system', 1, 1),
-      aside('e3', 'user', 2, 2),
+      row('e1', 'user', 1, 1),
+      row('e2', 'system', 1, 1),
+      row('e3', 'user', 2, 2),
     ];
 
     expect(transcriptTurnNumbers(rows)).toEqual([1, null, 2]);
   });
 
-  it('reads zero as a number, not as absence', () => {
-    // `?? positional` rather than `|| positional`: a case whose only exchanges
-    // so far were asides legitimately reports ordinal 0, and `||` would replace
-    // it with the position — printing Turn 1 for work that has not happened.
-    const rows = [aside('f1', 'user', 1, 0)];
+  it('prints NO LABEL at investigation turn 0', () => {
+    // Two different questions. What the turn IS uses `??`, because 0 is a real
+    // answer — a case whose only exchange so far was an aside sits at ordinal
+    // 0. Whether to PRINT it is separate, and at 0 the answer is no: "Turn 0"
+    // names a turn the investigation has not reached.
+    //
+    // The panel already suppressed it; this surface printed "Turn 0" for the
+    // same row until the rule moved into the package.
+    const rows = [row('f1', 'user', 1, 0)];
 
-    expect(transcriptTurnNumbers(rows)).toEqual([0]);
+    expect(transcriptTurnNumbers(rows)).toEqual([null]);
   });
 });
 

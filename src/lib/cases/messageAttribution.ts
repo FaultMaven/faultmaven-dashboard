@@ -26,9 +26,21 @@
  */
 
 import type { CaseMessage } from '../../types/cases';
+import {
+  messageKind,
+  serverSuppliesInvestigationTurn,
+  turnLabelFor,
+  type MessageKind,
+} from './turnLabel';
+
+// RE-EXPORTED, not re-implemented. The package ships the same nine lines and
+// says it kept them as a copy only because "the repos share no runtime code
+// today"; the turn-label door ended that. Two classifiers that can drift would
+// let the dock and this tab attribute one row differently.
+export { messageKind };
+export type { MessageKind };
 
 /** The three ways a transcript row can be presented. */
-export type MessageKind = 'user' | 'assistant' | 'notice';
 
 /**
  * Classify a message for display.
@@ -41,11 +53,7 @@ export type MessageKind = 'user' | 'assistant' | 'notice';
  * narrow this to an equality test on `'system'`; the next role the backend adds
  * would then inherit the bug this replaced.
  */
-export function messageKind(role: string): MessageKind {
-  if (role === 'assistant') return 'assistant';
-  if (role === 'user') return 'user';
-  return 'notice';
-}
+
 
 /**
  * The author name shown for each kind, in every medium.
@@ -80,11 +88,17 @@ export function messageAuthorLabel(role: string): string {
  * so the two Dashboard surfaces would have printed different numbers for one
  * exchange (faultmaven#1387).
  *
- * COUNTING POSITIONS IS THE FALLBACK, unchanged, for a server that predates the
- * field: the field is nullable precisely so an older server reads as "did not
- * say" rather than as turn zero. The counter advances on every user message
- * whether or not the field is present, so a response that carried it on only
- * some rows still degrades to the old behaviour rather than to nonsense.
+ * THE RULES ARE THE PACKAGE'S, not this file's. `turnLabelFor` decides both
+ * halves: what the turn IS (`investigation_turn ?? turn_number` — `??` because
+ * 0 is a real answer) and whether to PRINT it (no, at 0: "Turn 0" names a turn
+ * the investigation has not reached).
+ *
+ * An earlier version of this counted POSITIONS as its fallback and suppressed
+ * nothing at 0. Both were wrong in the same way: the panel beside this
+ * transcript falls back to `turn_number` and prints no label at 0, so the dock
+ * and the tab numbered one conversation two ways and the number moved when you
+ * collapsed the dock — the exact defect this change exists to remove. A second
+ * implementation of "which number" cannot avoid that; it is that.
  *
  * Each user message opens a turn and the assistant reply shares it. A notice
  * gets `null` — it owns no turn and must not print one. The counter advances
@@ -105,11 +119,44 @@ export function messageAuthorLabel(role: string): string {
  * the ordinal would break "jump to turn" silently.
  */
 export function transcriptTurnNumbers(messages: readonly CaseMessage[]): (number | null)[] {
-  let positional = 0;
+  // ALL OR NOTHING, decided once for the conversation. A case that ran across
+  // the 3.5.0 deploy holds older rows with no ordinal beside newer rows that
+  // have one; labelling each from whatever it happens to carry mixes the two
+  // counters inside one transcript, and the number goes BACKWARD at the seam.
+  // When the server supplies ordinals, a row without one gets no label rather
+  // than a number from the other counter.
+  const ordinals = serverSuppliesInvestigationTurn(messages);
   return messages.map((msg) => {
-    const kind = messageKind(msg.role);
-    if (kind === 'user') positional += 1;
-    if (kind === 'notice') return null;
-    return msg.investigation_turn ?? positional;
+    if (messageKind(msg.role) === 'notice') return null;
+    // Still suppressed at 0 — the ordinals branch must not route around the
+    // display rule. `investigation_turn` of 0 means the investigation has not
+    // reached a turn yet; a row without one, on a server that supplies them,
+    // gets no label rather than a number from the other counter.
+    if (ordinals) return msg.investigation_turn ? msg.investigation_turn : null;
+    return turnLabelFor(msg) ?? null;
+  });
+}
+
+/**
+ * Where a new turn STARTS, positionally aligned with `messages`.
+ *
+ * Separate from the labels because they answer different questions, and
+ * conflating them put a heavy turn divider between a question and its own
+ * answer. `transcriptTurnNumbers` returns a RENDER decision — `null` means
+ * print nothing — so comparing consecutive labels made a notice sitting inside
+ * a turn look like a turn boundary on the row after it. Measured: three rows
+ * `[user, notice, assistant]` produced one divider where there is one turn.
+ *
+ * A notice never starts a turn, and it never ends one either: the comparison
+ * skips it and looks back to the last row that owns a turn.
+ */
+export function transcriptTurnBoundaries(messages: readonly CaseMessage[]): boolean[] {
+  const labels = transcriptTurnNumbers(messages);
+  let previous: number | null | undefined;
+  return messages.map((msg, idx) => {
+    if (messageKind(msg.role) === 'notice') return false;
+    const starts = previous !== undefined && labels[idx] !== previous;
+    previous = labels[idx];
+    return starts;
   });
 }

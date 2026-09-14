@@ -59,17 +59,31 @@ const nonTsSources = import.meta.glob<string>(
  *
  *  - the STYLESHEET and the PRESET, because an `index.ts` cannot export a file
  *    for a CSS `@import` or a CommonJS `require` to consume;
+ *  - the TURN-LABEL rules, for the same reason as the contract and measured
+ *    the same way: `turn-label.ts` imports nothing, while the entry would cost
+ *    the whole panel. The Dashboard and the panel print turn numbers for the
+ *    same case on the same page, so the rules deciding WHICH number have to be
+ *    one implementation (faultmaven#1387);
  *  - the CONTRACT, because importing those three values from the ENTRY pulls
  *    the whole package into the eager graph. Measured: it moved the host store,
  *    transport and persistence internals into this app's entry chunk (+200 kB
  *    for every signed-out visitor), which ADR-016 D3 forbids. `contract.ts`
  *    imports nothing, and the same measurement puts it at +196 bytes.
  */
+/** The `.ts` exceptions, which must be proven import-free to keep their exemption. */
+const EXEMPT_MODULES = ['contract', 'turn-label'] as const;
+
 const DEEP_PATH_EXCEPTIONS = [
   `${PACKAGE}/styles/globals.css`,
   `${PACKAGE}/tailwind-preset.cjs`,
-  `${PACKAGE}/contract`,
+  ...EXEMPT_MODULES.map((m) => `${PACKAGE}/${m}`),
 ];
+
+/** Which module owns each exempt subpath — one door per subject, asserted. */
+const EXEMPT_DOORS: Record<string, string[]> = {
+  contract: ['../../copilot/advertisement.ts', '../../copilot/copilotCapability.ts'],
+  'turn-label': ['../../lib/cases/turnLabel.ts'],
+};
 
 interface Reference {
   file: string;
@@ -158,6 +172,17 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     ]);
   });
 
+  it('reaches each exempt subpath from exactly its own door', () => {
+    // An exception is not an open door. Without this, any file under `src/`
+    // could import the turn-label rules directly — a second, third, fourth
+    // door — while `turnLabel.ts` goes on calling itself "the third".
+    for (const [module, doors] of Object.entries(EXEMPT_DOORS)) {
+      const refs = references.filter((ref) => ref.specifier === `${PACKAGE}/${module}`);
+      expect(refs.length, `nothing reaches ${module}`).toBeGreaterThan(0);
+      expect([...new Set(refs.map((r) => r.file))].sort()).toEqual([...doors].sort());
+    }
+  });
+
   it('keeps each door to its own subject', () => {
     // The file list alone does NOT enforce the split it is justified by:
     // `copilotCapability.ts` could start importing `DASHBOARD_PANEL_MESSAGE` and
@@ -228,6 +253,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
         '/node_modules/@faultmaven/copilot-ui/styles/globals.css',
         '/node_modules/@faultmaven/copilot-ui/tailwind-preset.cjs',
         '/node_modules/@faultmaven/copilot-ui/contract.ts',
+        '/node_modules/@faultmaven/copilot-ui/turn-label.ts',
       ],
       { query: '?raw', import: 'default', eager: true },
     );
@@ -237,19 +263,47 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     expect(Object.keys(shipped)).toHaveLength(DEEP_PATH_EXCEPTIONS.length);
   });
 
-  it('keeps the contract module dependency-FREE, which is why it is exempt', () => {
-    // The exemption rests entirely on this. A contract module that grew an
-    // import would drag the package's graph back into the entry chunk, and the
-    // exception would then be licensing the very thing it was granted to avoid.
-    const contract = import.meta.glob(
-      ['/node_modules/@faultmaven/copilot-ui/contract.ts'],
+  it('keeps the exempt modules dependency-FREE, which is why they are exempt', () => {
+    // The exemption rests entirely on this, and the previous version of this
+    // test had been weakened into not proving it: a `from "…"` scan misses a
+    // bare side-effect import and anything double-quoted, and it checked only
+    // the first hop. A module that re-exports an import-free module is
+    // import-free; one that re-exports a module which grew an import is not,
+    // and the +200 kB would be back with this green.
+    const graph = import.meta.glob(
+      [
+        '/node_modules/@faultmaven/copilot-ui/contract.ts',
+        '/node_modules/@faultmaven/copilot-ui/turn-label.ts',
+        '/node_modules/@faultmaven/copilot-ui/lib/state/turn-label.ts',
+        '/node_modules/@faultmaven/copilot-ui/lib/state/message-kind.ts',
+      ],
       { query: '?raw', import: 'default', eager: true },
     );
-    const source = Object.values(contract)[0] as unknown as string;
+    const files = Object.entries(graph) as unknown as [string, string][];
 
-    expect(source, 'the contract module was not found').toBeTruthy();
-    expect(source).not.toMatch(/^\s*import\s/m);
-    expect(source).not.toMatch(/\brequire\s*\(/);
+    // Fail closed: a renamed or moved module must break this rather than make
+    // every assertion below vacuous.
+    expect(files.length).toBe(4);
+
+    for (const [file, source] of files) {
+      const isDoor = EXEMPT_MODULES.some((m) => file.endsWith(`/${m}.ts`));
+      // Every import or re-export specifier, however quoted, plus bare
+      // side-effect imports and `require`.
+      const specifiers = [
+        ...source.matchAll(/(?:^|\s)(?:import|export)\s+[^;]*?from\s*['"]([^'"]+)['"]/g),
+        ...source.matchAll(/(?:^|\s)import\s*['"]([^'"]+)['"]/g),
+        ...source.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+      ].map((m) => m[1]);
+
+      for (const s of specifiers) {
+        // A DOOR may re-export the import-free state modules asserted here and
+        // nothing else. A LEAF must reach nothing at all.
+        expect(
+          isDoor && /^\.\/lib\/state\/(turn-label|message-kind)$/.test(s),
+          `${file} reaches ${s}`,
+        ).toBe(true);
+      }
+    }
   });
 
   it('has exactly one runtime import of the ENTRY, and it is dynamic', () => {
