@@ -21,6 +21,7 @@ export default function CaseListPage() {
     error,
     page,
     pageSize,
+    searchMode,
     filters,
     setFilters,
     loadPage,
@@ -49,7 +50,17 @@ export default function CaseListPage() {
               page. */}
         </div>
 
-        <CaseFiltersBar filters={filters} onChange={setFilters} teams={teams} />
+        {/* `searchMode` comes from the hook, not from `filters.search`: it is
+            true once the SEARCH RESULTS are what the list is showing, which is
+            the state in which the date bounds are not being applied. Reading
+            the input instead would grey the dates out during the 300ms debounce,
+            while the list on screen is still the date-filtered one. */}
+        <CaseFiltersBar
+          filters={filters}
+          onChange={setFilters}
+          searchMode={searchMode}
+          teams={teams}
+        />
 
         {error && (
           <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">

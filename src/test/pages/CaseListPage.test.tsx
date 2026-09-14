@@ -362,3 +362,65 @@ describe('CaseListPage lexicon (ADR-018 D5)', () => {
     expect(lexiconViolations(document.body)).toEqual([]);
   });
 });
+
+/**
+ * The date range, end to end on the page that owns it.
+ *
+ * The unit tests below this hold each half: `dateRange` resolves a day, `api`
+ * sends the contract's names, `CaseFiltersBar` renders the controls. What none
+ * of them can see is whether the picked day ever reaches the request — which is
+ * exactly the link that was missing for the whole life of #51.
+ */
+describe('CaseListPage — the creation-date range reaches the request', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListCases.mockResolvedValue({
+      cases: [sampleCase],
+      total_count: 1,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+  });
+
+  it('re-fetches with the bounds when a day is picked', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(mockListCases).toHaveBeenCalled());
+    mockListCases.mockClear();
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Created from'), {
+        target: { value: '2026-09-10' },
+      });
+    });
+
+    await waitFor(() => expect(mockListCases).toHaveBeenCalled());
+    // The page passes the picked DAY down; `listCases` is where it becomes an
+    // instant, so that is the shape asserted here.
+    expect(mockListCases).toHaveBeenCalledWith(
+      expect.objectContaining({ date_from: '2026-09-10' }),
+      0,
+      expect.any(Number),
+    );
+  });
+
+  it('greys the dates out once search results are what is on screen', async () => {
+    // Not while the debounce is still pending: the list showing at that moment
+    // is still the date-filtered one, and a control that goes grey before the
+    // thing it describes changes is its own small lie.
+    const { searchCases } = await import('../../lib/api');
+    (searchCases as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Search cases'), {
+        target: { value: 'payment' },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeDisabled());
+    expect(screen.getByLabelText('Created to')).toBeDisabled();
+  });
+});

@@ -192,6 +192,84 @@ describe('listCases', () => {
       '/api/v1/cases?limit=20&offset=0&state=resolved&source=copilot'
     );
   });
+
+  /**
+   * THE NAMES ON THE WIRE ARE THE CONTRACT'S, not the filter state's.
+   *
+   * `date_from`/`date_to` are what a date picker produces and what this client
+   * keeps in `CaseFilters`; `created_after`/`created_before` are what
+   * `GET /cases` declares (contract 3.8.0). Sending the former is precisely what
+   * #51 was — FastAPI drops an unknown query param without a word, so the filter
+   * returned 200 and the unfiltered list for months.
+   */
+  it('sends the CONTRACT names, never the filter-state ones', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({ date_from: '2026-09-10', date_to: '2026-09-12' }, 0, 20);
+
+    const url = mockRequest.mock.calls[0][0] as string;
+    expect(url).toContain('created_after=');
+    expect(url).toContain('created_before=');
+    expect(url).not.toContain('date_from');
+    expect(url).not.toContain('date_to');
+  });
+
+  it('resolves each picked day to an instant, bracketing that whole day', async () => {
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    // The same day at both ends must mean that whole day. The server's window
+    // is HALF-OPEN, so the upper bound is the NEXT day's first instant — not
+    // 23:59:59.999, which misses the last 999 microseconds of every day because
+    // `created_at` keeps microseconds and `toISOString` does not.
+    //
+    // Asserted through local getters rather than a fixed UTC string: the right
+    // answer depends on where the viewer is, and a test pinned to UTC would
+    // pass in CI while shipping the wrong window to everybody else.
+    await listCases({ date_from: '2026-09-14', date_to: '2026-09-14' }, 0, 20);
+
+    const params = new URLSearchParams(
+      (mockRequest.mock.calls[0][0] as string).split('?')[1],
+    );
+    const after = new Date(params.get('created_after')!);
+    const before = new Date(params.get('created_before')!);
+
+    expect(after.getDate()).toBe(14);
+    expect(after.getHours()).toBe(0);
+    expect(before.getDate()).toBe(15);
+    expect(before.getHours()).toBe(0);
+    expect(before.getTime()).toBeGreaterThan(after.getTime());
+  });
+
+  it('sends one bound when only one end is picked', async () => {
+    // "Everything since Monday" is the common case and a complete filter, not a
+    // half-finished one.
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({ date_from: '2026-09-10' }, 0, 20);
+
+    const url = mockRequest.mock.calls[0][0] as string;
+    expect(url).toContain('created_after=');
+    expect(url).not.toContain('created_before=');
+  });
+
+  it('sends no bound at all for an unset or impossible day', async () => {
+    // A half-typed date input must mean "no bound", never a bound the user did
+    // not pick — and `new Date(2026, 1, 30)` silently becomes 2 March, so an
+    // impossible day would otherwise filter by a real date nobody chose.
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({ date_from: '2026-02-30', date_to: '' }, 0, 20);
+
+    expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases?limit=20&offset=0');
+  });
 });
 
 describe('team filter + share (ADR-013 §D4)', () => {

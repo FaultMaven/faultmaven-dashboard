@@ -93,3 +93,109 @@ describe('CaseFiltersBar team filter (ADR-013 §D4)', () => {
     expect(screen.queryByLabelText('Filter by team')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * THE DATE RANGE, restored with contract 3.8.0.
+ *
+ * The version deleted in PR #52 sent `date_from`/`date_to` at a route that
+ * declared neither, so it filtered nothing and said nothing — the reason #51
+ * exists. These tests hold the two properties that keep it honest: the control
+ * reflects what is actually applied, and it is not offered where it would not be.
+ */
+describe('CaseFiltersBar — creation-date range', () => {
+  it('emits the picked day as a calendar day, untouched', () => {
+    // The filter state stays in the picker's own vocabulary; resolving a day to
+    // instants happens once, at the API boundary, where the viewer's timezone is
+    // applied. A component that converted here would do it twice.
+    const onChange = vi.fn();
+    render(<CaseFiltersBar filters={{ state: 'resolved' }} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText('Created from'), {
+      target: { value: '2026-09-10' },
+    });
+
+    expect(onChange).toHaveBeenCalledWith({ state: 'resolved', date_from: '2026-09-10' });
+  });
+
+  it('clears a bound when its input is emptied, keeping the other', () => {
+    const onChange = vi.fn();
+    render(
+      <CaseFiltersBar
+        filters={{ date_from: '2026-09-10', date_to: '2026-09-12' }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Created from'), { target: { value: '' } });
+
+    expect(onChange).toHaveBeenCalledWith({ date_from: undefined, date_to: '2026-09-12' });
+  });
+
+  it('will not let the browser offer an inverted range', () => {
+    // Cheaper than accepting one and explaining the empty list afterwards.
+    render(
+      <CaseFiltersBar
+        filters={{ date_from: '2026-09-10', date_to: '2026-09-12' }}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Created from')).toHaveAttribute('max', '2026-09-12');
+    expect(screen.getByLabelText('Created to')).toHaveAttribute('min', '2026-09-10');
+  });
+
+  it('shows what is applied, so a bound cannot linger after the parent clears it', () => {
+    // Controlled, not `defaultValue`: an uncontrolled input keeps rendering a
+    // value the parent has since dropped, which is a filter bar disagreeing with
+    // the list beside it.
+    const { rerender } = render(
+      <CaseFiltersBar filters={{ date_from: '2026-09-10' }} onChange={vi.fn()} />,
+    );
+    expect(screen.getByLabelText('Created from')).toHaveValue('2026-09-10');
+
+    rerender(<CaseFiltersBar filters={{}} onChange={vi.fn()} />);
+    expect(screen.getByLabelText('Created from')).toHaveValue('');
+  });
+
+  it('DISABLES the dates while search results are showing', () => {
+    // `POST /cases/search` accepts a query, a limit and a team — no date bounds.
+    // An enabled input there would be #51 again in a narrower window: accepted,
+    // dropped, and indistinguishable from a range that matched nothing.
+    render(<CaseFiltersBar filters={{ search: 'payment' }} onChange={vi.fn()} searchMode />);
+
+    expect(screen.getByLabelText('Created from')).toBeDisabled();
+    expect(screen.getByLabelText('Created to')).toBeDisabled();
+    // And it says why, rather than just going grey. The explanation sits on the
+    // GROUP, because a disabled input is not a hover target in every browser —
+    // the wrapper is, and it is what carries the label and the dimming too.
+    const group = screen.getByLabelText('Created from').closest('div');
+    expect(group).toHaveAttribute(
+      'title',
+      expect.stringContaining('do not apply to a text search'),
+    );
+    expect(group).toHaveClass('opacity-50');
+  });
+
+  it('KEEPS the range while disabled, so clearing the search restores it', () => {
+    // Clearing the bounds on the first keystroke would silently discard the
+    // user's range; they are meant to come back when the search box empties.
+    const filters: CaseFilters = { date_from: '2026-09-10', search: 'payment' };
+    const { rerender } = render(
+      <CaseFiltersBar filters={filters} onChange={vi.fn()} searchMode />,
+    );
+    expect(screen.getByLabelText('Created from')).toHaveValue('2026-09-10');
+
+    rerender(<CaseFiltersBar filters={{ date_from: '2026-09-10' }} onChange={vi.fn()} />);
+    expect(screen.getByLabelText('Created from')).toBeEnabled();
+    expect(screen.getByLabelText('Created from')).toHaveValue('2026-09-10');
+  });
+
+  it('offers no date inputs in stateOnly mode (the admin view)', () => {
+    // `GET /admin/cases` takes state and source only, and this bar's whole rule
+    // is that it shows no control which would silently do nothing.
+    render(<CaseFiltersBar filters={{}} onChange={vi.fn()} stateOnly />);
+
+    expect(screen.queryByLabelText('Created from')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Created to')).not.toBeInTheDocument();
+  });
+});
