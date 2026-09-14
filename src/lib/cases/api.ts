@@ -7,7 +7,6 @@ import type {
   CaseSummary,
   CaseListResponse,
   CaseFilters,
-  CaseState,
   CaseMessage,
   CaseMessagesResponse,
   CaseReport,
@@ -126,24 +125,25 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
 export async function searchCases(
   query: string,
   limit = 100,
-  teamId?: string,
-  state?: CaseState
+  teamId?: string
 ): Promise<CaseSummary[]> {
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query,
-      limit,
-      ...(teamId && { team_id: teamId }),
-      // `CaseSearchRequest` DOES declare `state`, and not sending it left the
-      // state chips highlighted-but-inert during a search: click `Resolved`,
-      // watch the chip light up, and get resolved and unresolved cases back.
-      // That is the same accepted-and-dropped control the date inputs are
-      // disabled for — so this one is honoured rather than disabled, because
-      // unlike the dates the endpoint can actually take it.
-      ...(state && { state }),
-    }),
+    // ⚠️ NO `state`, even though `CaseSearchRequest` DECLARES one.
+    //
+    // Declaring a field is not applying it, and that distinction is the whole
+    // of #51: `CaseListFilter` carried `created_after` for its entire life
+    // while the route never bound it. `POST /cases/search` is the same shape
+    // one layer down — `CaseService.search_cases` calls
+    // `repository.search(query, user_id, limit, shared_case_ids,
+    // restrict_case_ids)` and never reads `search_request.state`, and
+    // `CaseRepository.search` declares no such parameter. Sending it would be
+    // accepted, ignored, and answered 200 with unfiltered results.
+    //
+    // So the state chips are DISABLED during a search instead, exactly like the
+    // date inputs. Tracked for the backend in faultmaven#1416.
+    body: JSON.stringify({ query, limit, ...(teamId && { team_id: teamId }) }),
   });
   await handleAPIResponse(response, 'Failed to search cases');
   return response.json();

@@ -34,8 +34,8 @@ const STATE_OPTIONS: { value: CaseState | ''; label: string }[] = [
 ];
 
 /** Said once, so the tooltip and the announced description cannot disagree. */
-const DATES_DISABLED_REASON =
-  'Date filters do not apply to a text search — clear the search box to use them.';
+const SEARCH_ONLY_REASON =
+  'This filter does not apply to a text search — clear the search box to use it.';
 
 const inputClass =
   'px-3 py-1.5 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -93,13 +93,39 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
     onChange((prev) => ({ ...prev, team_id: value || undefined }));
   };
 
-  const handleDateFrom = (value: string) => {
-    onChange((prev) => ({ ...prev, date_from: value || undefined }));
-  };
+  /**
+   * DEBOUNCED, like the search box beside them.
+   *
+   * A date input reports every intermediate value as the year is typed —
+   * 0002-09-14, 0020-09-14, 0202-09-14, 2026-09-14 — and each one landed in
+   * `filters`, whose new identity re-creates `loadPage` and re-runs the effect.
+   * So typing a year fired four `GET /cases` round trips, one of which sent
+   * `created_after=0202-09-...` as a real bound (year 202 survives the
+   * round-trip guard — it is a perfectly valid, if unlikely, date). It also
+   * reset the pager to page 0 each time, so typing a date while on page 3 was
+   * unrecoverable.
+   *
+   * Same 300ms as the search, and the same functional update, so a date landing
+   * mid-flight composes against whatever the filters are when it fires.
+   */
+  const debouncedDateFrom = useMemo(
+    () =>
+      debounce((value: string) => {
+        onChange((prev) => ({ ...prev, date_from: value || undefined }));
+      }, 300),
+    [onChange]
+  );
 
-  const handleDateTo = (value: string) => {
-    onChange((prev) => ({ ...prev, date_to: value || undefined }));
-  };
+  const debouncedDateTo = useMemo(
+    () =>
+      debounce((value: string) => {
+        onChange((prev) => ({ ...prev, date_to: value || undefined }));
+      }, 300),
+    [onChange]
+  );
+
+  useEffect(() => () => debouncedDateFrom.cancel(), [debouncedDateFrom]);
+  useEffect(() => () => debouncedDateTo.cancel(), [debouncedDateTo]);
 
   /**
    * Free text and date bounds cannot both apply, so say so rather than accept a
@@ -126,13 +152,45 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
    * would silently discard the user's range the moment they typed a character,
    * and they are meant to come back when the search box empties.
    */
-  const datesDisabled = Boolean(filters.search);
+  const searching = Boolean(filters.search);
+
+  /**
+   * `POST /cases/search` honours a query, a limit and a team. NOTHING ELSE.
+   *
+   * The state chip looked like the exception — `CaseSearchRequest` declares a
+   * `state` field — but the service never reads it and the repository has no
+   * such parameter, so sending it is accepted, ignored, and answered 200 with
+   * unfiltered results. Declaring a field is not applying it, which is the
+   * whole of #51 restated one layer down (faultmaven#1416).
+   *
+   * So both controls are disabled while a search is running, rather than left
+   * to look like they are narrowing something.
+   */
+  const datesDisabled = searching;
+  const statesDisabled = searching;
 
 
   const showTeamFilter = !stateOnly && teams && teams.length > 0;
 
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4">
+      {/*
+        ON SCREEN, not only in a tooltip and not only to a screen reader.
+        A `title` does not render on a DISABLED control in Chrome or Safari
+        (pointer events are suppressed), and `sr-only` is invisible by
+        definition — so the previous version left a sighted mouse user looking
+        at greyed-out controls with no explanation anywhere, which is the state
+        it claimed to have fixed. One sentence, rendered, and referenced by
+        every control it applies to.
+      */}
+      {searching && (
+        <p
+          id="search-only-reason"
+          className="basis-full text-fm-xs text-fm-text-tertiary -mb-1"
+        >
+          {SEARCH_ONLY_REASON}
+        </p>
+      )}
       <div className="flex gap-1.5">
         {STATE_OPTIONS.map(({ value, label }) => {
           const isActive = (filters.state ?? '') === value;
@@ -140,7 +198,12 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
             <button
               key={value}
               onClick={() => handleStateClick(value)}
-              className={`${chipBase} ${isActive ? chipActive : chipInactive}`}
+              disabled={statesDisabled}
+              aria-describedby={statesDisabled ? 'search-only-reason' : undefined}
+              title={statesDisabled ? SEARCH_ONLY_REASON : undefined}
+              className={`${chipBase} ${isActive ? chipActive : chipInactive} ${
+                statesDisabled ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               {label}
             </button>
@@ -177,9 +240,13 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
             pair constrains each other through min/max and an uncontrolled input
             would keep showing a bound the other one has since invalidated.
 
-            The pair is linked so the browser will not offer an inverted range
-            at all — cheaper and clearer than accepting one and explaining the
-            empty list afterwards.
+            `min`/`max` link the pair, but ONLY as a hint: they grey out the
+            calendar's out-of-range days and set `:out-of-range`, and neither
+            blocks a TYPED value — so an inverted range still reaches the
+            server, which refuses it with a 422. That refusal is the guarantee;
+            this is the nudge. One-directional on purpose, too: a `max` on
+            `from` makes an existing range impossible to move forward through
+            the calendar without clearing `to` first.
           */}
           {/*
             ONE GROUP, with the word that says what the pair is FOR. Two bare
@@ -200,19 +267,16 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
                 dimmed" and nothing else, and a keyboard-only sighted user could
                 not hover it either. Rendered as real text instead, referenced
                 by both inputs, and only while it applies. */}
-            {datesDisabled && (
-              <span id="dates-disabled-reason" className="sr-only">
-                {DATES_DISABLED_REASON}
-              </span>
-            )}
+
             <input
               type="date"
-              value={filters.date_from ?? ''}
+              defaultValue={filters.date_from ?? ''}
+              key={`from-${filters.date_from ?? ''}`}
               max={filters.date_to || undefined}
-              onChange={(e) => handleDateFrom(e.target.value)}
+              onChange={(e) => debouncedDateFrom(e.target.value)}
               disabled={datesDisabled}
-              aria-describedby={datesDisabled ? 'dates-disabled-reason' : undefined}
-              title={datesDisabled ? DATES_DISABLED_REASON : undefined}
+              aria-describedby={datesDisabled ? 'search-only-reason' : undefined}
+              title={datesDisabled ? SEARCH_ONLY_REASON : undefined}
               className={`${inputClass} disabled:cursor-not-allowed`}
               aria-label="Created from"
             />
@@ -221,15 +285,42 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
             </span>
             <input
               type="date"
-              value={filters.date_to ?? ''}
+              defaultValue={filters.date_to ?? ''}
+              key={`to-${filters.date_to ?? ''}`}
               min={filters.date_from || undefined}
-              onChange={(e) => handleDateTo(e.target.value)}
+              onChange={(e) => debouncedDateTo(e.target.value)}
               disabled={datesDisabled}
-              aria-describedby={datesDisabled ? 'dates-disabled-reason' : undefined}
-              title={datesDisabled ? DATES_DISABLED_REASON : undefined}
+              aria-describedby={datesDisabled ? 'search-only-reason' : undefined}
+              title={datesDisabled ? SEARCH_ONLY_REASON : undefined}
               className={`${inputClass} disabled:cursor-not-allowed`}
               aria-label="Created to"
             />
+            {/*
+              A WAY OUT, and it stays enabled while the dates themselves are not.
+              A range set before a search could not be removed: both inputs are
+              disabled during one, and the range is deliberately KEPT so it
+              returns when the box empties — so the only route back was to clear
+              the search, watch the stale range silently re-apply, and then
+              empty two inputs by hand. Meanwhile the empty state was saying
+              "Clear the filters to see everything" with no control on the page
+              that did it.
+            */}
+            {(filters.date_from || filters.date_to) && (
+              <button
+                type="button"
+                onClick={() =>
+                  onChange((prev) => ({
+                    ...prev,
+                    date_from: undefined,
+                    date_to: undefined,
+                  }))
+                }
+                className="text-fm-xs text-fm-text-tertiary hover:text-fm-text-primary underline underline-offset-2 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-fm-accent"
+              >
+                Clear
+                <span className="sr-only"> the creation-date range</span>
+              </button>
+            )}
           </div>
 
           <input

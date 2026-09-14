@@ -119,23 +119,22 @@ describe('useCaseList', () => {
     });
     await waitFor(() => expect(result.current.searchMode).toBe(true));
 
-    // Sends query + limit + team_id + state (limit-based, no page/page_size
-    // args). team_id rides through from the U12 team filter; `state` is sent
-    // because `CaseSearchRequest` declares it — not sending it left the state
-    // chips highlighted-but-inert during a search, which is the same
-    // accepted-and-dropped control the date inputs are disabled for.
-    expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100, undefined, undefined);
+    // Sends query + limit + the (here-undefined) team_id. NOTHING ELSE —
+    // `CaseSearchRequest` declares a `state` field, but `CaseService.search_cases`
+    // never reads it and `CaseRepository.search` has no such parameter, so
+    // sending it would be accepted, ignored, and answered 200 with unfiltered
+    // results (faultmaven#1416). The chips are disabled during a search instead.
+    expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100, undefined);
     expect(result.current.cases).toHaveLength(60);
     // pageSize collapses to the result count => exactly one page in the pager.
     expect(Math.ceil(result.current.totalCount / result.current.pageSize)).toBe(1);
   });
 
-  it('carries the state chip into a search, rather than dropping it', async () => {
-    // `CaseSearchRequest` declares `state`. Leaving it out meant clicking
-    // `Resolved` during a search lit the chip up and changed nothing — resolved
-    // and unresolved cases came back under a highlighted filter. That is the
-    // defect the date inputs are disabled to avoid, on the control beside them,
-    // and here the endpoint can actually honour it.
+  it('does NOT send a state the search endpoint would ignore', async () => {
+    // The trap this replaced: `CaseSearchRequest` declares `state`, so sending
+    // it typechecks and is accepted — and then nothing applies it. Declaring a
+    // field is not applying it, which is the whole of #51 one layer down. An
+    // earlier version of this file asserted the opposite and pinned it green.
     mockSearchCases.mockResolvedValue([]);
     const { result } = renderHook(() => useCaseList());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -145,12 +144,10 @@ describe('useCaseList', () => {
     });
     await waitFor(() => expect(result.current.searchMode).toBe(true));
 
-    expect(mockSearchCases).toHaveBeenLastCalledWith(
-      'db outage',
-      100,
-      undefined,
-      'resolved',
-    );
+    expect(mockSearchCases).toHaveBeenLastCalledWith('db outage', 100, undefined);
+    for (const call of mockSearchCases.mock.calls) {
+      expect(call).not.toContain('resolved');
+    }
   });
 
   it('ignores a superseded (out-of-order) response', async () => {

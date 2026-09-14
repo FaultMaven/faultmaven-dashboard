@@ -65,12 +65,17 @@ describe('CaseFiltersBar', () => {
       target: { value: '2026-09-10' },
     });
 
-    await waitFor(() => {
-      const applied = applyLast(onChange, { date_from: '2026-09-10' });
-      expect(applied.search).toBe('payment');
-    });
-    // The date the user picked in the meantime survives it.
-    expect(applyLast(onChange, { date_from: '2026-09-10' }).date_from).toBe('2026-09-10');
+    // BOTH land — the date and the search each fire their own debounce, and
+    // each composes against the filters of the moment rather than a snapshot
+    // taken when it was scheduled. Before, the date's `onChange` rebuilt the
+    // search's debounced function and the cleanup cancelled the queued term.
+    await waitFor(() => expect(onChange.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    const emitted = onChange.mock.calls.map(([update]) =>
+      typeof update === 'function' ? update({}) : update,
+    );
+    expect(emitted.some((f) => f.search === 'payment')).toBe(true);
+    expect(emitted.some((f) => f.date_from === '2026-09-10')).toBe(true);
   });
 
   it('clears the search key when the query is emptied', async () => {
@@ -88,13 +93,30 @@ describe('CaseFiltersBar', () => {
     });
   });
 
-  it('applies a state chip without dropping an existing search term', () => {
+  it('applies a state chip without dropping other active filters', () => {
     const onChange = vi.fn();
-    render(<CaseFiltersBar filters={{ search: 'db' }} onChange={onChange} />);
+    render(<CaseFiltersBar filters={{ date_from: '2026-09-10' }} onChange={onChange} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Resolved' }));
 
-    expect(applyLast(onChange, { search: 'db' })).toEqual({ search: 'db', state: 'resolved' });
+    expect(applyLast(onChange, { date_from: '2026-09-10' })).toEqual({
+      date_from: '2026-09-10',
+      state: 'resolved',
+    });
+  });
+
+  it('DISABLES the state chips during a search, because the endpoint ignores them', () => {
+    // `CaseSearchRequest` declares a `state` field, and that is exactly the trap:
+    // `CaseService.search_cases` never reads it and `CaseRepository.search` has
+    // no such parameter. Sending it would be accepted, ignored, and answered 200
+    // with unfiltered results — #51 restated one layer down (faultmaven#1416).
+    const onChange = vi.fn();
+    render(<CaseFiltersBar filters={{ search: 'db' }} onChange={onChange} />);
+
+    const chip = screen.getByRole('button', { name: 'Resolved' });
+    expect(chip).toBeDisabled();
+    fireEvent.click(chip);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
@@ -146,7 +168,7 @@ describe('CaseFiltersBar team filter (ADR-013 §D4)', () => {
  * reflects what is actually applied, and it is not offered where it would not be.
  */
 describe('CaseFiltersBar — creation-date range', () => {
-  it('emits the picked day as a calendar day, untouched', () => {
+  it('emits the picked day as a calendar day, untouched', async () => {
     // The filter state stays in the picker's own vocabulary; resolving a day to
     // instants happens once, at the API boundary, where the viewer's timezone is
     // applied. A component that converted here would do it twice.
@@ -157,13 +179,16 @@ describe('CaseFiltersBar — creation-date range', () => {
       target: { value: '2026-09-10' },
     });
 
+    // Debounced, like the search box: a date input reports every intermediate
+    // value as the year is typed, and each one was firing its own GET /cases.
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(applyLast(onChange, { state: 'resolved' })).toEqual({
       state: 'resolved',
       date_from: '2026-09-10',
     });
   });
 
-  it('clears a bound when its input is emptied, keeping the other', () => {
+  it('clears a bound when its input is emptied, keeping the other', async () => {
     const onChange = vi.fn();
     render(
       <CaseFiltersBar
@@ -174,6 +199,7 @@ describe('CaseFiltersBar — creation-date range', () => {
 
     fireEvent.change(screen.getByLabelText('Created from'), { target: { value: '' } });
 
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(applyLast(onChange, { date_from: '2026-09-10', date_to: '2026-09-12' })).toEqual({
       date_from: undefined,
       date_to: '2026-09-12',
@@ -221,21 +247,27 @@ describe('CaseFiltersBar — creation-date range', () => {
     expect(screen.getByLabelText('Created to')).toBeDisabled();
   });
 
-  it('ANNOUNCES why they are disabled, not just dims them', () => {
-    // A `title` on the wrapping div was the only carrier of the reason, and
-    // assistive technology does not announce one on a non-interactive element:
-    // a screen-reader user heard "Created from, edit text, dimmed" and nothing
-    // more, and a keyboard-only sighted user could not hover it either.
+  it('says why ON SCREEN, not only to a screen reader', () => {
+    // Two earlier attempts both failed a sighted mouse user: a `title` on the
+    // wrapping div (assistive tech does not announce one on a non-interactive
+    // element) and then `sr-only` text plus a `title` on the inputs — but a
+    // `title` does not render on a DISABLED control in Chrome or Safari, which
+    // suppress pointer events on them, and `sr-only` is invisible by
+    // definition. So it is real, rendered text now, referenced by every control
+    // it applies to.
     render(<CaseFiltersBar filters={{ search: 'payment' }} onChange={vi.fn()} />);
 
-    const from = screen.getByLabelText('Created from');
-    const describedBy = from.getAttribute('aria-describedby');
-    expect(describedBy).toBeTruthy();
-    expect(document.getElementById(describedBy!)?.textContent).toMatch(
-      /do not apply to a text search/i,
-    );
-    // The sighted-hover path keeps working too.
-    expect(from).toHaveAttribute('title', expect.stringContaining('do not apply'));
+    const reason = screen.getByText(/does not apply to a text search/i);
+    expect(reason).toBeVisible();
+    expect(reason).not.toHaveClass('sr-only');
+
+    for (const label of ['Created from', 'Created to']) {
+      expect(screen.getByLabelText(label).getAttribute('aria-describedby')).toBe(reason.id);
+    }
+    // The state chips are gated by the same rule and point at the same sentence.
+    const chip = screen.getByRole('button', { name: 'Resolved' });
+    expect(chip).toBeDisabled();
+    expect(chip.getAttribute('aria-describedby')).toBe(reason.id);
   });
 
   it('carries no stale reason once the search is cleared', () => {
@@ -266,5 +298,55 @@ describe('CaseFiltersBar — creation-date range', () => {
 
     expect(screen.queryByLabelText('Created from')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Created to')).not.toBeInTheDocument();
+  });
+});
+
+describe('CaseFiltersBar — clearing the creation-date range', () => {
+  it('offers no clear control until there is something to clear', () => {
+    render(<CaseFiltersBar filters={{}} onChange={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument();
+  });
+
+  it('clears both bounds at once, leaving everything else alone', () => {
+    const onChange = vi.fn();
+    render(
+      <CaseFiltersBar
+        filters={{ date_from: '2026-09-10', date_to: '2026-09-12', state: 'resolved' }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /clear/i }));
+
+    expect(
+      applyLast(onChange, { date_from: '2026-09-10', date_to: '2026-09-12', state: 'resolved' }),
+    ).toEqual({ date_from: undefined, date_to: undefined, state: 'resolved' });
+  });
+
+  it('STAYS USABLE during a search, when the inputs themselves are not', () => {
+    // The trap it exists for: a range set before a search cannot be removed
+    // otherwise — both inputs are disabled, and the range is deliberately kept
+    // so it returns when the box empties. The only route back was to clear the
+    // search, watch the stale range silently re-apply, and empty two inputs by
+    // hand — while the empty state said "Clear the filters to see everything"
+    // and the page offered nothing that did.
+    const onChange = vi.fn();
+    render(
+      <CaseFiltersBar
+        filters={{ date_from: '2026-09-10', search: 'payment' }}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByLabelText('Created from')).toBeDisabled();
+    const clear = screen.getByRole('button', { name: /clear/i });
+    expect(clear).toBeEnabled();
+
+    fireEvent.click(clear);
+    expect(applyLast(onChange, { date_from: '2026-09-10', search: 'payment' })).toEqual({
+      date_from: undefined,
+      date_to: undefined,
+      search: 'payment',
+    });
   });
 });
