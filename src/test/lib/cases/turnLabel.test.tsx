@@ -57,11 +57,29 @@ describe('caseTurnCount — the number a CASE shows', () => {
 
 describe('the surfaces that name a case-level turn', () => {
   it('shows the investigation turn in the issue summary', () => {
-    render(<IssueTab caseDetail={caseDetail} />);
+    // A COMPLETE CaseDetail, and the assertion SCOPED to the Turns cell. An
+    // earlier version fed a fixture missing the count fields — so the component
+    // rendered "undefined generated" and a bare `getByText('6')` was unique
+    // only by accident. Fill those in and the loose query matches several
+    // nodes; `queryByText('8')` was satisfied by any fixture without an 8
+    // anywhere, which is not the same as the clock not being shown.
+    render(
+      <IssueTab
+        caseDetail={
+          {
+            ...caseDetail,
+            hypothesis_count: 2,
+            evidence_count: 6,
+            solution_count: 1,
+          } as unknown as CaseDetail
+        }
+      />,
+    );
 
+    const turnsCell = screen.getByText('Turns:').closest('div');
+    expect(turnsCell?.textContent).toContain('6');
     // 6, not the clock's 8 — the transcript on the neighbouring tab says 6.
-    expect(screen.getByText('6')).toBeInTheDocument();
-    expect(screen.queryByText('8')).not.toBeInTheDocument();
+    expect(turnsCell?.textContent).not.toContain('8');
   });
 
   it('agrees with its own transcript inside one exported document', () => {
@@ -98,6 +116,39 @@ describe('the transcript divider', () => {
     );
 
     // Three user rows, but only two turns — so one divider, before the third.
+    expect(container.querySelectorAll('.border-t')).toHaveLength(1);
+  });
+
+  it('does NOT split a turn when a notice lands inside it', () => {
+    // The shape the backend produces when a background runbook-conversion
+    // notice arrives between a question and its answer. A notice owns no turn,
+    // so its label is null — and comparing PRINTED LABELS made the assistant
+    // row after it look like a turn boundary, putting the heavy rule between a
+    // question and its own answer. Measured: 1 divider where there is 1 turn.
+    const { container } = render(
+      <TranscriptView
+        messages={[row('m1', 'user', 1, 1), row('m2', 'system', 1, 1), row('m3', 'assistant', 1, 1)]}
+      />,
+    );
+
+    expect(container.querySelectorAll('.border-t')).toHaveLength(0);
+  });
+
+  it('a notice does not end the turn it sits in', () => {
+    // The row after the notice belongs to the SAME turn as the row before it,
+    // so the comparison has to look past the notice rather than at it.
+    const { container } = render(
+      <TranscriptView
+        messages={[
+          row('m1', 'user', 1, 1),
+          row('m2', 'system', 1, 1),
+          row('m3', 'assistant', 1, 1),
+          row('m4', 'user', 2, 2),
+        ]}
+      />,
+    );
+
+    // One divider: before the second turn, not around the notice.
     expect(container.querySelectorAll('.border-t')).toHaveLength(1);
   });
 });

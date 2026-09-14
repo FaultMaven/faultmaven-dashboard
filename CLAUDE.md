@@ -346,17 +346,25 @@ change reaches both or reaches neither.
 - **Import the package ENTRY only.** Deep subpaths resolve and are still off
   limits: they exist for the extension, which lives in the same repository as
   the package and can be updated in the same commit.
-- **`/contract` is the one code exception, through TWO doors — one per
-  subject.** It carries the cross-repo names both repositories must agree on,
+- **`/contract` and `/turn-label` are the code exceptions, each through ONE
+  door per subject.** It carries the cross-repo names both repositories must agree on,
   and it is cheap (constants and two DOM readers, no panel). `advertisement.ts`
   owns the panel attribute and window messages; `copilotCapability.ts` owns the
-  capability attribute, its tokens and its reader. Nothing else may reach the
-  subpath, and neither door may pull the other's names — routing capabilities
-  through `advertisement.ts` would make the capability GATE depend on the module
-  it gates. Both the file list and the per-file name sets are asserted.
-- **The one runtime import is dynamic**, in `CopilotPanelMount.tsx`. That is
-  what keeps the shared UI out of the entry chunk so nothing of it is fetched
-  before sign-in. `src/test/copilot/packageImportBoundary.test.ts` enforces all
+  capability attribute, its tokens and its reader; `lib/cases/turnLabel.ts` the
+  TURN LABELS — which number a surface prints, versus the message clock it
+  addresses a turn with. Nothing else may reach either subpath, and no door may
+  pull another's names — routing capabilities through `advertisement.ts` would
+  make the capability GATE depend on the module it gates. The file list, the
+  per-file name sets and the per-subpath door list are all asserted.
+
+  Both exempt modules must stay **import-free**, and that is the whole basis of
+  the exemption: the entry costs +200 kB in the signed-out chunk (ADR-016 D3)
+  while these cost ~196 bytes. The boundary test walks one hop — a door may
+  re-export the package's zero-dependency state modules and nothing else.
+- **The one runtime import OF THE ENTRY is dynamic**, in
+  `CopilotPanelMount.tsx`. That is what keeps the shared UI out of the entry
+  chunk so nothing of it is fetched before sign-in. The exempt subpaths above
+  are static and cheap by construction; the rule is about the entry. `src/test/copilot/packageImportBoundary.test.ts` enforces all
   of these.
 - **The theme ships with it** as a Tailwind preset, consumed in
   `tailwind.config.cjs`; `src/index.css` imports the package's `globals.css`.

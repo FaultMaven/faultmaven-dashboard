@@ -15,12 +15,26 @@
  * capability names, this one the turn labels.
  */
 export {
-  displayedTurn,
-  investigationTurnFor,
+  messageKind,
   serverSuppliesInvestigationTurn,
   turnLabelFor,
 } from '@faultmaven/copilot-ui/turn-label';
-export type { TurnLabelled } from '@faultmaven/copilot-ui/turn-label';
+export type { MessageKind, TurnLabelled } from '@faultmaven/copilot-ui/turn-label';
+
+/**
+ * ONLY WHAT THIS APP CALLS. `displayedTurn` and `investigationTurnFor` are
+ * deliberately not re-exported: nothing here uses them, and a name reachable
+ * through this module reads as part of this app's contract to the next author.
+ * `investigationTurnFor` in particular would be reached for by the evidence
+ * surface, where it cannot work — that tab holds no conversation rows
+ * (faultmaven#1391). A door is only narrow while it stays shut.
+ *
+ * `messageKind` comes through it too. The package kept its own copy "rather
+ * than a shared package: this is nine lines with no dependencies, and the repos
+ * share no runtime code today" — which stopped being true the moment this door
+ * opened. Two classifiers that can drift is the same defect as two turn
+ * counters, one field over.
+ */
 
 
 /**

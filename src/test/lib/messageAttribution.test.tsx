@@ -177,16 +177,21 @@ describe('the turn a transcript DISPLAYS', () => {
     expect(transcriptTurnNumbers(rows)).toEqual([1, 1, 2]);
   });
 
-  it('reads each row on its own terms when only some carry the field', () => {
-    // Not a shape the backend sends. Each row answers from what it has — the
-    // ordinal if present, the clock otherwise — which is what keeps this
-    // identical to the panel's `displayedTurn` row by row.
+  it('does NOT mix the two counters when only some rows carry the field', () => {
+    // A case that ran across the 3.5.0 deploy: older rows have no ordinal,
+    // newer ones do. Answering per row from whatever it happens to carry puts
+    // both counters in one transcript — with asides early on the number goes
+    // BACKWARD at the seam, and the header beside it agrees with neither.
+    //
+    // Decided ONCE for the conversation instead: when the server supplies
+    // ordinals, a row without one gets no label rather than a clock number
+    // wearing the ordinal's clothes.
     const rows = [
       row('d1', 'user', 1, 1),
-      message({ message_id: 'd2', role: 'user', turn_number: 2 }),
+      message({ message_id: 'd2', role: 'user', turn_number: 9 }),
     ];
 
-    expect(transcriptTurnNumbers(rows)).toEqual([1, 2]);
+    expect(transcriptTurnNumbers(rows)).toEqual([1, null]);
   });
 
   it('still gives a notice no turn, whatever the row claims', () => {

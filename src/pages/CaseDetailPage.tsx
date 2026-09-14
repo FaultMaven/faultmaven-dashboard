@@ -167,6 +167,11 @@ export default function CaseDetailPage() {
     dockOpen,
   });
 
+  // Once, beside the other header derivations: the count and its plural have to
+  // come from the same answer, or a later change that makes this non-pure
+  // renders "1 turns".
+  const turns = caseTurnCount(caseDetail);
+
   return (
     /*
      * VIEWPORT-BOUNDED, not content-driven — a fixed height, not `min-h-screen`.
@@ -272,7 +277,7 @@ export default function CaseDetailPage() {
             <span>&middot;</span>
             <span>Created {new Date(caseDetail.created_at).toLocaleDateString()}</span>
             <span>&middot;</span>
-            <span>{caseTurnCount(caseDetail)} turn{caseTurnCount(caseDetail) !== 1 ? 's' : ''}</span>
+            <span>{turns} turn{turns !== 1 ? 's' : ''}</span>
           </div>
         </div>
 

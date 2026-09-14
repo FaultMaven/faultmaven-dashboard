@@ -7,6 +7,7 @@ import {
   MESSAGE_AUTHOR_LABEL,
   messageKind,
   transcriptTurnNumbers,
+  transcriptTurnBoundaries,
   type MessageKind,
 } from '../lib/cases/messageAttribution';
 import { PreWithMermaid } from './MermaidDiagram';
@@ -83,15 +84,16 @@ export function TranscriptView({ messages }: TranscriptViewProps) {
   // `null` for a notice: it owns no turn and prints none. See
   // `transcriptTurnNumbers` for why, and for why that call is not made here.
   const turnNumbers = transcriptTurnNumbers(messages);
+  const turnStarts = transcriptTurnBoundaries(messages);
 
   return (
     <div className="py-2">
       {messages.map((msg, idx) => {
         const kind = messageKind(msg.role);
-        // A NEW TURN, not a new user row. An aside shares the turn before it,
-        // so keying the divider on the role drew a heavy rule and a fresh block
-        // that repeated the number above it — reading as a duplicated turn.
-        const isTurnStart = turnNumbers[idx] !== null && turnNumbers[idx] !== turnNumbers[idx - 1];
+        // A NEW TURN, from the derivation that knows what a turn is — not from
+        // comparing printed labels, which made a notice inside a turn look like
+        // a boundary and split a question from its own answer.
+        const isTurnStart = turnStarts[idx];
         const isFirst = idx === 0;
         const wrapperClass = isFirst
           ? ''
