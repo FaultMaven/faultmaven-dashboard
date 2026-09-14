@@ -3,7 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { accountInitials, elevatedRole, identityColor } from '../lib/identity';
 import { getAccountProfile, type AccountProfile } from '../lib/api';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
+import { useCopilotPresence } from '../hooks/useCopilotPresence';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
+import { COPILOT_STORE_URL } from '../copilot/storeListing';
 
 interface AccountMenuProps {
   onLogout: () => void;
@@ -18,6 +20,7 @@ interface AccountMenuProps {
  */
 export function AccountMenu({ onLogout }: AccountMenuProps) {
   const prefersExtension = usePrefersExtensionForChat();
+  const copilotInstalled = useCopilotPresence();
   const { authState } = useAuth();
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
@@ -214,7 +217,7 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
                 type="checkbox"
                 checked={prefersExtension}
                 onChange={(e) => setPrefersExtensionForChat(e.target.checked)}
-                aria-describedby="chat-surface-help"
+                aria-describedby="chat-surface-help chat-surface-prerequisite"
                 className="mt-0.5 accent-fm-accent"
               />
               <span className="min-w-0">
@@ -228,6 +231,72 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
                 </span>
               </span>
             </label>
+
+            {/*
+              THE PREREQUISITE, said before the switch rather than discovered
+              after it.
+
+              This toggle is the one place chat can be moved to the extension
+              WITHOUT the extension having been seen — `CopilotEntry`'s offer
+              only appears once something is announcing, and that is deliberate
+              (a self-hosted user who never granted host permission is
+              undetectable, so gating the toggle on detection would put the
+              preference out of reach of exactly the people most likely to want
+              it). The cost of leaving it open is that someone can switch chat
+              to a side panel they have not installed and be left with no chat
+              surface anywhere. A sentence and a link are what close that,
+              without closing the toggle.
+
+              OUTSIDE THE `<label>`, not inside it. A link nested in a label is
+              reachable but not usable: the click bubbles and toggles the
+              checkbox, so following it would flip the very preference the user
+              came here to read about first. It is referenced as a DESCRIPTION
+              instead, which is where it belongs anyway — the label names the
+              control, and a name that changed with the install state would be
+              announced as a different control.
+
+              DETECTION IS ONE-DIRECTIONAL, so the two branches are not
+              symmetric. Announcing PROVES installed, so that branch states it.
+              Silence proves nothing — the content script does not register
+              without host permission for this origin — so the other branch says
+              what the switch NEEDS, never what the user lacks. Told "you do not
+              have the extension", a self-hosted user typing into their side
+              panel would simply know the sentence was wrong.
+            */}
+            <p
+              id="chat-surface-prerequisite"
+              // A CALLOUT only while something is owed. A requirement the user
+              // has to act on earns the weight; one already met is a note, and
+              // boxing it would give a satisfied condition the same urgency as
+              // an unsatisfied one every time the menu is opened.
+              className={
+                copilotInstalled
+                  ? 'mt-1.5 pl-7 text-fm-xs leading-relaxed text-fm-success'
+                  : 'mt-2 ml-7 rounded-fm-btn bg-fm-surface-alt px-2.5 py-1.5 text-fm-xs leading-relaxed'
+              }
+            >
+              {copilotInstalled ? (
+                <>
+                  <span aria-hidden="true">✓ </span>
+                  Copilot extension installed in this browser.
+                </>
+              ) : (
+                <>
+                  <span className="text-fm-text-tertiary">
+                    Needs the Copilot extension installed in this browser.
+                  </span>{' '}
+                  <a
+                    href={COPILOT_STORE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-fm-accent hover:underline whitespace-nowrap rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-fm-accent"
+                  >
+                    Get the Copilot
+                    <span aria-hidden="true"> ↗</span>
+                  </a>
+                </>
+              )}
+            </p>
           </div>
 
           <div className="border-t border-fm-border p-1">

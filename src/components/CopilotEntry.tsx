@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useState } from 'react';
 
 /**
  * Dashboard → Copilot entry point.
@@ -48,50 +48,9 @@ import { useState, useSyncExternalStore } from 'react';
  * it hosts a panel — is `src/copilot/advertisement.ts`.
  */
 import { COPILOT_STORE_URL } from '../copilot/storeListing';
-import {
-  COPILOT_PRESENCE_ATTR,
-  subscribeToCopilotPresence,
-} from '../copilot/copilotCapability';
+import { useCopilotPresence } from '../hooks/useCopilotPresence';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
-
-/**
- * Is the extension announcing itself — now, and whenever that changes.
- *
- * `useSyncExternalStore` over the same subscription the withdrawal gate uses,
- * which is the pattern CLAUDE.md names for state that lives outside React in a
- * DOM attribute another world writes.
- *
- * It replaces a hand-rolled `useState` + one-shot 800ms re-check that shared
- * the gate's blind spot (#144): an extension that starts announcing LATER — a
- * self-hosted user granting the host permission from the options page and
- * coming back to the tab they already had open — was never noticed, so this
- * component kept offering "Get the Copilot" to someone who had just installed
- * it. Mild next to the gate's dark tab, and the same bug.
- *
- * `hasAttribute` rather than reading the version: this asks only whether
- * anything is there. What that build can DO is `copilotAcceptsWithdrawal`'s
- * question, and conflating them is what the version floor got wrong.
- */
-// Module scope, not an inline arrow: `useSyncExternalStore` calls getSnapshot
-// on every render and compares identities for the subscribe effect, so a fresh
-// closure each render makes React re-run that effect on every header render.
-function copilotIsAnnouncing(): boolean {
-  return (
-    typeof document !== 'undefined'
-    && document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR)
-  );
-}
-
-function useCopilotPresence(): boolean {
-  return useSyncExternalStore(
-    subscribeToCopilotPresence,
-    copilotIsAnnouncing,
-    // Server snapshot: never rendered on a server, but the API wants an answer.
-    // FALSE is the no-extension case, which is what a server would see.
-    () => false,
-  );
-}
 
 function CopilotGlyph({ className }: { className?: string }) {
   return (
