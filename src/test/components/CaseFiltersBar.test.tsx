@@ -3,6 +3,21 @@ import { describe, it, expect, vi } from 'vitest';
 import { CaseFiltersBar } from '../../components/CaseFiltersBar';
 import type { CaseFilters, Team } from '../../types/cases';
 
+/**
+ * `onChange` is a React-style setter: the bar hands it an UPDATER, not a value.
+ *
+ * That is what makes "preserves the other filters" structural rather than
+ * something each handler has to remember — it composes against whatever the
+ * filters are when it runs, including a debounced search firing 300ms after the
+ * keystroke that scheduled it. So the assertions below apply the updater to a
+ * known previous state and check the result, which is the guarantee that
+ * actually matters.
+ */
+function applyLast(onChange: ReturnType<typeof vi.fn>, prev: CaseFilters): CaseFilters {
+  const update = onChange.mock.calls.at(-1)?.[0];
+  return typeof update === 'function' ? update(prev) : update;
+}
+
 const TEAMS: Team[] = [
   { team_id: 't1', name: 'SRE', enterprise_id: 'ent-1' },
   { team_id: 't2', name: 'Platform', enterprise_id: 'ent-1' },
@@ -25,13 +40,37 @@ describe('CaseFiltersBar', () => {
       target: { value: 'payment' },
     });
 
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith({
-        state: 'resolved',
-        source: 'copilot',
-        search: 'payment',
-      })
-    );
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(applyLast(onChange, activeFilters)).toEqual({
+      state: 'resolved',
+      source: 'copilot',
+      search: 'payment',
+    });
+  });
+
+  it('a search that fires LATE still composes against the filters of the moment', async () => {
+    // The cancellation bug, from the other side. Type, then change another
+    // filter inside the 300ms window: the queued search used to be thrown away
+    // (a new debounced fn was built and the old one cancelled), leaving the
+    // uncontrolled box showing a term that was never applied. Now one debounced
+    // function lives for the life of the bar and composes at FIRE time.
+    const onChange = vi.fn();
+    render(<CaseFiltersBar filters={{}} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText('Search cases'), {
+      target: { value: 'payment' },
+    });
+    // ...and a date is picked before the debounce fires.
+    fireEvent.change(screen.getByLabelText('Created from'), {
+      target: { value: '2026-09-10' },
+    });
+
+    await waitFor(() => {
+      const applied = applyLast(onChange, { date_from: '2026-09-10' });
+      expect(applied.search).toBe('payment');
+    });
+    // The date the user picked in the meantime survives it.
+    expect(applyLast(onChange, { date_from: '2026-09-10' }).date_from).toBe('2026-09-10');
   });
 
   it('clears the search key when the query is emptied', async () => {
@@ -42,9 +81,11 @@ describe('CaseFiltersBar', () => {
     fireEvent.change(input, { target: { value: 'db' } });
     fireEvent.change(input, { target: { value: '' } });
 
-    await waitFor(() =>
-      expect(onChange).toHaveBeenLastCalledWith({ state: 'investigating', search: undefined })
-    );
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(applyLast(onChange, { state: 'investigating' })).toEqual({
+      state: 'investigating',
+      search: undefined,
+    });
   });
 
   it('applies a state chip without dropping an existing search term', () => {
@@ -53,7 +94,7 @@ describe('CaseFiltersBar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Resolved' }));
 
-    expect(onChange).toHaveBeenCalledWith({ search: 'db', state: 'resolved' });
+    expect(applyLast(onChange, { search: 'db' })).toEqual({ search: 'db', state: 'resolved' });
   });
 });
 
@@ -82,10 +123,12 @@ describe('CaseFiltersBar team filter (ADR-013 §D4)', () => {
     render(<CaseFiltersBar filters={{}} onChange={onChange} teams={TEAMS} />);
 
     fireEvent.change(screen.getByLabelText('Filter by team'), { target: { value: 't2' } });
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ team_id: 't2' }));
+    expect(applyLast(onChange, {})).toEqual(expect.objectContaining({ team_id: 't2' }));
 
     fireEvent.change(screen.getByLabelText('Filter by team'), { target: { value: '' } });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ team_id: undefined }));
+    expect(applyLast(onChange, { team_id: 't2' })).toEqual(
+      expect.objectContaining({ team_id: undefined }),
+    );
   });
 
   it('hides the team filter in stateOnly mode (admin view)', () => {
@@ -114,7 +157,10 @@ describe('CaseFiltersBar — creation-date range', () => {
       target: { value: '2026-09-10' },
     });
 
-    expect(onChange).toHaveBeenCalledWith({ state: 'resolved', date_from: '2026-09-10' });
+    expect(applyLast(onChange, { state: 'resolved' })).toEqual({
+      state: 'resolved',
+      date_from: '2026-09-10',
+    });
   });
 
   it('clears a bound when its input is emptied, keeping the other', () => {
@@ -128,7 +174,10 @@ describe('CaseFiltersBar — creation-date range', () => {
 
     fireEvent.change(screen.getByLabelText('Created from'), { target: { value: '' } });
 
-    expect(onChange).toHaveBeenCalledWith({ date_from: undefined, date_to: '2026-09-12' });
+    expect(applyLast(onChange, { date_from: '2026-09-10', date_to: '2026-09-12' })).toEqual({
+      date_from: undefined,
+      date_to: '2026-09-12',
+    });
   });
 
   it('will not let the browser offer an inverted range', () => {
@@ -157,23 +206,43 @@ describe('CaseFiltersBar — creation-date range', () => {
     expect(screen.getByLabelText('Created from')).toHaveValue('');
   });
 
-  it('DISABLES the dates while search results are showing', () => {
-    // `POST /cases/search` accepts a query, a limit and a team — no date bounds.
-    // An enabled input there would be #51 again in a narrower window: accepted,
-    // dropped, and indistinguishable from a range that matched nothing.
-    render(<CaseFiltersBar filters={{ search: 'payment' }} onChange={vi.fn()} searchMode />);
+  it('DISABLES the dates whenever a search term is set', () => {
+    // `POST /cases/search` takes a query, a limit, a team and a state — no date
+    // bounds. An enabled input there would be #51 again in a narrower window:
+    // accepted, dropped, and indistinguishable from a range that matched nothing.
+    //
+    // Keyed on `filters.search`, NOT on a `searchMode` the list hook sets after
+    // a request settles: that flag describes the last RESPONSE, and it is wrong
+    // in both directions the moment one fails — a rejected search leaves the
+    // dates enabled while a search is still what happens next.
+    render(<CaseFiltersBar filters={{ search: 'payment' }} onChange={vi.fn()} />);
 
     expect(screen.getByLabelText('Created from')).toBeDisabled();
     expect(screen.getByLabelText('Created to')).toBeDisabled();
-    // And it says why, rather than just going grey. The explanation sits on the
-    // GROUP, because a disabled input is not a hover target in every browser —
-    // the wrapper is, and it is what carries the label and the dimming too.
-    const group = screen.getByLabelText('Created from').closest('div');
-    expect(group).toHaveAttribute(
-      'title',
-      expect.stringContaining('do not apply to a text search'),
+  });
+
+  it('ANNOUNCES why they are disabled, not just dims them', () => {
+    // A `title` on the wrapping div was the only carrier of the reason, and
+    // assistive technology does not announce one on a non-interactive element:
+    // a screen-reader user heard "Created from, edit text, dimmed" and nothing
+    // more, and a keyboard-only sighted user could not hover it either.
+    render(<CaseFiltersBar filters={{ search: 'payment' }} onChange={vi.fn()} />);
+
+    const from = screen.getByLabelText('Created from');
+    const describedBy = from.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(
+      /do not apply to a text search/i,
     );
-    expect(group).toHaveClass('opacity-50');
+    // The sighted-hover path keeps working too.
+    expect(from).toHaveAttribute('title', expect.stringContaining('do not apply'));
+  });
+
+  it('carries no stale reason once the search is cleared', () => {
+    render(<CaseFiltersBar filters={{}} onChange={vi.fn()} />);
+    const from = screen.getByLabelText('Created from');
+    expect(from).toBeEnabled();
+    expect(from.getAttribute('aria-describedby')).toBeNull();
   });
 
   it('KEEPS the range while disabled, so clearing the search restores it', () => {
@@ -181,7 +250,7 @@ describe('CaseFiltersBar — creation-date range', () => {
     // user's range; they are meant to come back when the search box empties.
     const filters: CaseFilters = { date_from: '2026-09-10', search: 'payment' };
     const { rerender } = render(
-      <CaseFiltersBar filters={filters} onChange={vi.fn()} searchMode />,
+      <CaseFiltersBar filters={filters} onChange={vi.fn()} />,
     );
     expect(screen.getByLabelText('Created from')).toHaveValue('2026-09-10');
 

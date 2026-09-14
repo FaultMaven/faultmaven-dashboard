@@ -7,6 +7,7 @@ import type {
   CaseSummary,
   CaseListResponse,
   CaseFilters,
+  CaseState,
   CaseMessage,
   CaseMessagesResponse,
   CaseReport,
@@ -125,12 +126,24 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
 export async function searchCases(
   query: string,
   limit = 100,
-  teamId?: string
+  teamId?: string,
+  state?: CaseState
 ): Promise<CaseSummary[]> {
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, limit, ...(teamId && { team_id: teamId }) }),
+    body: JSON.stringify({
+      query,
+      limit,
+      ...(teamId && { team_id: teamId }),
+      // `CaseSearchRequest` DOES declare `state`, and not sending it left the
+      // state chips highlighted-but-inert during a search: click `Resolved`,
+      // watch the chip light up, and get resolved and unresolved cases back.
+      // That is the same accepted-and-dropped control the date inputs are
+      // disabled for — so this one is honoured rather than disabled, because
+      // unlike the dates the endpoint can actually take it.
+      ...(state && { state }),
+    }),
   });
   await handleAPIResponse(response, 'Failed to search cases');
   return response.json();

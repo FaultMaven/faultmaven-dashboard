@@ -109,3 +109,38 @@ describe('resolving a picked day to instants', () => {
     }
   });
 });
+
+describe('the far edges of what a date picker will accept', () => {
+  it('never emits an expanded-year string, whichever side of UTC we are on', () => {
+    // `<input type="date">` happily accepts 9999-12-31, and stepping past it can
+    // cross into `toISOString`'s EXPANDED form — measured in
+    // America/Los_Angeles, `new Date(9999, 11, 32)` is
+    // "+010000-01-01T08:00:00.000Z", which Pydantic's datetime parser refuses.
+    //
+    // WHETHER it overflows depends on the offset: in Auckland the same local
+    // day is still 9999-12-31T11:00:00Z and is perfectly sendable. So the
+    // assertion is the PROPERTY — never an expanded year — rather than a fixed
+    // verdict, which would pass west of UTC and fail east of it. (It did: this
+    // test asserted `undefined` and was red in Auckland and Kolkata.)
+    for (const day of ['9999-12-31', '9999-12-30', '2026-09-14']) {
+      for (const iso of [startOfLocalDay(day), exclusiveEndOfLocalDay(day)]) {
+        if (iso !== undefined) {
+          expect(iso, `${day} -> ${iso}`).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+          expect(Number.isNaN(new Date(iso).getTime())).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('still accepts an ordinary far-future day', () => {
+    // The guard must reject the unrepresentable, not everything distant.
+    expect(startOfLocalDay('9999-12-29')).toMatch(/^\d{4}-/);
+    expect(exclusiveEndOfLocalDay('9999-12-29')).toMatch(/^\d{4}-/);
+  });
+
+  it('steps past an impossible day rather than inventing a real one', () => {
+    // `new Date(2026, 1, 30)` is 2 March, so `date + 1` on an unvalidated
+    // 2026-02-30 would return 3 March — a bound for a day nobody picked.
+    expect(exclusiveEndOfLocalDay('2026-02-30')).toBeUndefined();
+  });
+});

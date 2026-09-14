@@ -404,10 +404,57 @@ describe('CaseListPage — the creation-date range reaches the request', () => {
     );
   });
 
-  it('greys the dates out once search results are what is on screen', async () => {
-    // Not while the debounce is still pending: the list showing at that moment
-    // is still the date-filtered one, and a control that goes grey before the
-    // thing it describes changes is its own small lie.
+  it('does not call a filtered-to-nothing list a FIRST RUN', async () => {
+    // Every predicate lives in the same WHERE clause as the COUNT — deliberately,
+    // it is what keeps pagination sound — so a filtered list reports the FILTERED
+    // total. Reading `total_count === 0` as "this account has no cases" therefore
+    // told a user with forty of them "No cases yet." over a `+ New Case` button,
+    // the moment their date range matched nothing. The creation-date range is the
+    // filter most likely to match nothing, which is how this surfaced.
+    mockListCases.mockResolvedValue({
+      cases: [],
+      total_count: 0,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(mockListCases).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Created from'), {
+        target: { value: '2026-01-01' },
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText(/no cases match these filters/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/no cases yet/i)).not.toBeInTheDocument();
+  });
+
+  it('still says "No cases yet" when nothing is filtering and there is nothing there', async () => {
+    // The fix must not swallow the real first run — which is the state the whole
+    // empty-state copy exists for.
+    mockListCases.mockResolvedValue({
+      cases: [],
+      total_count: 0,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+
+    await act(async () => { renderPage(); });
+
+    await waitFor(() => expect(screen.getByText(/no cases yet/i)).toBeInTheDocument());
+  });
+
+  it('greys the dates out once a search term is set', async () => {
+    // Keyed on `filters.search`, which the debounce is what SETS — so the
+    // inputs stay live while the user types and grey out exactly when a search
+    // becomes what happens next. A flag set after the response would be wrong
+    // in both directions whenever a request fails.
     const { searchCases } = await import('../../lib/api');
     (searchCases as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
