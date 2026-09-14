@@ -294,7 +294,7 @@ describe('AccountMenu — the Copilot prerequisite', () => {
     const checkbox = screen.getByRole('checkbox', {
       name: /Use the Copilot extension for chat/,
     });
-    expect(checkbox.getAttribute('aria-describedby')).toContain('chat-surface-prerequisite');
+    expect(checkbox.getAttribute('aria-describedby')).toContain('chat-surface-requirement');
   });
 
   it('does not flip the preference when the store link is followed', async () => {
@@ -359,6 +359,26 @@ describe('AccountMenu — the Copilot prerequisite', () => {
     const note = screen.getByText(/copilot extension detected/i);
     expect(note.textContent).toMatch(/side panel/i);
     expect(note.textContent).toMatch(/Chrome, Edge and Opera/);
+  });
+
+  it('describes the checkbox with TEXT ONLY, never the link', async () => {
+    // Pointing `aria-describedby` at the whole paragraph swept in the store
+    // link, so a screen reader read "Get the Copilot" as description prose on
+    // every focus of the checkbox — flattened to text, unactivatable from
+    // there, and repeated each time the control was reached.
+    await openMenu();
+
+    const checkbox = screen.getByRole('checkbox');
+    const ids = (checkbox.getAttribute('aria-describedby') ?? '').split(/\s+/);
+    expect(ids).toContain('chat-surface-requirement');
+
+    for (const id of ids) {
+      const described = document.getElementById(id);
+      expect(described, id).not.toBeNull();
+      expect(described!.querySelector('a, button, input, select, textarea')).toBeNull();
+    }
+    // The link is still on the page and still reachable — just not as prose.
+    expect(screen.getByRole('link', { name: /get the copilot/i })).toBeInTheDocument();
   });
 
   it('notices an extension that starts announcing while the menu is open', async () => {
