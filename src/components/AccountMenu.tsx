@@ -220,17 +220,31 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
                 aria-describedby="chat-surface-help chat-surface-prerequisite"
                 className="mt-0.5 accent-fm-accent"
               />
-              <span className="min-w-0">
-                <span className="block text-sm text-fm-text-primary">
-                  Use the Copilot extension for chat
-                </span>
-                <span id="chat-surface-help" className="block text-fm-xs text-fm-text-tertiary mt-0.5">
-                  {prefersExtension
-                    ? 'This Dashboard shows cases only. Turn this off to chat here again.'
-                    : 'Chat here, beside the case record.'}
-                </span>
+              <span className="min-w-0 text-sm text-fm-text-primary">
+                Use the Copilot extension for chat
               </span>
             </label>
+
+            {/* OUT of the label, which is where it always should have been.
+                The comment above has claimed since it was written that this
+                sentence is "a description, so it is referenced as one" — but it
+                was referenced as one AND left inside the `<label>`, and
+                `aria-describedby` does not remove content from the name
+                computation. Measured: the accessible name was
+                "Use the Copilot extension for chatChat here, beside the case
+                record." and became "…This Dashboard shows cases only. Turn this
+                off to chat here again." on toggle — a control announced as a
+                different control every time it is used, which is the exact
+                defect the comment says was avoided. Screen readers also read it
+                twice, once as name and once as description. */}
+            <span
+              id="chat-surface-help"
+              className="block pl-7 text-fm-xs text-fm-text-tertiary mt-0.5"
+            >
+              {prefersExtension
+                ? 'This Dashboard shows cases only. Turn this off to chat here again.'
+                : 'Chat here, beside the case record.'}
+            </span>
 
             {/*
               THE PREREQUISITE, said before the switch rather than discovered
@@ -262,6 +276,21 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
               what the switch NEEDS, never what the user lacks. Told "you do not
               have the extension", a self-hosted user typing into their side
               panel would simply know the sentence was wrong.
+
+              ⚠️ BOTH BRANCHES NAME THE BROWSERS, and the detected one most of
+              all. "Installed" is NOT the prerequisite — "installed AND has a
+              side panel to move chat into" is, and those come apart on Firefox:
+              `auth-bridge.content.ts` calls `announceCopilotPresence` with no
+              browser gate, so the MV2 build stamps the attribute and this reads
+              as installed, while `wxt.config.ts` declares `sidePanel` only for
+              CHROMIUM_TARGETS and no `sidebar_action` exists anywhere. A green
+              tick there told a Firefox user the prerequisite was met; they tick
+              the box, the Dashboard removes the dock, `New Case` and
+              `/investigate`, and NOTHING receives chat. This note existed to
+              prevent that strand and was instead encouraging it.
+
+              A web page cannot feature-detect another browser's side panel, so
+              the copy names where one exists rather than pretending to know.
             */}
             <p
               id="chat-surface-prerequisite"
@@ -278,12 +307,14 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
               {copilotInstalled ? (
                 <>
                   <span aria-hidden="true">✓ </span>
-                  Copilot extension installed in this browser.
+                  Copilot extension detected. Chat moves to its side panel, which
+                  Chrome, Edge and Opera have.
                 </>
               ) : (
                 <>
                   <span className="text-fm-text-tertiary">
-                    Needs the Copilot extension installed in this browser.
+                    Needs the Copilot extension, and a browser with a side panel
+                    (Chrome, Edge or Opera).
                   </span>{' '}
                   <a
                     href={COPILOT_STORE_URL}

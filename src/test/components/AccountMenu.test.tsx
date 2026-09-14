@@ -243,7 +243,7 @@ describe('AccountMenu — the Copilot prerequisite', () => {
     await openMenu();
 
     expect(
-      screen.getByText(/needs the copilot extension installed in this browser/i),
+      screen.getByText(/needs the copilot extension, and a browser with a side panel/i),
     ).toBeInTheDocument();
     const link = screen.getByRole('link', { name: /get the copilot/i });
     expect(link).toHaveAttribute('href', COPILOT_STORE_URL);
@@ -267,7 +267,7 @@ describe('AccountMenu — the Copilot prerequisite', () => {
     await openMenu();
 
     expect(
-      screen.getByText(/copilot extension installed in this browser/i),
+      screen.getByText(/copilot extension detected/i),
     ).toBeInTheDocument();
     // Announcing PROVES installed, so a store link here is a nag for something
     // the user demonstrably already has.
@@ -301,17 +301,64 @@ describe('AccountMenu — the Copilot prerequisite', () => {
     // A link nested inside the `<label>` is reachable but not usable: the click
     // bubbles to the control, so going to install the extension would first
     // move chat to the extension that is not there yet.
-    const user = await openMenu();
-    const checkbox = screen.getByRole('checkbox', {
-      name: /Use the Copilot extension for chat/,
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(false);
+    //
+    // `window.open` is stubbed because happy-dom ACTUALLY NAVIGATES a
+    // `target="_blank"` anchor on click — measured: a userEvent click on a link
+    // pointed at a local server delivered a real request to it. Unstubbed, this
+    // line performed a live DNS + TLS round trip to the Chrome Web Store on
+    // every `pnpm test`, and on an isolated CI runner the rejection is swallowed
+    // into a detached page's console, leaving a slow test whose assertion would
+    // pass even if the click did nothing.
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      const user = await openMenu();
+      const checkbox = screen.getByRole('checkbox', {
+        name: /Use the Copilot extension for chat/,
+      }) as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
 
-    const link = screen.getByRole('link', { name: /get the copilot/i });
-    expect(link.closest('label')).toBeNull();
-    await user.click(link);
+      const link = screen.getByRole('link', { name: /get the copilot/i });
+      expect(link.closest('label')).toBeNull();
+      await user.click(link);
 
-    expect(checkbox.checked).toBe(false);
+      expect(checkbox.checked).toBe(false);
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it('gives the checkbox a name that does NOT change when it is toggled', () => {
+    // The whole reason the helper sentence is referenced rather than wrapped.
+    // `aria-describedby` does not remove content from the name computation, so
+    // a description left inside the `<label>` is ALSO the name — and this one
+    // changes with the preference, which announces the control as a different
+    // control every time it is used.
+    //
+    // Asserted as an EXACT string. The other tests here match the name with a
+    // partial regex, which passes whether or not the state sentence is glued to
+    // it — that is how this survived the review that introduced the note.
+    renderMenu();
+    fireEvent.click(screen.getByRole('button', { name: /^Account:/ }));
+
+    const checkbox = screen.getByRole('checkbox');
+    expect(checkbox.closest('label')?.textContent).toBe(
+      'Use the Copilot extension for chat',
+    );
+    expect(checkbox.getAttribute('aria-describedby')).toContain('chat-surface-help');
+  });
+
+  it('never tells anyone the prerequisite is met without naming the side panel', async () => {
+    // "Installed" is not the prerequisite; "installed AND has a side panel" is,
+    // and those come apart on Firefox: the content script announces presence
+    // with no browser gate, while the MV2 build declares no side panel at all.
+    // A bare green tick there says "you are ready" to the one population that
+    // is not, and taking the switch leaves them with no chat surface anywhere.
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
+    await openMenu();
+
+    const note = screen.getByText(/copilot extension detected/i);
+    expect(note.textContent).toMatch(/side panel/i);
+    expect(note.textContent).toMatch(/Chrome, Edge and Opera/);
   });
 
   it('notices an extension that starts announcing while the menu is open', async () => {
@@ -325,7 +372,7 @@ describe('AccountMenu — the Copilot prerequisite', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(/copilot extension installed in this browser/i),
+        screen.getByText(/copilot extension detected/i),
       ).toBeInTheDocument(),
     );
     expect(screen.queryByRole('link', { name: /get the copilot/i })).not.toBeInTheDocument();
