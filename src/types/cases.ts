@@ -168,6 +168,17 @@ export type AdminCaseMessagesResponse = Omit<
 export interface CaseFilters {
   state?: CaseState;
   source?: CaseSource;
+  /**
+   * Creation-date bounds, as CALENDAR DAYS (`YYYY-MM-DD`) — the shape a date
+   * picker produces and the shape this filter state is read back into. They are
+   * resolved to the API's instants in `listCases` (see `dateRange.ts`), because
+   * which instants a day means depends on where the viewer is, and the server
+   * correctly refuses to guess.
+   *
+   * They do NOT apply while `search` is set: `POST /cases/search` accepts no
+   * date bounds at all, so `CaseFiltersBar` disables the inputs rather than
+   * leave a control that silently does nothing (which is what #51 was).
+   */
   date_from?: string;
   date_to?: string;
   search?: string;

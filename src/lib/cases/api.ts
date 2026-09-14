@@ -1,5 +1,6 @@
 import { makeAuthenticatedRequest, buildQueryParams } from '../knowledge/client';
 import { handleAPIResponse } from '../knowledge/errors';
+import { startOfLocalDay, exclusiveEndOfLocalDay } from './dateRange';
 import type {
   AdminCaseListResult,
   CaseDetail,
@@ -24,6 +25,17 @@ const ADMIN_CASES_BASE = '/api/v1/admin/cases';
 
 /**
  * List investigation cases with optional filters and pagination.
+ *
+ * `date_from`/`date_to` are CALENDAR DAYS, as a date picker produces them, and
+ * they are resolved HERE into the instants contract 3.8.0 filters on, in the
+ * viewer's own timezone. The server's window is HALF-OPEN — `[created_after,
+ * created_before)` — so `created_before` is the first instant of the day AFTER
+ * `date_to`, and one day selected at both ends is that whole day, microseconds
+ * included. See `dateRange.ts` for why the obvious 23:59:59.999 is wrong.
+ *
+ * A day that is not a real day resolves to `undefined` and is simply not sent,
+ * which is the correct reading of a half-typed date input: no bound, rather
+ * than a bound the user did not mean.
  */
 export async function listCases(
   filters: CaseFilters = {},
@@ -33,11 +45,15 @@ export async function listCases(
   // The backend paginates by limit/offset (not page/page_size); FastAPI
   // silently drops unknown query params, so sending page/page_size returned the
   // same first slice for every page. Mirror getAdminCases and derive limit/offset.
+  const createdAfter = startOfLocalDay(filters.date_from);
+  const createdBefore = exclusiveEndOfLocalDay(filters.date_to);
   const params: Record<string, string | number | undefined> = {
     limit: pageSize,
     offset: page * pageSize,
     ...(filters.state && { state: filters.state }),
     ...(filters.source && { source: filters.source }),
+    ...(createdAfter && { created_after: createdAfter }),
+    ...(createdBefore && { created_before: createdBefore }),
     ...(filters.team_id && { team_id: filters.team_id }),
   };
 
@@ -114,6 +130,19 @@ export async function searchCases(
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    // ⚠️ NO `state`, even though `CaseSearchRequest` DECLARES one.
+    //
+    // Declaring a field is not applying it, and that distinction is the whole
+    // of #51: `CaseListFilter` carried `created_after` for its entire life
+    // while the route never bound it. `POST /cases/search` is the same shape
+    // one layer down — `CaseService.search_cases` calls
+    // `repository.search(query, user_id, limit, shared_case_ids,
+    // restrict_case_ids)` and never reads `search_request.state`, and
+    // `CaseRepository.search` declares no such parameter. Sending it would be
+    // accepted, ignored, and answered 200 with unfiltered results.
+    //
+    // So the state chips are DISABLED during a search instead, exactly like the
+    // date inputs. Tracked for the backend in faultmaven#1416.
     body: JSON.stringify({ query, limit, ...(teamId && { team_id: teamId }) }),
   });
   await handleAPIResponse(response, 'Failed to search cases');

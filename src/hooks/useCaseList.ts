@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { listCases, searchCases } from '../lib/api';
 import type { CaseSummary, CaseFilters } from '../types/cases';
 
@@ -18,7 +18,18 @@ export interface UseCaseListResult {
   /** True while the list reflects a free-text search (single, un-paginated page). */
   searchMode: boolean;
   filters: CaseFilters;
-  setFilters: (filters: CaseFilters) => void;
+  /**
+   * Accepts an updater as well as a value, exactly like React's own setter.
+   *
+   * `CaseFiltersBar`'s debounced search needs to compose against whatever the
+   * filters are WHEN IT FIRES, not when it was created. Closing over `filters`
+   * made a new debounced function on every filter change and the cleanup then
+   * cancelled the pending one, so picking a date within 300ms of typing threw
+   * the queued search away. A ref would fix the staleness but reads of
+   * `ref.current` during render are (rightly) refused by lint. The functional
+   * form has neither problem and is the shape React already uses.
+   */
+  setFilters: Dispatch<SetStateAction<CaseFilters>>;
   loadPage: (page: number) => Promise<void>;
 }
 
@@ -93,10 +104,9 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
     loadPage(0);
   }, [loadPage]);
 
-  const setFilters = useCallback((newFilters: CaseFilters) => {
-    setFiltersState(newFilters);
-    // loadPage will be called by the effect when filters change
-  }, []);
+  // Straight through: `setFiltersState` already accepts both shapes, and
+  // `loadPage` re-runs from the effect when `filters` changes.
+  const setFilters = setFiltersState;
 
   // In search mode the backend returns every match in one page, so collapse the
   // pager to a single page (Prev/Next disabled) instead of faking pages that

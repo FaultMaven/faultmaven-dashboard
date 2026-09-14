@@ -119,12 +119,35 @@ describe('useCaseList', () => {
     });
     await waitFor(() => expect(result.current.searchMode).toBe(true));
 
-    // Sends query + limit + the (here-undefined) team_id (limit-based, no
-    // page/page_size args). team_id rides through from the U12 team filter.
+    // Sends query + limit + the (here-undefined) team_id. NOTHING ELSE —
+    // `CaseSearchRequest` declares a `state` field, but `CaseService.search_cases`
+    // never reads it and `CaseRepository.search` has no such parameter, so
+    // sending it would be accepted, ignored, and answered 200 with unfiltered
+    // results (faultmaven#1416). The chips are disabled during a search instead.
     expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100, undefined);
     expect(result.current.cases).toHaveLength(60);
     // pageSize collapses to the result count => exactly one page in the pager.
     expect(Math.ceil(result.current.totalCount / result.current.pageSize)).toBe(1);
+  });
+
+  it('does NOT send a state the search endpoint would ignore', async () => {
+    // The trap this replaced: `CaseSearchRequest` declares `state`, so sending
+    // it typechecks and is accepted — and then nothing applies it. Declaring a
+    // field is not applying it, which is the whole of #51 one layer down. An
+    // earlier version of this file asserted the opposite and pinned it green.
+    mockSearchCases.mockResolvedValue([]);
+    const { result } = renderHook(() => useCaseList());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      result.current.setFilters({ search: 'db outage', state: 'resolved' });
+    });
+    await waitFor(() => expect(result.current.searchMode).toBe(true));
+
+    expect(mockSearchCases).toHaveBeenLastCalledWith('db outage', 100, undefined);
+    for (const call of mockSearchCases.mock.calls) {
+      expect(call).not.toContain('resolved');
+    }
   });
 
   it('ignores a superseded (out-of-order) response', async () => {

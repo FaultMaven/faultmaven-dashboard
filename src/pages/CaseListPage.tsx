@@ -26,6 +26,37 @@ export default function CaseListPage() {
     loadPage,
   } = useCaseList();
 
+  /**
+   * Is anything narrowing this list?
+   *
+   * Read from the filters themselves rather than from the row count, because
+   * the two answer different questions and only this one distinguishes "you
+   * have no cases" from "none match what you asked for". Every key that reaches
+   * a request is listed; `search` included, since a search that matches nothing
+   * is the same situation.
+   */
+  const isFiltered = Boolean(
+    filters.state
+      || filters.source
+      || filters.team_id
+      || filters.search
+      || filters.date_from
+      || filters.date_to,
+  );
+
+  /**
+   * BOTH conditions, because each alone gets a real case wrong.
+   *
+   * `totalCount === 0` alone calls a filtered-to-nothing list a first run —
+   * every predicate is in the same WHERE clause as the COUNT, so a date range
+   * matching nothing reports zero for an account with forty cases.
+   *
+   * `!isFiltered` alone calls PAGING PAST THE END a first run: no filter is
+   * set, the page is empty, and the account is full. `total_count` is what
+   * distinguishes that — it stays at the true total.
+   */
+  const showFirstRun = totalCount === 0 && !isFiltered;
+
   const handleLogout = async () => {
     await logoutAuth();
     await clearAuthState();
@@ -67,18 +98,27 @@ export default function CaseListPage() {
            * filter — `cases.length` cannot tell those apart. The first-run
            * question is asked once, at sign-in, by `resolvePostSignInLanding`.
            *
-           * The wording follows `total_count`, which is the whole account
-           * rather than this page of it.
+           * WHICH SENTENCE depends on whether anything is filtering, NOT on
+           * `total_count`. The comment here used to say `total_count` "is the
+           * whole account rather than this page of it" — true only with no
+           * filters. Every predicate lives in the same WHERE clause as the
+           * COUNT (deliberately: it is what keeps pagination sound), so a
+           * filtered list reports the FILTERED total. A date range matching
+           * nothing therefore returned `total_count: 0` and a user with forty
+           * cases was told "No cases yet." over a `+ New Case` button.
+           *
+           * The creation-date range is the filter most likely to match nothing,
+           * which is how this surfaced.
            */
           <div
             data-testid="cases-empty-state"
             className="border border-fm-border rounded-fm-card bg-fm-surface px-6 py-12 text-center"
           >
             <p className="text-fm-text-primary text-sm font-medium mb-1">
-              {totalCount === 0 ? 'No cases yet.' : 'No cases match these filters.'}
+              {showFirstRun ? 'No cases yet.' : 'No cases match these filters.'}
             </p>
             <p className="text-fm-text-secondary text-sm mb-5">
-              {totalCount === 0
+              {showFirstRun
                 ? prefersExtension
                   ? 'Start a new case from the Copilot and it will show up here.'
                   : 'Start a new case and it will show up here.'
