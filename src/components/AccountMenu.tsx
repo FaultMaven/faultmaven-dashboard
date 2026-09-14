@@ -217,7 +217,7 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
                 type="checkbox"
                 checked={prefersExtension}
                 onChange={(e) => setPrefersExtensionForChat(e.target.checked)}
-                aria-describedby="chat-surface-help chat-surface-prerequisite"
+                aria-describedby="chat-surface-help chat-surface-requirement"
                 className="mt-0.5 accent-fm-accent"
               />
               <span className="min-w-0 text-sm text-fm-text-primary">
@@ -293,26 +293,40 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
               the copy names where one exists rather than pretending to know.
             */}
             <p
-              id="chat-surface-prerequisite"
               // A CALLOUT only while something is owed. A requirement the user
               // has to act on earns the weight; one already met is a note, and
               // boxing it would give a satisfied condition the same urgency as
               // an unsatisfied one every time the menu is opened.
+              // SAME left edge in both branches, and the same as the helper
+              // sentence above (`pl-7` = 1.75rem). The detected branch indented
+              // with padding while the callout shifted its whole box by `ml-7`
+              // and then added its own `px-2.5`, putting its text 0.625rem
+              // further right — so the sentence visibly jumped left the moment
+              // an extension began announcing, which is the exact flow one of
+              // these tests exercises and none of them could see.
               className={
                 copilotInstalled
                   ? 'mt-1.5 pl-7 text-fm-xs leading-relaxed text-fm-success'
-                  : 'mt-2 ml-7 rounded-fm-btn bg-fm-surface-alt px-2.5 py-1.5 text-fm-xs leading-relaxed'
+                  : 'mt-2 ml-[1.125rem] rounded-fm-btn bg-fm-surface-alt px-2.5 py-1.5 text-fm-xs leading-relaxed'
               }
             >
               {copilotInstalled ? (
-                <>
+                <span id="chat-surface-requirement">
                   <span aria-hidden="true">✓ </span>
                   Copilot extension detected. Chat moves to its side panel, which
                   Chrome, Edge and Opera have.
-                </>
+                </span>
               ) : (
                 <>
-                  <span className="text-fm-text-tertiary">
+                  {/* THE DESCRIBED ELEMENT IS THIS SPAN, not the paragraph.
+                      Pointing `aria-describedby` at the whole `<p>` swept in the
+                      link below it, so a screen reader read "Get the Copilot" as
+                      description prose on every focus of the checkbox —
+                      flattened to text, with no way to activate it from there.
+                      The user had to leave the description and tab forward to
+                      reach the real link. Describedby targets should be
+                      non-interactive. */}
+                  <span id="chat-surface-requirement" className="text-fm-text-tertiary">
                     Needs the Copilot extension, and a browser with a side panel
                     (Chrome, Edge or Opera).
                   </span>{' '}
