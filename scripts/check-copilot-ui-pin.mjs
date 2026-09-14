@@ -59,6 +59,7 @@
  *     node scripts/check-copilot-ui-pin.mjs
  */
 import { readFileSync } from 'node:fs';
+import { isExactVersion } from './lib/exact-version.mjs';
 
 const PACKAGE_NAME = '@faultmaven/copilot-ui';
 const COPILOT_REPO = 'FaultMaven/faultmaven-copilot';
@@ -82,12 +83,31 @@ function githubHeaders() {
 }
 
 /** A raw file from a repository at a ref, parsed as JSON. */
-async function fetchJsonAtRef(repo, ref, path) {
-  const response = await fetch(`https://raw.githubusercontent.com/${repo}/${ref}/${path}`, {
-    headers: { 'User-Agent': 'faultmaven-dashboard-copilot-ui-pin-check' },
-  });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return JSON.parse(await response.text());
+async function fetchJsonAtRef(repo, ref, filePath) {
+  // AUTHENTICATED and retried. raw.githubusercontent is rate-limited per IP and
+  // CI shares a pool, so an unauthenticated read is a coin flip that this gate
+  // turns into "Unverifiable is not a pass" — reddening every open pull request
+  // for a transport blip, on a check that compares a version string.
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(
+        `https://raw.githubusercontent.com/${repo}/${ref}/${filePath}`,
+        { headers: { ...githubHeaders(), Accept: 'application/vnd.github.raw' } },
+      );
+      if (response.ok) return JSON.parse(await response.text());
+      // 4xx that is not rate limiting is an answer, not a blip.
+      if (response.status !== 429 && response.status < 500) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      lastError = new Error(`${response.status} ${response.statusText}`);
+    } catch (error) {
+      lastError = error;
+      if (!/^\d{3} /.test(error.message) === false) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+  }
+  throw lastError ?? new Error('unreachable');
 }
 
 /** The copilot repository's own API-contract pin, at a given commit. */
@@ -227,7 +247,8 @@ for (const field of ['repository', 'ref', 'contractVersion']) {
 // ---------------------------------------------------------------------------
 
 const GENERATOR = 'openapi-typescript';
-const ourGenerator = JSON.parse(readFileSync('package.json', 'utf8')).devDependencies?.[GENERATOR];
+// `pkg` is already parsed above; two parsers of the same bytes can disagree.
+const ourGenerator = pkg.devDependencies?.[GENERATOR];
 
 try {
   const theirPackage = await fetchJsonAtRef(COPILOT_REPO, pinnedSha, 'package.json');
@@ -249,11 +270,15 @@ try {
         '    release landing in one lockfile first fails it with a diff nobody\n' +
         '    authored. Move whichever is behind.',
     );
-  } else if (/^[\^~]/.test(ourGenerator)) {
+  } else if (!isExactVersion(ourGenerator)) {
+    // An EXACT-version test, not a `^`/`~` blacklist: `>=7.10.1`, `7.x`, `*`,
+    // `latest` and `7.10.1 - 7.11.0` are all ranges too, and all passed a
+    // prefix check while being precisely the drift this rule exists to stop.
     fail(
-      `\`${GENERATOR}\` is range-pinned (${ourGenerator}) in both repositories.\n` +
-        '    Equal ranges are not equal resolutions: the two lockfiles can drift\n' +
-        '    apart on the next install and fail `packageParity`. Pin exactly.',
+      `\`${GENERATOR}\` is not pinned to an exact version (${ourGenerator}) in either\n` +
+        '    repository. Equal ranges are not equal resolutions: the two lockfiles\n' +
+        '    can drift apart on the next install and fail `packageParity` with a\n' +
+        '    diff nobody authored. Pin exactly, in both.',
     );
   }
 } catch (error) {
@@ -271,8 +296,15 @@ const API_REPO = ourContract.repository ?? 'FaultMaven/faultmaven';
 const SLACK_REPO = 'FaultMaven/faultmaven-slack-agent';
 
 try {
-  const live = await fetchJsonAtRef(API_REPO, 'main', 'docs/reference/api/openapi.json');
-  const served = live?.info?.version;
+  // `contract_version.py` (~20 KB), not `openapi.json` (~500 KB): the same
+  // fact, 25x cheaper, on a gate that runs on every push — and it makes this
+  // script and the hop reporter agree on their source of truth.
+  const response = await fetch(
+    `https://raw.githubusercontent.com/${API_REPO}/main/faultmaven/api/contract_version.py`,
+    { headers: githubHeaders() },
+  );
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  const served = /API_CONTRACT_VERSION\s*=\s*"([^"]+)"/.exec(await response.text())?.[1];
   if (served && served !== ourContract.contractVersion) {
     console.warn(
       `\nNOTE: the API contract pin is ${ourContract.contractVersion}; ` +
@@ -299,6 +331,37 @@ try {
   }
 } catch (error) {
   console.warn(`\nNOTE: could not read ${SLACK_REPO}'s contract pin (${error.message}); skipping.\n`);
+}
+
+// ---------------------------------------------------------------------------
+// Advisory: the hop reporter is duplicated, so say when the copies differ.
+// ---------------------------------------------------------------------------
+
+// `report-contract-hop.mjs` exists in both repositories with nothing keeping it
+// in sync, and the two had already drifted by a character within the pull
+// request that introduced them. The generated API client gets `packageParity`
+// asserting byte identity; this gets a note, because a stale copy in the other
+// repository is that repository's decision — the same reasoning as staleness
+// above. Fixing it in one place and not the other is the failure mode.
+try {
+  const response = await fetch(
+    `https://raw.githubusercontent.com/${COPILOT_REPO}/${COPILOT_BRANCH}/scripts/report-contract-hop.mjs`,
+    { headers: githubHeaders() },
+  );
+  if (response.ok) {
+    const theirs = await response.text();
+    const ours = readFileSync('scripts/report-contract-hop.mjs', 'utf8');
+    if (theirs.trim() !== ours.trim()) {
+      console.warn(
+        `\nNOTE: scripts/report-contract-hop.mjs differs from ${COPILOT_REPO}@${COPILOT_BRANCH}.\n` +
+          '      It is duplicated by hand, so a fix authored once lands once. If this\n' +
+          '      pull request changed it, the other repository needs the same change.\n' +
+          '      Advisory: which copy is right is not a question this gate can answer.\n',
+      );
+    }
+  }
+} catch {
+  /* advisory: a read that fails says nothing rather than failing the build */
 }
 
 report();
