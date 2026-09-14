@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useState } from 'react';
 
 /**
  * Dashboard → Copilot entry point.
@@ -37,61 +37,24 @@ import { useState, useSyncExternalStore } from 'react';
  * extension in the first place. A preference cannot strand anyone, because the
  * person who set it is the person who can unset it.
  *
- * Presence is detected via the marker the copilot's content script sets on this
- * page (it runs on the dashboard origin): {@link COPILOT_PRESENCE_ATTR}, and
- * the readiness event to say "look again". THE VALUES ARE NOT
- * REPEATED HERE — they belong to `@faultmaven/copilot-ui/contract`, and prose
- * naming them is a copy that a rename leaves asserting the old names with
+ * Presence is asked of {@link useCopilotPresence}, which owns the question for
+ * both readers of it (this entry point and the account menu's prerequisite
+ * note) — the marker and the readiness event moved there with it. THE VALUES
+ * ARE NOT REPEATED HERE — they belong to `@faultmaven/copilot-ui/contract`, and
+ * prose naming them is a copy that a rename leaves asserting the old names with
  * nothing red. There is nothing left to "keep in sync" by hand.
+ *
+ * The `{@link}` above points at the hook rather than at the attribute, because
+ * this file no longer imports the attribute: a reference that does not resolve
+ * from the file it sits in is the same stale-copy problem in miniature.
  *
  * The advertisement travelling the other way — this page telling the extension
  * it hosts a panel — is `src/copilot/advertisement.ts`.
  */
 import { COPILOT_STORE_URL } from '../copilot/storeListing';
-import {
-  COPILOT_PRESENCE_ATTR,
-  subscribeToCopilotPresence,
-} from '../copilot/copilotCapability';
+import { useCopilotPresence } from '../hooks/useCopilotPresence';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
-
-/**
- * Is the extension announcing itself — now, and whenever that changes.
- *
- * `useSyncExternalStore` over the same subscription the withdrawal gate uses,
- * which is the pattern CLAUDE.md names for state that lives outside React in a
- * DOM attribute another world writes.
- *
- * It replaces a hand-rolled `useState` + one-shot 800ms re-check that shared
- * the gate's blind spot (#144): an extension that starts announcing LATER — a
- * self-hosted user granting the host permission from the options page and
- * coming back to the tab they already had open — was never noticed, so this
- * component kept offering "Get the Copilot" to someone who had just installed
- * it. Mild next to the gate's dark tab, and the same bug.
- *
- * `hasAttribute` rather than reading the version: this asks only whether
- * anything is there. What that build can DO is `copilotAcceptsWithdrawal`'s
- * question, and conflating them is what the version floor got wrong.
- */
-// Module scope, not an inline arrow: `useSyncExternalStore` calls getSnapshot
-// on every render and compares identities for the subscribe effect, so a fresh
-// closure each render makes React re-run that effect on every header render.
-function copilotIsAnnouncing(): boolean {
-  return (
-    typeof document !== 'undefined'
-    && document.documentElement.hasAttribute(COPILOT_PRESENCE_ATTR)
-  );
-}
-
-function useCopilotPresence(): boolean {
-  return useSyncExternalStore(
-    subscribeToCopilotPresence,
-    copilotIsAnnouncing,
-    // Server snapshot: never rendered on a server, but the API wants an answer.
-    // FALSE is the no-extension case, which is what a server would see.
-    () => false,
-  );
-}
 
 function CopilotGlyph({ className }: { className?: string }) {
   return (

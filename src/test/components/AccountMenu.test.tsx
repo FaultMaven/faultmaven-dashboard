@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AccountMenu } from '../../components/AccountMenu';
@@ -10,6 +10,12 @@ vi.mock('../../lib/api', () => ({ getAccountProfile: vi.fn() }));
 
 import { useAuth } from '../../context/AuthContext';
 import { getAccountProfile } from '../../lib/api';
+import { COPILOT_PRESENCE_ATTR } from '../../copilot/copilotCapability';
+import { COPILOT_STORE_URL } from '../../copilot/storeListing';
+import {
+  resetChatSurfaceForTests,
+  setPrefersExtensionForChat,
+} from '../../lib/copilot/chatSurfacePreference';
 
 const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
 const mockGetAccountProfile = getAccountProfile as ReturnType<typeof vi.fn>;
@@ -197,5 +203,178 @@ describe('AccountMenu', () => {
     const { container } = render(<AccountMenu onLogout={vi.fn()} />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+/**
+ * THE PREREQUISITE ON THE CHAT-SURFACE TOGGLE.
+ *
+ * This toggle is the only way chat reaches the extension without the extension
+ * ever having been seen: `CopilotEntry`'s offer appears only once something is
+ * announcing, and the toggle deliberately does not gate on that, because a
+ * self-hosted user who never granted host permission is undetectable and would
+ * otherwise lose the preference entirely. So the toggle can strand someone —
+ * chat moved to a side panel they have not installed, and no chat surface left
+ * on the page. The note is what closes that without closing the toggle.
+ */
+describe('AccountMenu — the Copilot prerequisite', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAccountProfile.mockResolvedValue(PROFILE);
+  });
+
+  afterEach(() => {
+    // Both signals this block writes. The preference lives in a module-level
+    // cache as well as in localStorage, so clearing one leaves the other
+    // asserting the previous test's state.
+    document.documentElement.removeAttribute(COPILOT_PRESENCE_ATTR);
+    localStorage.clear();
+    resetChatSurfaceForTests();
+  });
+
+  async function openMenu() {
+    const user = userEvent.setup();
+    renderMenu();
+    await user.click(screen.getByRole('button', { name: /^Account:/ }));
+    return user;
+  }
+
+  it('names what the switch needs, and links the published listing', async () => {
+    await openMenu();
+
+    expect(
+      screen.getByText(/needs the copilot extension, and a browser with a side panel/i),
+    ).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /get the copilot/i });
+    expect(link).toHaveAttribute('href', COPILOT_STORE_URL);
+    // A new tab, and no window.opener handed to the store page.
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
+  it('still offers the way out AFTER the switch, not only before it', async () => {
+    // The person this rescues has already flipped it, found no side panel, and
+    // come back. Showing the link only while the preference is off would hide
+    // it from exactly them.
+    setPrefersExtensionForChat(true);
+    await openMenu();
+
+    expect(screen.getByRole('link', { name: /get the copilot/i })).toBeInTheDocument();
+  });
+
+  it('stops asking once the extension announces itself', async () => {
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
+    await openMenu();
+
+    expect(
+      screen.getByText(/copilot extension detected/i),
+    ).toBeInTheDocument();
+    // Announcing PROVES installed, so a store link here is a nag for something
+    // the user demonstrably already has.
+    expect(screen.queryByRole('link', { name: /get the copilot/i })).not.toBeInTheDocument();
+  });
+
+  it('never claims the extension is ABSENT, only that the switch needs it', async () => {
+    // Detection is one-directional. The content script registers only once host
+    // permission for this origin is granted, so a self-hosted user chatting in
+    // their side panel right now reads as "not announcing" here. Told they do
+    // not have it, they would simply know the sentence was wrong.
+    await openMenu();
+
+    const note = screen.getByText(/needs the copilot extension/i);
+    expect(note.textContent).not.toMatch(/not installed|don't have|do not have/i);
+  });
+
+  it('describes the checkbox rather than renaming it', async () => {
+    // In the label, the note would be part of the ACCESSIBLE NAME — and a
+    // control whose name changes when an extension appears is announced as a
+    // different control.
+    await openMenu();
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /Use the Copilot extension for chat/,
+    });
+    expect(checkbox.getAttribute('aria-describedby')).toContain('chat-surface-prerequisite');
+  });
+
+  it('does not flip the preference when the store link is followed', async () => {
+    // A link nested inside the `<label>` is reachable but not usable: the click
+    // bubbles to the control, so going to install the extension would first
+    // move chat to the extension that is not there yet.
+    //
+    // `window.open` is stubbed because happy-dom ACTUALLY NAVIGATES a
+    // `target="_blank"` anchor on click — measured: a userEvent click on a link
+    // pointed at a local server delivered a real request to it. Unstubbed, this
+    // line performed a live DNS + TLS round trip to the Chrome Web Store on
+    // every `pnpm test`, and on an isolated CI runner the rejection is swallowed
+    // into a detached page's console, leaving a slow test whose assertion would
+    // pass even if the click did nothing.
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      const user = await openMenu();
+      const checkbox = screen.getByRole('checkbox', {
+        name: /Use the Copilot extension for chat/,
+      }) as HTMLInputElement;
+      expect(checkbox.checked).toBe(false);
+
+      const link = screen.getByRole('link', { name: /get the copilot/i });
+      expect(link.closest('label')).toBeNull();
+      await user.click(link);
+
+      expect(checkbox.checked).toBe(false);
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it('gives the checkbox a name that does NOT change when it is toggled', () => {
+    // The whole reason the helper sentence is referenced rather than wrapped.
+    // `aria-describedby` does not remove content from the name computation, so
+    // a description left inside the `<label>` is ALSO the name — and this one
+    // changes with the preference, which announces the control as a different
+    // control every time it is used.
+    //
+    // Asserted as an EXACT string. The other tests here match the name with a
+    // partial regex, which passes whether or not the state sentence is glued to
+    // it — that is how this survived the review that introduced the note.
+    renderMenu();
+    fireEvent.click(screen.getByRole('button', { name: /^Account:/ }));
+
+    const checkbox = screen.getByRole('checkbox');
+    expect(checkbox.closest('label')?.textContent).toBe(
+      'Use the Copilot extension for chat',
+    );
+    expect(checkbox.getAttribute('aria-describedby')).toContain('chat-surface-help');
+  });
+
+  it('never tells anyone the prerequisite is met without naming the side panel', async () => {
+    // "Installed" is not the prerequisite; "installed AND has a side panel" is,
+    // and those come apart on Firefox: the content script announces presence
+    // with no browser gate, while the MV2 build declares no side panel at all.
+    // A bare green tick there says "you are ready" to the one population that
+    // is not, and taking the switch leaves them with no chat surface anywhere.
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
+    await openMenu();
+
+    const note = screen.getByText(/copilot extension detected/i);
+    expect(note.textContent).toMatch(/side panel/i);
+    expect(note.textContent).toMatch(/Chrome, Edge and Opera/);
+  });
+
+  it('notices an extension that starts announcing while the menu is open', async () => {
+    // The self-hosted grant flow: host permission is granted from the options
+    // page at an arbitrary moment, the bridge is injected, and the attribute
+    // appears on a tab that has been open the whole time (#144).
+    await openMenu();
+    expect(screen.getByRole('link', { name: /get the copilot/i })).toBeInTheDocument();
+
+    document.documentElement.setAttribute(COPILOT_PRESENCE_ATTR, '1.0.4');
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/copilot extension detected/i),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('link', { name: /get the copilot/i })).not.toBeInTheDocument();
   });
 });

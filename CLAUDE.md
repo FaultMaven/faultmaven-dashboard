@@ -91,7 +91,9 @@ src/
 │   ├── advertisement.ts      # data-faultmaven-dashboard-panel + FM_DASHBOARD_PANEL_AVAILABLE
 │   └── storeListing.ts       # The published Chrome Web Store URL, shared by both consumers
 ├── context/                  # AuthContext (global auth state)
-├── hooks/                    # Custom hooks (useKBList for KB paging/search/delete)
+├── hooks/                    # Custom hooks (useKBList for KB paging/search/delete;
+│                             #   useCopilotPresence — is the extension announcing,
+│                             #   shared by CopilotEntry and AccountMenu)
 └── lib/                      # Core logic
     ├── api.ts                # Barrel re-exports from modular API clients
     ├── auth/                 # Auth (AuthManager, login/logout, token storage)
@@ -428,6 +430,24 @@ surface. The cost is that support cannot read it.
   that is not redundant with the offer: on a self-hosted origin without a
   host-permission grant the Dashboard never learns the extension exists, so the
   offer never appears for exactly the people most likely to want it.
+- **And because the menu does not gate on detection, it NAMES THE
+  PREREQUISITE.** It is the one place chat can move to the extension without
+  the extension ever having been seen, so someone can switch to a side panel
+  they never installed and be left with no chat surface at all. A note under
+  the toggle says what the switch needs and links the published listing
+  (`COPILOT_STORE_URL` — the same constant the header CTA uses, and the only
+  store URL the source may contain). It renders in BOTH preference states: the
+  person it rescues has usually already flipped it, found nothing, and come
+  back.
+- **The note's two branches are not symmetric, because detection is
+  one-directional.** Announcing PROVES installed, so that branch states it as a
+  fact — plain green text, no link, nothing to nag about. Silence proves
+  nothing (no host permission → no content script), so the other branch says
+  what the switch NEEDS rather than what the user lacks, and is the one that
+  gets the callout treatment: a requirement you must act on earns the weight, a
+  satisfied one does not. Presence comes from `useCopilotPresence`, shared with
+  `CopilotEntry` so the header cannot offer to move chat to an extension the
+  menu beside it is telling you to install.
 - **A module store, not React context.** `resolvePostSignInLanding()` runs
   during sign-in, before the app shell exists, and the in-tree readers are
   scattered across the nav, the case page and the account menu. A provider would

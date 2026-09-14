@@ -3,7 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { accountInitials, elevatedRole, identityColor } from '../lib/identity';
 import { getAccountProfile, type AccountProfile } from '../lib/api';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
+import { useCopilotPresence } from '../hooks/useCopilotPresence';
 import { setPrefersExtensionForChat } from '../lib/copilot/chatSurfacePreference';
+import { COPILOT_STORE_URL } from '../copilot/storeListing';
 
 interface AccountMenuProps {
   onLogout: () => void;
@@ -18,6 +20,7 @@ interface AccountMenuProps {
  */
 export function AccountMenu({ onLogout }: AccountMenuProps) {
   const prefersExtension = usePrefersExtensionForChat();
+  const copilotInstalled = useCopilotPresence();
   const { authState } = useAuth();
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
@@ -214,20 +217,117 @@ export function AccountMenu({ onLogout }: AccountMenuProps) {
                 type="checkbox"
                 checked={prefersExtension}
                 onChange={(e) => setPrefersExtensionForChat(e.target.checked)}
-                aria-describedby="chat-surface-help"
+                aria-describedby="chat-surface-help chat-surface-prerequisite"
                 className="mt-0.5 accent-fm-accent"
               />
-              <span className="min-w-0">
-                <span className="block text-sm text-fm-text-primary">
-                  Use the Copilot extension for chat
-                </span>
-                <span id="chat-surface-help" className="block text-fm-xs text-fm-text-tertiary mt-0.5">
-                  {prefersExtension
-                    ? 'This Dashboard shows cases only. Turn this off to chat here again.'
-                    : 'Chat here, beside the case record.'}
-                </span>
+              <span className="min-w-0 text-sm text-fm-text-primary">
+                Use the Copilot extension for chat
               </span>
             </label>
+
+            {/* OUT of the label, which is where it always should have been.
+                The comment above has claimed since it was written that this
+                sentence is "a description, so it is referenced as one" — but it
+                was referenced as one AND left inside the `<label>`, and
+                `aria-describedby` does not remove content from the name
+                computation. Measured: the accessible name was
+                "Use the Copilot extension for chatChat here, beside the case
+                record." and became "…This Dashboard shows cases only. Turn this
+                off to chat here again." on toggle — a control announced as a
+                different control every time it is used, which is the exact
+                defect the comment says was avoided. Screen readers also read it
+                twice, once as name and once as description. */}
+            <span
+              id="chat-surface-help"
+              className="block pl-7 text-fm-xs text-fm-text-tertiary mt-0.5"
+            >
+              {prefersExtension
+                ? 'This Dashboard shows cases only. Turn this off to chat here again.'
+                : 'Chat here, beside the case record.'}
+            </span>
+
+            {/*
+              THE PREREQUISITE, said before the switch rather than discovered
+              after it.
+
+              This toggle is the one place chat can be moved to the extension
+              WITHOUT the extension having been seen — `CopilotEntry`'s offer
+              only appears once something is announcing, and that is deliberate
+              (a self-hosted user who never granted host permission is
+              undetectable, so gating the toggle on detection would put the
+              preference out of reach of exactly the people most likely to want
+              it). The cost of leaving it open is that someone can switch chat
+              to a side panel they have not installed and be left with no chat
+              surface anywhere. A sentence and a link are what close that,
+              without closing the toggle.
+
+              OUTSIDE THE `<label>`, not inside it. A link nested in a label is
+              reachable but not usable: the click bubbles and toggles the
+              checkbox, so following it would flip the very preference the user
+              came here to read about first. It is referenced as a DESCRIPTION
+              instead, which is where it belongs anyway — the label names the
+              control, and a name that changed with the install state would be
+              announced as a different control.
+
+              DETECTION IS ONE-DIRECTIONAL, so the two branches are not
+              symmetric. Announcing PROVES installed, so that branch states it.
+              Silence proves nothing — the content script does not register
+              without host permission for this origin — so the other branch says
+              what the switch NEEDS, never what the user lacks. Told "you do not
+              have the extension", a self-hosted user typing into their side
+              panel would simply know the sentence was wrong.
+
+              ⚠️ BOTH BRANCHES NAME THE BROWSERS, and the detected one most of
+              all. "Installed" is NOT the prerequisite — "installed AND has a
+              side panel to move chat into" is, and those come apart on Firefox:
+              `auth-bridge.content.ts` calls `announceCopilotPresence` with no
+              browser gate, so the MV2 build stamps the attribute and this reads
+              as installed, while `wxt.config.ts` declares `sidePanel` only for
+              CHROMIUM_TARGETS and no `sidebar_action` exists anywhere. A green
+              tick there told a Firefox user the prerequisite was met; they tick
+              the box, the Dashboard removes the dock, `New Case` and
+              `/investigate`, and NOTHING receives chat. This note existed to
+              prevent that strand and was instead encouraging it.
+
+              A web page cannot feature-detect another browser's side panel, so
+              the copy names where one exists rather than pretending to know.
+            */}
+            <p
+              id="chat-surface-prerequisite"
+              // A CALLOUT only while something is owed. A requirement the user
+              // has to act on earns the weight; one already met is a note, and
+              // boxing it would give a satisfied condition the same urgency as
+              // an unsatisfied one every time the menu is opened.
+              className={
+                copilotInstalled
+                  ? 'mt-1.5 pl-7 text-fm-xs leading-relaxed text-fm-success'
+                  : 'mt-2 ml-7 rounded-fm-btn bg-fm-surface-alt px-2.5 py-1.5 text-fm-xs leading-relaxed'
+              }
+            >
+              {copilotInstalled ? (
+                <>
+                  <span aria-hidden="true">✓ </span>
+                  Copilot extension detected. Chat moves to its side panel, which
+                  Chrome, Edge and Opera have.
+                </>
+              ) : (
+                <>
+                  <span className="text-fm-text-tertiary">
+                    Needs the Copilot extension, and a browser with a side panel
+                    (Chrome, Edge or Opera).
+                  </span>{' '}
+                  <a
+                    href={COPILOT_STORE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-fm-accent hover:underline whitespace-nowrap rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-fm-accent"
+                  >
+                    Get the Copilot
+                    <span aria-hidden="true"> ↗</span>
+                  </a>
+                </>
+              )}
+            </p>
           </div>
 
           <div className="border-t border-fm-border p-1">
