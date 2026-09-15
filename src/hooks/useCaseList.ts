@@ -17,7 +17,32 @@ export interface UseCaseListResult {
   pageSize: number;
   /** True while the list reflects a free-text search (single, un-paginated page). */
   searchMode: boolean;
+  /**
+   * The filters PENDING in the bar — what the next request will carry.
+   *
+   * Right for controls the user is operating; WRONG for describing the rows on
+   * screen, which is what `appliedFilters` is for.
+   */
   filters: CaseFilters;
+  /**
+   * The filters the rows in `cases` were actually fetched with — a property of
+   * the LAST RESPONSE, exactly like `searchMode` (which is now derived from
+   * it, rather than being a second copy that can disagree).
+   *
+   * Anything DESCRIBING the list must read this, never `filters`. The two come
+   * apart whenever a request fails, and the rows stay on screen either way:
+   *
+   * - An inverted range (`from` after `to`) is a 422. `error` is set, `cases`
+   *   still holds the previous unfiltered page, and the page renders those
+   *   rows — so a description drawn from `filters` would head them `Created`
+   *   over a result set no creation-date bound ever touched.
+   * - A rejected search leaves `filters.search` set while the rows on screen
+   *   are still the date-filtered ones, which is the same error mirrored.
+   *
+   * It lags by design: on failure it keeps describing the rows that are still
+   * displayed rather than the request that did not land.
+   */
+  appliedFilters: CaseFilters;
   /**
    * Accepts an updater as well as a value, exactly like React's own setter.
    *
@@ -50,7 +75,15 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [filters, setFiltersState] = useState<CaseFilters>({});
-  const [searchMode, setSearchMode] = useState(false);
+  /**
+   * What the rows in `cases` were fetched with. `{}` to begin with, which is
+   * the truth: `cases` starts empty and nothing has been applied to it.
+   *
+   * Updated ONLY on success, beside `setCases`, so it always describes the
+   * rows actually on screen — see the interface docstring for the two ways
+   * `filters` and this come apart.
+   */
+  const [appliedFilters, setAppliedFilters] = useState<CaseFilters>({});
 
   // Monotonic request id: only the latest in-flight load may apply its result,
   // so out-of-order responses from rapid filter/page changes can't clobber
@@ -68,24 +101,27 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
   const loadPage = useCallback(
     async (nextPage: number) => {
       const reqId = ++reqIdRef.current;
+      // The filters THIS request carries, pinned before the first await so a
+      // later edit cannot be mistaken for what was sent.
+      const sent = filters;
       setLoading(true);
       setError(null);
       try {
-        if (filters.search) {
-          const results = await searchCases(filters.search, SEARCH_LIMIT, filters.team_id);
+        if (sent.search) {
+          const results = await searchCases(sent.search, SEARCH_LIMIT, sent.team_id);
           if (reqId !== reqIdRef.current || !mountedRef.current) return;
           setCases(results);
           // Not the grand total — just the count of matches we can show. The
           // pager collapses to one page in search mode (see effectivePageSize).
           setTotalCount(results.length);
-          setSearchMode(true);
+          setAppliedFilters(sent);
           setPage(0);
         } else {
-          const response = await listCases(filters, nextPage, pageSize);
+          const response = await listCases(sent, nextPage, pageSize);
           if (reqId !== reqIdRef.current || !mountedRef.current) return;
           setCases(response.cases);
           setTotalCount(response.total_count);
-          setSearchMode(false);
+          setAppliedFilters(sent);
           setPage(nextPage);
         }
       } catch (err) {
@@ -108,6 +144,17 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
   // `loadPage` re-runs from the effect when `filters` changes.
   const setFilters = setFiltersState;
 
+  /**
+   * DERIVED from the applied filters, not tracked separately.
+   *
+   * It was a `useState` set to `true` in the search branch and `false` in the
+   * list branch — a second copy of something `appliedFilters` already says, and
+   * two states that must agree is the defect this list has now been bitten by
+   * twice. It is the same value in every reachable state: both were written
+   * only on success, neither on failure, and both start out falsy.
+   */
+  const searchMode = Boolean(appliedFilters.search);
+
   // In search mode the backend returns every match in one page, so collapse the
   // pager to a single page (Prev/Next disabled) instead of faking pages that
   // would silently hide matches beyond the first slice.
@@ -122,6 +169,7 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
     pageSize: effectivePageSize,
     searchMode,
     filters,
+    appliedFilters,
     setFilters,
     loadPage,
   };

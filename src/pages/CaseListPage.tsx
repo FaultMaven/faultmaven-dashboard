@@ -8,6 +8,7 @@ import { useCaseList } from '../hooks/useCaseList';
 import { useTeamSharing } from '../hooks/useTeamSharing';
 import { logoutAuth } from '../lib/api';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
+import { resolveCaseDateColumn } from '../lib/cases/dateColumn';
 import { ACCENT_BUTTON } from '../lib/ui/chip';
 
 export default function CaseListPage() {
@@ -22,6 +23,7 @@ export default function CaseListPage() {
     page,
     pageSize,
     filters,
+    appliedFilters,
     setFilters,
     loadPage,
   } = useCaseList();
@@ -57,6 +59,48 @@ export default function CaseListPage() {
    */
   const showFirstRun = totalCount === 0 && !isFiltered;
 
+  /**
+   * WHICH DATE the table's one date column shows — resolved HERE, once, and
+   * handed to `CaseTable` whole (faultmaven-dashboard#155).
+   *
+   * The table must not sniff the filters for itself. Two consumers of one
+   * question — the header and the cell — that each re-derive it from the same
+   * inputs will eventually disagree, and a `Created` header over a
+   * `last_activity_at` cell is precisely the lie this fixes. `CaseTabs` takes
+   * its layout the same way and for the same reason.
+   *
+   * FROM `appliedFilters`, NOT `filters`. The column DESCRIBES the rows in
+   * hand, so it has to be computed from what fetched them — the same
+   * "property of the last response" distinction `searchMode` is built on. The
+   * two come apart precisely when a request fails and the previous rows stay
+   * on screen: an inverted range is a 422, `cases` still holds the last
+   * unfiltered page, and the page renders those rows (the empty-state branch
+   * needs `!error`) — so reading `filters` would head stale, unfiltered rows
+   * `Created` with `created_at` cells. A rejected search is the same error
+   * mirrored: `filters.search` is set while the rows are still the
+   * date-filtered ones.
+   */
+  const dateColumn = resolveCaseDateColumn(appliedFilters);
+
+  /**
+   * Is there a date column on screen for that sentence to be about?
+   *
+   * `CaseTable` renders its header only when it has rows — it shows "Loading
+   * cases..." or "No cases found." instead — so a note rendered unconditionally
+   * told a screen-reader user "Date column: Created" straight after "No cases
+   * match these filters.", naming a column that does not exist.
+   *
+   * KEYED ON THE ROWS, deliberately not on `!loading`. `cases` holds the
+   * previous page for the whole of a refetch, so this stays true across one and
+   * the text never changes — whereas clearing it while loading would empty and
+   * refill the live region on every pagination click, announcing the column
+   * again each time. The cost is a sub-second window during a refetch where the
+   * sentence names the column the table showed a moment ago and is about to
+   * show again; the benefit is that the region speaks when the answer changes
+   * and stays quiet when it does not, which is the whole point of a polite one.
+   */
+  const dateColumnOnScreen = cases.length > 0;
+
   const handleLogout = async () => {
     await logoutAuth();
     await clearAuthState();
@@ -81,6 +125,46 @@ export default function CaseListPage() {
         </div>
 
         <CaseFiltersBar filters={filters} onChange={setFilters} teams={teams} />
+
+        {/*
+          THE SWAP, ANNOUNCED — because when it fires there is nothing focused
+          to notice it.
+
+          The column header is the carrier and it is real, visible text: a
+          screen reader in table mode reads it with every cell in the column, so
+          at the point of use the date is named more reliably for that user than
+          for a sighted one. What the header cannot do is report the CHANGE —
+          it is a `<th>` the user would have to navigate into to find.
+
+          An earlier version of this comment said focus was "in the date input"
+          at that moment. MEASURED, and it is not: `CaseFiltersBar` keys each
+          date input on its own filter value, so the debounced write remounts it
+          and `document.activeElement` is `<body>` by the time the column swaps.
+          (Pre-existing from #154 and deliberately not fixed here.) That makes
+          the region MORE necessary rather than less — focus on `<body>` leaves
+          the user without even the control they just operated as an anchor, so
+          nothing they can read in place says the table changed underneath them.
+
+          `sr-only`, unlike the disabled-reason sentence in `CaseFiltersBar`,
+          and the difference is whether a visible carrier already exists. That
+          one had none — a `title` does not render on a disabled control and
+          `sr-only` is invisible, so a sighted mouse user was left with no
+          explanation anywhere. This one has the header two lines below; saying
+          it again on the page would be duplicated text for everyone who can see
+          it.
+
+          The NODE is rendered unconditionally, outside the table/empty-state
+          branch below, so the live region is registered once at mount rather
+          than appearing and disappearing with the table — an inserted region
+          arriving with content already in it is the case assistive technology
+          is least consistent about. The SENTENCE is not: a stable node does not
+          require stable text, and there is no date column to name unless the
+          table is showing rows. The sentence is built from `dateColumn.label`,
+          so it cannot name a column the header does not.
+        */}
+        <p role="status" className="sr-only">
+          {dateColumnOnScreen ? `Date column: ${dateColumn.label}` : ''}
+        </p>
 
         {error && (
           <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
@@ -140,7 +224,12 @@ export default function CaseListPage() {
           </div>
         ) : (
           <>
-            <CaseTable cases={cases} loading={loading} teamsById={teamsById} />
+            <CaseTable
+              cases={cases}
+              loading={loading}
+              teamsById={teamsById}
+              dateColumn={dateColumn}
+            />
 
             <PaginationControls
               page={page}

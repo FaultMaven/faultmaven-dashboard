@@ -3,6 +3,7 @@ import type { CaseSummary, AdminCaseMetadata } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import AdminCaseListPage from '../../pages/AdminCaseListPage';
+import { cellUnderHeader, asRendered } from '../support/caseDateColumn';
 
 vi.mock('../../lib/api', () => ({
   logoutAuth: vi.fn().mockResolvedValue(undefined),
@@ -496,5 +497,55 @@ describe('AdminCaseListPage', () => {
         `/admin/cases/case-copilot?enterprise=${encodeURIComponent(copilotCase.enterprise_id)}`
       );
     });
+  });
+});
+
+/**
+ * The operator list NEVER swaps its date column (faultmaven-dashboard#155).
+ *
+ * `CaseTable` is shared, and the per-user list swaps its one date column to
+ * `Created` while a creation-date range is narrowing it. That can never fire
+ * here, and the reason is structural rather than a coincidence worth trusting:
+ * this page renders `CaseFiltersBar` with `stateOnly`, which hides the date
+ * inputs entirely, so a creation-date filter cannot be set — and the page STATES
+ * `LAST_ACTIVITY_COLUMN` rather than relying on a default, so the answer is a
+ * decision here and omitting it is a compile error.
+ *
+ * Asserted because the alternative in the issue — a permanent seventh column —
+ * was rejected on this page's width, and a swap leaking into it would be the
+ * same width surprise arriving by another route.
+ */
+describe('AdminCaseListPage — the date column never swaps', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAdminCases.mockResolvedValue({
+      view: 'full',
+      cases: [copilotCase],
+      total_count: 1,
+      has_more: false,
+    });
+  });
+
+  it('offers no creation-date control at all, so nothing can ask it to swap', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
+
+    expect(screen.queryByLabelText('Created from')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Created to')).not.toBeInTheDocument();
+  });
+
+  it('heads its date column Last Activity and renders last_activity_at under it', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
+
+    expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull();
+
+    // Same helper the other two suites use, so the "find the cell by its
+    // header's index" invariant has ONE definition rather than three that can
+    // drift apart. Asserted against the same call the browser makes, in
+    // whatever timezone and locale this runs in — never a frozen `1/2/2024`.
+    const cell = cellUnderHeader('Last Activity');
+    expect(cell).toHaveTextContent(asRendered(copilotCase.last_activity_at));
+    expect(cell).not.toHaveTextContent(asRendered(copilotCase.created_at));
   });
 });
