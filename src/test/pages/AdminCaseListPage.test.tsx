@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent, within } from '@testing-library/react';
 import type { CaseSummary, AdminCaseMetadata } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -496,5 +496,55 @@ describe('AdminCaseListPage', () => {
         `/admin/cases/case-copilot?enterprise=${encodeURIComponent(copilotCase.enterprise_id)}`
       );
     });
+  });
+});
+
+/**
+ * The operator list NEVER swaps its date column (faultmaven-dashboard#155).
+ *
+ * `CaseTable` is shared, and the per-user list swaps its one date column to
+ * `Created` while a creation-date range is narrowing it. That can never fire
+ * here, and the reason is structural rather than a coincidence worth trusting:
+ * this page renders `CaseFiltersBar` with `stateOnly`, which hides the date
+ * inputs entirely, so a creation-date filter cannot be set — and the page hands
+ * `CaseTable` no `dateColumn`, so the table falls back to last activity.
+ *
+ * Asserted because the alternative in the issue — a permanent seventh column —
+ * was rejected on this page's width, and a swap leaking into it would be the
+ * same width surprise arriving by another route.
+ */
+describe('AdminCaseListPage — the date column never swaps', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAdminCases.mockResolvedValue({
+      view: 'full',
+      cases: [copilotCase],
+      total_count: 1,
+      has_more: false,
+    });
+  });
+
+  it('offers no creation-date control at all, so nothing can ask it to swap', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
+
+    expect(screen.queryByLabelText('Created from')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Created to')).not.toBeInTheDocument();
+  });
+
+  it('heads its date column Last Activity and renders last_activity_at under it', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByText('Copilot Case')).toBeInTheDocument());
+
+    const headers = screen.getAllByRole('columnheader');
+    const index = headers.findIndex((h) => h.textContent?.trim() === 'Last Activity');
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull();
+
+    // Asserted against the same call the browser makes, in whatever timezone
+    // and locale this runs in — never a frozen `1/2/2024`.
+    const cell = within(screen.getAllByRole('row')[1]).getAllByRole('cell')[index];
+    expect(cell).toHaveTextContent(new Date(copilotCase.last_activity_at).toLocaleDateString());
+    expect(cell).not.toHaveTextContent(new Date(copilotCase.created_at).toLocaleDateString());
   });
 });

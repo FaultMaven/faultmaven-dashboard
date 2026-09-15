@@ -5,6 +5,7 @@ import { CaseStageCell } from './CaseStageCell';
 import { SourceBadge } from './SourceBadge';
 import { TeamShareBadge } from './TeamShareBadge';
 import type { CaseSummary } from '../lib/api';
+import { LAST_ACTIVITY_COLUMN, type CaseDateColumn } from '../lib/cases/dateColumn';
 
 interface CaseTableProps {
   cases: CaseSummary[];
@@ -25,12 +26,31 @@ interface CaseTableProps {
    * audited operator route instead.
    */
   caseHref?: (c: CaseSummary) => string;
+
+  /**
+   * WHICH DATE the single date column shows, header and cell together.
+   *
+   * Resolved by the page (`resolveCaseDateColumn`) and handed down whole, never
+   * sniffed from the filters here — the same rule `CaseTabs` follows with
+   * `CaseConversationLayout`. One value carries both halves precisely so this
+   * component cannot put a `Created` header over a `last_activity_at` cell,
+   * which is the lie faultmaven-dashboard#155 exists to stop.
+   *
+   * Defaults to last activity: that is what every surface without a
+   * creation-date filter shows, the operator All Cases list included.
+   */
+  dateColumn?: CaseDateColumn;
 }
 
 /**
- * Shared case list table (Title / [Owner] / State / Stage / Last Activity /
- * [actions]). Used by both the per-user `CaseListPage` and the cross-tenant
+ * Shared case list table (Title / [Owner] / State / Stage / date / [actions]).
+ * Used by both the per-user `CaseListPage` and the cross-tenant
  * `AdminCaseListPage` so the two never drift.
+ *
+ * ONE date column, and `dateColumn` says which date it is — Last Activity
+ * normally, Created while a creation-date filter is narrowing the list
+ * (faultmaven-dashboard#155). A seventh column was the alternative and it is
+ * width the table does not have.
  *
  * This is the **content-bearing** table: every row carries a title. The cloud
  * operator list has no titles to show (ADR-012 D9) and uses the separate
@@ -44,6 +64,7 @@ export function CaseTable({
   renderActions,
   teamsById,
   caseHref = (c) => `/cases/${c.case_id}`,
+  dateColumn = LAST_ACTIVITY_COLUMN,
 }: CaseTableProps) {
   return (
     <div className="bg-fm-surface rounded-fm-card border border-fm-border overflow-hidden">
@@ -63,7 +84,9 @@ export function CaseTable({
               )}
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Last Activity</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
+                {dateColumn.label}
+              </th>
               {renderActions && <th className="px-4 py-3"></th>}
             </tr>
           </thead>
@@ -100,8 +123,12 @@ export function CaseTable({
                     turnsWithoutProgress={c.turns_without_progress}
                   />
                 </td>
+                {/* The SAME `dateColumn` the header above read, so the two
+                    cannot name different dates. Formatting is unchanged:
+                    `toLocaleDateString()` in the viewer's own timezone, with no
+                    guard — both keys are required on `CaseSummary`. */}
                 <td className="px-4 py-3 text-fm-text-tertiary">
-                  {new Date(c.last_activity_at).toLocaleDateString()}
+                  {new Date(c[dateColumn.field]).toLocaleDateString()}
                 </td>
                 {renderActions && <td className="px-4 py-3 text-right">{renderActions(c)}</td>}
               </tr>

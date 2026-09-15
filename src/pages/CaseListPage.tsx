@@ -8,6 +8,7 @@ import { useCaseList } from '../hooks/useCaseList';
 import { useTeamSharing } from '../hooks/useTeamSharing';
 import { logoutAuth } from '../lib/api';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
+import { resolveCaseDateColumn } from '../lib/cases/dateColumn';
 import { ACCENT_BUTTON } from '../lib/ui/chip';
 
 export default function CaseListPage() {
@@ -57,6 +58,18 @@ export default function CaseListPage() {
    */
   const showFirstRun = totalCount === 0 && !isFiltered;
 
+  /**
+   * WHICH DATE the table's one date column shows — resolved HERE, once, and
+   * handed to `CaseTable` whole (faultmaven-dashboard#155).
+   *
+   * The table must not sniff `filters` for itself. Two consumers of one
+   * question — the header and the cell — that each re-derive it from the same
+   * inputs will eventually disagree, and a `Created` header over a
+   * `last_activity_at` cell is precisely the lie this fixes. `CaseTabs` takes
+   * its layout the same way and for the same reason.
+   */
+  const dateColumn = resolveCaseDateColumn(filters);
+
   const handleLogout = async () => {
     await logoutAuth();
     await clearAuthState();
@@ -81,6 +94,37 @@ export default function CaseListPage() {
         </div>
 
         <CaseFiltersBar filters={filters} onChange={setFilters} teams={teams} />
+
+        {/*
+          THE SWAP, ANNOUNCED — because it happens where the user is not
+          looking.
+
+          The column header is the carrier and it is real, visible text: a
+          screen reader in table mode reads it with every cell in the column, so
+          at the point of use the date is named more reliably for that user than
+          for a sighted one. What the header cannot do is report the CHANGE.
+          Focus is in the date input when the swap fires, several elements above
+          a table the user has no reason to re-enter, so without this the column
+          silently becomes a different date under them.
+
+          `sr-only`, unlike the disabled-reason sentence in `CaseFiltersBar`,
+          and the difference is whether a visible carrier already exists. That
+          one had none — a `title` does not render on a disabled control and
+          `sr-only` is invisible, so a sighted mouse user was left with no
+          explanation anywhere. This one has the header two lines below; saying
+          it again on the page would be duplicated text for everyone who can see
+          it.
+
+          Rendered UNCONDITIONALLY, outside the table/empty-state branch below,
+          so the live region is a stable node registered once at mount rather
+          than one that appears and disappears with the table — an inserted
+          region arriving with content already in it is the case assistive
+          technology is least consistent about. The sentence is built from
+          `dateColumn.label`, so it cannot name a column the header does not.
+        */}
+        <p role="status" className="sr-only">
+          Date column: {dateColumn.label}
+        </p>
 
         {error && (
           <div className="mb-4 text-sm text-fm-critical bg-fm-critical-bg border border-fm-critical-border rounded-fm-btn p-3">
@@ -140,7 +184,12 @@ export default function CaseListPage() {
           </div>
         ) : (
           <>
-            <CaseTable cases={cases} loading={loading} teamsById={teamsById} />
+            <CaseTable
+              cases={cases}
+              loading={loading}
+              teamsById={teamsById}
+              dateColumn={dateColumn}
+            />
 
             <PaginationControls
               page={page}

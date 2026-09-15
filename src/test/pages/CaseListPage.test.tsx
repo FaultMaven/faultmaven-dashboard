@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent, within } from '@testing-library/react';
 import type { CaseSummary } from '../../types/cases';
 import { setPrefersExtensionForChat } from '../../lib/copilot/chatSurfacePreference';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -469,5 +469,203 @@ describe('CaseListPage — the creation-date range reaches the request', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Created from')).toBeDisabled());
     expect(screen.getByLabelText('Created to')).toBeDisabled();
+  });
+});
+
+/**
+ * WHICH DATE the list shows, end to end (faultmaven-dashboard#155).
+ *
+ * #154 restored a creation-date range over a table whose only date was
+ * `last_activity_at`, so filtering `Created 1 Sept – 1 Sept` returned rows
+ * dated the 20th. That reads as a broken filter — which is exactly the symptom
+ * #51 was reported as, so the restored filter could be mistaken for the bug it
+ * had just fixed.
+ *
+ * Driven through the REAL `CaseFiltersBar`, debounce included, because the
+ * decision is a property of the page and its filters rather than of a prop
+ * handed to a component in isolation.
+ */
+describe('CaseListPage — the date column follows the creation-date filter', () => {
+  // 19 days apart: more than any timezone offset, so they are different
+  // calendar days wherever this runs. Nothing below asserts a frozen date
+  // string — `toLocaleDateString()` answers in the viewer's own zone.
+  const datedCase: CaseSummary = {
+    ...sampleCase,
+    created_at: '2026-09-01T12:00:00Z',
+    last_activity_at: '2026-09-20T12:00:00Z',
+  };
+
+  const asRendered = (iso: string) => new Date(iso).toLocaleDateString();
+
+  /**
+   * The cell under the header bearing `label`, found by that header's own
+   * index — so the header and the cell cannot be asserted independently and
+   * both pass while naming different dates.
+   */
+  function cellUnderHeader(label: string): HTMLElement {
+    const headers = screen.getAllByRole('columnheader');
+    const index = headers.findIndex((h) => h.textContent?.trim() === label);
+    expect(index, `no column header reads "${label}"`).toBeGreaterThanOrEqual(0);
+    const bodyRow = screen.getAllByRole('row')[1]; // [0] is the header row
+    return within(bodyRow).getAllByRole('cell')[index];
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListCases.mockResolvedValue({
+      cases: [datedCase],
+      total_count: 1,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+  });
+
+  it('shows Last Activity while nothing is filtering by creation date', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByText('Database Outage')).toBeInTheDocument());
+
+    expect(cellUnderHeader('Last Activity')).toHaveTextContent(
+      asRendered(datedCase.last_activity_at),
+    );
+    expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull();
+  });
+
+  it('swaps to Created — the value being filtered — once a lower bound is picked', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Created from'), {
+        target: { value: '2026-09-01' },
+      });
+    });
+
+    // The header names the date, so the swap is not silent.
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
+    );
+    // ...and the cell under it is the creation date, not last activity.
+    expect(cellUnderHeader('Created')).toHaveTextContent(asRendered(datedCase.created_at));
+    expect(cellUnderHeader('Created')).not.toHaveTextContent(
+      asRendered(datedCase.last_activity_at),
+    );
+    expect(screen.queryByRole('columnheader', { name: 'Last Activity' })).toBeNull();
+  });
+
+  it('swaps on an UPPER bound alone too — one bound is a real filter', async () => {
+    // `created_before` narrows the list on its own; a rule that waited for both
+    // bounds would leave the half-open case showing the wrong date.
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByLabelText('Created to')).toBeEnabled());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Created to'), {
+        target: { value: '2026-09-30' },
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
+    );
+    expect(cellUnderHeader('Created')).toHaveTextContent(asRendered(datedCase.created_at));
+  });
+
+  it('goes back to Last Activity when the range is cleared', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Created from'), {
+        target: { value: '2026-09-01' },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Clear/ }));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument(),
+    );
+    expect(cellUnderHeader('Last Activity')).toHaveTextContent(
+      asRendered(datedCase.last_activity_at),
+    );
+  });
+
+  it('goes back to Last Activity while a SEARCH suspends the range', async () => {
+    // `POST /cases/search` accepts no date bounds, so the bar disables the
+    // inputs and the hook sends none — but the range is deliberately KEPT in
+    // `filters` so it returns when the box empties. Heading the column
+    // `Created` on the strength of a bound that is not being applied would be
+    // the same lie in the other direction.
+    const { searchCases } = await import('../../lib/api');
+    (searchCases as ReturnType<typeof vi.fn>).mockResolvedValue([datedCase]);
+
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Created from'), {
+        target: { value: '2026-09-01' },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Search cases'), {
+        target: { value: 'payment' },
+      });
+    });
+
+    // The range is still in `filters` — the Clear button proves it is kept —
+    // but it is not being applied, so the column stops claiming it is.
+    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeDisabled());
+    expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull();
+    expect(cellUnderHeader('Last Activity')).toHaveTextContent(
+      asRendered(datedCase.last_activity_at),
+    );
+  });
+
+  it('announces the swap, because it happens where the user is not looking', async () => {
+    // Focus is in the date input when the column changes, several elements
+    // above a table the user has no reason to re-enter. The status region is
+    // built from the same resolved value as the header, so the two cannot name
+    // different columns.
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
+
+    expect(screen.getByRole('status')).toHaveTextContent('Date column: Last Activity');
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Created from'), {
+        target: { value: '2026-09-01' },
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Date column: Created'),
+    );
+    expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
+  });
+
+  it('keeps announcing even with no table on screen, so the region is a stable node', async () => {
+    // Rendered outside the table/empty-state branch on purpose: a live region
+    // that is inserted with content already in it is the case assistive
+    // technology is least consistent about, and the table comes and goes.
+    mockListCases.mockResolvedValue({
+      cases: [], total_count: 0, page: 0, page_size: 20, has_more: false,
+    });
+
+    await act(async () => { renderPage(); });
+
+    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 });
