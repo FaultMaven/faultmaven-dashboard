@@ -1,3 +1,4 @@
+import { startOfLocalDay, exclusiveEndOfLocalDay } from './dateRange';
 import type { CaseFilters } from '../../types/cases';
 
 /**
@@ -55,24 +56,59 @@ export const CREATED_COLUMN: CaseDateColumn = {
 };
 
 /**
- * APPLIED, not merely set — which is not the same thing, and the difference is
- * visible on screen.
+ * APPLIED, not merely set — and "applied" is decided by the SAME two functions
+ * `listCases` calls, never by looking at the picker string.
  *
- * Either bound alone is a real range: `GET /cases` takes `created_after` and
- * `created_before` independently (see `dateRange.ts`), so "created since 1
- * Sept" with no upper bound narrows the list exactly as much as a closed range
- * does, and must show the same column.
+ * `listCases` sends a bound only when `dateRange.ts` can resolve one:
+ *
+ *   const createdAfter = startOfLocalDay(filters.date_from);
+ *   const createdBefore = exclusiveEndOfLocalDay(filters.date_to);
+ *   ...(createdAfter && { created_after: createdAfter }),
+ *   ...(createdBefore && { created_before: createdBefore }),
+ *
+ * ...and both return `undefined` for a day it rejects. So `Boolean(date_from)`
+ * is a different question from "is a creation-date bound being applied", and
+ * the gap is reachable: `CaseFiltersBar` documents that a date input reports
+ * every intermediate value as the year is typed — `0002-09-14`, `0020-09-14`,
+ * `0202-09-14`, `2026-09-14` — and each one lands in `filters`. The 300ms
+ * debounce narrows that window; it does not close it, and a pasted 5-digit
+ * year never resolves at all. Measured: `0002-09-14` and `12026-09-14` resolve
+ * to `undefined` (years 0-99 collide with `Date`'s 1900+year mapping and fail
+ * the round-trip check; a 5-digit year does not match `^(\d{4})-` at all),
+ * while `0202-09-14` resolves fine and IS a real bound.
+ *
+ * Asking the string would therefore head the column `Created`, swap every cell
+ * to `created_at` and announce the change — over a list no bound had touched.
+ * That is this module's own docstring failing: "a column announcing a filter
+ * that is not running."
+ *
+ * It is not a question a rule of thumb can answer, either. Measured:
+ * `9999-12-31` resolves a start but NO end in UTC and America/Los_Angeles
+ * (the next local midnight expands past year 9999, which the wire cannot
+ * carry) and resolves both in Pacific/Auckland and Asia/Kolkata. Same string,
+ * different answer depending on where the viewer is — so the only correct
+ * source is the resolution itself.
+ *
+ * EITHER RESOLVED BOUND COUNTS. `GET /cases` takes `created_after` and
+ * `created_before` independently, so "created since 1 Sept" narrows the list
+ * exactly as much as a closed range does.
  *
  * A SEARCH SUSPENDS BOTH. `POST /cases/search` accepts no date bounds, so
- * `useCaseList` sends none while `filters.search` is set and `CaseFiltersBar`
- * disables the inputs — but it deliberately KEEPS the range in `filters`, so it
- * comes back when the box empties. Reading `date_from` alone would therefore
- * put a `Created` header over a list that nothing had filtered by creation
- * date: a column announcing a filter that is not running. Same predicate the
- * bar greys the inputs on, so the control and the column agree about when the
- * range applies.
+ * `useCaseList` sends none while `search` is set and `CaseFiltersBar` disables
+ * the inputs — but it deliberately KEEPS the range, so it comes back when the
+ * box empties. Same predicate the bar greys the inputs on, so the control and
+ * the column agree about when the range applies.
+ *
+ * WHICH FILTERS TO PASS: the ones the list hook actually APPLIED, not the ones
+ * pending in the bar. See `useCaseList`'s `appliedFilters`.
  */
 export function resolveCaseDateColumn(filters: CaseFilters): CaseDateColumn {
-  const creationDateApplied = Boolean((filters.date_from || filters.date_to) && !filters.search);
-  return creationDateApplied ? CREATED_COLUMN : LAST_ACTIVITY_COLUMN;
+  if (filters.search) return LAST_ACTIVITY_COLUMN;
+
+  // The same two calls `listCases` makes, so the column and the query cannot
+  // disagree about whether a bound exists.
+  const createdAfter = startOfLocalDay(filters.date_from);
+  const createdBefore = exclusiveEndOfLocalDay(filters.date_to);
+
+  return createdAfter || createdBefore ? CREATED_COLUMN : LAST_ACTIVITY_COLUMN;
 }

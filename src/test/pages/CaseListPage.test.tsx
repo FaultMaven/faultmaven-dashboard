@@ -1,9 +1,10 @@
-import { render, screen, act, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import type { CaseSummary } from '../../types/cases';
 import { setPrefersExtensionForChat } from '../../lib/copilot/chatSurfacePreference';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import CaseListPage from '../../pages/CaseListPage';
+import { cellUnderHeader, asRendered } from '../support/caseDateColumn';
 
 // Shared mock setup (same pattern as App.test.tsx). The Dashboard is read-only
 // for cases (D1) — there is no archive/mutation client to mock here.
@@ -32,9 +33,10 @@ vi.mock('../../hooks/useNavigationItems', () => ({
   ]),
 }));
 
-import { listCases } from '../../lib/api';
+import { listCases, searchCases } from '../../lib/api';
 
 const mockListCases = listCases as ReturnType<typeof vi.fn>;
+const mockSearchCases = searchCases as ReturnType<typeof vi.fn>;
 
 const sampleCase: CaseSummary = {
   case_id: 'case-1',
@@ -488,30 +490,33 @@ describe('CaseListPage — the creation-date range reaches the request', () => {
 describe('CaseListPage — the date column follows the creation-date filter', () => {
   // 19 days apart: more than any timezone offset, so they are different
   // calendar days wherever this runs. Nothing below asserts a frozen date
-  // string — `toLocaleDateString()` answers in the viewer's own zone.
+  // string — `asRendered` makes the same call the component does.
   const datedCase: CaseSummary = {
     ...sampleCase,
     created_at: '2026-09-01T12:00:00Z',
     last_activity_at: '2026-09-20T12:00:00Z',
   };
 
-  const asRendered = (iso: string) => new Date(iso).toLocaleDateString();
-
   /**
-   * The cell under the header bearing `label`, found by that header's own
-   * index — so the header and the cell cannot be asserted independently and
-   * both pass while naming different dates.
+   * FAKE TIMERS, and not as a stylistic preference.
+   *
+   * The bar debounces every date and search write by 300ms of real
+   * `setTimeout`. Driving these cases through it cost ~9s of wall clock, and
+   * the CPU contention that created pushed an unrelated suite
+   * (`preferenceGovernedSurfaces`) past its 5s timeout — reproducible with just
+   * those two files, green for each of them alone. Real time spent waiting is
+   * not coverage; the debounce itself is covered in `CaseFiltersBar.test.tsx`.
+   *
+   * `waitFor` is deliberately unused in here: with the clock faked it would
+   * poll a timer that never advances on its own. `settle()` advances it
+   * instead, which also flushes the promise the advance sets off.
    */
-  function cellUnderHeader(label: string): HTMLElement {
-    const headers = screen.getAllByRole('columnheader');
-    const index = headers.findIndex((h) => h.textContent?.trim() === label);
-    expect(index, `no column header reads "${label}"`).toBeGreaterThanOrEqual(0);
-    const bodyRow = screen.getAllByRole('row')[1]; // [0] is the header row
-    return within(bodyRow).getAllByRole('cell')[index];
-  }
-
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
+    // `vi.clearAllMocks()` clears CALLS, not IMPLEMENTATIONS — a
+    // `mockRejectedValue` set by one test would otherwise outlive it and make
+    // these order-dependent. Both clients are re-armed explicitly.
     mockListCases.mockResolvedValue({
       cases: [datedCase],
       total_count: 1,
@@ -519,11 +524,39 @@ describe('CaseListPage — the date column follows the creation-date filter', ()
       page_size: 20,
       has_more: false,
     });
+    mockSearchCases.mockResolvedValue([datedCase]);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Advance past every debounce and let the requests they fire settle. */
+  async function settle() {
+    for (let i = 0; i < 5; i += 1) {
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+    }
+  }
+
+  async function renderSettled() {
+    await act(async () => {
+      renderPage();
+    });
+    await settle();
+  }
+
+  /** Type into one of the bar's debounced inputs and let everything settle. */
+  async function typeInto(label: string, value: string) {
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    });
+    await settle();
+  }
+
   it('shows Last Activity while nothing is filtering by creation date', async () => {
-    await act(async () => { renderPage(); });
-    await waitFor(() => expect(screen.getByText('Database Outage')).toBeInTheDocument());
+    await renderSettled();
 
     expect(cellUnderHeader('Last Activity')).toHaveTextContent(
       asRendered(datedCase.last_activity_at),
@@ -532,19 +565,11 @@ describe('CaseListPage — the date column follows the creation-date filter', ()
   });
 
   it('swaps to Created — the value being filtered — once a lower bound is picked', async () => {
-    await act(async () => { renderPage(); });
-    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
-
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Created from'), {
-        target: { value: '2026-09-01' },
-      });
-    });
+    await renderSettled();
+    await typeInto('Created from', '2026-09-01');
 
     // The header names the date, so the swap is not silent.
-    await waitFor(() =>
-      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
-    );
+    expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
     // ...and the cell under it is the creation date, not last activity.
     expect(cellUnderHeader('Created')).toHaveTextContent(asRendered(datedCase.created_at));
     expect(cellUnderHeader('Created')).not.toHaveTextContent(
@@ -556,41 +581,49 @@ describe('CaseListPage — the date column follows the creation-date filter', ()
   it('swaps on an UPPER bound alone too — one bound is a real filter', async () => {
     // `created_before` narrows the list on its own; a rule that waited for both
     // bounds would leave the half-open case showing the wrong date.
-    await act(async () => { renderPage(); });
-    await waitFor(() => expect(screen.getByLabelText('Created to')).toBeEnabled());
+    await renderSettled();
+    await typeInto('Created to', '2026-09-30');
 
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Created to'), {
-        target: { value: '2026-09-30' },
-      });
-    });
-
-    await waitFor(() =>
-      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
-    );
+    expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
     expect(cellUnderHeader('Created')).toHaveTextContent(asRendered(datedCase.created_at));
   });
 
-  it('goes back to Last Activity when the range is cleared', async () => {
-    await act(async () => { renderPage(); });
-    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
+  it('does NOT swap for a year still being typed, which sends no bound', async () => {
+    // A date input reports `0002-09-14` on the way to `2026-09-14`, and
+    // `dateRange` cannot resolve it — so `listCases` sends no `created_after`
+    // and the column must not claim one. The debounce narrows this window; it
+    // does not close it.
+    await renderSettled();
+    await typeInto('Created from', '0002-09-14');
 
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Created from'), {
-        target: { value: '2026-09-01' },
-      });
-    });
-    await waitFor(() =>
-      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
-    );
+    expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('Date column: Last Activity');
+
+    // The request really did go out without a bound — the column is agreeing
+    // with the query, not merely being cautious.
+    // Indexed, not `.at(-1)`: `tsconfig.eslint.json`'s `lib` predates
+    // `Array.prototype.at`, and the test typecheck is held at zero NEW errors.
+    const { calls } = mockListCases.mock;
+    const sent = calls[calls.length - 1]?.[0];
+    expect(sent).toEqual({ date_from: '0002-09-14' });
+
+    // ...and finishing the year swaps it, so this is not just "never swaps".
+    await typeInto('Created from', '2026-09-14');
+    expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
+  });
+
+  it('goes back to Last Activity when the range is cleared', async () => {
+    await renderSettled();
+    await typeInto('Created from', '2026-09-01');
+    expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^Clear/ }));
     });
+    await settle();
 
-    await waitFor(() =>
-      expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument(),
-    );
+    expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument();
     expect(cellUnderHeader('Last Activity')).toHaveTextContent(
       asRendered(datedCase.last_activity_at),
     );
@@ -602,30 +635,15 @@ describe('CaseListPage — the date column follows the creation-date filter', ()
     // `filters` so it returns when the box empties. Heading the column
     // `Created` on the strength of a bound that is not being applied would be
     // the same lie in the other direction.
-    const { searchCases } = await import('../../lib/api');
-    (searchCases as ReturnType<typeof vi.fn>).mockResolvedValue([datedCase]);
+    await renderSettled();
+    await typeInto('Created from', '2026-09-01');
+    expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
 
-    await act(async () => { renderPage(); });
-    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
+    await typeInto('Search cases', 'payment');
 
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Created from'), {
-        target: { value: '2026-09-01' },
-      });
-    });
-    await waitFor(() =>
-      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument(),
-    );
-
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Search cases'), {
-        target: { value: 'payment' },
-      });
-    });
-
-    // The range is still in `filters` — the Clear button proves it is kept —
+    // The range is still in `filters` — the inputs are disabled, not cleared —
     // but it is not being applied, so the column stops claiming it is.
-    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeDisabled());
+    expect(screen.getByLabelText('Created from')).toBeDisabled();
     expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull();
     expect(cellUnderHeader('Last Activity')).toHaveTextContent(
@@ -633,39 +651,110 @@ describe('CaseListPage — the date column follows the creation-date filter', ()
     );
   });
 
-  it('announces the swap, because it happens where the user is not looking', async () => {
-    // Focus is in the date input when the column changes, several elements
-    // above a table the user has no reason to re-enter. The status region is
-    // built from the same resolved value as the header, so the two cannot name
-    // different columns.
-    await act(async () => { renderPage(); });
-    await waitFor(() => expect(screen.getByLabelText('Created from')).toBeEnabled());
-
+  it('announces the swap, because nothing is focused to notice it', async () => {
+    // When the column swaps there is nothing focused to notice it: measured,
+    // `CaseFiltersBar`'s `key`ed date input remounts on the debounced write and
+    // `document.activeElement` is `<body>` (pre-existing from #154). The only
+    // other statement of the new date is a `<th>` the user must navigate into.
+    // The region is built from the same resolved value as that header, so the
+    // two cannot name different columns.
+    await renderSettled();
     expect(screen.getByRole('status')).toHaveTextContent('Date column: Last Activity');
 
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText('Created from'), {
-        target: { value: '2026-09-01' },
-      });
-    });
+    await typeInto('Created from', '2026-09-01');
 
-    await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent('Date column: Created'),
-    );
+    expect(screen.getByRole('status')).toHaveTextContent('Date column: Created');
     expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
   });
 
-  it('keeps announcing even with no table on screen, so the region is a stable node', async () => {
-    // Rendered outside the table/empty-state branch on purpose: a live region
-    // that is inserted with content already in it is the case assistive
-    // technology is least consistent about, and the table comes and goes.
+  it('keeps the region node across branches but NOT its sentence', async () => {
+    // The node is stable — registered once at mount, never inserted with
+    // content already in it. The SENTENCE is not: with no rows there is no date
+    // column, and announcing "Date column: Created" straight after "No cases
+    // match these filters." names something that is not on screen.
     mockListCases.mockResolvedValue({
       cases: [], total_count: 0, page: 0, page_size: 20, has_more: false,
     });
 
-    await act(async () => { renderPage(); });
+    await renderSettled();
 
-    await waitFor(() => expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument());
+    expect(screen.getByTestId('cases-empty-state')).toBeInTheDocument();
+    // Present…
     expect(screen.getByRole('status')).toBeInTheDocument();
+    // …and silent.
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('says nothing about a date column while the first load is still running', async () => {
+    // `CaseTable` renders "Loading cases..." instead of a header, so there is
+    // no column to name yet.
+    let release: (v: unknown) => void = () => {};
+    mockListCases.mockReturnValue(new Promise((r) => { release = r; }));
+
+    await act(async () => {
+      renderPage();
+    });
+    expect(screen.getByRole('status').textContent).toBe('');
+
+    await act(async () => {
+      release({ cases: [datedCase], total_count: 1, page: 0, page_size: 20, has_more: false });
+    });
+    await settle();
+
+    expect(screen.getByRole('status')).toHaveTextContent('Date column: Last Activity');
+  });
+
+  /**
+   * THE COLUMN DESCRIBES THE ROWS IN HAND, not the filters about to be applied.
+   *
+   * `useCaseList` already models this for `searchMode` — "a property of the
+   * LAST RESPONSE" — and the column needs the same treatment, because the two
+   * come apart exactly when a request fails and the previous rows stay on
+   * screen.
+   */
+  describe('a request that never landed does not get to describe the list', () => {
+    it('leaves stale unfiltered rows headed Last Activity when the range 422s', async () => {
+      // An inverted range (`from` after `to`) is refused by the server. `cases`
+      // still holds the last unfiltered page, and the page renders those rows
+      // — the empty-state branch needs `!error`. Reading the PENDING filters
+      // would head them `Created` with `created_at` cells, over a result set no
+      // creation-date bound ever touched.
+      await renderSettled();
+      expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument();
+
+      mockListCases.mockRejectedValue(new Error('created_after must be before created_before'));
+      await typeInto('Created from', '2026-09-20');
+      await typeInto('Created to', '2026-09-01');
+
+      expect(screen.getByText(/created_after must be before/)).toBeInTheDocument();
+      // The rows are still the unfiltered ones…
+      expect(screen.getByText('Database Outage')).toBeInTheDocument();
+      // …so the column still describes them.
+      expect(screen.getByRole('columnheader', { name: 'Last Activity' })).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Created' })).toBeNull();
+      expect(cellUnderHeader('Last Activity')).toHaveTextContent(
+        asRendered(datedCase.last_activity_at),
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('Date column: Last Activity');
+    });
+
+    it('leaves date-filtered rows headed Created when a search fails', async () => {
+      // The mirror image: a rejected search leaves `filters.search` set while
+      // the rows on screen are still the date-filtered ones, so reading the
+      // pending filters would revert the column under rows it no longer
+      // describes.
+      await renderSettled();
+      await typeInto('Created from', '2026-09-01');
+      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
+
+      mockSearchCases.mockRejectedValue(new Error('search unavailable'));
+      await typeInto('Search cases', 'payment');
+
+      expect(screen.getByText('search unavailable')).toBeInTheDocument();
+      // The rows never changed, so neither does the column that describes them.
+      expect(screen.getByRole('columnheader', { name: 'Created' })).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Last Activity' })).toBeNull();
+      expect(cellUnderHeader('Created')).toHaveTextContent(asRendered(datedCase.created_at));
+    });
   });
 });

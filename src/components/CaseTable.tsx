@@ -5,7 +5,7 @@ import { CaseStageCell } from './CaseStageCell';
 import { SourceBadge } from './SourceBadge';
 import { TeamShareBadge } from './TeamShareBadge';
 import type { CaseSummary } from '../lib/api';
-import { LAST_ACTIVITY_COLUMN, type CaseDateColumn } from '../lib/cases/dateColumn';
+import type { CaseDateColumn } from '../lib/cases/dateColumn';
 
 interface CaseTableProps {
   cases: CaseSummary[];
@@ -36,10 +36,17 @@ interface CaseTableProps {
    * component cannot put a `Created` header over a `last_activity_at` cell,
    * which is the lie faultmaven-dashboard#155 exists to stop.
    *
-   * Defaults to last activity: that is what every surface without a
-   * creation-date filter shows, the operator All Cases list included.
+   * REQUIRED, with no default, and that is the point. A silent fallback to last
+   * activity re-opens #155 by omission: the next caller — a team case view, a
+   * saved-filter list — renders `<CaseTable cases={...} loading={...} />` beside
+   * a creation-date filter and gets `last_activity_at` cells with no error, no
+   * warning and no failing test, which is the exact state #155 was filed for.
+   * The thesis of this prop is that the wrong pairing is unreachable, so
+   * forgetting to answer is a compile error rather than a wrong answer. Both
+   * call sites already know theirs; `AdminCaseListPage` states
+   * `LAST_ACTIVITY_COLUMN` outright.
    */
-  dateColumn?: CaseDateColumn;
+  dateColumn: CaseDateColumn;
 }
 
 /**
@@ -64,7 +71,7 @@ export function CaseTable({
   renderActions,
   teamsById,
   caseHref = (c) => `/cases/${c.case_id}`,
-  dateColumn = LAST_ACTIVITY_COLUMN,
+  dateColumn,
 }: CaseTableProps) {
   return (
     <div className="bg-fm-surface rounded-fm-card border border-fm-border overflow-hidden">

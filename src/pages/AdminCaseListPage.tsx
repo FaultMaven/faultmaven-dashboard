@@ -7,6 +7,7 @@ import { PaginationControls } from '../components/PaginationControls';
 import { useAuth } from '../context/AuthContext';
 import { getAdminCases, logoutAuth } from '../lib/api';
 import { chipBase, chipActive, chipInactive } from '../lib/ui/chip';
+import { LAST_ACTIVITY_COLUMN } from '../lib/cases/dateColumn';
 import type { AdminCaseListResult, CaseFilters, CaseSource } from '../lib/api';
 
 const PAGE_SIZE = 20;
@@ -178,6 +179,11 @@ export default function AdminCaseListPage() {
             cases={result?.cases ?? []}
             loading={loading}
             showOwner
+            // STATED, not defaulted. This bar is `stateOnly`, so it renders no
+            // date inputs and no creation-date filter can be set here — there
+            // is nothing for the column to follow (#155). Saying so is what
+            // makes that a decision rather than an omission.
+            dateColumn={LAST_ACTIVITY_COLUMN}
             // Own cases keep the full case page; everyone else's go through the
             // audited operator read — see the component docstring above.
             caseHref={(c) =>

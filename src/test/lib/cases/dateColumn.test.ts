@@ -4,6 +4,7 @@ import {
   CREATED_COLUMN,
   LAST_ACTIVITY_COLUMN,
 } from '../../../lib/cases/dateColumn';
+import { startOfLocalDay, exclusiveEndOfLocalDay } from '../../../lib/cases/dateRange';
 
 /**
  * The one question, asked in one place: is the list being narrowed by CREATION
@@ -81,6 +82,77 @@ describe('which date the case list shows', () => {
         CREATED_COLUMN,
       );
       expect(resolveCaseDateColumn({ date_from: '2026-09-01', search: '' })).toBe(CREATED_COLUMN);
+    });
+  });
+
+  /**
+   * A BOUND THAT RESOLVES, not a string that looks like a date.
+   *
+   * `listCases` sends `created_after`/`created_before` only when
+   * `startOfLocalDay`/`exclusiveEndOfLocalDay` return something, and both
+   * return `undefined` for a day `dateRange.ts` rejects. Reading the raw string
+   * therefore headed the column `Created`, swapped every cell to `created_at`
+   * and announced the change over a list no bound had touched — this module's
+   * own docstring failing.
+   *
+   * It is reachable: `CaseFiltersBar` documents that a date input reports every
+   * intermediate value as the year is typed, `0002-09-14` among them, and each
+   * lands in `filters`.
+   */
+  describe('only a bound that actually resolves counts', () => {
+    it('stays on Last Activity for a year still being typed', () => {
+      // Years 0-99 collide with `Date`'s 1900+year mapping and fail
+      // `dateRange`'s round-trip check, so NO `created_after` is sent.
+      expect(startOfLocalDay('0002-09-14')).toBeUndefined();
+      expect(resolveCaseDateColumn({ date_from: '0002-09-14' })).toBe(LAST_ACTIVITY_COLUMN);
+
+      expect(exclusiveEndOfLocalDay('0020-09-14')).toBeUndefined();
+      expect(resolveCaseDateColumn({ date_to: '0020-09-14' })).toBe(LAST_ACTIVITY_COLUMN);
+
+      // Neither end resolves, so neither end is a reason to swap.
+      expect(
+        resolveCaseDateColumn({ date_from: '0002-09-14', date_to: '0020-09-14' }),
+      ).toBe(LAST_ACTIVITY_COLUMN);
+    });
+
+    it('stays on Last Activity for a year the wire cannot carry', () => {
+      // A pasted 5-digit year never matches `^(\d{4})-`, so it is permanently
+      // unresolvable while it sits in `filters` — not a transient at all.
+      expect(startOfLocalDay('12026-09-14')).toBeUndefined();
+      expect(resolveCaseDateColumn({ date_from: '12026-09-14' })).toBe(LAST_ACTIVITY_COLUMN);
+    });
+
+    it('DOES swap for an improbable year that nonetheless resolves', () => {
+      // The rule is "did it resolve", not "does it look sensible". Year 202 is
+      // a perfectly valid bound and the request carries it, so the column must
+      // say so — an implementation that sanity-checked the year would get this
+      // one wrong in the other direction.
+      expect(startOfLocalDay('0202-09-14')).toBeDefined();
+      expect(resolveCaseDateColumn({ date_from: '0202-09-14' })).toBe(CREATED_COLUMN);
+    });
+
+    it('agrees with the resolution even where it is timezone-dependent', () => {
+      // `9999-12-31` resolves a START everywhere, but its exclusive END is the
+      // next local midnight, which expands past year 9999 in UTC and
+      // America/Los_Angeles and does not in Pacific/Auckland or Asia/Kolkata.
+      // So the correct answer for `date_to: '9999-12-31'` alone genuinely
+      // differs by viewer, and this asserts the AGREEMENT rather than a verdict.
+      const resolves = exclusiveEndOfLocalDay('9999-12-31') !== undefined;
+      expect(resolveCaseDateColumn({ date_to: '9999-12-31' })).toBe(
+        resolves ? CREATED_COLUMN : LAST_ACTIVITY_COLUMN,
+      );
+    });
+
+    it('asks exactly what `listCases` asks, for every bound it is given', () => {
+      // The binding that keeps the two from drifting: for each day, the column
+      // swaps precisely when at least one of the two functions the request uses
+      // returns a value.
+      for (const day of ['2026-09-14', '0202-09-14', '0002-09-14', '12026-09-14', 'nonsense']) {
+        const sent = Boolean(startOfLocalDay(day)) || Boolean(exclusiveEndOfLocalDay(day));
+        expect(resolveCaseDateColumn({ date_from: day, date_to: day })).toBe(
+          sent ? CREATED_COLUMN : LAST_ACTIVITY_COLUMN,
+        );
+      }
     });
   });
 

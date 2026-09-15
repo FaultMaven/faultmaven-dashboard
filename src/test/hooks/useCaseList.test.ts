@@ -191,3 +191,68 @@ describe('useCaseList', () => {
     expect(result.current.page).toBe(1);
   });
 });
+
+/**
+ * `appliedFilters` — the filters the rows in hand were actually fetched with
+ * (faultmaven-dashboard#155).
+ *
+ * `filters` is what the bar is about to send; `appliedFilters` is what the last
+ * response was built from. Anything DESCRIBING the list has to read the second,
+ * and the two come apart exactly when a request fails and the previous rows
+ * stay on screen.
+ */
+describe('useCaseList — appliedFilters', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListCases.mockResolvedValue({
+      cases: [mockCase],
+      total_count: 1,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+  });
+
+  it('starts empty, which is the truth about an empty list', async () => {
+    const { result } = renderHook(() => useCaseList());
+    expect(result.current.appliedFilters).toEqual({});
+    await waitFor(() => expect(result.current.loading).toBe(false));
+  });
+
+  it('records the filters a successful load carried', async () => {
+    const { result } = renderHook(() => useCaseList());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => result.current.setFilters({ date_from: '2026-09-01' }));
+    await waitFor(() => expect(result.current.appliedFilters).toEqual({ date_from: '2026-09-01' }));
+  });
+
+  it('KEEPS the last applied filters when a load fails, because the rows do too', async () => {
+    const { result } = renderHook(() => useCaseList());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.cases).toHaveLength(1);
+
+    mockListCases.mockRejectedValue(new Error('created_after must be before created_before'));
+    act(() => result.current.setFilters({ date_from: '2026-09-20', date_to: '2026-09-01' }));
+
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    // The rows are the previous, unfiltered ones…
+    expect(result.current.cases).toHaveLength(1);
+    // …so what describes them must be too. `filters` has already moved on.
+    expect(result.current.appliedFilters).toEqual({});
+    expect(result.current.filters).toEqual({ date_from: '2026-09-20', date_to: '2026-09-01' });
+  });
+
+  it('derives searchMode from it, so the two cannot disagree', async () => {
+    const { result } = renderHook(() => useCaseList());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.searchMode).toBe(Boolean(result.current.appliedFilters.search));
+
+    mockSearchCases.mockResolvedValue([mockCase]);
+    act(() => result.current.setFilters({ search: 'payment' }));
+
+    await waitFor(() => expect(result.current.searchMode).toBe(true));
+    expect(result.current.appliedFilters).toEqual({ search: 'payment' });
+    expect(result.current.searchMode).toBe(Boolean(result.current.appliedFilters.search));
+  });
+});

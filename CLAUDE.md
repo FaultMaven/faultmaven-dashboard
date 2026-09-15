@@ -77,7 +77,7 @@ src/
 │   ├── DocumentCard.tsx      # Expandable document card with content preview
 │   ├── DraftEditor.tsx       # Runbook draft editor with validation/quality display
 │   ├── CaseStatusBadge.tsx   # Status badge with phase colors
-│   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/State/Stage/date/[actions]) — used by CaseListPage + AdminCaseListPage (view=full). ONE date column; the page-resolved `dateColumn` names the field AND the header together
+│   ├── CaseTable.tsx         # Shared case list table (Title/[Owner]/State/Stage/date/[actions]) — used by CaseListPage + AdminCaseListPage (view=full). ONE date column; the page-resolved `dateColumn` (REQUIRED, no default) names the field AND the header together
 │   ├── AdminCaseMetadataTable.tsx # Cloud operator table (Case ID/Owner/State/Stage/Last Activity) — no title column; "Open content" links to the audited operator route (ADR-012 D9), carrying `?enterprise=`
 │   ├── BreakGlassRequestDialog.tsx # Request time-boxed access to one case's content (reason + TTL)
 │   ├── TranscriptView.tsx    # Read-only transcript renderer — the operator break-glass page, AND the Transcript tab's read-only arm (ADR-018 D2)
@@ -164,13 +164,41 @@ The dashboard communicates with the FaultMaven backend through modular API clien
   `CaseListPage` hands the answer to `CaseTable` whole, the way `CaseTabs`
   takes its layout: **one value carries both the field and the header label**,
   so a `Created` header over a `last_activity_at` cell is not a state the
-  component can reach. APPLIED, not merely set — either bound alone counts
-  (`GET /cases` takes each independently), and a **search suspends it**,
-  because `POST /cases/search` sends no dates while `CaseFiltersBar`
-  deliberately KEEPS the range in `filters`. A `role="status"` line names the
-  column, rendered outside the table branch so the live region is a stable
-  node; the operator list is `stateOnly` and passes no `dateColumn`, so it can
-  never swap.
+  component can reach. `dateColumn` is **required** — a silent default
+  re-opened #155 by omission for the next caller.
+
+  Two things decide it, and getting either wrong puts a `Created` header over
+  an unfiltered list:
+
+  - **A bound that RESOLVES, not a string that looks like a date.** The
+    resolver calls the same `startOfLocalDay`/`exclusiveEndOfLocalDay` that
+    `listCases` sends with, because both return `undefined` for a day
+    `dateRange.ts` rejects and no bound is then sent. Reachable: the bar's own
+    docs note a date input reports `0002-09-14`, `0020-09-14`, `0202-09-14`…
+    as the year is typed. Measured — `0002-…` and a 5-digit year resolve to
+    nothing, `0202-…` is a real bound, and `9999-12-31` resolves an END in
+    Auckland/Kolkata but not in UTC/LA, so only the resolution can answer.
+    Either resolved bound alone counts; a **search suspends both**
+    (`POST /cases/search` sends no dates while `CaseFiltersBar` KEEPS the
+    range).
+  - **`appliedFilters`, not `filters`.** The column describes the rows in hand,
+    so it is computed from what fetched them — `useCaseList` now publishes the
+    filters of the LAST RESPONSE (and derives `searchMode` from them rather
+    than tracking a second copy). They come apart whenever a request fails and
+    the previous rows stay: an inverted range 422s, `cases` still holds the
+    unfiltered page, and the empty-state branch needs `!error` — so reading
+    `filters` headed stale rows `Created`.
+
+  A `role="status"` line names the column. The NODE is always rendered (a live
+  region inserted with content already in it is the case AT handles least
+  consistently); the SENTENCE only while there are rows, since `CaseTable`
+  shows "Loading cases…"/"No cases found." instead of a header — keyed on rows
+  rather than `!loading` so a refetch does not re-announce on every page
+  change. Measured: when the swap fires `document.activeElement` is `<body>`,
+  because the bar's `key`ed date input remounts on the debounced write
+  (pre-existing from #154), so there is no focused element to notice the
+  change. The operator list is `stateOnly` and states `LAST_ACTIVITY_COLUMN`,
+  so it can never swap.
 
   Which empty state needs **both** `total_count === 0` **and** no active filter. Each alone gets a real case wrong: every predicate sits in the same WHERE clause as the COUNT, so a filtered-to-nothing list reports zero and "No cases yet." would greet an account with forty cases; and with no filters set, paging past the end is empty while the account is full, which only `total_count` distinguishes.
 - **InvestigatePage**: Route `/investigate`, inside `ProtectedRoute`, and a top-level **`New Case`** nav item since ADR-018 D2/D5 — before that it was reachable only by redirect, so an account with one case could never get back to it. Mounts the built-in Copilot panel with no case seeded. This is the surface that makes the Dashboard able to RUN a case rather than only review one (ADR-016 D1), and the permanent one for everybody who never gets a side panel (Firefox, managed browsers, self-hosted).
