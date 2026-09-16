@@ -5,6 +5,7 @@ import { resolvePostSignInLanding } from '../lib/auth/landing';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
+import { COMMUNITY_SLACK_URL, TRANSCRIPT_URL } from '../lib/community';
 
 const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 const warningBannerClass = 'mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn';
@@ -233,7 +234,7 @@ export default function LoginPage() {
           <div className="text-center mb-8 mt-6">
             <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
             <p className="text-fm-text-secondary">
-              Sign in with your organization account to search the Knowledge Base, review your cases, and start a new one with the Copilot.
+              Sign in to review your cases, search the Knowledge Base, and start a new investigation. New here? Cloud beta is open — the same button creates your account, free while it is in beta.
             </p>
           </div>
 
@@ -252,6 +253,36 @@ export default function LoginPage() {
           >
             Sign In
           </button>
+
+          <div className="mt-8 pt-6 border-t border-fm-border">
+            <p className="text-sm font-medium text-fm-text-primary mb-3">
+              Not ready to sign up?
+            </p>
+            <ul className="space-y-2 text-sm text-fm-text-secondary">
+              <li>
+                <a
+                  href={COMMUNITY_SLACK_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-fm-accent hover:underline"
+                >
+                  Try FaultMaven in our Community Slack
+                </a>{' '}
+                — no account needed.
+              </li>
+              <li>
+                <a
+                  href={TRANSCRIPT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-fm-accent hover:underline"
+                >
+                  Read a real investigation
+                </a>{' '}
+                — start to finish, unedited.
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     );

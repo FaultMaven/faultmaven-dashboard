@@ -49,6 +49,12 @@ Both connect to the same FaultMaven backend.
 > ⚠️ **Requires Backend:** This is a frontend-only application. You need a running FaultMaven API to use it.
 > [Deploy the full stack →](https://github.com/FaultMaven/faultmaven)
 
+**Just want to use it?** You do not have to build or host anything. This
+Dashboard is the full product in a browser tab, and it runs hosted at
+**[app.faultmaven.ai](https://app.faultmaven.ai/)** — Cloud beta is open, so you
+can sign up with your email and work a case there, free while it is in beta.
+The instructions below are for running it yourself.
+
 ### Using the Full Stack (Recommended)
 
 The dashboard is included automatically in the main FaultMaven deployment:
