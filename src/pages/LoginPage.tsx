@@ -11,6 +11,20 @@ const warningBannerClass = 'mb-4 text-sm text-fm-warning bg-fm-warning-bg border
 const primaryButtonClass = 'w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
 
 /**
+ * Ways to look at FaultMaven that need no account at all.
+ *
+ * Cloud sign-up is open, but this screen is the first thing a curious visitor
+ * sees, and "sign in" is a wall to someone who has not decided yet. These two
+ * give them somewhere to go instead of away: the published transcript to read,
+ * and the community workspace to actually put a problem to.
+ *
+ * Cloud only — a self-hosted deployment's operator has already decided.
+ */
+const COMMUNITY_SLACK_URL =
+  'https://join.slack.com/t/faultmaven-community/shared_invite/zt-493fv3w3o-mPBBI2v3mMYQKS4649mY1A';
+const TRANSCRIPT_URL = 'https://www.faultmaven.ai/investigation';
+
+/**
  * Rendered when deployment detection settled 'unreachable'. Owns the Chrome
  * Local Network Access diagnosis: mounting only inside this state means the
  * component's lifecycle scopes the answer to the current unreachable episode —
@@ -233,7 +247,7 @@ export default function LoginPage() {
           <div className="text-center mb-8 mt-6">
             <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
             <p className="text-fm-text-secondary">
-              Sign in with your organization account to search the Knowledge Base, review your cases, and start a new one with the Copilot.
+              Sign in to review your cases, search the Knowledge Base, and start a new investigation. New here? Cloud beta is open — the same button creates your account, free while it is in beta.
             </p>
           </div>
 
@@ -252,6 +266,36 @@ export default function LoginPage() {
           >
             Sign In
           </button>
+
+          <div className="mt-8 pt-6 border-t border-fm-border">
+            <p className="text-sm font-medium text-fm-text-primary mb-3">
+              Not ready to sign up?
+            </p>
+            <ul className="space-y-2 text-sm text-fm-text-secondary">
+              <li>
+                <a
+                  href={COMMUNITY_SLACK_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-fm-accent hover:underline"
+                >
+                  Try FaultMaven in our Community Slack
+                </a>{' '}
+                — no account needed.
+              </li>
+              <li>
+                <a
+                  href={TRANSCRIPT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-fm-accent hover:underline"
+                >
+                  Read a real investigation
+                </a>{' '}
+                — start to finish, unedited.
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     );

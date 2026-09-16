@@ -48,6 +48,36 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
   });
 
+  it('cloud mode: offers the no-account paths so a visitor who is not ready to sign up has somewhere to go', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    // Both must carry a real destination: a label with no href would look like
+    // an offer and behave like a dead end, which is worse than not offering.
+    const slack = screen.getByRole('link', { name: /community slack/i });
+    expect(slack).toHaveAttribute('href', expect.stringContaining('join.slack.com'));
+    const transcript = screen.getByRole('link', { name: /read a real investigation/i });
+    expect(transcript).toHaveAttribute('href', expect.stringContaining('/investigation'));
+  });
+
+  it('standalone mode: does not offer the no-account paths — the operator already chose', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      loginUrl: null,
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.queryByRole('link', { name: /community slack/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /read a real investigation/i })).toBeNull();
+  });
+
   it('cloud mode: Sign In redirects to the deployment hosted-login URL', () => {
     const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
     // loginUrl comes from AuthContext, sourced from the dedicated hosted-login
