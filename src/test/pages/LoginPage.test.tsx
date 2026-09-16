@@ -19,6 +19,17 @@ vi.mock('../../context/AuthContext', () => ({
 }));
 
 import LoginPage from '../../pages/LoginPage';
+import { COMMUNITY_SLACK_URL, TRANSCRIPT_URL } from '../../lib/community';
+
+/**
+ * Every non-test source under `src/`, read as text — the same globbing
+ * `CopilotEntry.test.tsx` uses to hold the store URL to one definition.
+ */
+const sources = import.meta.glob<string>(['../../**/*.{ts,tsx}', '!../../**/*.test.{ts,tsx}'], {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
 
 function renderLogin() {
   return render(
@@ -60,9 +71,30 @@ describe('LoginPage', () => {
     // Both must carry a real destination: a label with no href would look like
     // an offer and behave like a dead end, which is worse than not offering.
     const slack = screen.getByRole('link', { name: /community slack/i });
-    expect(slack).toHaveAttribute('href', expect.stringContaining('join.slack.com'));
+    expect(slack).toHaveAttribute('href', COMMUNITY_SLACK_URL);
     const transcript = screen.getByRole('link', { name: /read a real investigation/i });
-    expect(transcript).toHaveAttribute('href', expect.stringContaining('/investigation'));
+    expect(transcript).toHaveAttribute('href', TRANSCRIPT_URL);
+  });
+
+  it('leaves no second copy of the community invite anywhere in the dashboard sources', () => {
+    // Same guard the store URL gets (CopilotEntry.test.tsx). A Slack
+    // shared_invite is revocable and rotates; a copy that drifts sends people
+    // to an "invite is no longer valid" page with nothing to notice it.
+    const found: Array<[string, string]> = [];
+    for (const [file, text] of Object.entries(sources)) {
+      for (const url of text.match(/https:\/\/join\.slack\.com[^'"`\s)]*/g) ?? []) {
+        found.push([file, url]);
+      }
+    }
+
+    // Fail closed: with no hits the loop asserts nothing, so a moved or renamed
+    // constant must break this test rather than silently pass it.
+    expect(found.length).toBeGreaterThan(0);
+    for (const [file, url] of found) {
+      expect(url, `${file} links a community invite that is not the shared constant`).toBe(
+        COMMUNITY_SLACK_URL,
+      );
+    }
   });
 
   it('standalone mode: does not offer the no-account paths — the operator already chose', () => {
