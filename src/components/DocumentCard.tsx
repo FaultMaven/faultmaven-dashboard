@@ -10,11 +10,34 @@ export interface DocumentCardData {
   document_id: string;
   title: string;
   document_type: string;
-  tags: string[];
+  /**
+   * OPTIONAL because the LIST endpoint may omit it, not merely because the
+   * schema marks it so.
+   *
+   * `tags` is a Pydantic field with `default_factory=list`, which FastAPI marks
+   * not-required, so `openapi-typescript` renders it `tags?: string[]` on
+   * `KnowledgeBaseDocument`. Widening this prop to match is what lets a
+   * contract-derived row be passed here directly (faultmaven-dashboard#165).
+   *
+   * ⚠️ Do NOT generalise this into "fields with defaults render optional" —
+   * that rule is false and was stated wrongly here once. `verification_level`
+   * and `verification_status` also have defaults and are REQUIRED in the
+   * generated type, because a default with a non-`Optional` annotation still
+   * lands in the schema's `required`. Which fields a given ROUTE omits is a
+   * separate question from which the schema marks optional, and only the first
+   * one matters at a call site.
+   */
+  tags?: string[];
   scope?: string;
+  /**
+   * Who owns the document. Carried by BOTH the list rows and the single-document
+   * response, and read by `KBPage.canModifyDocument` to decide the Edit control.
+   * It has to be declared here because `DocumentList.canEditFn` receives a
+   * `DocumentCardData` — a gate cannot read a field its parameter type hides.
+   */
+  owner_id?: string | null;
   created_at: string;
   content?: string;
-  metadata?: Record<string, unknown>;
 }
 
 interface DocumentCardProps {
@@ -153,9 +176,9 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
                 {document.scope}
               </span>
             )}
-            {document.tags.length > 0 && (
+            {(document.tags?.length ?? 0) > 0 && (
               <span className="text-xs text-fm-text-tertiary">
-                {document.tags.join(', ')}
+                {document.tags?.join(', ')}
               </span>
             )}
             <span className="text-xs text-fm-text-tertiary">

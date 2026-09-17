@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
-import { logoutAuth, uploadDocument, type KBDocument, type AdminKBDocument } from '../lib/api';
+import { logoutAuth, uploadDocument } from '../lib/api';
 import {
   convertDocument,
   updateDraft,
@@ -132,11 +132,36 @@ function ScopeBadge({ scope }: { scope: string }) {
 // Documents Tab Content
 // =============================================================================
 
-function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, userId: string | null): boolean {
+function canModifyDocument(
+  // Only `scope` and `owner_id` are read. Typed structurally rather than as
+  // `KBDocument`, which would assert `content`/`status`/`verification_*` that
+  // the LIST endpoint never sends and forced an `as KBDocument` at the call
+  // site that hid exactly that. Both are widened to match `DocumentCardData`,
+  // the type `DocumentList.canEditFn` actually hands over; an absent `scope`
+  // already falls through to `'global'` below, i.e. fail-closed to admin-only.
+  doc: { scope?: string | null; owner_id?: string | null },
+  isAdmin: boolean,
+  userId: string | null,
+): boolean {
   const scope = doc.scope || 'global';
   if (scope === 'global') return isAdmin;
   if (scope === 'team') return isAdmin; // TODO: check team admin when team roles are implemented
-  if (scope === 'personal') return doc.owner_id === userId || doc.user_id === userId;
+  // `owner_id` alone, and it must be a REAL id on both sides.
+  //
+  // This used to read `doc.owner_id === userId || doc.user_id === userId`.
+  // The second clause could never fire: `user_id` is not a field of the
+  // backend's `KnowledgeBaseDocument` (no `extra="allow"` either, so Pydantic
+  // never emits one) and was only ever declared by this repo's hand-written
+  // copy of the shape. It type-checked everywhere and was `undefined` on every
+  // response — the blind spot faultmaven-dashboard#165 is about, sitting in a
+  // permission gate. Binding `KBDocument` to the contract turns it into a
+  // build error instead.
+  //
+  // The `userId` null-guard is NOT redundant: the contract types `owner_id` as
+  // `string | null`, and an unowned document (null) compared against a signed-
+  // out viewer (null) is `null === null` — true. The hand-written type said
+  // `owner_id?: string`, so that pairing was invisible before the bind.
+  if (scope === 'personal') return userId !== null && doc.owner_id === userId;
   return false;
 }
 
@@ -180,14 +205,14 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
 
   // Derive filter options from loaded documents
   const domains = useMemo(() =>
-    [...new Set(filteredDocuments.map((d) => (d as KBDocument).metadata?.domain as string).filter(Boolean))].sort(),
+    [...new Set(filteredDocuments.map((d) => d.metadata?.domain as string).filter(Boolean))].sort(),
     [filteredDocuments],
   );
   const services = useMemo(() =>
     [...new Set(
       filteredDocuments
-        .filter((d) => !domainFilter || (d as KBDocument).metadata?.domain === domainFilter)
-        .map((d) => (d as KBDocument).metadata?.service as string)
+        .filter((d) => !domainFilter || d.metadata?.domain === domainFilter)
+        .map((d) => d.metadata?.service as string)
         .filter(Boolean),
     )].sort(),
     [filteredDocuments, domainFilter],
@@ -197,13 +222,13 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
   const displayDocuments = useMemo(() => {
     let docs = filteredDocuments;
     if (domainFilter) {
-      docs = docs.filter((d) => (d as KBDocument).metadata?.domain === domainFilter);
+      docs = docs.filter((d) => d.metadata?.domain === domainFilter);
     }
     if (serviceFilter) {
-      docs = docs.filter((d) => (d as KBDocument).metadata?.service === serviceFilter);
+      docs = docs.filter((d) => d.metadata?.service === serviceFilter);
     }
     if (severityFilter) {
-      docs = docs.filter((d) => (d as KBDocument).metadata?.severity === severityFilter);
+      docs = docs.filter((d) => d.metadata?.severity === severityFilter);
     }
     return docs;
   }, [filteredDocuments, domainFilter, serviceFilter, severityFilter]);
@@ -372,13 +397,13 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
       )}
 
       <DocumentList
-        documents={displayDocuments as (KBDocument | AdminKBDocument)[]}
+        documents={displayDocuments}
         loading={loading}
         totalCount={displayDocuments.length}
         onDelete={() => {}}
         onUpdated={() => loadPage(page)}
         emptyMessage="No runbooks in your knowledge base yet."
-        canEditFn={(doc) => canModifyDocument(doc as KBDocument, isAdmin, userId)}
+        canEditFn={(doc) => canModifyDocument(doc, isAdmin, userId)}
         canRemove={false}
         selectedIds={isAdmin ? selectedIds : undefined}
         onToggleSelect={isAdmin ? toggleSelect : undefined}

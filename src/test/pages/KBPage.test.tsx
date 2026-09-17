@@ -326,3 +326,105 @@ describe('KBPage — authoring affordances match the backend gates', () => {
     expect(screen.getByText('Global (platform)')).toBeInTheDocument();
     expect(screen.queryByText('Team')).not.toBeInTheDocument();
   });});
+
+/**
+ * Who may edit a personal-scope runbook (faultmaven-dashboard#165).
+ *
+ * `canModifyDocument` is the gate on the Edit control, and it used to read
+ *
+ *     doc.owner_id === userId || doc.user_id === userId
+ *
+ * The second clause could never fire. `user_id` is not a field of the
+ * backend's `KnowledgeBaseDocument` — the model declares none and sets no
+ * `extra="allow"`, so Pydantic never emits one — it existed only in this
+ * repo's hand-written copy of the shape, where it was declared REQUIRED. So it
+ * type-checked at every call site and was `undefined` on every response: the
+ * contract blind spot #165 is about, sitting in a permission gate.
+ *
+ * These cases pin the gate's behaviour rather than the type, because the type
+ * is now enforced by `tsc` (binding `KBDocument` to the generated schema makes
+ * `doc.user_id` a build error) and a build error cannot be asserted from a
+ * runtime test. What a runtime test CAN hold is that the field carries no
+ * meaning even when a response volunteers one.
+ */
+describe('KBPage — personal-scope edit rights come from owner_id alone', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  /** One personal runbook, plus whichever viewer identity the case needs. */
+  async function renderOwned(
+    doc: Record<string, unknown>,
+    viewerId: string | null
+  ) {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: 'standard_user',
+      isAdmin: false,
+      authState: viewerId === null ? null : { user: { user_id: viewerId } },
+      clearAuthState: vi.fn(),
+    });
+    const api = await import('../../lib/api');
+    (api.listDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({
+      documents: [
+        {
+          document_id: 'doc-1',
+          title: 'Restart the ingest worker',
+          content: '# Restart',
+          document_type: 'runbook',
+          scope: 'personal',
+          tags: [],
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+          ...doc,
+        },
+      ],
+      total_count: 1,
+      limit: 20,
+      offset: 0,
+      scope_counts: { global: 0, team: 0, personal: 1 },
+    });
+    await act(async () => {
+      renderPage();
+    });
+  }
+
+  it('offers Edit on a runbook the viewer owns', async () => {
+    await renderOwned({ owner_id: 'u-1' }, 'u-1');
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('withholds Edit on a runbook owned by someone else', async () => {
+    await renderOwned({ owner_id: 'u-2' }, 'u-1');
+
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('ignores a user_id the response volunteers — only owner_id decides', async () => {
+    // The exact shape the deleted clause would have accepted: a `user_id`
+    // naming the viewer on a document someone else owns. Under the old gate
+    // this rendered Edit. It is not a field the contract declares, so a server
+    // that grew one must not be able to widen this gate by accident.
+    await renderOwned({ owner_id: 'u-2', user_id: 'u-1' }, 'u-1');
+
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('withholds Edit when an unowned runbook meets an unidentified viewer', async () => {
+    // `owner_id` is `string | null` in the contract and the viewer id is
+    // `string | null` here, so the unguarded comparison is `null === null` —
+    // true, and every unowned document becomes editable by a viewer the app
+    // could not identify. The hand-written type said `owner_id?: string`, so
+    // this pairing was not expressible before the bind.
+    await renderOwned({ owner_id: null }, null);
+
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+});

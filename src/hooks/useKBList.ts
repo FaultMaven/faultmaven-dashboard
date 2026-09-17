@@ -4,15 +4,15 @@ import {
   listAdminDocuments,
   deleteDocument as deleteUserDocument,
   deleteAdminDocument,
-  KBDocument,
-  AdminKBDocument,
+  KBDocumentListItem,
+  AdminKBDocumentListItem,
   ScopeCounts,
 } from '../lib/api';
 
 export type KBScope = 'user' | 'admin';
 export type KnowledgeScope = 'all' | 'global' | 'team' | 'personal';
 
-export interface UseKBListResult<T extends KBDocument | AdminKBDocument> {
+export interface UseKBListResult<T extends KBDocumentListItem | AdminKBDocumentListItem> {
   documents: T[];
   filteredDocuments: T[];
   totalCount: number;
@@ -29,8 +29,12 @@ export interface UseKBListResult<T extends KBDocument | AdminKBDocument> {
   deleteById: (id: string) => Promise<void>;
 }
 
-export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocument | AdminKBDocument> {
-  const [documents, setDocuments] = useState<(KBDocument | AdminKBDocument)[]>([]);
+// Rows, not documents. `GET /knowledge/documents` sends a strict subset of the
+// document (no `content`, `status` or `verification_*`) — see
+// `KBDocumentListItem`. Typing this state as the full `KBDocument` is what let
+// a list row promise fields the endpoint never sends.
+export function useKBList(scope: KBScope, pageSize = 20): UseKBListResult<KBDocumentListItem | AdminKBDocumentListItem> {
+  const [documents, setDocuments] = useState<(KBDocumentListItem | AdminKBDocumentListItem)[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [scopeCounts, setScopeCounts] = useState<ScopeCounts>({ global: 0, team: 0, personal: 0 });
   const [loading, setLoading] = useState(false);

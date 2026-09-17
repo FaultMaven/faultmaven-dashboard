@@ -1,29 +1,91 @@
+import type { components } from '../../types/api.generated';
+
 // API types and interfaces
 
 /**
- * Knowledge Base document interface
- * Represents both user and admin knowledge base documents
+ * A Knowledge Base document, as the PINNED CONTRACT declares it.
+ *
+ * Bound to the generated schema rather than restated here, so a field the
+ * backend renames or drops fails `tsc` in this repository instead of becoming
+ * a runtime `undefined` (faultmaven-dashboard#165). The hand-written version
+ * this replaces had drifted in exactly that way: it declared a REQUIRED
+ * `user_id` that the backend model has never carried, so `doc.user_id`
+ * type-checked everywhere and was `undefined` on every response. `team_id` was
+ * invented here too, and read nowhere.
+ *
+ * ‼ THIS IS THE SINGLE-DOCUMENT SHAPE, and only that.
+ * `KnowledgeBaseDocument` is the declared `response_model` of
+ * `GET /knowledge/documents/{id}`. It is NOT what the other three routes
+ * return, and using it for them asserts fields that are never sent — the same
+ * defect as `user_id`, with a REQUIRED type, which is worse. Each route below
+ * gets the shape it actually answers with.
+ *
+ * ‼ The contract's name is `KnowledgeBaseDocument`; this alias keeps the local
+ * `KBDocument` spelling that 38 references already use. The NAMES differing is
+ * why this was never bound before — a grep for `KBDocument` in the contract
+ * finds nothing, which reads as "the contract does not cover this".
  */
-export interface KBDocument {
-  document_id: string;
-  user_id: string;
-  title: string;
-  content: string;
-  document_type: string;
-  tags: string[];
-  scope: string;
-  owner_id?: string;
-  team_id?: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
+export type KBDocument = components['schemas']['KnowledgeBaseDocument'];
 
 /**
  * Type alias for admin KB documents
  * Structurally identical to KBDocument, used for semantic clarity in admin-scoped contexts
  */
 export type AdminKBDocument = KBDocument;
+
+/**
+ * One row of `GET /knowledge/documents` — a STRICT SUBSET of the document.
+ *
+ * The list route is `-> dict` with no `response_model`, so the contract types
+ * its whole body `{[key: string]: unknown}` and `api-types-drift` can see
+ * nothing about it. The rows are assembled by hand in
+ * `knowledge_service.list_documents` and carry exactly the keys below —
+ * notably NO `content`, `status`, `category`, `verification_level`,
+ * `verification_status` or `source_suggestion_id`. The single-document route
+ * has those filled by FastAPI's `response_model` coercion; this one does not.
+ *
+ * So it is derived with `Pick`, not aliased to `KBDocument`. That binds every
+ * NAME and TYPE to the contract — rename `owner_id` upstream and this stops
+ * compiling — while asserting only the fields the endpoint actually sends.
+ * Aliasing to the full document instead would promise `content: string` on
+ * every row, and `doc.content.slice(0, 200)` for a preview would compile and
+ * throw. Bind the names, not guarantees the server never made.
+ */
+export type KBDocumentListItem = Pick<
+  KBDocument,
+  | 'document_id'
+  | 'title'
+  | 'document_type'
+  | 'tags'
+  | 'scope'
+  | 'owner_id'
+  | 'source_url'
+  | 'created_at'
+  | 'updated_at'
+  | 'metadata'
+>;
+
+/** Admin-scoped list rows are the same shape; the alias marks intent. */
+export type AdminKBDocumentListItem = KBDocumentListItem;
+
+/**
+ * What `POST /knowledge/documents` answers with — an upload RECEIPT, not a
+ * document. `{document_id, status, metadata: {title, document_type, category,
+ * tags, created_at}}`. Note `title` and `created_at` are NESTED under
+ * `metadata` here, which is the shape most likely to be dereferenced wrongly.
+ * No caller reads it today; typing it honestly is what keeps that true.
+ */
+export type KBDocumentUploadResult = Pick<KBDocument, 'document_id' | 'status' | 'metadata'>;
+
+/**
+ * What `PUT /knowledge/documents/{id}` answers with: the updated fields only —
+ * no `scope`, `owner_id`, `created_at` or `verification_*`. Also an untyped
+ * `-> dict` upstream.
+ */
+export type KBDocumentUpdateResult = Pick<
+  KBDocument,
+  'document_id' | 'title' | 'content' | 'document_type' | 'category' | 'tags' | 'updated_at'
+>;
 
 /**
  * Response from document list endpoints
@@ -35,7 +97,7 @@ export interface ScopeCounts {
 }
 
 export interface DocumentListResponse {
-  documents: KBDocument[];
+  documents: KBDocumentListItem[];
   total_count: number;
   limit: number;
   offset: number;
@@ -46,7 +108,7 @@ export interface DocumentListResponse {
  * Response from admin document list endpoints
  */
 export interface AdminDocumentListResponse {
-  documents: AdminKBDocument[];
+  documents: AdminKBDocumentListItem[];
   total_count: number;
   limit: number;
   offset: number;
@@ -86,3 +148,48 @@ export interface UploadAdminDocumentParams {
   source_url?: string;
   description?: string;
 }
+
+// =============================================================================
+// Compile-time guards
+// =============================================================================
+//
+// These live HERE, not in a test, and that placement is the whole point.
+// `tsconfig.json` excludes `src/test/**`, and CI's only typecheck is
+// `pnpm typecheck` (= `tsc --noEmit` against `tsconfig.json`), so a type
+// assertion written in a test file is checked by nothing: `pnpm lint:tests` is
+// ESLint and reports lint violations, not assignability, and
+// `tsc -p tsconfig.eslint.json` is run by no workflow. A type-level assertion
+// in an app file is enforced by the same build that ships.
+//
+// They erase completely — no runtime cost, no emitted code.
+
+/**
+ * `KBDocument` is the contract schema itself, both ways round.
+ *
+ * One-directional assignability would be satisfied by a hand-written SUBSET,
+ * which is precisely the shape that drifts without anyone noticing.
+ */
+type _KBDocumentIsContractShape = [KBDocument] extends [
+  components['schemas']['KnowledgeBaseDocument'],
+]
+  ? [components['schemas']['KnowledgeBaseDocument']] extends [KBDocument]
+    ? true
+    : never
+  : never;
+
+/**
+ * Every key of the list row exists on the contract document.
+ *
+ * `Pick` makes this true by construction — which is the point: replace it with
+ * a hand-written object type that invents a field (the `user_id` mistake, in
+ * its next disguise) and `Pick<KBDocument, keyof …>` stops compiling, here, in
+ * the build that ships.
+ */
+type _ListItemKeysExistOnContract = Pick<KBDocument, keyof KBDocumentListItem>;
+
+// Referenced so `noUnusedLocals` keeps them, and so a reader sees they are
+// assertions rather than dead aliases.
+export type KnowledgeTypeGuards = {
+  document: _KBDocumentIsContractShape;
+  listItem: _ListItemKeysExistOnContract;
+};
