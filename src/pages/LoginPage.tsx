@@ -11,6 +11,7 @@ import { COMMUNITY_SLACK_URL, TRANSCRIPT_URL } from '../lib/community';
 const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 const warningBannerClass = 'mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn';
 const primaryButtonClass = 'w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+const secondaryButtonClass = 'w-full px-4 py-3 bg-fm-surface-alt text-fm-text-primary font-medium border border-fm-border rounded-fm-btn hover:bg-fm-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
 
 /**
  * Rendered when deployment detection settled 'unreachable'. Owns the Chrome
@@ -187,7 +188,16 @@ export default function LoginPage() {
     }
   };
 
-  const handleCloudSignIn = () => {
+  /**
+   * Hand off to the hosted login, optionally naming the screen to open on.
+   *
+   * Sign-in passes no hint, so a returning user's request stays byte-identical
+   * to what it was before `screen_hint` existed. Sign-up asks for the sign-up
+   * screen explicitly (core contract 6.1.0) — the hosted login opens on
+   * sign-in otherwise, which is why this page used to have only one button and
+   * a sentence claiming it did both.
+   */
+  const handleCloudSignIn = (screenHint?: 'sign-up') => {
     setError(null);
     if (!loginUrl) {
       // The IdP authorize URL comes from the deployment's auth config; if the
@@ -202,7 +212,7 @@ export default function LoginPage() {
     // trip (belt to sessionStorage's braces — survives a cleared tab state).
     const saved = sessionStorage.getItem('oauth_redirect_after_login');
     const returnTo = saved && saved.startsWith('/') && !saved.startsWith('//') ? saved : null;
-    window.location.assign(buildHostedLoginUrl(loginUrl, { returnTo }));
+    window.location.assign(buildHostedLoginUrl(loginUrl, { returnTo, screenHint }));
   };
 
   // Deployment could not be confirmed: fail CLOSED with a retriable error.
@@ -232,7 +242,7 @@ export default function LoginPage() {
           <div className="text-center mb-8 mt-6">
             <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
             <p className="text-fm-text-secondary">
-              Sign in to review your cases, search the Knowledge Base, and start a new investigation. New here? Cloud beta is open — the same button creates your account, free while it is in beta.
+              Review your cases, search the Knowledge Base, and start a new investigation.
             </p>
           </div>
 
@@ -246,11 +256,30 @@ export default function LoginPage() {
 
           <button
             type="button"
-            onClick={handleCloudSignIn}
+            onClick={() => handleCloudSignIn()}
             className={primaryButtonClass}
           >
             Sign In
           </button>
+
+          {/* A real control, not a sentence. This page used to say "the same
+              button creates your account" because the hosted login opens on
+              its sign-in screen and there was no way to ask for the other one
+              — so someone without an account had to click "Sign In", read a
+              form asking for credentials they do not have, and find the
+              sign-up link on it. `screen_hint` (core 6.1.0) removed the
+              excuse. */}
+          <button
+            type="button"
+            onClick={() => handleCloudSignIn('sign-up')}
+            className={`${secondaryButtonClass} mt-3`}
+          >
+            Create an account
+          </button>
+
+          <p className="mt-3 text-center text-sm text-fm-text-secondary">
+            Cloud beta is open — free while it is in beta.
+          </p>
 
           <div className="mt-8 pt-6 border-t border-fm-border">
             <p className="text-sm font-medium text-fm-text-primary mb-3">
