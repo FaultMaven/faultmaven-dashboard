@@ -649,3 +649,63 @@ regenerates from the pinned commit, so merging there reaches nothing here.
 this repo pins — `ref` moved without a regeneration, or the generated file was
 edited by hand. Adopt a new contract in a PR of its own, pin and regenerated
 types together, rather than folding it into unrelated work.
+
+### Narrowing the contract: `src/types/contractGuards.ts`
+
+A type aliased straight to a generated schema cannot drift. A type that
+**narrows** one can, and the app narrows deliberately: the contract types
+`primary_provider`, `state`, `source` and friends as bare `string` (that is what
+FastAPI publishes), while the UI switches on the members. Binding straight
+through would be a DOWNGRADE that removes exhaustiveness checking from every
+consumer. So a narrowing is a *claim* about the contract, and every one carries
+a compile-time guard.
+
+‼ The guards live in **app files, never tests**. `tsconfig.json` excludes
+`src/test/**` and CI's only typecheck (`pnpm typecheck`) runs against it, so a
+type-level assertion in a test file is evaluated by nothing. They erase
+completely — no runtime cost.
+
+One helper per narrowing KIND, and each applies its whole pairing as a **single
+type**, so a narrowing gets both checks or neither:
+
+| Narrowing | Guard | Catches |
+|---|---|---|
+| `Omit<Wire, K> & { K: N }` | `GuardNarrowing<Wire, N>` | the wire renaming/dropping `K`, and `K`'s type changing underneath |
+| `Wire & { k?: N }` | `GuardNarrowedMember<Wire, 'k', N>` | the wire dropping `k`, retyping it, or making it **nullable** |
+| `Pick<Wire, K1 \| K2>` | `GuardSubset<Wire, Subset>` | an invented key, and a shared member retyped **or widened** |
+
+- ‼ **`Omit` IS BLIND TO THE RENAME IT LOOKS LIKE IT CATCHES.** Its key
+  parameter is `keyof any`, not `keyof T`, so `Omit<Wire, 'cases'>` omits
+  NOTHING once the wire has no `cases`, and the `& { cases: … }` half puts the
+  field back. Measured: renaming `CaseListResponse.cases` produced ZERO errors,
+  and `listCases` would have rendered an empty case list with `tsc`,
+  `api-types-drift` and the whole suite green.
+- ‼ **A conditional type that resolves to `never` is not an error.** It is just
+  `never`, and the build stays green — `document: never` is a legal member.
+  `lib/knowledge/types.ts` carried exactly that form, so its bidirectional check
+  was inert. Only a CONSTRAINT rejects.
+- ‼ **The constraint must sit on a TYPE PARAMETER, not in the body.** Measured
+  on TS 5.8, every in-body form fails at the DECLARATION site, before it guards
+  anything: `Pick<Wire, keyof Narrowed>` (`keyof Narrowed` widens to
+  `string | number | symbol`), `_Assert<KeysExist<W, N>>` (a deferred
+  conditional's constraint is `boolean`, not `true`), and a `= keyof N`
+  parameter default (checked eagerly). A parameter constraint is deferred to the
+  INSTANTIATION, where the concrete types are known.
+- ‼ **NO `NonNullable` on the wire side, ever.** It erases exactly the change a
+  `& { k?: N }` narrowing cannot survive: the intersection annihilates `null`,
+  so consumers are told `source` is always one of three literals while rows
+  arrive `null`, every `switch` falls through, and the ADR-012 origin badge
+  renders nothing with no error. Measured — with `NonNullable` that change
+  compiled clean.
+- ‼ **The primitives are NOT exported**, and that is the fix, not an oversight.
+  `_Assert`/`_IsSubtype` were declared in three files plus a fourth partial copy;
+  the copies diverged inside a single pair of PRs and produced two measured holes
+  (#174). A loose `_IsSubtype` is what gets reached for instead of the pairing —
+  which is how `functions.ts` grew a bespoke `[number]` refinement that let
+  `scopes: string[]` → `string` compile clean.
+
+`src/test/types/contractGuards.test.ts` is the ONE subject for all of this. It
+**derives** the narrowing list by reading each source rather than restating it,
+so a narrowing added to a file nobody remembered to add to a list is still
+covered — three per-file tests, each blind to the other two files, is what #174
+was.

@@ -2,6 +2,7 @@
 
 import config from '../../config';
 import type { components } from '../../types/api.generated';
+import type { GuardNarrowing } from '../../types/contractGuards';
 import { authManager, deriveExpiresAt } from './AuthManager';
 import { AuthenticationError, type AuthState } from './types';
 import { isSafeLogoutUrl } from './logoutUrl';
@@ -22,7 +23,8 @@ function isPublishableScope(scope: string): scope is PublishableScope {
  * UI switch on the members, so binding straight through would be a DOWNGRADE
  * that removes exhaustiveness checking from every consumer. Bind the name,
  * keep the guarantee the app relies on — and guard the narrowing, since
- * `Omit`/intersection tricks are blind to a rename on their own (#171, #172).
+ * `Omit`/intersection tricks are blind to a rename on their own (#171, #172,
+ * #174).
  */
 type AvailableScopesResponse = Omit<
   components['schemas']['AvailableScopesResponse'],
@@ -32,25 +34,20 @@ type AvailableScopesResponse = Omit<
 };
 
 /**
- * The guards. BOTH kinds, because each misses what the other catches.
+ * The guard. ONE type applying BOTH checks — the key still existing on the
+ * wire, and its type still being a supertype of the narrowed one.
  *
- * `keys` catches the field being renamed away; `subtype` catches its TYPE
- * changing underneath the narrowing. Measured: with `keys` alone, changing the
- * wire's `scopes` from `string[]` to `string` compiles clean — and then
- * `getAvailableScopes` returns a bare string typed as an array, and the first
- * `.map()` in the publish UI throws. A `[number]` refinement check does not
- * help there either: `string[number]` is `string`, so it is a near-tautology.
+ * It is one type on purpose. This guard originally shipped as a hand-rolled
+ * keys check plus a bespoke `[number]` refinement in place of the subtype
+ * check, and with that pairing, changing the wire's `scopes` from `string[]` to
+ * `string` compiled CLEAN — `getAvailableScopes` would have returned a bare
+ * string for the publish UI to `.map()`. (`string[number]` is `string`, so the
+ * refinement was a near-tautology.) See `types/contractGuards.ts`.
  */
-type _Assert<T extends true> = T;
-type _IsSubtype<Narrowed, Wire> = [Narrowed] extends [Wire] ? true : false;
-
 export type AvailableScopesGuards = {
-  keys: Pick<
+  scopes: GuardNarrowing<
     components['schemas']['AvailableScopesResponse'],
-    keyof AvailableScopesResponse
-  >;
-  subtype: _Assert<
-    _IsSubtype<AvailableScopesResponse, components['schemas']['AvailableScopesResponse']>
+    AvailableScopesResponse
   >;
 };
 

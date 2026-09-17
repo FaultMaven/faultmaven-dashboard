@@ -100,9 +100,19 @@ describe('knowledge types are sourced from the generated contract', () => {
 
   it('keeps the compile-time guards where CI can see them', () => {
     // If these move to a test file they stop being enforced — see the note at
-    // the top of this file.
-    expect(source).toContain('_KBDocumentIsContractShape');
-    expect(source).toContain('_ListItemKeysExistOnContract');
+    // the top of this file. Their SHAPE is asserted once for the whole app in
+    // `src/test/types/contractGuards.test.ts`; what matters here is that this
+    // file still carries them.
+    expect(source).toContain('GuardNarrowing<');
+    expect(source).toContain('GuardSubset<');
+    expect(source).toMatch(/document:\s*_DocumentIsContractShape/);
+    // ‼ The REVERSE guard too. It is the only one that catches `KBDocument`
+    // narrowing a contract member — the forward guard already covers missing
+    // keys, invented keys and incompatible retypes — so deleting it leaves
+    // `tsc` and every other test green while the "BOTH WAYS ROUND" invariant
+    // this file's own doc comment states goes unenforced.
+    expect(source).toMatch(/documentReverse:\s*_ContractIsDocumentShape/);
+    expect(source).toMatch(/listItem:\s*_ListItemMatchesContract/);
   });
 
   it('declares no phantom fields', () => {

@@ -1,4 +1,5 @@
 import type { components } from '../../types/api.generated';
+import type { GuardNarrowing, GuardSubset } from '../../types/contractGuards';
 
 // API types and interfaces
 
@@ -164,32 +165,44 @@ export interface UploadAdminDocumentParams {
 // They erase completely — no runtime cost, no emitted code.
 
 /**
- * `KBDocument` is the contract schema itself, both ways round.
+ * `KBDocument` is the contract schema itself, BOTH WAYS ROUND.
  *
- * One-directional assignability would be satisfied by a hand-written SUBSET,
- * which is precisely the shape that drifts without anyone noticing.
+ * One direction would be satisfied by a hand-written SUBSET, which is precisely
+ * the shape that drifts without anyone noticing (the `user_id` mistake, in its
+ * next disguise). Two guards, one per direction, is how "exactly this shape" is
+ * said — and each is a constraint, so it rejects rather than evaluates.
+ *
+ * ‼ THIS USED TO BE INERT. It was written as a nested conditional resolving to
+ * `never`, and a conditional that resolves to `never` IS NOT AN ERROR — it is
+ * just `never`, and the build stays green. The member `document: never` is
+ * perfectly legal, so the check reported nothing no matter what it found. It
+ * was the fourth divergent copy of the idiom #174 consolidated.
  */
-type _KBDocumentIsContractShape = [KBDocument] extends [
+type _DocumentIsContractShape = GuardNarrowing<
   components['schemas']['KnowledgeBaseDocument'],
-]
-  ? [components['schemas']['KnowledgeBaseDocument']] extends [KBDocument]
-    ? true
-    : never
-  : never;
+  KBDocument
+>;
+type _ContractIsDocumentShape = GuardNarrowing<
+  KBDocument,
+  components['schemas']['KnowledgeBaseDocument']
+>;
 
 /**
- * Every key of the list row exists on the contract document.
+ * Every key of the list row exists on the contract document, and each one still
+ * has a compatible type.
  *
- * `Pick` makes this true by construction — which is the point: replace it with
- * a hand-written object type that invents a field (the `user_id` mistake, in
- * its next disguise) and `Pick<KBDocument, keyof …>` stops compiling, here, in
- * the build that ships.
+ * A SUBSET is not a subtype — it is missing required properties — so this is
+ * `GuardSubset`, not `GuardNarrowing`. It is `Pick`-derived today, so both
+ * halves are true by construction; that is the point. Replace it with a
+ * hand-written object type that invents a field, or that retypes one it does
+ * carry, and the guard stops compiling — here, in the build that ships.
  */
-type _ListItemKeysExistOnContract = Pick<KBDocument, keyof KBDocumentListItem>;
+type _ListItemMatchesContract = GuardSubset<KBDocument, KBDocumentListItem>;
 
 // Referenced so `noUnusedLocals` keeps them, and so a reader sees they are
 // assertions rather than dead aliases.
 export type KnowledgeTypeGuards = {
-  document: _KBDocumentIsContractShape;
-  listItem: _ListItemKeysExistOnContract;
+  document: _DocumentIsContractShape;
+  documentReverse: _ContractIsDocumentShape;
+  listItem: _ListItemMatchesContract;
 };

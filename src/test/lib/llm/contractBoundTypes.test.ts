@@ -12,12 +12,14 @@ import { describe, it, expect } from 'vitest';
  * CATCHES. Its key parameter is `keyof any`, so `Omit<Wire, 'gone'>` omits
  * nothing and compiles clean, and the `& { gone: Narrowed }` half then puts
  * the field back — leaving a client reading a key the contract dropped, which
- * is the #165 defect wearing the costume of a fix. `Pick` constrains to
- * `keyof T` and fails the build. Measured both ways.
+ * is the #165 defect wearing the costume of a fix. `GuardNarrowing` rejects it.
+ * Measured both ways.
  *
- * What is left here is the SOURCE check: that the bindings are still spelled
- * the way they have to be spelled, and that no hand-written twin has crept
- * back beside them.
+ * Their SHAPE is asserted once for the whole app, in
+ * `src/test/types/contractGuards.test.ts` — three copies of that assertion,
+ * drifting apart, is what #174 was. What is left here is the SOURCE check
+ * specific to this file: that the bindings are still spelled the way they have
+ * to be spelled, and that no hand-written twin has crept back beside them.
  */
 
 const raw = (await import('../../../types/llm.ts?raw')).default as unknown as string;
@@ -83,35 +85,17 @@ describe('llm types are sourced from the generated contract', () => {
     }
   });
 
-  it('derives the guards\' keys instead of restating them', () => {
-    // The invariant is "every narrowed key is guarded". Counting `Omit`s
-    // against `Pick`s is a PROXY for it, and the proxy is wrong for exactly
-    // the edit the guards exist to police: narrow a fifth key inside an
-    // existing `Omit` list, forget to add it to a hand-written `Pick` list,
-    // and the counts stay 4 and 4 while the new key is unguarded.
-    //
-    // `Pick<Wire, keyof Narrowed>` makes the invariant true BY CONSTRUCTION —
-    // the key set cannot drift from the type it is taken from. So the thing to
-    // assert is the form, not the arithmetic.
-    const derived = source.match(/Pick<\s*components\['schemas'\]\['[A-Za-z]+'\],\s*keyof\s+[A-Za-z]+\s*>/g) ?? [];
+  it('keeps the compile-time guards where CI can see them', () => {
+    // The guards' SHAPE — that both halves are applied, that the keys are
+    // derived, that they are stated as constraints — is asserted once for the
+    // whole app in `src/test/types/contractGuards.test.ts`. Three copies of
+    // that assertion is what #174 was. What is left to check HERE is that this
+    // file still carries a guard per narrowing, which the consolidated test
+    // verifies by reading this source.
+    expect(source).toContain('LlmTypeGuards');
+    const guards = source.match(/GuardNarrowing<\s*components\['schemas'\]/g) ?? [];
     const omits = source.match(/Omit<\s*\n?\s*components\['schemas'\]/g) ?? [];
     expect(omits.length).toBeGreaterThan(0);
-    expect(derived.length).toBeGreaterThanOrEqual(omits.length);
-    // And no guard may hand-restate a key list.
-    expect(source).not.toMatch(/Pick<\s*components\['schemas'\]\['[A-Za-z]+'\],\s*'/);
-  });
-
-  it('states the subtype checks as constraints, not bare conditionals', () => {
-    // ‼ A conditional type that resolves to `never` IS NOT AN ERROR — it is
-    // just `never`, and the build stays green. The first version of these
-    // guards used `... ? true : never` and reported nothing when a narrowed
-    // member's type changed underneath it, which is the entire failure they
-    // exist to catch. Only a CONSTRAINT (`T extends true`) makes the compiler
-    // reject it. Measured both ways.
-    expect(source).toMatch(/type\s+_Assert<\s*T\s+extends\s+true\s*>/);
-    expect(source).not.toMatch(/extends\s*\[Wire\]\s*\?\s*true\s*:\s*never/);
-    // Every subtype guard goes through it.
-    const subtypes = source.match(/Subtype:\s*_Assert<_IsSubtype</g) ?? [];
-    expect(subtypes.length).toBeGreaterThanOrEqual(4);
+    expect(guards.length).toBe(omits.length);
   });
 });
