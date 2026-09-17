@@ -129,8 +129,12 @@ describe('KBPage — scope filter reflects visible documents, not publish rights
   });
 
   it('confirms before batch-removing runbooks and reports a partial failure', async () => {
-    // Batch remove drives `DELETE /knowledge/documents/{id}`, which is
-    // operator-only — the toolbar is not offered to anyone else.
+    // Batch remove drives `DELETE /knowledge/documents/{id}`. That was
+    // operator-only once; FaultMaven/faultmaven#834 made it ownership-aware, so
+    // the toolbar is offered to whoever may delete something HERE. These rows
+    // carry `owner_id: 'u1'` so the case exercises OWNERSHIP — without it the
+    // fixtures passed only through the operator arm and the test silently
+    // covered a different branch than it appears to.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
@@ -142,8 +146,8 @@ describe('KBPage — scope filter reflects visible documents, not publish rights
     const listDocuments = api.listDocuments as ReturnType<typeof vi.fn>;
     const deleteDocument = api.deleteDocument as ReturnType<typeof vi.fn>;
     const docs = [
-      { document_id: 'd1', title: 'Runbook One', document_type: 'runbook', tags: [], scope: 'personal', created_at: '2024-01-01T00:00:00Z' },
-      { document_id: 'd2', title: 'Runbook Two', document_type: 'runbook', tags: [], scope: 'personal', created_at: '2024-01-01T00:00:00Z' },
+      { document_id: 'd1', title: 'Runbook One', document_type: 'runbook', tags: [], scope: 'personal', owner_id: 'u1', created_at: '2024-01-01T00:00:00Z' },
+      { document_id: 'd2', title: 'Runbook Two', document_type: 'runbook', tags: [], scope: 'personal', owner_id: 'u1', created_at: '2024-01-01T00:00:00Z' },
     ];
     listDocuments.mockResolvedValue({ documents: docs, total_count: 2, limit: 20, offset: 0, scope_counts: { global: 0, team: 0, personal: 2 } });
     // First delete succeeds, second fails → a partial failure.
@@ -503,13 +507,17 @@ describe('KBPage — the write gate follows the server policy', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
-  it('offers Edit to the operator on another account\'s personal runbook', async () => {
-    // The server's operator arm. Approximated here — it is single-tenant only
-    // and this client cannot see the tenant provider — but withholding it
-    // would strip a working capability from every self-hosted operator.
+  it('withholds Edit from the operator on another account\'s personal runbook', async () => {
+    // ADR-012: operator access to tenant content is the audited break-glass
+    // path, never a standing bypass — and `personal` is the most tenant-private
+    // tier. An earlier draft of this change granted it here by mirroring the
+    // server, which was wrong twice over: the server's operator arm is
+    // single-tenant only (a term this client cannot evaluate), and the branch
+    // had never granted it before, so it was a NEW bypass rather than a
+    // preserved one.
     await renderDocs([{ scope: 'personal', owner_id: 'u-2' }], 'u-1', true);
 
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
   it('gives a standard user a delete path for a runbook they wrote', async () => {
@@ -538,7 +546,9 @@ describe('KBPage — the write gate follows the server policy', () => {
       'u-1'
     );
 
-    // "Select all" plus exactly one row checkbox.
-    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    // Name the ROW, not the count: with one of each, an inverted predicate
+    // check-boxes the other account's runbook and the count is still 2.
+    expect(screen.getByRole('checkbox', { name: 'Select Runbook 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select Runbook 2' })).not.toBeInTheDocument();
   });
 });

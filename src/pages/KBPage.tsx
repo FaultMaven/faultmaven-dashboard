@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { logoutAuth, uploadDocument } from '../lib/api';
+import { canWriteDocument } from '../lib/knowledge/writePolicy';
 import {
   convertDocument,
   updateDraft,
@@ -132,65 +133,6 @@ function ScopeBadge({ scope }: { scope: string }) {
 // Documents Tab Content
 // =============================================================================
 
-/**
- * May this account write this document — EDIT or DELETE?
- *
- * One predicate for both, because the backend has one policy for both:
- * `ensure_document_write_allowed` (`knowledge/domain/document_write.py`) is
- * reached by `PUT` and `DELETE` alike, and by their bulk twins, so a client
- * that gates them differently is wrong on one of them by construction.
- *
- * The server's rule:
- *
- *   global            → `ensure_global_authoring_allowed` (platform admin,
- *                       and SINGLE-TENANT only — under multi, nobody at all)
- *   personal / team   → the OWNER; or the platform operator, again
- *                       single-tenant only
- *
- * ‼ THE OWNER ARM IS THE WHOLE POINT, and it is scope-agnostic. This used to
- * read `if (scope === 'team') return isAdmin;`, which locked the AUTHOR of a
- * team runbook out of their own document — the API would have accepted the
- * write. The routes were operator-only once (which is what the old `TODO` and
- * the batch-Remove comment described), and FaultMaven/faultmaven#834 made them
- * ownership-aware; this client had not caught up.
- *
- * ⚠️ KNOWN GAP, deliberate: the server's operator arm is conditional on
- * `requested_tenant_provider() != BUILTIN_MULTI`, and THIS CLIENT CANNOT SEE
- * THAT. `deploymentMode` on `/meta/capabilities` is derived from the dashboard
- * URL (`settings.is_cloud`), not from the tenant provider, and no capability
- * advertises tenancy. So `isAdmin` here approximates a term it cannot
- * evaluate, and under multi-tenant an operator is offered Edit on another
- * account's runbook and meets a 403.
- *
- * That is the lesser of the two errors and it is NOT a new one — the `team`
- * branch already offered exactly this. Widening the owner arm is a pure gain;
- * narrowing the operator arm would take a working capability away from every
- * self-hosted operator to spare cloud operators a safe refusal. Closing it
- * properly needs a capability on `/meta/capabilities` (a tenancy signal),
- * which is a backend change — gate on the advertised capability, never on
- * `deployment`, which answers a different question.
- */
-function canModifyDocument(
-  // Only `scope` and `owner_id` are read. Typed structurally rather than as
-  // `KBDocument`, which would assert `content`/`status`/`verification_*` that
-  // the LIST endpoint never sends. Both are widened to match
-  // `DocumentCardData`, the type `DocumentList` hands its callbacks.
-  doc: { scope?: string | null; owner_id?: string | null },
-  isAdmin: boolean,
-  userId: string | null,
-): boolean {
-  // An absent scope falls through to `global`, i.e. fail closed to admin-only.
-  const scope = doc.scope || 'global';
-  if (scope === 'global') return isAdmin;
-
-  // Every other scope: owner, or operator. `owner_id` and `userId` must BOTH
-  // be real ids — the server spells this `owner_id and actor_user_id and
-  // owner_id == actor_user_id`, and without it an unowned document (null) and
-  // an unidentified viewer (null) compare equal and every such row unlocks.
-  const isOwner = userId !== null && !!doc.owner_id && doc.owner_id === userId;
-  return isOwner || isAdmin;
-}
-
 function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
@@ -224,10 +166,18 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
 
   // A selection must never outlive the rows it was made against: a filter,
   // scope, or page change swaps the visible set, so a stale id could act on a
-  // row the user can no longer see. Clear on any such change.
+  // row the user can no longer see.
+  //
+  // ‼ The ROWS are a dependency, not just the controls that usually change
+  // them. The Runbooks tab is hidden rather than unmounted, so this state
+  // survives a tab switch — and verifying a draft bumps `refreshKey`, which
+  // calls `loadPage(0)` while `page` is already 0. Keyed on the controls alone
+  // the rows were replaced, nothing fired, and the toolbar went on offering to
+  // remove ids that now pointed at documents the user could not see.
+  const rowIdentity = filteredDocuments.map((d) => d.document_id).join(',');
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page]);
+  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page, rowIdentity]);
 
   // Derive filter options from loaded documents
   const domains = useMemo(() =>
@@ -274,11 +224,20 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
     });
   };
 
-  // Only rows this account may DELETE are selectable. Same predicate as Edit,
-  // because the server applies one policy to both — and the bulk route runs it
-  // per target and passes only the permitted ids on, so a standard user
-  // bulk-deleting their OWN runbooks is a supported call, not a 403.
-  const removableDocuments = displayDocuments.filter((d) => canModifyDocument(d, isAdmin, userId));
+  // ONE predicate, memoised, for the Edit button AND the checkbox AND this
+  // filter. The server applies one policy to PUT and DELETE, so handing
+  // `DocumentList` two separate callbacks would be two things that can drift —
+  // the very class of bug this page is fixing. Memoised because it was being
+  // evaluated three times per row per render, next to neighbours that are all
+  // `useMemo`d.
+  const canWrite = useCallback(
+    (d: { scope?: string | null; owner_id?: string | null }) => canWriteDocument(d, isAdmin, userId),
+    [isAdmin, userId],
+  );
+  const removableDocuments = useMemo(
+    () => displayDocuments.filter(canWrite),
+    [displayDocuments, canWrite],
+  );
   const canRemoveAny = removableDocuments.length > 0;
   const allSelected = canRemoveAny && removableDocuments.every((d) => selectedIds.has(d.document_id));
   const toggleAll = () => {
@@ -296,8 +255,14 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
     setBatchDeleting(true);
     setBatchError(null);
     let failed = 0;
+    // Intersect with the rows in hand. The effect above clears the selection
+    // when they change, but that is a render-time correction and this is the
+    // irreversible step: it deletes only what the user can currently see and
+    // is currently allowed to remove, whatever the selection happens to hold.
+    const removableIds = new Set(removableDocuments.map((d) => d.document_id));
+    const targets = [...selectedIds].filter((id) => removableIds.has(id));
     try {
-      for (const id of selectedIds) {
+      for (const id of targets) {
         try {
           await deleteById(id);
         } catch {
@@ -440,11 +405,10 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
         onDelete={() => {}}
         onUpdated={() => loadPage(page)}
         emptyMessage="No runbooks in your knowledge base yet."
-        canEditFn={(doc) => canModifyDocument(doc, isAdmin, userId)}
+        canWriteFn={canWrite}
         canRemove={false}
         selectedIds={canRemoveAny ? selectedIds : undefined}
         onToggleSelect={canRemoveAny ? toggleSelect : undefined}
-        canSelectFn={(doc) => canModifyDocument(doc, isAdmin, userId)}
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
