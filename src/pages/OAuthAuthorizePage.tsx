@@ -270,15 +270,25 @@ export default function OAuthAuthorizePage() {
         client_id: consent.client_id,
         redirect_uri: consent.redirect_uri,
         code_challenge: codeChallenge,
-        code_challenge_method: codeChallengeMethod,
+        // Literal, not the raw query value: the PKCE guard above returns
+        // early on anything but S256, so this is the only reachable value —
+        // and the contract types the field `"S256" | null`, so stating it is
+        // what makes that guard visible to the compiler.
+        code_challenge_method: 'S256',
         scope: consent.scope,
         state: consent.state,
       });
 
       if (approval.code && approval.state) {
         redirectToExtension(approval, consent.redirect_uri);
-      } else if (approval.error) {
-        setError(approval.error_description || 'Authorization failed');
+      } else {
+        // A 2xx with no code/state. There is no `{error, error_description}`
+        // arm to read here and there never was: both routes raise
+        // `HTTPException`, so every refusal is a non-2xx that
+        // `submitOAuthApproval` has already turned into a thrown Error, caught
+        // below. The branch that read those fields was unreachable, and the
+        // fields themselves were never on the wire (#165).
+        setError('Authorization failed');
         setSubmitting(false);
       }
     } catch (err) {
@@ -299,7 +309,11 @@ export default function OAuthAuthorizePage() {
         client_id: consent.client_id,
         redirect_uri: consent.redirect_uri,
         code_challenge: codeChallenge,
-        code_challenge_method: codeChallengeMethod,
+        // Literal, not the raw query value: the PKCE guard above returns
+        // early on anything but S256, so this is the only reachable value —
+        // and the contract types the field `"S256" | null`, so stating it is
+        // what makes that guard visible to the compiler.
+        code_challenge_method: 'S256',
         scope: consent.scope,
         state: consent.state,
       });

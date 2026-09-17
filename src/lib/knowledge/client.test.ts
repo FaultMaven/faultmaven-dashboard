@@ -102,7 +102,6 @@ describe('makeAuthenticatedRequest', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: [],
       },
     };
@@ -130,7 +129,6 @@ describe('makeAuthenticatedRequest', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: [],
       },
     };
@@ -162,7 +160,6 @@ describe('makeAuthenticatedRequest', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: ['user'],
       },
     };
@@ -197,7 +194,6 @@ describe('makeAuthenticatedRequest', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: [],
       },
     };
@@ -224,7 +220,6 @@ describe('makeAuthenticatedRequest', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: [],
       },
     };
@@ -262,7 +257,6 @@ describe('makeAuthenticatedRequest', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: [],
       },
     };

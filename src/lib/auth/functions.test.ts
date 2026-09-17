@@ -688,3 +688,67 @@ describe('logoutAuth — server-side IdP teardown', () => {
     expect(headers).toHaveProperty('Authorization');
   });
 });
+
+/**
+ * A 2xx login that cannot identify the account is refused (#165).
+ *
+ * `toAuthState` builds the stored session from the response FIELD BY FIELD.
+ * The previous `{ ...body, expires_at }` typechecked only because the parsed
+ * body was `any`, so it carried through whatever `user` and `session_id`
+ * happened to arrive — including nothing at all. A login response without
+ * `user` was accepted and stored, and the app crashed on the first
+ * `authState.user.user_id`, several screens away from the cause.
+ *
+ * Binding the body to `Partial<AuthTokenResponse>` is what surfaced it: the
+ * spread stopped compiling, because the guard above it only ever checked the
+ * token.
+ */
+describe('devLogin — a response that cannot identify the account', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('refuses a 2xx login with no user profile', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: 'tok',
+        token_type: 'bearer',
+        expires_in: 3600,
+        session_id: 's1',
+        // no `user`
+      }),
+    } as unknown as Response);
+
+    await expect(devLogin('ada')).rejects.toThrow(/account profile/i);
+  });
+
+  it('stores the session when the profile is present', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: 'tok',
+        token_type: 'bearer',
+        expires_in: 3600,
+        session_id: 's1',
+        user: {
+          user_id: 'u-1',
+          username: 'ada',
+          email: 'ada@example.com',
+          display_name: 'Ada L',
+          is_dev_user: true,
+          created_at: '2026-09-01T00:00:00Z',
+          roles: ['user'],
+        },
+      }),
+    } as unknown as Response);
+
+    const state = await devLogin('ada');
+
+    expect(state.user.user_id).toBe('u-1');
+    // Derived, not echoed: the wire carries `expires_in` (seconds).
+    expect(state.expires_at).toBeGreaterThan(Date.now());
+  });
+});

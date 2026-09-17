@@ -128,7 +128,7 @@ const SIGNED_IN = {
   refresh_token: 'refresh',
   user: {
     user_id: 'u1', username: 'ada', email: 'ada@example.com',
-    display_name: 'Ada L', is_dev_user: true, is_active: true, roles: ['user'],
+    display_name: 'Ada L', is_dev_user: true, roles: ['user'],
   },
 };
 

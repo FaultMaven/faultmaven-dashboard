@@ -61,7 +61,6 @@ describe('AuthManager', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: ['user'],
       },
     };
@@ -88,7 +87,6 @@ describe('AuthManager', () => {
           email: 'test@example.com',
           display_name: 'Test User',
           is_dev_user: false,
-          is_active: true,
           roles: [],
         },
       };
@@ -496,20 +494,5 @@ describe('AuthManager', () => {
       expect(result?.user.roles).toEqual([]);
     });
 
-    it('should handle auth state with inactive user', async () => {
-      const inactiveUserAuthState = {
-        ...mockAuthState,
-        user: {
-          ...mockAuthState.user,
-          is_active: false,
-        },
-      };
-      mockGet.mockResolvedValueOnce({ authState: inactiveUserAuthState });
-
-      const result = await authManager.getAuthState();
-
-      expect(result).toEqual(inactiveUserAuthState);
-      expect(result?.user.is_active).toBe(false);
-    });
   });
 });

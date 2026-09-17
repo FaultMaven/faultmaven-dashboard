@@ -33,6 +33,8 @@ function respondWith(status: number, body: unknown = { detail: 'x' }) {
   );
 }
 
+// `as const` so `code_challenge_method` keeps its literal type: the contract
+// declares it `"S256" | null`, and a widened `string` no longer satisfies it.
 const APPROVAL = {
   approved: true,
   client_id: 'faultmaven-copilot',
@@ -41,7 +43,7 @@ const APPROVAL = {
   code_challenge_method: 'S256',
   scope: 'openid',
   state: 's',
-};
+} as const;
 
 describe('OAuth client error reporting', () => {
   beforeEach(() => vi.unstubAllGlobals());

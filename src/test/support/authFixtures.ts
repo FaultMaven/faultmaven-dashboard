@@ -22,7 +22,6 @@ export const TEST_USER: AuthState['user'] = {
   email: 'ada@example.com',
   display_name: 'Ada L',
   is_dev_user: true,
-  is_active: true,
   roles: ['user'],
 };
 

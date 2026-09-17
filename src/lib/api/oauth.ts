@@ -1,3 +1,4 @@
+import type { components } from '../../types/api.generated';
 /**
  * OAuth API Client
  *
@@ -52,22 +53,31 @@ export interface OAuthConsentData {
   username: string;
 }
 
-export interface OAuthApprovalRequest {
-  approved: boolean;
-  client_id: string;
-  redirect_uri: string;
-  code_challenge: string;
-  code_challenge_method: string;
-  scope: string;
-  state: string;
-}
+/**
+ * `POST /auth/oauth/authorize` — the request body, from the pinned contract.
+ *
+ * Narrower than what this file used to declare: the contract types
+ * `code_challenge_method` as `"S256" | null`, not `string`, so sending
+ * anything else is now a build error rather than a 4xx.
+ */
+export type OAuthApprovalRequest = components['schemas']['AuthorizationApprovalRequest'];
 
-export interface OAuthApprovalResponse {
-  code?: string;
-  state?: string;
-  error?: string;
-  error_description?: string;
-}
+/**
+ * `POST /auth/oauth/authorize` — the success body.
+ *
+ * ‼ NO `error` / `error_description`. They were declared here and read on the
+ * consent page, and NOTHING HAS EVER SET THEM: both routes raise FastAPI
+ * `HTTPException`, so a refusal is `{"detail": ...}` with a non-2xx status,
+ * which `submitOAuthApproval` turns into a thrown Error before any of this is
+ * reached. The `else if (approval.error)` branch was unreachable, and the
+ * fields were the #165 defect in a security-relevant path — see
+ * `messageForFailure` below, which is where refusals are actually rendered.
+ *
+ * PARTIAL, deliberately: the contract declares `code` and `state` required,
+ * but this is a 2xx body from a server of unknown version and the caller
+ * checks both before acting on them. Bind the names, not the guarantees.
+ */
+export type OAuthApprovalResponse = Partial<components['schemas']['AuthorizationResponse']>;
 
 /**
  * Get OAuth consent data from backend.

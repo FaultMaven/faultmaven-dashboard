@@ -116,7 +116,6 @@ const EXPIRED_SEED: AuthState = {
     email: 't@example.com',
     display_name: 'Tester',
     is_dev_user: false,
-    is_active: true,
     roles: ['user'],
   },
 };
