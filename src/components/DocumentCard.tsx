@@ -50,7 +50,7 @@ interface DocumentCardProps {
   onToggleExpand?: () => void;
 }
 
-export function DocumentCard({ document, onDelete, canEdit = true, canRemove = true, isExpanded, onToggleExpand }: DocumentCardProps) {
+export function DocumentCard({ document, onDelete, onUpdated, canEdit = true, canRemove = true, isExpanded, onToggleExpand }: DocumentCardProps) {
   const [internalExpanded, setInternalExpanded] = useState(false);
   const expanded = isExpanded ?? internalExpanded;
   const [editing, setEditing] = useState(false);
@@ -119,6 +119,15 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
       setEditing(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
+      // Tell the owner of the list that the server copy moved. Without this the
+      // save updated only THIS card's local `content`, so the row the parent
+      // holds kept its pre-edit body and everything derived from the list —
+      // the title/tag search in `useKBList`, the domain/service/severity
+      // facets built from `metadata` — stayed stale until navigation.
+      // The prop was declared, forwarded by `DocumentList` and passed by
+      // `KBPage` as `() => loadPage(page)`; it was simply never destructured,
+      // which `noUnusedParameters` cannot flag because the name never appears.
+      onUpdated?.();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
