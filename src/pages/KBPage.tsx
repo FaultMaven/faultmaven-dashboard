@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
-import { logoutAuth, uploadDocument, type KBDocument, type AdminKBDocument } from '../lib/api';
+import { logoutAuth, uploadDocument } from '../lib/api';
 import {
   convertDocument,
   updateDraft,
@@ -132,7 +132,17 @@ function ScopeBadge({ scope }: { scope: string }) {
 // Documents Tab Content
 // =============================================================================
 
-function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, userId: string | null): boolean {
+function canModifyDocument(
+  // Only `scope` and `owner_id` are read. Typed structurally rather than as
+  // `KBDocument`, which would assert `content`/`status`/`verification_*` that
+  // the LIST endpoint never sends and forced an `as KBDocument` at the call
+  // site that hid exactly that. Both are widened to match `DocumentCardData`,
+  // the type `DocumentList.canEditFn` actually hands over; an absent `scope`
+  // already falls through to `'global'` below, i.e. fail-closed to admin-only.
+  doc: { scope?: string | null; owner_id?: string | null },
+  isAdmin: boolean,
+  userId: string | null,
+): boolean {
   const scope = doc.scope || 'global';
   if (scope === 'global') return isAdmin;
   if (scope === 'team') return isAdmin; // TODO: check team admin when team roles are implemented
@@ -195,14 +205,14 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
 
   // Derive filter options from loaded documents
   const domains = useMemo(() =>
-    [...new Set(filteredDocuments.map((d) => (d as KBDocument).metadata?.domain as string).filter(Boolean))].sort(),
+    [...new Set(filteredDocuments.map((d) => d.metadata?.domain as string).filter(Boolean))].sort(),
     [filteredDocuments],
   );
   const services = useMemo(() =>
     [...new Set(
       filteredDocuments
-        .filter((d) => !domainFilter || (d as KBDocument).metadata?.domain === domainFilter)
-        .map((d) => (d as KBDocument).metadata?.service as string)
+        .filter((d) => !domainFilter || d.metadata?.domain === domainFilter)
+        .map((d) => d.metadata?.service as string)
         .filter(Boolean),
     )].sort(),
     [filteredDocuments, domainFilter],
@@ -212,13 +222,13 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
   const displayDocuments = useMemo(() => {
     let docs = filteredDocuments;
     if (domainFilter) {
-      docs = docs.filter((d) => (d as KBDocument).metadata?.domain === domainFilter);
+      docs = docs.filter((d) => d.metadata?.domain === domainFilter);
     }
     if (serviceFilter) {
-      docs = docs.filter((d) => (d as KBDocument).metadata?.service === serviceFilter);
+      docs = docs.filter((d) => d.metadata?.service === serviceFilter);
     }
     if (severityFilter) {
-      docs = docs.filter((d) => (d as KBDocument).metadata?.severity === severityFilter);
+      docs = docs.filter((d) => d.metadata?.severity === severityFilter);
     }
     return docs;
   }, [filteredDocuments, domainFilter, serviceFilter, severityFilter]);
@@ -387,13 +397,13 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
       )}
 
       <DocumentList
-        documents={displayDocuments as (KBDocument | AdminKBDocument)[]}
+        documents={displayDocuments}
         loading={loading}
         totalCount={displayDocuments.length}
         onDelete={() => {}}
         onUpdated={() => loadPage(page)}
         emptyMessage="No runbooks in your knowledge base yet."
-        canEditFn={(doc) => canModifyDocument(doc as KBDocument, isAdmin, userId)}
+        canEditFn={(doc) => canModifyDocument(doc, isAdmin, userId)}
         canRemove={false}
         selectedIds={isAdmin ? selectedIds : undefined}
         onToggleSelect={isAdmin ? toggleSelect : undefined}

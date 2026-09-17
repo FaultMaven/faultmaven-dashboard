@@ -7,7 +7,8 @@ import { makeAuthenticatedRequest, buildQueryParams } from './client';
 import { handleAPIResponse } from './errors';
 import type {
   KBDocument,
-  AdminKBDocument,
+  KBDocumentUploadResult,
+  KBDocumentUpdateResult,
   DocumentListResponse,
   AdminDocumentListResponse,
   UploadDocumentParams,
@@ -19,11 +20,19 @@ const KB_BASE = '/api/v1/knowledge/documents';
 /**
  * Upload a document to the knowledge base.
  *
+ * Answers with a RECEIPT, not a document: `{document_id, status, metadata}`,
+ * where `title` and `created_at` sit NESTED under `metadata`. Typed as what
+ * the route actually sends rather than as `KBDocument` — the route is `-> dict`
+ * upstream with no `response_model`, so nothing but this declaration stands
+ * between a caller and `doc.title === undefined` (faultmaven-dashboard#165).
+ *
  * Any authenticated user may upload at their own scope; `global` — the platform
  * tier every tenant reads — requires the platform-admin role, which the backend
  * enforces on the SCOPE rather than on the route (FaultMaven/faultmaven#1377).
  */
-export async function uploadDocument(params: UploadDocumentParams): Promise<KBDocument> {
+export async function uploadDocument(
+  params: UploadDocumentParams,
+): Promise<KBDocumentUploadResult> {
   const formData = new FormData();
   formData.append('file', params.file);
   formData.append('title', params.title);
@@ -81,11 +90,14 @@ export async function getDocument(documentId: string): Promise<KBDocument> {
 /**
  * Update a document's content (and optionally metadata).
  * Triggers re-embedding in ChromaDB so vectors match the new content.
+ *
+ * Answers with the UPDATED FIELDS, not a document — no `scope`, `owner_id`,
+ * `created_at` or `verification_*`. See `KBDocumentUpdateResult`.
  */
 export async function updateDocument(
   documentId: string,
   updates: { content?: string; title?: string; tags?: string },
-): Promise<KBDocument> {
+): Promise<KBDocumentUpdateResult> {
   const response = await makeAuthenticatedRequest(`${KB_BASE}/${documentId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -110,8 +122,10 @@ export async function deleteDocument(documentId: string): Promise<void> {
 
 // ===== Admin aliases (same endpoint, kept for backward compat with useKBList scope) =====
 
-export async function uploadAdminDocument(params: UploadAdminDocumentParams): Promise<AdminKBDocument> {
-  return uploadDocument(params as UploadDocumentParams) as Promise<AdminKBDocument>;
+export async function uploadAdminDocument(
+  params: UploadAdminDocumentParams,
+): Promise<KBDocumentUploadResult> {
+  return uploadDocument(params as UploadDocumentParams);
 }
 
 export async function listAdminDocuments(params?: {
