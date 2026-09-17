@@ -17,12 +17,16 @@
  *
  * This file replaces three hand-rolled copies of `_Assert` / `_IsSubtype` /
  * `_NotNullable` (`types/llm.ts`, `types/cases.ts`, `lib/auth/functions.ts`)
- * plus a fourth partial copy in `lib/knowledge/types.ts`. The copies diverged
- * within a single pair of PRs and the divergence produced two measured holes
- * (faultmaven-dashboard#174): `cases.ts` shipped with the keys check but no
- * subtype check on four of five narrowings, and `functions.ts` shipped with a
- * bespoke `[number]` refinement in place of the subtype check. Both compiled
- * clean against a mutated contract.
+ * plus a fourth partial copy in `lib/knowledge/types.ts`.
+ *
+ * ‼ The copies diverged INSIDE #171–#173, and the divergence produced two
+ * measured holes: an earlier revision of `cases.ts` carried the keys check
+ * without the subtype check on four of five narrowings, and an earlier revision
+ * of `functions.ts` substituted a bespoke `[number]` refinement for it. Both
+ * compiled clean against a mutated contract; both were corrected in review
+ * before they merged, so `git show` on the commit this file replaces will not
+ * find them — what it will find is four copies that had already drifted apart
+ * once and would do it again (faultmaven-dashboard#174).
  *
  * The cause was that guarding a narrowing took TWO checks applied by hand, so
  * it could be done half-way. Each helper below applies its whole pairing as a
@@ -63,6 +67,34 @@
  */
 
 /**
+ * `null` / `undefined` are still in the same places on both sides.
+ *
+ * ‼ NEITHER OF THE OTHER TWO CHECKS CAN SEE THIS, and the `Omit` idiom is what
+ * makes it dangerous. `Narrowed extends Wire` holds happily when the wire turns
+ * a key nullable — `T[]` IS assignable to `T[] | null` — and the key sets are
+ * unchanged, so the `Record` arm sees nothing either. Measured on TS 5.8:
+ * without this arm, a wire whose `cases` became `T[] | null` (or `cases?:`)
+ * compiled with ZERO errors, while the alias went on declaring it required and
+ * non-null. `listCases` would then run `.cases.map` on `null`, and
+ * `getAvailableScopes` `.filter` on a missing `scopes` — with `tsc`,
+ * `api-types-drift` and the whole suite green. That is the same class of defect
+ * `GuardNarrowedMember` has an explicit arm for; this is the whole-shape one.
+ *
+ * The comparison is `Extract<T, null | undefined>` on each side rather than
+ * `null extends T`, because OPTIONAL and NULLABLE are two different ways for
+ * the value to go missing and both matter. A key that is optional on BOTH sides
+ * is fine — `LLMConfigUpdate.primary_provider?` narrows an already-optional
+ * wire field, and must stay green.
+ */
+type NullishPreserved<Wire, Narrowed> = {
+  [K in Extract<keyof Narrowed, keyof Wire>]?: [Extract<Wire[K], null | undefined>] extends [
+    Extract<Narrowed[K], null | undefined>,
+  ]
+    ? unknown
+    : never;
+};
+
+/**
  * Guards `Omit<Wire, K> & { K: Narrowed }` — the whole-shape narrowing.
  *
  * Catches BOTH failures, which is the point of it being one type:
@@ -92,9 +124,14 @@
  *   Wire`. Existence alone would accept a `string` field becoming a number, or
  *   an object swapped for another schema.
  *
- * Neither substitutes for the other: an extra key is still a structural
- * subtype, so `extends Wire` alone misses the rename; and a retyped member
- * keeps the key set intact, so the `Record` alone misses the retype.
+ * - **The member becoming NULLABLE or OPTIONAL**, via `NullishPreserved` above
+ *   — which neither of the other two can see.
+ *
+ * No one of them substitutes for another: an extra key is still a structural
+ * subtype, so `extends Wire` alone misses the rename; a retyped member keeps
+ * the key set intact, so the `Record` alone misses the retype; and a nullable
+ * member is both a subtype and key-identical, so only the third arm catches
+ * it.
  *
  * ⚠️ Not for `Wire & { k?: N }` narrowings — see `GuardNarrowedMember`. An
  * intersection is always assignable to its own parts, so this degenerates to a
@@ -110,7 +147,9 @@
  */
 export type GuardNarrowing<
   Wire,
-  Narrowed extends Wire & Record<Exclude<keyof Narrowed, keyof Wire>, never>,
+  Narrowed extends Wire &
+    Record<Exclude<keyof Narrowed, keyof Wire>, never> &
+    NullishPreserved<Wire, Narrowed>,
 > = Narrowed;
 
 /**

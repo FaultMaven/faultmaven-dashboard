@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
+import { stripComments } from '../../support/stripComments';
+
 /**
  * KB response shapes are BOUND to the pinned contract, not restated.
  *
@@ -43,7 +45,7 @@ const raw = (await import('../../../lib/knowledge/types.ts?raw')).default as unk
  * `https://` anywhere in the file eats the rest of its line, silently removing
  * code from what the assertions see.
  */
-const source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+const source = stripComments(raw);
 
 /** The `KBDocumentListItem` declaration alone, `export type` through `>;`. */
 function listItemDeclaration(): string {

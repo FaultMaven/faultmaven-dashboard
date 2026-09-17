@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
+import { stripComments } from '../../support/stripComments';
+
 /**
  * LLM config types are BOUND to the pinned contract, not restated (#165).
  *
@@ -30,12 +32,7 @@ const raw = (await import('../../../types/llm.ts?raw')).default as unknown as st
  * so matching the raw text would pass on documentation alone — the trap
  * `authConfigContractBinding.test.ts` records.
  */
-const source = raw
-  // LINE comments FIRST. The other order lets a `// … /* …` comment start a
-  // block match that runs to the next `*/`, deleting real declarations from
-  // `source` and making every `not.toMatch` below pass against a hole.
-  .replace(/(^|[^:])\/\/.*$/gm, '$1')
-  .replace(/\/\*[\s\S]*?\*\//g, '');
+const source = stripComments(raw);
 
 describe('llm types are sourced from the generated contract', () => {
   it('reads the source at all, with comments stripped', () => {
@@ -47,7 +44,11 @@ describe('llm types are sourced from the generated contract', () => {
     // `//` line and one `/** */` block. Checking only a line comment leaves the
     // block stripper unproven, which is how a half-working strip goes unnoticed.
     expect(source).not.toContain('Bind the names');
-    expect(source).not.toContain('never the declared');
+    // ‼ A phrase that IS in a `/** */` block in llm.ts. The previous probe
+    // looked for 'never the declared', which occurs nowhere in that file — so
+    // it passed whether or not the block stripper ran at all, leaving exactly
+    // the half-working strip the line above warns about.
+    expect(source).not.toContain("Narrower than the contract's");
   });
 
   it('binds every response and request shape to a schema', () => {
@@ -86,16 +87,20 @@ describe('llm types are sourced from the generated contract', () => {
   });
 
   it('keeps the compile-time guards where CI can see them', () => {
-    // The guards' SHAPE — that both halves are applied, that the keys are
-    // derived, that they are stated as constraints — is asserted once for the
-    // whole app in `src/test/types/contractGuards.test.ts`. Three copies of
-    // that assertion is what #174 was. What is left to check HERE is that this
-    // file still carries a guard per narrowing, which the consolidated test
-    // verifies by reading this source.
+    // The guards' SHAPE — both halves applied, keys derived, stated as
+    // constraints — and the per-name pairing of every narrowing in this file
+    // are asserted once for the whole app in
+    // `src/test/types/contractGuards.test.ts`. Three copies of that assertion
+    // is what #174 was.
+    //
+    // ‼ DELIBERATELY NOT a count of `GuardNarrowing`s against `Omit`s. That is
+    // the arithmetic the test this replaced argued against — "the proxy is
+    // wrong for exactly the edit the guards exist to police" — and as an
+    // equality it also goes red on correct edits: a plain `Omit<…>` alias that
+    // narrows nothing would demand a bogus guard, and a reverse-direction
+    // guard (as `lib/knowledge/types.ts` now has) over-counts. What belongs
+    // here is that this file still HAS its guard block.
     expect(source).toContain('LlmTypeGuards');
-    const guards = source.match(/GuardNarrowing<\s*components\['schemas'\]/g) ?? [];
-    const omits = source.match(/Omit<\s*\n?\s*components\['schemas'\]/g) ?? [];
-    expect(omits.length).toBeGreaterThan(0);
-    expect(guards.length).toBe(omits.length);
+    expect(source).toMatch(/GuardNarrowing<\s*components\['schemas'\]/);
   });
 });

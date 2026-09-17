@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
+import { stripComments } from '../support/stripComments';
+
 /**
  * The `/auth/config` parse must stay bound to the GENERATED contract types.
  *
@@ -37,9 +39,7 @@ const raw: string = (
  * `Omit + named schema` form still matched and still passed. A source test
  * that prose can satisfy proves nothing about the code.
  */
-const source = raw
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(^|[^:])\/\/.*$/gm, '$1');
+const source = stripComments(raw);
 
 describe('the /auth/config parse is bound to the contract', () => {
   it('reads the source at all, with comments stripped', () => {

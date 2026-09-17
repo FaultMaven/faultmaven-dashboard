@@ -670,7 +670,7 @@ type**, so a narrowing gets both checks or neither:
 
 | Narrowing | Guard | Catches |
 |---|---|---|
-| `Omit<Wire, K> & { K: N }` | `GuardNarrowing<Wire, N>` | the wire renaming/dropping `K`, and `K`'s type changing underneath |
+| `Omit<Wire, K> & { K: N }` | `GuardNarrowing<Wire, N>` | the wire renaming/dropping `K`, `K`'s type changing underneath, and `K` becoming **nullable or optional** |
 | `Wire & { k?: N }` | `GuardNarrowedMember<Wire, 'k', N>` | the wire dropping `k`, retyping it, or making it **nullable** |
 | `Pick<Wire, K1 \| K2>` | `GuardSubset<Wire, Subset>` | an invented key, and a shared member retyped **or widened** |
 
@@ -680,6 +680,20 @@ type**, so a narrowing gets both checks or neither:
   field back. Measured: renaming `CaseListResponse.cases` produced ZERO errors,
   and `listCases` would have rendered an empty case list with `tsc`,
   `api-types-drift` and the whole suite green.
+- ‼ **Subtyping cannot see a key going nullable.** `Narrowed extends Wire` HOLDS
+  when the wire turns `cases` into `T[] | null` — a `T[]` is assignable to it —
+  and the key set is unchanged, so the keys arm sees nothing either. Measured:
+  without a third arm comparing `Extract<T, null | undefined>` on both sides,
+  that change compiled with ZERO errors while the alias went on declaring the
+  key required and non-null, and `listCases` would run `.cases.map` on `null`.
+  Optional and nullable are two different ways to go missing and both count.
+- ‼ **A member narrowing's guard NAMES its type, it does not derive it.**
+  `GuardNarrowedMember<Wire, 'source', CaseSource>`, never
+  `CaseSummary['source']` — that alias is an *intersection with the wire*, so a
+  wire retype flows into both sides and cancels out. Measured: the derived form
+  compiles clean on exactly the mutation the guard exists to catch. The
+  declaration and the guard are kept in step by the source test, which reads
+  both spellings — a test can compare them without the circularity.
 - ‼ **A conditional type that resolves to `never` is not an error.** It is just
   `never`, and the build stays green — `document: never` is a legal member.
   `lib/knowledge/types.ts` carried exactly that form, so its bidirectional check

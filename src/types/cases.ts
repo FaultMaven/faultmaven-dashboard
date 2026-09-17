@@ -363,6 +363,24 @@ export type CaseTypeGuards = {
     AdminCaseMessagesResponse
   >;
 
+  // ‼ THE NARROWED TYPE IS NAMED, NOT DERIVED — `CaseSource`, never
+  // `CaseSummary['source']`. This looks like it breaks the "derive, don't
+  // restate" rule above and it does not: that rule is about KEY LISTS, which
+  // fall out of step silently. Here, deriving makes the guard CIRCULAR.
+  //
+  // `CaseSummary` is `Wire & { source?: CaseSource }`, so `CaseSummary['source']`
+  // is an INTERSECTION WITH THE WIRE. Retype the wire and the new type flows
+  // into both sides of the comparison and cancels out. Measured: with the wire's
+  // `source` changed to an object, the named form fails the build and the
+  // derived form compiles CLEAN — the guard would have been comparing the
+  // contract against itself.
+  //
+  // The decoupling this appears to risk — the declaration widening to
+  // `source?: string` while the guard still says `CaseSource` — is not fixed by
+  // deriving either (both forms pass). It is caught by
+  // `src/test/types/contractGuards.test.ts`, which reads the declared type out
+  // of the body and requires the guard to name THAT. A test can compare the two
+  // spellings without a type-level circularity.
   summarySource: GuardNarrowedMember<components['schemas']['CaseSummary'], 'source', CaseSource>;
   detailSource: GuardNarrowedMember<components['schemas']['CaseDetail'], 'source', CaseSource>;
   metadataSource: GuardNarrowedMember<

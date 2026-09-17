@@ -172,11 +172,18 @@ export interface UploadAdminDocumentParams {
  * next disguise). Two guards, one per direction, is how "exactly this shape" is
  * said — and each is a constraint, so it rejects rather than evaluates.
  *
- * ‼ THIS USED TO BE INERT. It was written as a nested conditional resolving to
- * `never`, and a conditional that resolves to `never` IS NOT AN ERROR — it is
- * just `never`, and the build stays green. The member `document: never` is
- * perfectly legal, so the check reported nothing no matter what it found. It
- * was the fourth divergent copy of the idiom #174 consolidated.
+ * ‼ BOTH ARE TAUTOLOGIES TODAY, and that is not a defect — it is what they are
+ * for. `KBDocument` IS the schema (line 29), so nothing can make either side
+ * disagree while that alias holds. They are a TRIPWIRE for the day someone
+ * replaces the alias with a hand-written shape, which is the drift this file
+ * has already suffered once. Do not read them as evidence that the KB shapes
+ * are being checked against the contract: the alias is what does that.
+ *
+ * ‼ The previous version could not even do that much. It was a nested
+ * conditional resolving to `never`, and a conditional that resolves to `never`
+ * IS NOT AN ERROR — `document: never` is a legal member, so it reported nothing
+ * no matter what it found. It was the fourth divergent copy of the idiom #174
+ * consolidated.
  */
 type _DocumentIsContractShape = GuardNarrowing<
   components['schemas']['KnowledgeBaseDocument'],
@@ -199,10 +206,23 @@ type _ContractIsDocumentShape = GuardNarrowing<
  */
 type _ListItemMatchesContract = GuardSubset<KBDocument, KBDocumentListItem>;
 
+/**
+ * The other two read models, guarded the same way.
+ *
+ * ‼ EVERY subset, not the one that happened to have a guard already.
+ * `KBDocumentUploadResult` and `KBDocumentUpdateResult` are the same shape and
+ * the same risk as `KBDocumentListItem`, and shipped unguarded beside it — a
+ * guard applied to one of three siblings is how the gap reopens.
+ */
+type _UploadResultMatchesContract = GuardSubset<KBDocument, KBDocumentUploadResult>;
+type _UpdateResultMatchesContract = GuardSubset<KBDocument, KBDocumentUpdateResult>;
+
 // Referenced so `noUnusedLocals` keeps them, and so a reader sees they are
 // assertions rather than dead aliases.
 export type KnowledgeTypeGuards = {
   document: _DocumentIsContractShape;
   documentReverse: _ContractIsDocumentShape;
   listItem: _ListItemMatchesContract;
+  uploadResult: _UploadResultMatchesContract;
+  updateResult: _UpdateResultMatchesContract;
 };
