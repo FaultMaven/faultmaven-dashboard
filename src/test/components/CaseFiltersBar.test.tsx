@@ -127,13 +127,23 @@ describe('CaseFiltersBar', () => {
     });
   });
 
-  it('shows no "does not apply" note above chips that do apply', () => {
-    // The note is about the date range now. Leaving it unconditional put a
-    // sentence saying a filter is unavailable directly above four live chips.
-    render(<CaseFiltersBar filters={{ search: 'db' }} onChange={vi.fn()} stateOnly />);
+  it('puts the "does not apply" note with the dates, not above the live chips', () => {
+    // The note explains the DATE inputs. While it rendered at the top of the
+    // bar it sat above the state chips, which since #166 work during a search
+    // — so it read as explaining why THEY were unavailable, the opposite of
+    // true. DOM order is the assertion because that is what a reader sees;
+    // "it exists somewhere" was true before the fix too.
+    render(<CaseFiltersBar filters={{ search: 'db' }} onChange={vi.fn()} />);
 
-    expect(screen.queryByText(/does not apply to a text search/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Resolved' })).toBeEnabled();
+    const note = screen.getByText(/does not apply to a text search/i);
+    const chip = screen.getByRole('button', { name: 'Resolved' });
+    const dateInput = screen.getByLabelText('Created from');
+
+    // Node.compareDocumentPosition: FOLLOWING === 4.
+    const noteAfterChip = chip.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING;
+    const dateAfterNote = note.compareDocumentPosition(dateInput) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(noteAfterChip, 'the note should come AFTER the state chips').toBeTruthy();
+    expect(dateAfterNote, 'the note should come immediately BEFORE the dates').toBeTruthy();
   });
 });
 

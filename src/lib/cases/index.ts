@@ -17,6 +17,13 @@ export {
   getReportRecommendations,
 } from './api';
 
+/**
+ * Exported beside `searchCases` so a caller can NAME its options rather than
+ * reaching past this barrel into `./api` — the deep import this codebase
+ * otherwise polices.
+ */
+export type { CaseSearchOptions } from './api';
+
 export { buildCaseMarkdown, fetchCaseMarkdown } from './exportMarkdown';
 
 export type {

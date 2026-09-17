@@ -1,10 +1,10 @@
 import { makeAuthenticatedRequest, buildQueryParams } from '../knowledge/client';
 import { handleAPIResponse } from '../knowledge/errors';
 import { startOfLocalDay, exclusiveEndOfLocalDay } from './dateRange';
-import type { components } from '../../types/api.generated';
 import type {
   AdminCaseListResult,
   CaseDetail,
+  CaseSearchRequest,
   CaseState,
   CaseSummary,
   CaseListResponse,
@@ -24,9 +24,6 @@ import type {
 
 const CASES_BASE = '/api/v1/cases';
 const ADMIN_CASES_BASE = '/api/v1/admin/cases';
-
-/** The search request body, as the pinned contract declares it. */
-type CaseSearchRequest = components['schemas']['CaseSearchRequest'];
 
 /**
  * List investigation cases with optional filters and pagination.
@@ -180,11 +177,20 @@ export async function searchCases(
   // form and an immediate one in this form. `JSON.stringify` omits `undefined`
   // values, so the bytes on the wire are identical either way; only the
   // compiler can tell them apart.
+  //
+  // ‼ `|| undefined` is NOT redundant, and dropping it is how the first cut of
+  // this went wrong. The spread form it replaced was `...(teamId && {...})`,
+  // which omitted an EMPTY STRING; a bare `team_id: teamId` sends `""`. Today
+  // the backend's `if search_request.team_id:` treats that as no filter, so
+  // nothing breaks — but that is Python falsiness absorbing a value we should
+  // not have sent, exactly the "`if x:` fails open" shape this codebase has
+  // been bitten by, and the contract types the field `string | null` with no
+  // mention of `""`. Send the field or do not; do not send a blank one.
   const body: CaseSearchRequest = {
     query,
     limit,
-    team_id: teamId,
-    state,
+    team_id: teamId || undefined,
+    state: state || undefined,
   };
 
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {

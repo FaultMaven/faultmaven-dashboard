@@ -417,9 +417,32 @@ describe('searchCases', () => {
 
     await searchCases('db', 100, {});
 
-    const raw = (mockRequest.mock.calls[0][1] as RequestInit).body as string;
-    expect(raw).not.toContain('state');
-    expect(JSON.parse(raw)).not.toHaveProperty('state');
+    // Structural, not a substring match on the serialized body. `not
+    // .toContain('state')` held only because the fixture query is 'db' — a
+    // query of 'stateful set', or a case id containing the letters, would turn
+    // it red while the key was correctly absent. `toHaveProperty` is also the
+    // stronger assertion: it fails for `{"state": null}`, which the contract
+    // types as a real value and a substring check cannot distinguish from a
+    // key that is genuinely missing.
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty('state');
+    expect(Object.keys(body).sort()).toEqual(['limit', 'query']);
+  });
+
+  it('omits an EMPTY team id rather than sending a blank filter', async () => {
+    // Regression: the first cut of #166 rewrote `...(teamId && {team_id})` to
+    // a written-out `team_id: teamId`, which sends `""`. The server's
+    // `if search_request.team_id:` happens to treat that as no filter, so it
+    // looked harmless — but relying on Python falsiness to absorb a value we
+    // should not have sent is the "`if x:` fails open" shape, and the contract
+    // types the field `string | null` with no mention of `""`.
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('db', 100, { teamId: '' });
+
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty('team_id');
+    expect(Object.keys(body).sort()).toEqual(['limit', 'query']);
   });
 
   it('carries the team and the state together', async () => {
