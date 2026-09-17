@@ -110,6 +110,73 @@ describe('LoginPage', () => {
     expect(screen.queryByRole('link', { name: /read a real investigation/i })).toBeNull();
   });
 
+  it('cloud mode: offers a real Create-an-account control, not a sentence about one', () => {
+    // This page used to have ONE button and prose claiming it also signed you
+    // up. The hosted login opens on its sign-in screen, so someone without an
+    // account clicked "Sign In", met a credentials form, and had to find the
+    // sign-up link on it. The affordance has to be visible here.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.getByRole('button', { name: /create an account/i })).toBeInTheDocument();
+    // …and the claim it replaced is gone, so the two cannot drift apart.
+    expect(screen.queryByText(/the same button creates your account/i)).toBeNull();
+  });
+
+  it('cloud mode: Create an account asks the IdP for its sign-up screen', () => {
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+    fireEvent.click(screen.getByRole('button', { name: /create an account/i }));
+
+    expect(assignSpy).toHaveBeenCalledWith(
+      'https://idp.example/login?screen_hint=sign-up'
+    );
+    assignSpy.mockRestore();
+  });
+
+  it('cloud mode: Sign In sends no screen hint, so returning users are unchanged', () => {
+    // The returning-user request must stay byte-identical to what it was
+    // before screen_hint existed — adding a hint here would be a silent
+    // change to every existing sign-in.
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+    fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    expect(assignSpy).toHaveBeenCalledWith('https://idp.example/login');
+    assignSpy.mockRestore();
+  });
+
+  it('standalone mode: offers no Create-an-account control', () => {
+    // Standalone is single-user with a passwordless username form. There is
+    // no hosted login and nothing to sign up for.
+    mockUseAuth.mockReturnValue({
+      deployment: 'standalone',
+      loginUrl: null,
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.queryByRole('button', { name: /create an account/i })).toBeNull();
+  });
+
   it('cloud mode: Sign In redirects to the deployment hosted-login URL', () => {
     const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
     // loginUrl comes from AuthContext, sourced from the dedicated hosted-login

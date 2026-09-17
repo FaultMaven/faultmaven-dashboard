@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
+import SignUpPage from './pages/SignUpPage';
 import KBPage from './pages/KBPage';
 import CaseListPage from './pages/CaseListPage';
 import CaseDetailPage from './pages/CaseDetailPage';
@@ -122,6 +123,9 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signin" element={<Navigate to="/login" replace />} />
+            {/* Public by design, and NOT an alias of /login: it hands off to the
+                hosted login's sign-up screen (website#42). See SignUpPage. */}
+            <Route path="/signup" element={<SignUpPage />} />
             {/* Public by design: the SSO callback IS the login (no session exists yet). */}
             <Route path="/auth/sso/callback" element={<SSOCallbackPage />} />
             <Route path="/" element={<Navigate to="/cases" replace />} />
