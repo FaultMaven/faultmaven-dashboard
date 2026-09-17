@@ -136,7 +136,22 @@ function canModifyDocument(doc: KBDocument | AdminKBDocument, isAdmin: boolean, 
   const scope = doc.scope || 'global';
   if (scope === 'global') return isAdmin;
   if (scope === 'team') return isAdmin; // TODO: check team admin when team roles are implemented
-  if (scope === 'personal') return doc.owner_id === userId || doc.user_id === userId;
+  // `owner_id` alone, and it must be a REAL id on both sides.
+  //
+  // This used to read `doc.owner_id === userId || doc.user_id === userId`.
+  // The second clause could never fire: `user_id` is not a field of the
+  // backend's `KnowledgeBaseDocument` (no `extra="allow"` either, so Pydantic
+  // never emits one) and was only ever declared by this repo's hand-written
+  // copy of the shape. It type-checked everywhere and was `undefined` on every
+  // response — the blind spot faultmaven-dashboard#165 is about, sitting in a
+  // permission gate. Binding `KBDocument` to the contract turns it into a
+  // build error instead.
+  //
+  // The `userId` null-guard is NOT redundant: the contract types `owner_id` as
+  // `string | null`, and an unowned document (null) compared against a signed-
+  // out viewer (null) is `null === null` — true. The hand-written type said
+  // `owner_id?: string`, so that pairing was invisible before the bind.
+  if (scope === 'personal') return userId !== null && doc.owner_id === userId;
   return false;
 }
 

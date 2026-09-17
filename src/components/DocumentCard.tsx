@@ -10,11 +10,23 @@ export interface DocumentCardData {
   document_id: string;
   title: string;
   document_type: string;
-  tags: string[];
+  /**
+   * OPTIONAL because the contract says so, not because the server omits it.
+   *
+   * `tags` is a Pydantic field with `default_factory=list`, so FastAPI marks
+   * it not-required and `openapi-typescript` renders it `tags?: string[]` on
+   * `KnowledgeBaseDocument`. In practice every response carries it. Widening
+   * this prop to match is what lets a contract-bound `KBDocument` be passed
+   * here directly (faultmaven-dashboard#165) — the alternative, normalising
+   * at each call site, puts the same `?? []` in three places and lets a
+   * fourth caller forget it.
+   */
+  tags?: string[];
   scope?: string;
   created_at: string;
   content?: string;
-  metadata?: Record<string, unknown>;
+  /** Nullable on the wire (`Optional[Dict]`), same reason as `tags` above. */
+  metadata?: Record<string, unknown> | null;
 }
 
 interface DocumentCardProps {
@@ -153,9 +165,9 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
                 {document.scope}
               </span>
             )}
-            {document.tags.length > 0 && (
+            {(document.tags?.length ?? 0) > 0 && (
               <span className="text-xs text-fm-text-tertiary">
-                {document.tags.join(', ')}
+                {document.tags?.join(', ')}
               </span>
             )}
             <span className="text-xs text-fm-text-tertiary">
