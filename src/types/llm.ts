@@ -32,6 +32,17 @@ export type ProviderName =
 
 export type ProviderState = 'not_configured' | 'configured' | 'active';
 
+/**
+ * What `primary_provider` can actually be.
+ *
+ * ‼ `"none"` is a real value, not a placeholder: the backend computes
+ * `primary = fallback_chain[0] if fallback_chain else "none"`. A cloud account
+ * with no initialised provider gets it — and that is exactly the account whose
+ * `config_readonly` is false, so it is the one rendering the editable select.
+ * Leaving it out of the union hid a real state from every consumer.
+ */
+export type PrimaryProvider = ProviderName | 'none';
+
 /** One provider's live state, from `GET /admin/llm/config`. */
 export type LLMProvider = Omit<components['schemas']['LLMProviderDetail'], 'name' | 'state'> & {
   name: ProviderName;
@@ -44,7 +55,7 @@ export type LLMConfig = Omit<
   'deployment' | 'primary_provider' | 'fallback_chain' | 'providers'
 > & {
   deployment: 'standalone' | 'cloud';
-  primary_provider: ProviderName;
+  primary_provider: PrimaryProvider;
   fallback_chain: ProviderName[];
   providers: Record<string, LLMProvider>;
 };
@@ -59,25 +70,38 @@ export type LLMConfigUpdate = Omit<
   provider_name?: ProviderName | null;
 };
 
-/** `PUT /api/v1/admin/llm/config` — the response. */
-export type LLMConfigUpdateResult = components['schemas']['LLMConfigUpdateResponse'];
-
 /** `POST /api/v1/admin/llm/config/test`. */
 export type ProviderConnectionTestResult = components['schemas']['LLMConnectionTestResponse'];
 
 /** One feature's configuration state, inside `EnvConfigStatus`. */
 export type FeatureStatus = components['schemas']['FeatureStatus'];
 
-/** `GET /api/v1/admin/config/status`. */
+/**
+ * `GET /api/v1/admin/config/status`.
+ *
+ * ‼ ONLY `auth_mode` and `deployment` are narrowed, and that is a correction.
+ * The hand-written type this replaces also narrowed `db_backend`,
+ * `session_storage` and `vector_storage` — and all three unions were FALSE
+ * against the running backend, which sends descriptive strings:
+ *
+ *   session_storage  "fakeredis (inmemory)"                          not 'inmemory'
+ *   vector_storage   "chromadb (persistent, split: kb + evidence)"   not 'chromadb'
+ *   db_backend       `settings.database.case_storage_type`, overwritten only
+ *                    when an alembic.ini is found and parseable
+ *
+ * Nothing switches on them (`EnvConfigStatusPanel` renders the raw string), so
+ * the lie was invisible — and would have stayed invisible until the first
+ * exhaustive `switch`, which would then have missed every real value. The
+ * contract's `string` is the honest type. A narrowing is a claim about what
+ * the server sends, so it has to be checked against the server, not inherited
+ * from whoever wrote it first.
+ */
 export type EnvConfigStatus = Omit<
   components['schemas']['EnvConfigStatusResponse'],
-  'auth_mode' | 'deployment' | 'db_backend' | 'session_storage' | 'vector_storage'
+  'auth_mode' | 'deployment'
 > & {
   auth_mode: 'local' | 'oauth';
   deployment: 'standalone' | 'cloud';
-  db_backend: 'sqlite' | 'postgresql';
-  session_storage: 'inmemory' | 'redis';
-  vector_storage: 'inmemory' | 'chromadb';
 };
 
 // ============================================================================
@@ -87,41 +111,54 @@ export type EnvConfigStatus = Omit<
 // ‼ `Omit` IS BLIND TO THE RENAME IT LOOKS LIKE IT CATCHES. Its key parameter
 // is `keyof any`, not `keyof T`, so `Omit<Wire, 'gone'>` omits nothing and
 // compiles clean — and the `& { gone: Narrowed }` half then puts the field
-// back. A client goes on reading a key the contract no longer has, which is
-// precisely the #165 defect the binding exists to prevent. Measured: `Omit`
-// reports nothing, `Pick` reports TS2344.
+// back. A client goes on reading a key the contract dropped, which is the very
+// defect the binding exists to prevent. Measured: `Omit` reports nothing,
+// `Pick` reports TS2344.
 //
-// So every key narrowed above is re-stated through `Pick`, which constrains to
-// `keyof T` and fails the build. These live in an app file, not a test:
-// `tsconfig.json` excludes `src/test/**` and CI's only typecheck runs against
-// it, so a type assertion in a test file is enforced by nothing.
+// ‼ THE GUARDS DERIVE THEIR KEYS, they do not restate them. A hand-written
+// `Pick<Wire, 'a' | 'b'>` is a second list that must be kept in step with the
+// `Omit` beside it, and the day someone narrows a third key and forgets to add
+// it, the guard silently stops covering it — the same blindness one level up.
+// `keyof Narrowed` cannot drift from the type it is taken from. This is the
+// form `lib/knowledge/types.ts` already uses; restating the keys here was a
+// regression from it.
 //
-// They erase completely — no runtime cost.
+// These live in an app file, not a test: `tsconfig.json` excludes
+// `src/test/**` and CI's only typecheck runs against it. They erase completely.
 
-/** Every key `LLMProvider` narrows still exists on the wire type. */
-type _ProviderNarrowedKeys = Pick<components['schemas']['LLMProviderDetail'], 'name' | 'state'>;
+/**
+ * …and each narrowed member is still a SUBTYPE of the wire member.
+ *
+ * Existence alone would accept a member whose type changed underneath — a
+ * `string` field becoming a number, or an object swapped for another schema.
+ */
+type _IsSubtype<Narrowed, Wire> = [Narrowed] extends [Wire] ? true : false;
 
-/** …and likewise for the config envelope. */
-type _ConfigNarrowedKeys = Pick<
-  components['schemas']['LLMConfigResponse'],
-  'deployment' | 'primary_provider' | 'fallback_chain' | 'providers'
->;
+/**
+ * Forces the check above to FAIL THE BUILD rather than merely evaluate oddly.
+ *
+ * ‼ A conditional type that resolves to `never` is not an error — it is just
+ * `never`, and the build stays green. The assertion has to be expressed as a
+ * CONSTRAINT (`T extends true`) for the compiler to reject it. Measured: the
+ * `never` form reported nothing when a narrowed member's type changed
+ * underneath it, which is the whole failure this was meant to catch.
+ */
+type _Assert<T extends true> = T;
 
-/** …the update request. */
-type _UpdateNarrowedKeys = Pick<
-  components['schemas']['LLMConfigUpdateRequest'],
-  'primary_provider' | 'fallback_chain' | 'provider_name'
->;
-
-/** …and the env status. */
-type _EnvNarrowedKeys = Pick<
-  components['schemas']['EnvConfigStatusResponse'],
-  'auth_mode' | 'deployment' | 'db_backend' | 'session_storage' | 'vector_storage'
->;
-
+// `Pick<Wire, keyof Narrowed>` is written out per type rather than wrapped in a
+// generic helper: inside a generic, `keyof Narrowed` widens to
+// `string | number | symbol` and no longer satisfies `keyof Wire`, so the
+// helper compiles for everything and checks nothing.
 export type LlmTypeGuards = {
-  provider: _ProviderNarrowedKeys;
-  config: _ConfigNarrowedKeys;
-  update: _UpdateNarrowedKeys;
-  env: _EnvNarrowedKeys;
+  providerKeys: Pick<components['schemas']['LLMProviderDetail'], keyof LLMProvider>;
+  providerSubtype: _Assert<_IsSubtype<LLMProvider, components['schemas']['LLMProviderDetail']>>;
+
+  configKeys: Pick<components['schemas']['LLMConfigResponse'], keyof LLMConfig>;
+  configSubtype: _Assert<_IsSubtype<LLMConfig, components['schemas']['LLMConfigResponse']>>;
+
+  updateKeys: Pick<components['schemas']['LLMConfigUpdateRequest'], keyof LLMConfigUpdate>;
+  updateSubtype: _Assert<_IsSubtype<LLMConfigUpdate, components['schemas']['LLMConfigUpdateRequest']>>;
+
+  envKeys: Pick<components['schemas']['EnvConfigStatusResponse'], keyof EnvConfigStatus>;
+  envSubtype: _Assert<_IsSubtype<EnvConfigStatus, components['schemas']['EnvConfigStatusResponse']>>;
 };

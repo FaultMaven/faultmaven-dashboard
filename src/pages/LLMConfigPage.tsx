@@ -51,6 +51,15 @@ export default function LLMConfigPage() {
 
   const handleSave = async () => {
     if (!config) return;
+    // `none` is what the backend reports when the fallback chain is empty
+    // (`primary = fallback_chain[0] if fallback_chain else "none"`), and it is
+    // not a provider it will accept back — `updateLLMConfig` validates against
+    // `registry.get_all_provider_names()`. Refuse here with a sentence instead
+    // of posting a value that 4xxs.
+    if (config.primary_provider === 'none') {
+      setSaveError('Choose a primary provider before saving.');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -122,6 +131,16 @@ export default function LLMConfigPage() {
                   }
                   className={selectClass}
                 >
+                  {/* Rendered ONLY while the value is `none`, so the control
+                      displays what the state actually holds. Without a matching
+                      option the browser falls back to showing the first
+                      provider while `primary_provider` is still `none` — the
+                      page then reads as configured, and Save posts `none`. */}
+                  {config.primary_provider === 'none' && (
+                    <option value="none" disabled>
+                      No provider configured
+                    </option>
+                  )}
                   {Object.values(config.providers).map((p) => (
                     <option key={p.name} value={p.name}>
                       {p.display_name}

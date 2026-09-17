@@ -28,7 +28,12 @@ const raw = (await import('../../../types/llm.ts?raw')).default as unknown as st
  * so matching the raw text would pass on documentation alone — the trap
  * `authConfigContractBinding.test.ts` records.
  */
-const source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+const source = raw
+  // LINE comments FIRST. The other order lets a `// … /* …` comment start a
+  // block match that runs to the next `*/`, deleting real declarations from
+  // `source` and making every `not.toMatch` below pass against a hole.
+  .replace(/(^|[^:])\/\/.*$/gm, '$1')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
 
 describe('llm types are sourced from the generated contract', () => {
   it('reads the source at all, with comments stripped', () => {
@@ -36,15 +41,22 @@ describe('llm types are sourced from the generated contract', () => {
     expect(source.length).toBeGreaterThan(400);
     expect(source).toContain('LLMConfig');
     expect(source.length).toBeLessThan(raw.length);
+    // Prove BOTH strippers ran, with a phrase from each kind of comment — one
+    // `//` line and one `/** */` block. Checking only a line comment leaves the
+    // block stripper unproven, which is how a half-working strip goes unnoticed.
     expect(source).not.toContain('Bind the names');
+    expect(source).not.toContain('never the declared');
   });
 
   it('binds every response and request shape to a schema', () => {
+    // `LLMConfigUpdateResponse` is deliberately absent: `updateLLMConfig`
+    // returns `Promise<void>` and nothing reads the body, so a type for it was
+    // dead code kept alive only by this list. A test that pins an unused type
+    // in place stops the next person from deleting it.
     for (const schema of [
       'LLMProviderDetail',
       'LLMConfigResponse',
       'LLMConfigUpdateRequest',
-      'LLMConfigUpdateResponse',
       'LLMConnectionTestResponse',
       'EnvConfigStatusResponse',
       'FeatureStatus',
@@ -54,16 +66,52 @@ describe('llm types are sourced from the generated contract', () => {
   });
 
   it('declares no hand-written twin of a bound shape', () => {
-    for (const name of ['LLMProvider', 'LLMConfig', 'EnvConfigStatus', 'FeatureStatus']) {
+    // EVERY exported shape, not a sample. `\b` does not help here: `LLMConfig`
+    // is followed by `U` in `LLMConfigUpdate`, so there is no word boundary and
+    // listing only the short name leaves the UPDATE REQUEST — the likeliest
+    // place to add a field by hand — completely uncovered.
+    for (const name of [
+      'LLMProvider',
+      'LLMConfig',
+      'LLMConfigUpdate',
+      'ProviderConnectionTestResult',
+      'EnvConfigStatus',
+      'FeatureStatus',
+    ]) {
       expect(source).not.toMatch(new RegExp(`interface\\s+${name}\\b`));
       expect(source).not.toMatch(new RegExp(`type\\s+${name}\\s*=\\s*\\{`));
     }
   });
 
-  it('guards every narrowed key with Pick, not Omit alone', () => {
-    const omits = source.match(/Omit<\s*components\['schemas'\]/g) ?? [];
-    const picks = source.match(/Pick<\s*components\['schemas'\]/g) ?? [];
+  it('derives the guards\' keys instead of restating them', () => {
+    // The invariant is "every narrowed key is guarded". Counting `Omit`s
+    // against `Pick`s is a PROXY for it, and the proxy is wrong for exactly
+    // the edit the guards exist to police: narrow a fifth key inside an
+    // existing `Omit` list, forget to add it to a hand-written `Pick` list,
+    // and the counts stay 4 and 4 while the new key is unguarded.
+    //
+    // `Pick<Wire, keyof Narrowed>` makes the invariant true BY CONSTRUCTION —
+    // the key set cannot drift from the type it is taken from. So the thing to
+    // assert is the form, not the arithmetic.
+    const derived = source.match(/Pick<\s*components\['schemas'\]\['[A-Za-z]+'\],\s*keyof\s+[A-Za-z]+\s*>/g) ?? [];
+    const omits = source.match(/Omit<\s*\n?\s*components\['schemas'\]/g) ?? [];
     expect(omits.length).toBeGreaterThan(0);
-    expect(picks.length).toBeGreaterThanOrEqual(omits.length);
+    expect(derived.length).toBeGreaterThanOrEqual(omits.length);
+    // And no guard may hand-restate a key list.
+    expect(source).not.toMatch(/Pick<\s*components\['schemas'\]\['[A-Za-z]+'\],\s*'/);
+  });
+
+  it('states the subtype checks as constraints, not bare conditionals', () => {
+    // ‼ A conditional type that resolves to `never` IS NOT AN ERROR — it is
+    // just `never`, and the build stays green. The first version of these
+    // guards used `... ? true : never` and reported nothing when a narrowed
+    // member's type changed underneath it, which is the entire failure they
+    // exist to catch. Only a CONSTRAINT (`T extends true`) makes the compiler
+    // reject it. Measured both ways.
+    expect(source).toMatch(/type\s+_Assert<\s*T\s+extends\s+true\s*>/);
+    expect(source).not.toMatch(/extends\s*\[Wire\]\s*\?\s*true\s*:\s*never/);
+    // Every subtype guard goes through it.
+    const subtypes = source.match(/Subtype:\s*_Assert<_IsSubtype</g) ?? [];
+    expect(subtypes.length).toBeGreaterThanOrEqual(4);
   });
 });
