@@ -19,6 +19,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * reason, forever.
  */
 
+import {
+  setPrefersExtensionForChat,
+  resetChatSurfaceForTests,
+} from '../../lib/copilot/chatSurfacePreference';
+
 let packageImports = 0;
 let lastInitialCase: unknown;
 
@@ -106,6 +111,7 @@ beforeEach(() => {
   packageImports = 0;
   lastInitialCase = undefined;
   localStorage.clear();
+  resetChatSurfaceForTests();
   // Standalone deployment, so LoginPage renders its own single sign-in action.
   vi.stubGlobal(
     'fetch',
@@ -162,6 +168,31 @@ describe('the counter is not vacuous', () => {
 });
 
 describe('the /investigate route', () => {
+  /**
+   * ‼ THE GUARD, AS APP ACTUALLY WIRES IT (ADR-018 D3).
+   *
+   * This belongs here, on the REAL route table, and not in a hand-built
+   * `<MemoryRouter><Routes>` beside the other preference tests. Measured:
+   * deleting `<ChatSurfaceRoute>` from `App.tsx` left the whole suite green —
+   * 1200 tests — because the only test of it rendered the component directly
+   * and never touched App's routes. That is exactly the gap
+   * `preferenceGovernedSurfaces.test.tsx` opens by saying the route guard
+   * "shipped with no test at all"; testing the component in isolation did not
+   * close it.
+   *
+   * A bookmark, a back button or a stale link is the whole reason the guard
+   * exists, and every one of those arrives through App's router.
+   */
+  it('redirects away from the full-page composer once chat lives in the extension', async () => {
+    getAuthState.mockResolvedValue(SIGNED_IN);
+    setPrefersExtensionForChat(true);
+
+    await renderAppAt('/investigate');
+
+    await waitFor(() => expect(window.location.pathname).toBe('/cases'));
+    expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
+  });
+
   it('opens ON a new investigation, not one click short of it', async () => {
     // ADR-016 D6. Without `initialCase` the panel lands on its own "Start a new
     // case" screen, which is a button away from where the route meant to put

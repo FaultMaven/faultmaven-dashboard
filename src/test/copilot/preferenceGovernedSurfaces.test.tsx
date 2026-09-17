@@ -1,7 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 /**
  * Every surface "use the Copilot extension for chat" governs (ADR-018 D3).
@@ -11,6 +9,15 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
  * CTAs. Each existing suite exercised only the default-off path, so re-adding
  * the nav item unconditionally, or deleting the route guard, left every test
  * green — against this repo's own "NO CODE MERGES WITHOUT TESTS".
+ *
+ * ‼ THE ROUTE GUARD IS NOT TESTED HERE, and that is deliberate. It used to be,
+ * through a hand-built `<MemoryRouter><Routes>` that mounted `ChatSurfaceRoute`
+ * directly — which tested the component and NOT the wiring, so deleting
+ * `<ChatSurfaceRoute>` from `App.tsx` left all 1200 tests green. It now lives
+ * in `panelNotBeforeSignIn.test.tsx`, on App's real route table, where a
+ * bookmark or a back button actually arrives. That also keeps App out of this
+ * file: importing it dragged the whole route graph through Vite's transform
+ * for ten tests, eight of which never needed it.
  *
  * The preference governs INTERACTIVE surfaces only. That it never governs
  * reading a conversation is asserted where the conversation lives, in
@@ -81,51 +88,6 @@ describe('the New Case nav item', () => {
     const after = labels();
 
     expect(before.filter((l) => l !== 'New Case')).toEqual(after);
-  });
-});
-
-describe('the /investigate route', () => {
-  function Harness() {
-    const { pathname } = useLocation();
-    return <span data-testid="where">{pathname}</span>;
-  }
-
-  async function renderAt(path: string) {
-    // The real guard, with a stand-in for the page so this test is about the
-    // routing decision rather than about mounting a panel.
-    const { ChatSurfaceRoute } = await import('../../App');
-    return render(
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route
-            path="/investigate"
-            element={
-              <ChatSurfaceRoute>
-                <span data-testid="investigate-page" />
-              </ChatSurfaceRoute>
-            }
-          />
-          <Route path="/cases" element={<span data-testid="cases-page" />} />
-        </Routes>
-        <Harness />
-      </MemoryRouter>,
-    );
-  }
-
-  it('renders the full-page surface by default', async () => {
-    await renderAt('/investigate');
-    expect(screen.getByTestId('investigate-page')).toBeInTheDocument();
-  });
-
-  it('redirects to /cases once chat lives in the extension', async () => {
-    // The nav item goes too, but a ROUTE needs its own guard: a bookmark, a
-    // back button or a stale link would otherwise mount a second composer for
-    // someone who has explicitly asked for one surface.
-    setPrefersExtensionForChat(true);
-    await renderAt('/investigate');
-
-    expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/cases'));
   });
 });
 
