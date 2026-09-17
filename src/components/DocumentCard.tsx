@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -50,11 +50,25 @@ interface DocumentCardProps {
   onToggleExpand?: () => void;
 }
 
-export function DocumentCard({ document, onDelete, canEdit = true, canRemove = true, isExpanded, onToggleExpand }: DocumentCardProps) {
+export function DocumentCard({ document, onDelete, onUpdated, canEdit = true, canRemove = true, isExpanded, onToggleExpand }: DocumentCardProps) {
   const [internalExpanded, setInternalExpanded] = useState(false);
   const expanded = isExpanded ?? internalExpanded;
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState<string | null>(document.content || null);
+  /**
+   * The "Saved" badge's own timer, held so unmount can clear it.
+   *
+   * Without this the 2s callback fires on a card that may be gone — harmless in
+   * React 19, but it is also the kind of stray timer that keeps a closure (and
+   * this component's whole scope) alive until it runs.
+   */
+  const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (successTimer.current) clearTimeout(successTimer.current);
+    },
+    [],
+  );
   const [editContent, setEditContent] = useState('');
   const [loadingContent, setLoadingContent] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -113,17 +127,46 @@ export function DocumentCard({ document, onDelete, canEdit = true, canRemove = t
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
+    let saved = false;
     try {
       await updateDocument(document.document_id, { content: editContent });
       setContent(editContent);
       setEditing(false);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      // Cleared on unmount — see `successTimer`.
+      successTimer.current = setTimeout(() => setSaveSuccess(false), 2000);
+      saved = true;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
+
+    // OUTSIDE the try, so the `catch` keeps meaning "the write failed".
+    // A callback that threw from inside it would be caught by the save's own
+    // handler and recorded as a failed save, after the PUT had already
+    // succeeded.
+    //
+    // ⚠️ DEFENSIVE, not a fix for anything observable today, and deliberately
+    // untested for that reason: `setEditing(false)` has already run and
+    // `saveError` renders only in the editing branch, so the mis-set error is
+    // invisible and `saveSuccess` stays true either way. A test here passes
+    // against both arrangements — it was written, found vacuous, and removed
+    // rather than left as decoration. `onUpdated` is `() => loadPage(page)`,
+    // which has its own try/catch, so no caller throws today.
+    //
+    // Tell the owner of the list that the server copy moved. Without this the
+    // save updated only THIS card's local `content`, so the row the parent
+    // holds kept its pre-edit body and everything derived from the list — the
+    // title/tag search in `useKBList`, the domain/service/severity facets built
+    // from `metadata` — stayed stale until navigation. The prop was declared,
+    // forwarded by `DocumentList` and passed by `KBPage` as
+    // `() => loadPage(page)`; it was simply never destructured, which
+    // `noUnusedParameters` cannot flag because the name never appears.
+    //
+    // Only on success: a refetch after a failed save would replace the text the
+    // user is still trying to save with the server copy they were changing.
+    if (saved) onUpdated?.();
   };
 
   const dirty = editing && editContent !== content;

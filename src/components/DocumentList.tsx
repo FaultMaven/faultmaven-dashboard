@@ -39,7 +39,24 @@ export function DocumentList({
   onToggleSelect,
 }: DocumentListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  if (loading) {
+
+  /**
+   * The placeholder replaces the list only when there is NOTHING to replace.
+   *
+   * `loading` is true for a REFETCH as well as a first load, and swapping the
+   * rows out for this line unmounts every card. A `DocumentCard` holds the
+   * document body in local state seeded from `document.content` — which a LIST
+   * ROW does not carry (`KBDocumentListItem`, #165) — so a card that is
+   * remounted mid-refetch comes back expanded and empty, rendering
+   * "No content available." in place of what the user was reading.
+   *
+   * That is not hypothetical: it is what made an in-card save appear to VANISH
+   * once `onUpdated` started firing a refetch. Keeping the rows mounted means
+   * React reconciles them by `key={doc.document_id}`, the card instance
+   * survives, and the body the user just saved stays on screen while the fresh
+   * page arrives behind it.
+   */
+  if (loading && documents.length === 0) {
     return (
       <div className="text-center py-8">
         <p className="text-sm text-fm-text-tertiary">Loading runbooks...</p>
