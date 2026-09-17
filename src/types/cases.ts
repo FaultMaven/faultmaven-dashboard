@@ -315,3 +315,83 @@ export interface KnowledgeSuggestion {
   evidence_count: number;
   knowledge_item_id?: string;
 }
+
+// ============================================================================
+// Compile-time guards
+// ============================================================================
+//
+// ‼ `Omit` IS BLIND TO THE RENAME IT LOOKS LIKE IT CATCHES. Its key parameter
+// is `keyof any`, not `keyof T`, so `Omit<Wire, 'cases'>` omits NOTHING when
+// the wire type no longer has `cases` — and the `& { cases: … }` half then
+// puts the field back. The alias goes on promising a key the contract dropped.
+//
+// Measured on this very file: renaming `CaseListResponse.cases` in
+// `api.generated.ts` produced ZERO errors, and `listCases` would have read
+// `.cases` as `undefined` and rendered an empty case list with `tsc`,
+// `api-types-drift` and the whole suite green. `Pick` constrains to `keyof T`
+// and fails the build.
+//
+// ‼ THE GUARDS DERIVE THEIR KEYS rather than restating them. A hand-written
+// `Pick<Wire, 'cases'>` is a second list to keep in step, and the day someone
+// overrides a second key and forgets to add it, the guard silently stops
+// covering it — the same blindness one level up (faultmaven-dashboard#171).
+//
+// They live here, in an app file, because `tsconfig.json` excludes
+// `src/test/**` and CI's only typecheck (`pnpm typecheck`) runs against it —
+// an assertion in a test file is evaluated by nothing. They erase completely.
+
+/**
+ * Forces a check to FAIL THE BUILD rather than merely evaluate oddly.
+ *
+ * A conditional type that resolves to `never` is not an error — it is just
+ * `never`. Only a CONSTRAINT rejects it.
+ */
+type _Assert<T extends true> = T;
+
+/** Each narrowed member is still a subtype of the wire member. */
+type _IsSubtype<Narrowed, Wire> = [Narrowed] extends [Wire] ? true : false;
+
+// `Pick<Wire, keyof Narrowed>` is written out per type rather than wrapped in a
+// generic helper: inside a generic, `keyof Narrowed` widens to
+// `string | number | symbol` and stops satisfying `keyof Wire`, so the helper
+// compiles for everything and checks nothing.
+export type CaseTypeGuards = {
+  listKeys: Pick<components['schemas']['CaseListResponse'], keyof CaseListResponse>;
+  listSubtype: _Assert<_IsSubtype<CaseListResponse, components['schemas']['CaseListResponse']>>;
+
+  adminFullKeys: Pick<components['schemas']['AdminCaseListResponse'], keyof AdminCaseFullListResponse>;
+
+  adminMetadataKeys: Pick<
+    components['schemas']['AdminCaseMetadataListResponse'],
+    keyof AdminCaseMetadataListResponse
+  >;
+
+  adminContentKeys: Pick<
+    components['schemas']['AdminCaseContentResponse'],
+    keyof AdminCaseContentResponse
+  >;
+
+  adminMessagesKeys: Pick<
+    components['schemas']['AdminCaseMessagesResponse'],
+    keyof AdminCaseMessagesResponse
+  >;
+
+  // ‼ The `Wire & { source?: CaseSource }` types need a DIFFERENT guard, and
+  // the obvious one is a tautology: an intersection is always assignable to
+  // its own parts, so `_IsSubtype<CaseSummary, Wire>` is true no matter what
+  // the wire does — including dropping `source` entirely, which is the actual
+  // risk (the `&` half would keep promising it).
+  //
+  // The indexed access is what bites: `Wire['source']` stops compiling the
+  // moment the wire has no `source`, and the refinement check catches its type
+  // changing underneath the narrowing.
+  summarySource: _Assert<
+    _IsSubtype<CaseSource, NonNullable<components['schemas']['CaseSummary']['source']>>
+  >;
+  detailSource: _Assert<
+    _IsSubtype<CaseSource, NonNullable<components['schemas']['CaseDetail']['source']>>
+  >;
+  metadataSource: _Assert<
+    _IsSubtype<CaseSource, NonNullable<components['schemas']['AdminCaseMetadata']['source']>>
+  >;
+};
