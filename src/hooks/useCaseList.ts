@@ -108,7 +108,14 @@ export function useCaseList(pageSize = 20): UseCaseListResult {
       setError(null);
       try {
         if (sent.search) {
-          const results = await searchCases(sent.search, SEARCH_LIMIT, sent.team_id);
+          // `state` composes with the query server-side as of contract 3.9.0
+          // (#166); the DATE bounds still do not travel, because
+          // `POST /cases/search` declares none at all — which is why
+          // `CaseFiltersBar` greys those inputs out and only those.
+          const results = await searchCases(sent.search, SEARCH_LIMIT, {
+            teamId: sent.team_id,
+            state: sent.state,
+          });
           if (reqId !== reqIdRef.current || !mountedRef.current) return;
           setCases(results);
           // Not the grand total — just the count of matches we can show. The

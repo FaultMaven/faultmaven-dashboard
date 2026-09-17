@@ -33,9 +33,16 @@ const STATE_OPTIONS: { value: CaseState | ''; label: string }[] = [
   { value: 'closed', label: 'Closed' },
 ];
 
-/** Said once, so the tooltip and the announced description cannot disagree. */
+/**
+ * Said once, so the tooltip and the announced description cannot disagree.
+ *
+ * It NAMES the creation-date range rather than saying "this filter", because
+ * it no longer covers every filter it sits above: the state chips work during
+ * a search as of #166, and a bare "this filter" above a row of live chips
+ * reads as applying to them.
+ */
 const SEARCH_ONLY_REASON =
-  'This filter does not apply to a text search — clear the search box to use it.';
+  'The creation-date range does not apply to a text search — clear the search box to use it.';
 
 const inputClass =
   'px-3 py-1.5 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -155,24 +162,24 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
   const searching = Boolean(filters.search);
 
   /**
-   * `POST /cases/search` honours a query, a limit and a team. NOTHING ELSE.
+   * `POST /cases/search` honours a query, a limit, a team AND — since contract
+   * 3.9.0 — a state. It accepts NO date bounds, and that asymmetry is the
+   * whole reason one control is disabled here and the other is not.
    *
-   * The state chip looked like the exception — `CaseSearchRequest` declares a
-   * `state` field — and when this was written the service never read it, so
-   * sending it was accepted, ignored, and answered 200 with unfiltered results
-   * (#51 restated one layer down). Contract 3.9.0 FIXED the server: it now
-   * applies `state` on search.
+   * The state chips were disabled too until #166. The field had always been
+   * DECLARED on `CaseSearchRequest` and read by nothing, so sending it was
+   * accepted, ignored, and answered 200 with unfiltered results — #51 restated
+   * one layer down. Greying the chips out was the honest response to that: a
+   * control that cannot work should not look like it can. 3.9.0 made the
+   * server apply the field, `searchCases` now sends it, so the chips are live
+   * and searching narrows by state like every other list does.
    *
-   * The chips stay disabled for now because `searchCases` still does not send
-   * it, so the control continues to tell the truth about this client. Adopting
-   * 3.9.0 here means re-enabling them AND sending the field — a user-visible
-   * change, tracked as faultmaven-dashboard#166.
-   *
-   * The DATE inputs are a different case and stay disabled permanently:
-   * `POST /cases/search` accepts no date bounds at all.
+   * The DATE inputs stay disabled, permanently as far as this contract goes.
+   * Not an oversight and not symmetry for its own sake — `CaseSearchRequest`
+   * has no date field to send, so re-enabling them would recreate exactly the
+   * defect the state chips just stopped having.
    */
   const datesDisabled = searching;
-  const statesDisabled = searching;
 
 
   const showTeamFilter = !stateOnly && teams && teams.length > 0;
@@ -187,8 +194,14 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
         at greyed-out controls with no explanation anywhere, which is the state
         it claimed to have fixed. One sentence, rendered, and referenced by
         every control it applies to.
+
+        Rendered on the same condition as the controls it explains — `searching
+        && !stateOnly`, not `searching` alone. It used to cover the chips too,
+        and now that they stay live it would otherwise be a sentence about
+        date inputs that a `stateOnly` bar does not render, explaining nothing
+        the reader can see.
       */}
-      {searching && (
+      {datesDisabled && !stateOnly && (
         <p
           id="search-only-reason"
           className="basis-full text-fm-xs text-fm-text-tertiary -mb-1"
@@ -203,12 +216,7 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
             <button
               key={value}
               onClick={() => handleStateClick(value)}
-              disabled={statesDisabled}
-              aria-describedby={statesDisabled ? 'search-only-reason' : undefined}
-              title={statesDisabled ? SEARCH_ONLY_REASON : undefined}
-              className={`${chipBase} ${isActive ? chipActive : chipInactive} ${
-                statesDisabled ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
+              className={`${chipBase} ${isActive ? chipActive : chipInactive}`}
             >
               {label}
             </button>
