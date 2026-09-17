@@ -93,7 +93,8 @@ export const CREATED_COLUMN: CaseDateColumn = {
  * `created_before` independently, so "created since 1 Sept" narrows the list
  * exactly as much as a closed range does.
  *
- * A SEARCH SUSPENDS BOTH. `POST /cases/search` accepts no date bounds, so
+ * A SEARCH SUSPENDS BOTH. `POST /cases/search` accepts no date bounds (unlike
+ * `state`, which it applies as of contract 3.9.0 — see #166), so
  * `useCaseList` sends none while `search` is set and `CaseFiltersBar` disables
  * the inputs — but it deliberately KEEPS the range, so it comes back when the
  * box empties. Same predicate the bar greys the inputs on, so the control and

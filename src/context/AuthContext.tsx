@@ -133,19 +133,6 @@ type DetectedConfig = {
 };
 
 /**
- * One attempt against `/auth/config`. Returns null when the deployment could
- * not be CONFIRMED — thrown fetch, timeout, and non-ok response alike, and
- * ALSO a 2xx whose `auth_mode` is not a value this build knows. All of these
- * must fail closed: a 5xx/429 no more proves "standalone" than a network
- * error does, and a 200 from a captive portal or misrouted proxy (`{}`), or a
- * future auth_mode this build predates, proves nothing either — guessing
- * 'standalone' from any of them is exactly the "LOCAL MODE ACTIVE" deception
- * this module exists to prevent. That deliberately includes 404: an API old
- * enough to lack /auth/config is not a supported pairing, and treating 404 as
- * standalone would re-open the deception through any proxy that strips the
- * path.
- */
-/**
  * `GET /auth/config` as it arrives on the wire: every field optional.
  *
  * Derived from the generated contract types rather than hand-written, so a
@@ -163,12 +150,33 @@ type DetectedConfig = {
  * redundant to the next reader — which is how the capability regression comes
  * back.
  */
-type AuthConfigWire = Partial<
-  Omit<components['schemas']['AuthConfigResponse'], 'oauth'>
-> & {
-  oauth?: Partial<components['schemas']['OAuthConfigResponse']> | null;
+type AuthConfigSchema = components['schemas']['AuthConfigResponse'];
+
+type AuthConfigWire = Partial<Omit<AuthConfigSchema, 'oauth'>> & {
+  // Indexed access, NOT a second reference to `OAuthConfigResponse` by name.
+  // `Omit<T, 'oauth'>` legally no-ops when the key is gone, and an
+  // independently-named arm would then supply `oauth` back — so renaming the
+  // container upstream compiled clean, `authConfig.oauth` was `undefined` for
+  // every cloud deployment, and sign-in answered "not configured" with the
+  // whole suite green. Measured: that mutation produced zero tsc errors
+  // before this line. `AuthConfigSchema['oauth']` makes the key itself
+  // load-bearing, so the one property carrying every capability is bound too.
+  oauth?: Partial<NonNullable<AuthConfigSchema['oauth']>> | null;
 };
 
+/**
+ * One attempt against `/auth/config`. Returns null when the deployment could
+ * not be CONFIRMED — thrown fetch, timeout, and non-ok response alike, and
+ * ALSO a 2xx whose `auth_mode` is not a value this build knows. All of these
+ * must fail closed: a 5xx/429 no more proves "standalone" than a network
+ * error does, and a 200 from a captive portal or misrouted proxy (`{}`), or a
+ * future auth_mode this build predates, proves nothing either — guessing
+ * 'standalone' from any of them is exactly the "LOCAL MODE ACTIVE" deception
+ * this module exists to prevent. That deliberately includes 404: an API old
+ * enough to lack /auth/config is not a supported pairing, and treating 404 as
+ * standalone would re-open the deception through any proxy that strips the
+ * path.
+ */
 async function fetchAuthConfigOnce(): Promise<DetectedConfig | null> {
   try {
     const res = await fetch(`${config.apiUrl}/api/v1/auth/config`, {

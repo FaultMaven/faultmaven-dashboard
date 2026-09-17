@@ -158,13 +158,18 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
    * `POST /cases/search` honours a query, a limit and a team. NOTHING ELSE.
    *
    * The state chip looked like the exception — `CaseSearchRequest` declares a
-   * `state` field — but the service never reads it and the repository has no
-   * such parameter, so sending it is accepted, ignored, and answered 200 with
-   * unfiltered results. Declaring a field is not applying it, which is the
-   * whole of #51 restated one layer down (faultmaven#1416).
+   * `state` field — and when this was written the service never read it, so
+   * sending it was accepted, ignored, and answered 200 with unfiltered results
+   * (#51 restated one layer down). Contract 3.9.0 FIXED the server: it now
+   * applies `state` on search.
    *
-   * So both controls are disabled while a search is running, rather than left
-   * to look like they are narrowing something.
+   * The chips stay disabled for now because `searchCases` still does not send
+   * it, so the control continues to tell the truth about this client. Adopting
+   * 3.9.0 here means re-enabling them AND sending the field — a user-visible
+   * change, tracked as faultmaven-dashboard#166.
+   *
+   * The DATE inputs are a different case and stay disabled permanently:
+   * `POST /cases/search` accepts no date bounds at all.
    */
   const datesDisabled = searching;
   const statesDisabled = searching;
