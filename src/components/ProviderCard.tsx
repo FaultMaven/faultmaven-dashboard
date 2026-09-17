@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { testProviderConnection, updateLLMConfig } from '../lib/api';
-import type { LLMProvider } from '../types/llm';
+import type { LLMProvider, ProviderConnectionTestResult } from '../types/llm';
 
 interface ProviderCardProps {
   provider: LLMProvider;
@@ -21,12 +21,18 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<{
-    connected: boolean;
-    error_message: string | null;
-    response_time_ms?: number;
-    model_used?: string | null;
-  } | null>(null);
+  /**
+   * Either the API's own result, or a locally-built failure.
+   *
+   * The API arm is the BOUND type, not a restatement of its fields. Spelling
+   * the four members out here was a hand-written twin of the very shape #165
+   * bound — and once every member was optional or boolean it accepted any
+   * object at all, so a renamed `model_used` upstream would leave this reading
+   * `undefined` forever with `tsc` and `api-types-drift` both green.
+   */
+  const [testResult, setTestResult] = useState<
+    ProviderConnectionTestResult | { connected: false; error_message: string } | null
+  >(null);
   const [testing, setTesting] = useState(false);
 
   // Model combobox state
@@ -126,7 +132,11 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
     degraded: 'bg-fm-warning',
     unhealthy: 'bg-fm-critical',
     not_initialized: 'bg-fm-text-tertiary',
-  }[provider.health] ?? 'bg-fm-text-tertiary';
+    // Lower-cased: the backend forwards `hs.get("health", "unknown")`
+    // verbatim, and tests it as `in ("healthy", "HEALTHY")` — so both casings
+    // reach us. A miss here painted a connected provider with the same grey
+    // dot as an uninitialised one, while its own tooltip read HEALTHY.
+  }[provider.health?.toLowerCase() ?? ''] ?? 'bg-fm-text-tertiary';
 
   const inputClass =
     'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors text-sm';
@@ -134,7 +144,10 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
   // Filter suggestions by what the user has typed
   const allModels = [...new Set([
     ...(provider.selected_model ? [provider.selected_model] : []),
-    ...provider.available_models,
+    // `available_models` is optional on `LLMProviderDetail` — a provider that
+    // has never been probed carries none. Spreading it unguarded threw once
+    // the hand-written type stopped claiming it was always an array.
+    ...(provider.available_models ?? []),
   ])];
   const filteredSuggestions = modelInput.trim()
     ? allModels.filter(m => m.toLowerCase().includes(modelInput.toLowerCase()))
@@ -272,7 +285,11 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
           }`}
         >
           {testResult.connected
-            ? `Connected${testResult.response_time_ms ? ` (${testResult.response_time_ms}ms)` : ''}${testResult.model_used ? ` — ${testResult.model_used}` : ''}${provider.state === 'active' ? ' — this is your active provider' : ' — not currently active'}`
+            // Presence checks, not truthiness: `response_time_ms` is required
+            // with `@default 0` on the contract, so a sub-millisecond probe
+            // reports 0 and a truthiness test silently drops the timing —
+            // rendering identically to a field the server never sent.
+            ? `Connected${testResult.response_time_ms != null ? ` (${testResult.response_time_ms}ms)` : ''}${testResult.model_used != null && testResult.model_used !== '' ? ` — ${testResult.model_used}` : ''}${provider.state === 'active' ? ' — this is your active provider' : ' — not currently active'}`
             : (testResult.error_message ?? 'Connection failed')}
         </div>
       )}
