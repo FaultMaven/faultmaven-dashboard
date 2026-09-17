@@ -23,7 +23,11 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
   const [saveError, setSaveError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{
     connected: boolean;
-    error_message: string | null;
+    // Optional, because the CONTRACT says so: `LLMConnectionTestResponse`
+    // declares `error_message?: string | null`, and this state also holds a
+    // locally-built failure. Requiring it here made the API's own result
+    // unassignable once the type was bound (#165).
+    error_message?: string | null;
     response_time_ms?: number;
     model_used?: string | null;
   } | null>(null);
@@ -134,7 +138,10 @@ export function ProviderCard({ provider, readonly, onUpdated, modelSource }: Pro
   // Filter suggestions by what the user has typed
   const allModels = [...new Set([
     ...(provider.selected_model ? [provider.selected_model] : []),
-    ...provider.available_models,
+    // `available_models` is optional on `LLMProviderDetail` — a provider that
+    // has never been probed carries none. Spreading it unguarded threw once
+    // the hand-written type stopped claiming it was always an array.
+    ...(provider.available_models ?? []),
   ])];
   const filteredSuggestions = modelInput.trim()
     ? allModels.filter(m => m.toLowerCase().includes(modelInput.toLowerCase()))
