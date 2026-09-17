@@ -99,7 +99,6 @@ const SIGNED_IN = {
     email: 'ada@example.com',
     display_name: 'Ada L',
     is_dev_user: true,
-    is_active: true,
     roles: ['user'],
   },
 };

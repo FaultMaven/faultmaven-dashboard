@@ -56,7 +56,6 @@ vi.mock('../../context/AuthContext', () => ({
         email: 'sterlan.yu@faultmaven.ai',
         display_name: 'Sterlan Yu',
         is_dev_user: false,
-        is_active: true,
       },
     },
   }),

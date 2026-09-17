@@ -61,7 +61,6 @@ describe('AuthManager', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: false,
-        is_active: true,
         roles: ['user'],
       },
     };
@@ -88,7 +87,6 @@ describe('AuthManager', () => {
           email: 'test@example.com',
           display_name: 'Test User',
           is_dev_user: false,
-          is_active: true,
           roles: [],
         },
       };
@@ -358,6 +356,34 @@ describe('AuthManager', () => {
       expect(saved.expires_at).toBeGreaterThan(Date.now());
     });
 
+    it('keeps the existing refresh token when the response omits one', async () => {
+      // ‼ A 200 with no `refresh_token` means "keep using the one you have",
+      // not "you no longer have one". Writing the absent value through wiped
+      // the session's only renewal credential — and did it SILENTLY: the new
+      // access token keeps working, so the failure surfaces on the NEXT
+      // refresh, which finds nothing, calls `clearAuthStateAndEndIdpSession()`
+      // and signs the user out mid-session with nothing logged.
+      //
+      // The hand-written type this replaced declared `refresh_token: string`,
+      // asserting a presence the server never promised, which is what hid it.
+      const expired = withRefresh({ expires_at: Date.now() - 1000 });
+      mockGet.mockResolvedValue({ authState: expired });
+      fetchSpy.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          access_token: 'new-access',
+          expires_in: 3600,
+          // no `refresh_token` — optional on the wire
+        }),
+      });
+
+      const token = await authManager.getAccessToken();
+
+      expect(token).toBe('new-access');
+      const saved = mockSet.mock.calls.at(-1)?.[0].authState as AuthState;
+      expect(saved.refresh_token).toBe('refresh-abc');
+    });
+
     it('clears auth state when the refresh token is rejected (401)', async () => {
       const expired = withRefresh({ expires_at: Date.now() - 1000 });
       mockGet.mockResolvedValue({ authState: expired });
@@ -496,20 +522,5 @@ describe('AuthManager', () => {
       expect(result?.user.roles).toEqual([]);
     });
 
-    it('should handle auth state with inactive user', async () => {
-      const inactiveUserAuthState = {
-        ...mockAuthState,
-        user: {
-          ...mockAuthState.user,
-          is_active: false,
-        },
-      };
-      mockGet.mockResolvedValueOnce({ authState: inactiveUserAuthState });
-
-      const result = await authManager.getAuthState();
-
-      expect(result).toEqual(inactiveUserAuthState);
-      expect(result?.user.is_active).toBe(false);
-    });
   });
 });

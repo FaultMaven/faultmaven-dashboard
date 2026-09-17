@@ -34,7 +34,6 @@ const AUTH_STATE = {
     email: 'jane@example.com',
     display_name: 'Jane Doe',
     is_dev_user: false,
-    is_active: true,
     roles: ['user'],
   },
 };

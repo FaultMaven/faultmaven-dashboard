@@ -30,7 +30,15 @@ export interface AuthState {
     email: string;
     display_name: string;
     is_dev_user: boolean;
-    is_active: boolean;
+    // ‼ NO `is_active`. It was declared here, REQUIRED, and the backend's
+    // `UserProfile` has never carried one — no field, no `extra="allow"`, so
+    // Pydantic never emits it. Nothing in `src/` read it either; it survived
+    // only in test fixtures, which supplied the value that made it look real.
+    // The same defect as `KBDocument.user_id` (#168), found the same way: by
+    // binding the response this is built from and letting the compiler name
+    // the field that does not exist. `is_active` IS real on
+    // `AdminUserListItem` — the admin user list — which is a different shape
+    // on a different route.
     // Role strings as the backend sends them. `platform_admin` is the
     // cross-tenant operator role; `admin` is organization-scoped (ADR-012 D9).
     // There is no `is_admin` boolean — the backend has never sent one.

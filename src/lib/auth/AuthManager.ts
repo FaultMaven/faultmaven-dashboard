@@ -2,6 +2,7 @@
 
 import config from '../../config';
 import type { AuthState } from './types';
+import type { components } from '../../types/api.generated';
 import { isSafeLogoutUrl } from './logoutUrl';
 import { subscribeCrossTabAuthState } from './crossTab';
 
@@ -623,11 +624,17 @@ export class AuthManager {
         return this.onCredentialRejected(presented, authState);
       }
 
-      const body = (await response.json()) as {
-        access_token: string;
-        expires_in: number;
-        refresh_token: string;
-      };
+      // Bound to the contract by NAME, but PARTIAL — and both halves matter.
+      //
+      // Binding the names is what makes a rename upstream a build error here
+      // instead of a runtime `undefined` (#165). Keeping it partial is what
+      // preserves the guard below: this parser deliberately handles a body
+      // from a server of unknown version, and `openapi-typescript` renders the
+      // schema's fields as REQUIRED, so asserting that shape would tell the
+      // compiler the very thing the next four lines exist to check.
+      const body = (await response.json()) as Partial<
+        components['schemas']['TokenRefreshResponse']
+      >;
 
       const expiresAt = deriveExpiresAt(body.expires_in);
       if (!body.access_token || expiresAt === null) {
@@ -651,7 +658,18 @@ export class AuthManager {
           ? { ...authState.user, roles: refreshedRoles }
           : authState.user,
         access_token: body.access_token,
-        refresh_token: body.refresh_token,
+        // ‼ FALL BACK, never overwrite with nothing. `refresh_token` is
+        // optional on the wire, and a 200 that omits it must mean "keep using
+        // the one you have" — not "you no longer have one". Writing
+        // `body.refresh_token` straight through destroyed the session's only
+        // renewal credential, and did it SILENTLY: the current access token
+        // keeps working until it expires, and the failure lands on the NEXT
+        // refresh, which finds no token, calls
+        // `clearAuthStateAndEndIdpSession()` and signs the user out mid-session
+        // with nothing logged. The hand-written type this replaced declared
+        // `refresh_token: string` — asserting a presence the server never
+        // promised, which is what hid the gap.
+        refresh_token: body.refresh_token ?? authState.refresh_token,
         expires_at: expiresAt,
       };
       await this.saveAuthState(next);
