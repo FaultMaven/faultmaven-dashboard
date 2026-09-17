@@ -130,19 +130,22 @@ export async function searchCases(
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // ⚠️ NO `state`, even though `CaseSearchRequest` DECLARES one.
+    // ⚠️ NO `state`, even though `CaseSearchRequest` DECLARES one — and as of
+    // the contract this repo now pins, that is a WORKAROUND WE HAVE NOT YET
+    // REMOVED rather than a correctness requirement.
     //
-    // Declaring a field is not applying it, and that distinction is the whole
-    // of #51: `CaseListFilter` carried `created_after` for its entire life
-    // while the route never bound it. `POST /cases/search` is the same shape
-    // one layer down — `CaseService.search_cases` calls
-    // `repository.search(query, user_id, limit, shared_case_ids,
-    // restrict_case_ids)` and never reads `search_request.state`, and
-    // `CaseRepository.search` declares no such parameter. Sending it would be
-    // accepted, ignored, and answered 200 with unfiltered results.
+    // It was written when declaring a field was not applying it: the service
+    // read `query`, `user_id`, `limit` and the id allowlists and nothing else,
+    // so `{"query": "db", "state": "resolved"}` answered 200 with resolved and
+    // unresolved cases alike — #51 restated one layer down. Contract 3.9.0
+    // fixed that: `CaseService.search_cases` now passes
+    // `state=search_request.state` through to the repository.
     //
-    // So the state chips are DISABLED during a search instead, exactly like the
-    // date inputs. Tracked for the backend in faultmaven#1416.
+    // So the chips being disabled during a search is now self-consistent
+    // (we do not send it, so it does not apply) but no longer NECESSARY.
+    // Adopting 3.9.0 on this side is the removal of this workaround, which is
+    // a user-visible behaviour change and belongs in its own change:
+    // faultmaven-dashboard#166.
     body: JSON.stringify({ query, limit, ...(teamId && { team_id: teamId }) }),
   });
   await handleAPIResponse(response, 'Failed to search cases');

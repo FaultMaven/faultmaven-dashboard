@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { authManager, AuthState } from '../lib/api';
 import config from '../config';
+import type { components } from '../types/api.generated';
 
 // Deployment type: derived from the backend auth mode
 export type Deployment = 'standalone' | 'cloud';
@@ -132,6 +133,38 @@ type DetectedConfig = {
 };
 
 /**
+ * `GET /auth/config` as it arrives on the wire: every field optional.
+ *
+ * Derived from the generated contract types rather than hand-written, so a
+ * field this app reads cannot quietly stop existing upstream — that is what
+ * let `supports_screen_hint` be consumed while absent from the contract this
+ * repo pinned, invisible to `api-types-drift` (#163).
+ *
+ * But DEEP-PARTIAL, not the generated response type itself. `openapi-typescript`
+ * renders a field with a default as REQUIRED (`supports_screen_hint: boolean`),
+ * because a conformant server always sends it — and this function's whole job
+ * is to not assume conformance. It parses an unvalidated body from a server of
+ * unknown version, which is why it already refuses an unknown `auth_mode` and
+ * a 200 from a captive portal. Typing the parse as `AuthConfigResponse` would
+ * assert what it is checking, and would make the `=== true` guards below look
+ * redundant to the next reader — which is how the capability regression comes
+ * back.
+ */
+type AuthConfigSchema = components['schemas']['AuthConfigResponse'];
+
+type AuthConfigWire = Partial<Omit<AuthConfigSchema, 'oauth'>> & {
+  // Indexed access, NOT a second reference to `OAuthConfigResponse` by name.
+  // `Omit<T, 'oauth'>` legally no-ops when the key is gone, and an
+  // independently-named arm would then supply `oauth` back — so renaming the
+  // container upstream compiled clean, `authConfig.oauth` was `undefined` for
+  // every cloud deployment, and sign-in answered "not configured" with the
+  // whole suite green. Measured: that mutation produced zero tsc errors
+  // before this line. `AuthConfigSchema['oauth']` makes the key itself
+  // load-bearing, so the one property carrying every capability is bound too.
+  oauth?: Partial<NonNullable<AuthConfigSchema['oauth']>> | null;
+};
+
+/**
  * One attempt against `/auth/config`. Returns null when the deployment could
  * not be CONFIRMED — thrown fetch, timeout, and non-ok response alike, and
  * ALSO a 2xx whose `auth_mode` is not a value this build knows. All of these
@@ -150,15 +183,7 @@ async function fetchAuthConfigOnce(): Promise<DetectedConfig | null> {
       signal: AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return null;
-    const authConfig: {
-      auth_mode?: string;
-      oauth?: {
-        hosted_login_url?: string;
-        authorize_url?: string;
-        supports_screen_hint?: boolean;
-        self_service_signup_enabled?: boolean;
-      } | null;
-    } = await res.json();
+    const authConfig: AuthConfigWire = await res.json();
     if (authConfig.auth_mode !== 'local' && authConfig.auth_mode !== 'oauth') return null;
     const dep: Deployment = authConfig.auth_mode === 'oauth' ? 'cloud' : 'standalone';
     // The human Sign In target must be a HOSTED LOGIN URL, taken ONLY from

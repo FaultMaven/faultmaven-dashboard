@@ -106,10 +106,11 @@ describe('CaseFiltersBar', () => {
   });
 
   it('DISABLES the state chips during a search, because the endpoint ignores them', () => {
-    // `CaseSearchRequest` declares a `state` field, and that is exactly the trap:
-    // `CaseService.search_cases` never reads it and `CaseRepository.search` has
-    // no such parameter. Sending it would be accepted, ignored, and answered 200
-    // with unfiltered results — #51 restated one layer down (faultmaven#1416).
+    // Pins CURRENT client behaviour, not a server limitation: contract 3.9.0
+    // made `POST /cases/search` apply `state`, but `searchCases` still does not
+    // send it, so the chip would not narrow anything. Adopting 3.9.0 here means
+    // re-enabling these and sending the field (#166) — at which point this test
+    // is the one that should change.
     const onChange = vi.fn();
     render(<CaseFiltersBar filters={{ search: 'db' }} onChange={onChange} />);
 

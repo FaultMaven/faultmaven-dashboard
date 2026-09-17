@@ -119,11 +119,11 @@ describe('useCaseList', () => {
     });
     await waitFor(() => expect(result.current.searchMode).toBe(true));
 
-    // Sends query + limit + the (here-undefined) team_id. NOTHING ELSE —
-    // `CaseSearchRequest` declares a `state` field, but `CaseService.search_cases`
-    // never reads it and `CaseRepository.search` has no such parameter, so
-    // sending it would be accepted, ignored, and answered 200 with unfiltered
-    // results (faultmaven#1416). The chips are disabled during a search instead.
+    // Sends query + limit + the (here-undefined) team_id. NOTHING ELSE — and
+    // that is now a client choice, not a server limitation: contract 3.9.0
+    // made `POST /cases/search` apply `state`. Adopting it here means adding
+    // the field and re-enabling the chips (#166); until then this pins what
+    // the client actually sends.
     expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100, undefined);
     expect(result.current.cases).toHaveLength(60);
     // pageSize collapses to the result count => exactly one page in the pager.
