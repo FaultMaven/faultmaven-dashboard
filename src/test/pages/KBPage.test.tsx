@@ -428,3 +428,117 @@ describe('KBPage — personal-scope edit rights come from owner_id alone', () =>
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The client write gate matches the SERVER write policy (faultmaven#834/#866).
+ *
+ * `ensure_document_write_allowed` governs `PUT` and `DELETE` alike:
+ *
+ *   global          → platform admin (single-tenant only)
+ *   personal / team → the OWNER, or the platform operator
+ *
+ * This client encoded the pre-#834 world, where the routes were
+ * unconditionally operator-only. Two user-visible consequences, both fixed
+ * here: the AUTHOR of a team runbook was denied Edit on their own document,
+ * and a standard user had no delete path for a runbook they wrote at all —
+ * the batch toolbar was gated on `isAdmin` and the per-card Remove is
+ * suppressed on this page.
+ */
+describe('KBPage — the write gate follows the server policy', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  async function renderDocs(
+    docs: Record<string, unknown>[],
+    viewerId: string | null,
+    isAdmin = false
+  ) {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: isAdmin ? 'platform_admin' : 'standard_user',
+      isAdmin,
+      authState: viewerId === null ? null : { user: { user_id: viewerId } },
+      clearAuthState: vi.fn(),
+    });
+    const api = await import('../../lib/api');
+    (api.listDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({
+      documents: docs.map((d, i) => ({
+        document_id: `doc-${i + 1}`,
+        title: `Runbook ${i + 1}`,
+        content: '# Runbook',
+        document_type: 'runbook',
+        tags: [],
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+        ...d,
+      })),
+      total_count: docs.length,
+      limit: 20,
+      offset: 0,
+      scope_counts: { global: 0, team: 0, personal: docs.length },
+    });
+    await act(async () => {
+      renderPage();
+    });
+  }
+
+  it('offers Edit to the AUTHOR of a team runbook', async () => {
+    // The regression: `scope === 'team'` returned `isAdmin`, so the person who
+    // wrote this could not edit it while `PUT` would have accepted them.
+    await renderDocs([{ scope: 'team', owner_id: 'u-1' }], 'u-1');
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('withholds Edit on a team runbook owned by someone else', async () => {
+    await renderDocs([{ scope: 'team', owner_id: 'u-2' }], 'u-1');
+
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('offers Edit to the operator on another account\'s personal runbook', async () => {
+    // The server's operator arm. Approximated here — it is single-tenant only
+    // and this client cannot see the tenant provider — but withholding it
+    // would strip a working capability from every self-hosted operator.
+    await renderDocs([{ scope: 'personal', owner_id: 'u-2' }], 'u-1', true);
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('gives a standard user a delete path for a runbook they wrote', async () => {
+    // Previously `isAdmin &&` hid the whole toolbar, and the per-card Remove is
+    // suppressed on this page — so there was NO route to delete your own work.
+    await renderDocs([{ scope: 'personal', owner_id: 'u-1' }], 'u-1');
+
+    expect(screen.getByText('Select all')).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0);
+  });
+
+  it('offers no delete affordance when nothing on the page is theirs', async () => {
+    await renderDocs([{ scope: 'personal', owner_id: 'u-2' }], 'u-1');
+
+    expect(screen.queryByText('Select all')).not.toBeInTheDocument();
+  });
+
+  it('puts a checkbox only on the rows the viewer may delete', async () => {
+    // One theirs, one not. A per-list boolean would check-box both and stage a
+    // batch the server refuses half of.
+    await renderDocs(
+      [
+        { scope: 'personal', owner_id: 'u-1' },
+        { scope: 'personal', owner_id: 'u-2' },
+      ],
+      'u-1'
+    );
+
+    // "Select all" plus exactly one row checkbox.
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+  });
+});

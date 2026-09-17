@@ -132,37 +132,63 @@ function ScopeBadge({ scope }: { scope: string }) {
 // Documents Tab Content
 // =============================================================================
 
+/**
+ * May this account write this document — EDIT or DELETE?
+ *
+ * One predicate for both, because the backend has one policy for both:
+ * `ensure_document_write_allowed` (`knowledge/domain/document_write.py`) is
+ * reached by `PUT` and `DELETE` alike, and by their bulk twins, so a client
+ * that gates them differently is wrong on one of them by construction.
+ *
+ * The server's rule:
+ *
+ *   global            → `ensure_global_authoring_allowed` (platform admin,
+ *                       and SINGLE-TENANT only — under multi, nobody at all)
+ *   personal / team   → the OWNER; or the platform operator, again
+ *                       single-tenant only
+ *
+ * ‼ THE OWNER ARM IS THE WHOLE POINT, and it is scope-agnostic. This used to
+ * read `if (scope === 'team') return isAdmin;`, which locked the AUTHOR of a
+ * team runbook out of their own document — the API would have accepted the
+ * write. The routes were operator-only once (which is what the old `TODO` and
+ * the batch-Remove comment described), and FaultMaven/faultmaven#834 made them
+ * ownership-aware; this client had not caught up.
+ *
+ * ⚠️ KNOWN GAP, deliberate: the server's operator arm is conditional on
+ * `requested_tenant_provider() != BUILTIN_MULTI`, and THIS CLIENT CANNOT SEE
+ * THAT. `deploymentMode` on `/meta/capabilities` is derived from the dashboard
+ * URL (`settings.is_cloud`), not from the tenant provider, and no capability
+ * advertises tenancy. So `isAdmin` here approximates a term it cannot
+ * evaluate, and under multi-tenant an operator is offered Edit on another
+ * account's runbook and meets a 403.
+ *
+ * That is the lesser of the two errors and it is NOT a new one — the `team`
+ * branch already offered exactly this. Widening the owner arm is a pure gain;
+ * narrowing the operator arm would take a working capability away from every
+ * self-hosted operator to spare cloud operators a safe refusal. Closing it
+ * properly needs a capability on `/meta/capabilities` (a tenancy signal),
+ * which is a backend change — gate on the advertised capability, never on
+ * `deployment`, which answers a different question.
+ */
 function canModifyDocument(
   // Only `scope` and `owner_id` are read. Typed structurally rather than as
   // `KBDocument`, which would assert `content`/`status`/`verification_*` that
-  // the LIST endpoint never sends and forced an `as KBDocument` at the call
-  // site that hid exactly that. Both are widened to match `DocumentCardData`,
-  // the type `DocumentList.canEditFn` actually hands over; an absent `scope`
-  // already falls through to `'global'` below, i.e. fail-closed to admin-only.
+  // the LIST endpoint never sends. Both are widened to match
+  // `DocumentCardData`, the type `DocumentList` hands its callbacks.
   doc: { scope?: string | null; owner_id?: string | null },
   isAdmin: boolean,
   userId: string | null,
 ): boolean {
+  // An absent scope falls through to `global`, i.e. fail closed to admin-only.
   const scope = doc.scope || 'global';
   if (scope === 'global') return isAdmin;
-  if (scope === 'team') return isAdmin; // TODO: check team admin when team roles are implemented
-  // `owner_id` alone, and it must be a REAL id on both sides.
-  //
-  // This used to read `doc.owner_id === userId || doc.user_id === userId`.
-  // The second clause could never fire: `user_id` is not a field of the
-  // backend's `KnowledgeBaseDocument` (no `extra="allow"` either, so Pydantic
-  // never emits one) and was only ever declared by this repo's hand-written
-  // copy of the shape. It type-checked everywhere and was `undefined` on every
-  // response — the blind spot faultmaven-dashboard#165 is about, sitting in a
-  // permission gate. Binding `KBDocument` to the contract turns it into a
-  // build error instead.
-  //
-  // The `userId` null-guard is NOT redundant: the contract types `owner_id` as
-  // `string | null`, and an unowned document (null) compared against a signed-
-  // out viewer (null) is `null === null` — true. The hand-written type said
-  // `owner_id?: string`, so that pairing was invisible before the bind.
-  if (scope === 'personal') return userId !== null && doc.owner_id === userId;
-  return false;
+
+  // Every other scope: owner, or operator. `owner_id` and `userId` must BOTH
+  // be real ids — the server spells this `owner_id and actor_user_id and
+  // owner_id == actor_user_id`, and without it an unowned document (null) and
+  // an unidentified viewer (null) compare equal and every such row unlocks.
+  const isOwner = userId !== null && !!doc.owner_id && doc.owner_id === userId;
+  return isOwner || isAdmin;
 }
 
 function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
@@ -248,12 +274,20 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
     });
   };
 
-  const allSelected = displayDocuments.length > 0 && displayDocuments.every((d) => selectedIds.has(d.document_id));
+  // Only rows this account may DELETE are selectable. Same predicate as Edit,
+  // because the server applies one policy to both — and the bulk route runs it
+  // per target and passes only the permitted ids on, so a standard user
+  // bulk-deleting their OWN runbooks is a supported call, not a 403.
+  const removableDocuments = displayDocuments.filter((d) => canModifyDocument(d, isAdmin, userId));
+  const canRemoveAny = removableDocuments.length > 0;
+  const allSelected = canRemoveAny && removableDocuments.every((d) => selectedIds.has(d.document_id));
   const toggleAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(displayDocuments.map((d) => d.document_id)));
+      // The removable set, not the page — otherwise "Select all" stages rows
+      // the server will refuse and the batch reports partial failure.
+      setSelectedIds(new Set(removableDocuments.map((d) => d.document_id)));
     }
   };
 
@@ -352,11 +386,14 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
         </div>
       </div>
 
-      {/* Select all + batch Remove. Gated on the operator role because
-          `DELETE /knowledge/documents/{id}` is unconditionally operator-only —
-          without this a user could select their own personal runbook and get a
-          403 on Remove. */}
-      {isAdmin && displayDocuments.length > 0 && (
+      {/* Select all + batch Remove, shown when there is something HERE this
+          account may delete — not when it happens to be an operator.
+          `DELETE /knowledge/documents/{id}` was unconditionally operator-only
+          once, which is what this comment used to say; FaultMaven/faultmaven#834
+          made it ownership-aware and #866 extended that to the bulk routes. The
+          stale gate left a standard user unable to delete a runbook they wrote
+          by ANY route, since the per-card Remove is suppressed below. */}
+      {canRemoveAny && (
         <div className="flex items-center gap-3 mb-3">
           <label className="flex items-center gap-2 text-xs text-fm-text-tertiary">
             <input
@@ -405,8 +442,9 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
         emptyMessage="No runbooks in your knowledge base yet."
         canEditFn={(doc) => canModifyDocument(doc, isAdmin, userId)}
         canRemove={false}
-        selectedIds={isAdmin ? selectedIds : undefined}
-        onToggleSelect={isAdmin ? toggleSelect : undefined}
+        selectedIds={canRemoveAny ? selectedIds : undefined}
+        onToggleSelect={canRemoveAny ? toggleSelect : undefined}
+        canSelectFn={(doc) => canModifyDocument(doc, isAdmin, userId)}
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 

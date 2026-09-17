@@ -11,6 +11,14 @@ interface DocumentListProps {
   canEdit?: boolean;
   canEditFn?: (doc: DocumentCardData) => boolean;
   canRemove?: boolean;
+  /**
+   * Whether THIS row may be selected for a batch action. Selection is a delete
+   * affordance, so it follows the delete policy per document rather than one
+   * boolean for the whole list; without it a user who may delete one of ten
+   * rows gets a checkbox on all ten. Absent = every row selectable, which is
+   * the prior behaviour for callers that do not pass it.
+   */
+  canSelectFn?: (doc: DocumentCardData) => boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
 }
@@ -25,6 +33,7 @@ export function DocumentList({
   canEdit,
   canEditFn,
   canRemove,
+  canSelectFn,
   selectedIds,
   onToggleSelect,
 }: DocumentListProps) {
@@ -50,7 +59,7 @@ export function DocumentList({
     <div className="space-y-1">
       {documents.map((doc) => (
         <div key={doc.document_id} className="flex items-start gap-2">
-          {onToggleSelect && (
+          {onToggleSelect && (canSelectFn?.(doc) ?? true) && (
             <label className="flex-shrink-0 pt-2.5 pl-1">
               <input
                 type="checkbox"
