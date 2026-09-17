@@ -4,6 +4,8 @@ import { startOfLocalDay, exclusiveEndOfLocalDay } from './dateRange';
 import type {
   AdminCaseListResult,
   CaseDetail,
+  CaseSearchRequest,
+  CaseState,
   CaseSummary,
   CaseListResponse,
   CaseFilters,
@@ -112,6 +114,22 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
   return response.json();
 }
 
+/** The narrowing `POST /cases/search` accepts alongside the query. */
+export interface CaseSearchOptions {
+  /** Cases shared with this Team (ADR-013 §D4). */
+  teamId?: string;
+  /**
+   * One lifecycle state, applied by the server as of contract 3.9.0.
+   *
+   * Composes with the query rather than thinning the result: the contract is
+   * explicit that it is "applied in the same query as the text search, so it
+   * constrains what the `limit` returns". Filtering the returned array here
+   * instead would silently shrink a 100-match page to whatever share of it
+   * happened to be `resolved`, and call that the answer.
+   */
+  state?: CaseState;
+}
+
 /**
  * Search cases by free text query.
  * Returns a flat array of CaseSummary (not wrapped in CaseListResponse).
@@ -121,32 +139,64 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
  * up to `limit` matches in a single request and the caller presents them as a
  * single page of "top N matches". Real search pagination requires a backend
  * change (add an offset/cursor to `CaseSearchRequest`); do not fake it here.
+ *
+ * `state` is sent as of contract **3.9.0** (faultmaven-dashboard#166). Before
+ * it, the field was DECLARED on `CaseSearchRequest` and read by nothing: the
+ * service took `query`, `user_id`, `limit` and the id allowlists, so
+ * `{"query": "db", "state": "resolved"}` answered 200 with resolved and
+ * unresolved cases alike — #51 restated one layer down. This client's
+ * workaround was to withhold the field and grey the chips out, which was
+ * honest but left the control dead. 3.9.0 passes
+ * `state=search_request.state` through to the repository, so the field now
+ * does what its name says and the workaround is gone.
+ *
+ * ⚠️ The narrowing options are an OBJECT, not two more positionals. `teamId`
+ * and `state` are both strings on the wire, so `searchCases(q, 100, undefined,
+ * 'resolved')` and its transposition are a pair a reader cannot tell apart at
+ * the call site.
  */
 export async function searchCases(
   query: string,
   limit = 100,
-  teamId?: string
+  { teamId, state }: CaseSearchOptions = {}
 ): Promise<CaseSummary[]> {
+  // Typed against the GENERATED contract, not an inline literal. This is the
+  // one endpoint already bitten by the client and the server disagreeing about
+  // a field both of them named, and a body built from a literal is what let
+  // that pass every gate. Excess-property checking rejects a key the pinned
+  // contract does not declare, so renaming `state` upstream fails `tsc` HERE
+  // rather than becoming another silently-dropped filter — which is the whole
+  // reason to spend a type on a four-key object.
+  // (The rest of this module is still hand-typed — faultmaven-dashboard#165.)
+  //
+  // ‼ The optional keys are written OUT, not conditionally spread. The obvious
+  // `...(state && { state })` compiles clean against a contract with no such
+  // field at all: TypeScript does not excess-property-check spread operands,
+  // so the guard silently becomes decoration. Measured — renaming `state` to
+  // `lifecycle_state` in `api.generated.ts` produced ZERO errors in the spread
+  // form and an immediate one in this form. `JSON.stringify` omits `undefined`
+  // values, so the bytes on the wire are identical either way; only the
+  // compiler can tell them apart.
+  //
+  // ‼ `|| undefined` is NOT redundant, and dropping it is how the first cut of
+  // this went wrong. The spread form it replaced was `...(teamId && {...})`,
+  // which omitted an EMPTY STRING; a bare `team_id: teamId` sends `""`. Today
+  // the backend's `if search_request.team_id:` treats that as no filter, so
+  // nothing breaks — but that is Python falsiness absorbing a value we should
+  // not have sent, exactly the "`if x:` fails open" shape this codebase has
+  // been bitten by, and the contract types the field `string | null` with no
+  // mention of `""`. Send the field or do not; do not send a blank one.
+  const body: CaseSearchRequest = {
+    query,
+    limit,
+    team_id: teamId || undefined,
+    state: state || undefined,
+  };
+
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // ⚠️ NO `state`, even though `CaseSearchRequest` DECLARES one — and as of
-    // the contract this repo now pins, that is a WORKAROUND WE HAVE NOT YET
-    // REMOVED rather than a correctness requirement.
-    //
-    // It was written when declaring a field was not applying it: the service
-    // read `query`, `user_id`, `limit` and the id allowlists and nothing else,
-    // so `{"query": "db", "state": "resolved"}` answered 200 with resolved and
-    // unresolved cases alike — #51 restated one layer down. Contract 3.9.0
-    // fixed that: `CaseService.search_cases` now passes
-    // `state=search_request.state` through to the repository.
-    //
-    // So the chips being disabled during a search is now self-consistent
-    // (we do not send it, so it does not apply) but no longer NECESSARY.
-    // Adopting 3.9.0 on this side is the removal of this workaround, which is
-    // a user-visible behaviour change and belongs in its own change:
-    // faultmaven-dashboard#166.
-    body: JSON.stringify({ query, limit, ...(teamId && { team_id: teamId }) }),
+    body: JSON.stringify(body),
   });
   await handleAPIResponse(response, 'Failed to search cases');
   return response.json();

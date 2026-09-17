@@ -75,6 +75,8 @@ export {
   fetchCaseMarkdown,
 } from './cases';
 
+export type { CaseSearchOptions } from './cases';
+
 export type {
   CaseSummary,
   CaseSource,

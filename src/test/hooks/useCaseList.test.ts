@@ -119,22 +119,25 @@ describe('useCaseList', () => {
     });
     await waitFor(() => expect(result.current.searchMode).toBe(true));
 
-    // Sends query + limit + the (here-undefined) team_id. NOTHING ELSE — and
-    // that is now a client choice, not a server limitation: contract 3.9.0
-    // made `POST /cases/search` apply `state`. Adopting it here means adding
-    // the field and re-enabling the chips (#166); until then this pins what
-    // the client actually sends.
-    expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100, undefined);
+    // Query + limit + the narrowing options, which are empty here because no
+    // chip or team is set. Still NO date bounds: `CaseSearchRequest` declares
+    // none, so there is nothing to send (unlike `state` — see below).
+    expect(mockSearchCases).toHaveBeenCalledWith('db outage', 100, {
+      teamId: undefined,
+      state: undefined,
+    });
     expect(result.current.cases).toHaveLength(60);
     // pageSize collapses to the result count => exactly one page in the pager.
     expect(Math.ceil(result.current.totalCount / result.current.pageSize)).toBe(1);
   });
 
-  it('does NOT send a state the search endpoint would ignore', async () => {
-    // The trap this replaced: `CaseSearchRequest` declares `state`, so sending
-    // it typechecks and is accepted — and then nothing applies it. Declaring a
-    // field is not applying it, which is the whole of #51 one layer down. An
-    // earlier version of this file asserted the opposite and pinned it green.
+  it('sends the state alongside the query, so the two compose (#166)', async () => {
+    // The exact inverse of what this test asserted until #166, and worth
+    // keeping the history: `CaseSearchRequest` DECLARED `state` for a long
+    // time before the service read it, so sending it typechecked, was
+    // accepted, and then nothing applied it — #51 one layer down. This hook
+    // withheld the field for that reason. Contract 3.9.0 made it real, so
+    // withholding it is now the bug: the chip is lit and narrows nothing.
     mockSearchCases.mockResolvedValue([]);
     const { result } = renderHook(() => useCaseList());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -144,10 +147,35 @@ describe('useCaseList', () => {
     });
     await waitFor(() => expect(result.current.searchMode).toBe(true));
 
-    expect(mockSearchCases).toHaveBeenLastCalledWith('db outage', 100, undefined);
-    for (const call of mockSearchCases.mock.calls) {
-      expect(call).not.toContain('resolved');
-    }
+    expect(mockSearchCases).toHaveBeenLastCalledWith('db outage', 100, {
+      teamId: undefined,
+      state: 'resolved',
+    });
+  });
+
+  it('still withholds the DATE bounds on a search, which have no field at all', async () => {
+    // The asymmetry #166 introduces, and the thing most likely to be "tidied"
+    // into symmetry by someone reading the state change above. `state` now
+    // travels because the contract has somewhere to put it; the dates do not,
+    // so sending them would be the accepted-and-dropped defect the state
+    // chips just stopped having.
+    mockSearchCases.mockResolvedValue([]);
+    const { result } = renderHook(() => useCaseList());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      result.current.setFilters({
+        search: 'db outage',
+        date_from: '2026-09-10',
+        date_to: '2026-09-12',
+      });
+    });
+    await waitFor(() => expect(result.current.searchMode).toBe(true));
+
+    const [, , options] = mockSearchCases.mock.lastCall as [string, number, object];
+    expect(options).not.toHaveProperty('date_from');
+    expect(options).not.toHaveProperty('dateFrom');
+    expect(JSON.stringify(mockSearchCases.mock.calls)).not.toContain('2026-09-10');
   });
 
   it('ignores a superseded (out-of-order) response', async () => {

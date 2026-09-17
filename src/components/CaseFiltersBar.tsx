@@ -33,9 +33,16 @@ const STATE_OPTIONS: { value: CaseState | ''; label: string }[] = [
   { value: 'closed', label: 'Closed' },
 ];
 
-/** Said once, so the tooltip and the announced description cannot disagree. */
+/**
+ * Said once, so the tooltip and the announced description cannot disagree.
+ *
+ * It NAMES the creation-date range rather than saying "this filter", because
+ * it no longer covers every filter it sits above: the state chips work during
+ * a search as of #166, and a bare "this filter" above a row of live chips
+ * reads as applying to them.
+ */
 const SEARCH_ONLY_REASON =
-  'This filter does not apply to a text search — clear the search box to use it.';
+  'The creation-date range does not apply to a text search — clear the search box to use it.';
 
 const inputClass =
   'px-3 py-1.5 bg-fm-surface-alt border border-fm-border rounded-fm-input text-sm text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -151,51 +158,61 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
    * The bounds are KEPT in `filters` while disabled, not cleared: clearing them
    * would silently discard the user's range the moment they typed a character,
    * and they are meant to come back when the search box empties.
+   *
+   * ── Why only the DATES ─────────────────────────────────────────────────
+   * `POST /cases/search` honours a query, a limit, a team AND — since contract
+   * 3.9.0 — a state. It accepts NO date bounds, and that asymmetry is the whole
+   * reason one control here is disabled and the other is not.
+   *
+   * The state chips were disabled too until #166. The field had always been
+   * DECLARED on `CaseSearchRequest` and read by nothing, so sending it was
+   * accepted, ignored, and answered 200 with unfiltered results — #51 restated
+   * one layer down. Greying the chips out was the honest response: a control
+   * that cannot work should not look like it can. 3.9.0 made the server apply
+   * the field, `searchCases` now sends it, so the chips are live and a search
+   * narrows by state like every other list does.
+   *
+   * ONE name, not two. This was briefly `searching` plus a `datesDisabled`
+   * aliased to it, which is two names for one value with a single reader
+   * between them — the two-copies-that-must-agree shape the rest of this file
+   * spends its comments warning about.
+   *
+   * ⚠ THE CHIPS ARE LIVE ON THE STRENGTH OF THE PINNED CONTRACT, WHICH IS THE
+   * MERGED STATE OF CORE — NOT THE DEPLOYED STATE OF THE API THIS DASHBOARD
+   * HAPPENS TO BE TALKING TO. Against a core older than 2026-09-15 (a4664f01,
+   * the #1426 fix, an ancestor of the pinned ref) `POST /cases/search` accepts
+   * `state`, drops it, and answers 200 unfiltered: a lit chip that narrows
+   * nothing. That is the `supports_screen_hint` shape this repo already
+   * shipped once, and the rule it produced — gate on an advertised capability,
+   * never on a version — is the right one.
+   *
+   * It is NOT applied here, deliberately:
+   * - There is no capability to gate on. `/auth/config` advertises the two
+   *   sign-in facts; nothing advertises search filters, and adding a flag to
+   *   core for one chip is a cross-repo change out of proportion to it.
+   * - The usual probe cannot discriminate. `state` has been DECLARED and
+   *   enum-typed on `CaseSearchRequest` since 2025-11-12, so a bogus value
+   *   422s on an old build and a new one alike — unlike `screen_hint`, where
+   *   the parameter itself was new and 422-vs-302 was the signal.
+   * - The degradation is graceful and equals the status quo ante: the chip
+   *   narrows nothing, which is exactly what it did while disabled. No crash,
+   *   no wrong rows, nothing destructive.
+   * - Core now carries `test_declared_filters_reach_the_query.py`, which goes
+   *   red on any field of this model that reaches no query — so the defect
+   *   class cannot silently come BACK, even though that does not help a
+   *   client talking to a build from before it.
+   *
+   * ⇒ Exposed population: a self-hosted deployment running core older than
+   * 2026-09-15 behind a Dashboard newer than #166. If that combination ever
+   * needs to be correct rather than merely harmless, the fix is a capability
+   * on the backend, not a version check here.
    */
-  const searching = Boolean(filters.search);
-
-  /**
-   * `POST /cases/search` honours a query, a limit and a team. NOTHING ELSE.
-   *
-   * The state chip looked like the exception — `CaseSearchRequest` declares a
-   * `state` field — and when this was written the service never read it, so
-   * sending it was accepted, ignored, and answered 200 with unfiltered results
-   * (#51 restated one layer down). Contract 3.9.0 FIXED the server: it now
-   * applies `state` on search.
-   *
-   * The chips stay disabled for now because `searchCases` still does not send
-   * it, so the control continues to tell the truth about this client. Adopting
-   * 3.9.0 here means re-enabling them AND sending the field — a user-visible
-   * change, tracked as faultmaven-dashboard#166.
-   *
-   * The DATE inputs are a different case and stay disabled permanently:
-   * `POST /cases/search` accepts no date bounds at all.
-   */
-  const datesDisabled = searching;
-  const statesDisabled = searching;
-
+  const datesDisabled = Boolean(filters.search);
 
   const showTeamFilter = !stateOnly && teams && teams.length > 0;
 
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4">
-      {/*
-        ON SCREEN, not only in a tooltip and not only to a screen reader.
-        A `title` does not render on a DISABLED control in Chrome or Safari
-        (pointer events are suppressed), and `sr-only` is invisible by
-        definition — so the previous version left a sighted mouse user looking
-        at greyed-out controls with no explanation anywhere, which is the state
-        it claimed to have fixed. One sentence, rendered, and referenced by
-        every control it applies to.
-      */}
-      {searching && (
-        <p
-          id="search-only-reason"
-          className="basis-full text-fm-xs text-fm-text-tertiary -mb-1"
-        >
-          {SEARCH_ONLY_REASON}
-        </p>
-      )}
       <div className="flex gap-1.5">
         {STATE_OPTIONS.map(({ value, label }) => {
           const isActive = (filters.state ?? '') === value;
@@ -203,12 +220,7 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
             <button
               key={value}
               onClick={() => handleStateClick(value)}
-              disabled={statesDisabled}
-              aria-describedby={statesDisabled ? 'search-only-reason' : undefined}
-              title={statesDisabled ? SEARCH_ONLY_REASON : undefined}
-              className={`${chipBase} ${isActive ? chipActive : chipInactive} ${
-                statesDisabled ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
+              className={`${chipBase} ${isActive ? chipActive : chipInactive}`}
             >
               {label}
             </button>
@@ -234,6 +246,38 @@ export function CaseFiltersBar({ filters, onChange, stateOnly = false, teams }: 
 
       {!stateOnly && (
         <>
+          {/*
+            ON SCREEN, not only in a tooltip and not only to a screen reader.
+            A `title` does not render on a DISABLED control in Chrome or Safari
+            (pointer events are suppressed), and `sr-only` is invisible by
+            definition — so an earlier version left a sighted mouse user looking
+            at greyed-out inputs with no explanation anywhere, which is the
+            state it claimed to have fixed.
+
+            ‼ IT LIVES HERE, inside the same `!stateOnly` fragment as the
+            inputs that reference it, and that placement is the guarantee — not
+            a `!stateOnly` term in its own condition, which is a second
+            expression that has to be remembered and kept in step. Both inputs
+            set `aria-describedby="search-only-reason"` on `datesDisabled`
+            alone; if the note could ever be absent while they render, they
+            would point at a missing element, which assistive tech reports as
+            no description at all — silently. Sharing one parent makes that
+            unreachable by construction.
+
+            It also sits DIRECTLY ABOVE the dates now (`basis-full` breaks the
+            flex line) rather than at the top of the bar. Up there it was a
+            sentence about date inputs rendered above the state chips, which
+            since #166 are live — so it read as explaining why THEY were
+            unavailable, which is the opposite of true.
+          */}
+          {datesDisabled && (
+            <p
+              id="search-only-reason"
+              className="basis-full text-fm-xs text-fm-text-tertiary -mb-1"
+            >
+              {SEARCH_ONLY_REASON}
+            </p>
+          )}
           {/*
             Restored with contract 3.8.0, which BINDS `created_after`/
             `created_before` on `GET /cases`. The first version of these inputs

@@ -475,6 +475,91 @@ describe('CaseListPage — the creation-date range reaches the request', () => {
 });
 
 /**
+ * The STATE filter reaches the search request, end to end (#166).
+ *
+ * The three unit suites each prove one hop with its neighbours mocked: the bar
+ * emits `{search, state}`, the hook forwards `state` to a mocked
+ * `searchCases`, and `searchCases` puts it in the body. Nothing joined them —
+ * and the behaviour being fixed lived in TWO places at once (the bar's
+ * `statesDisabled` and the hook withholding the field), so a regression that
+ * re-disables the chip, or a page change that stops handing `filters` to the
+ * bar, breaks the feature with all three suites still green.
+ *
+ * Driven through the real bar and the real hook with only the API mocked —
+ * the same harness the date-column suite below uses, and for the same reason.
+ */
+describe('CaseListPage — the state chip reaches the SEARCH request (#166)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListCases.mockResolvedValue({
+      cases: [sampleCase],
+      total_count: 1,
+      page: 0,
+      page_size: 20,
+      has_more: false,
+    });
+    mockSearchCases.mockResolvedValue([sampleCase]);
+  });
+
+  it('sends the state with the query when a chip is clicked during a search', async () => {
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(mockListCases).toHaveBeenCalled());
+
+    // Type a search first, so the chip is clicked in the state that used to
+    // disable it. The bar debounces at 300ms; the page test harness drives
+    // real timers, so wait for the call rather than assuming it landed.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Search cases'), {
+        target: { value: 'payment' },
+      });
+    });
+    await waitFor(() => expect(mockSearchCases).toHaveBeenCalled());
+    mockSearchCases.mockClear();
+
+    const chip = screen.getByRole('button', { name: 'Resolved' });
+    expect(chip, 'the chip must be clickable during a search — that IS #166').toBeEnabled();
+    await act(async () => { fireEvent.click(chip); });
+
+    await waitFor(() => expect(mockSearchCases).toHaveBeenCalled());
+    expect(mockSearchCases).toHaveBeenLastCalledWith(
+      'payment',
+      expect.any(Number),
+      expect.objectContaining({ state: 'resolved' }),
+    );
+  });
+
+  it('keeps the search term when the chip is applied, so the two compose', async () => {
+    // Emitting `{state}` alone would widen the list back to every resolved
+    // case. That looks like the filter working right up until you read the
+    // rows, which is the failure this whole issue is about.
+    await act(async () => { renderPage(); });
+    await waitFor(() => expect(mockListCases).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Search cases'), {
+        target: { value: 'payment' },
+      });
+    });
+    await waitFor(() => expect(mockSearchCases).toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resolved' }));
+    });
+
+    await waitFor(() =>
+      expect(mockSearchCases).toHaveBeenLastCalledWith(
+        'payment',
+        expect.any(Number),
+        expect.objectContaining({ state: 'resolved' }),
+      ),
+    );
+    // Still the SEARCH endpoint — applying a chip must not silently fall back
+    // to the plain list, which would quietly drop the query.
+    expect(mockListCases).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
  * WHICH DATE the list shows, end to end (faultmaven-dashboard#155).
  *
  * #154 restored a creation-date range over a table whose only date was

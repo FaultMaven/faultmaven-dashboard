@@ -93,12 +93,18 @@ export const CREATED_COLUMN: CaseDateColumn = {
  * `created_before` independently, so "created since 1 Sept" narrows the list
  * exactly as much as a closed range does.
  *
- * A SEARCH SUSPENDS BOTH. `POST /cases/search` accepts no date bounds (unlike
- * `state`, which it applies as of contract 3.9.0 — see #166), so
- * `useCaseList` sends none while `search` is set and `CaseFiltersBar` disables
- * the inputs — but it deliberately KEEPS the range, so it comes back when the
- * box empties. Same predicate the bar greys the inputs on, so the control and
- * the column agree about when the range applies.
+ * A SEARCH SUSPENDS THE DATES, and only the dates. `POST /cases/search`
+ * accepts no date bounds at all, so `useCaseList` sends none while `search` is
+ * set and `CaseFiltersBar` disables the inputs — but it deliberately KEEPS the
+ * range, so it comes back when the box empties. Same predicate the bar greys
+ * the inputs on, so the control and the column agree about when the range
+ * applies.
+ *
+ * `state` is NOT suspended — the server applies it on search as of contract
+ * 3.9.0 (#166) and the chips stay live. That makes no difference here: this
+ * module answers "which DATE does the row show", and a state filter narrows
+ * the rows without touching the question. The early return below is about the
+ * date bounds not travelling, never about search disabling filters in general.
  *
  * WHICH FILTERS TO PASS: the ones the list hook actually APPLIED, not the ones
  * pending in the bar. See `useCaseList`'s `appliedFilters`.

@@ -374,12 +374,12 @@ describe('searchCases', () => {
     expect(body).toEqual({ query: 'db', limit: 25 });
   });
 
-  // U12 team filter on search, adapted to PR #52's (query, limit, teamId)
+  // U12 team filter on search, adapted to #166's (query, limit, options)
   // signature: team_id rides in the body next to limit, no page/page_size.
   it('includes team_id in the body only when provided', async () => {
     mockRequest.mockResolvedValue({ json: async () => [] });
 
-    await searchCases('disk full', 100, 'team_42');
+    await searchCases('disk full', 100, { teamId: 'team_42' });
     expect(mockRequest).toHaveBeenLastCalledWith(
       '/api/v1/cases/search',
       expect.objectContaining({
@@ -392,5 +392,89 @@ describe('searchCases', () => {
     const body = JSON.parse((mockRequest.mock.calls[1][1] as RequestInit).body as string);
     expect(body).toEqual({ query: 'disk full', limit: 100 });
     expect(body).not.toHaveProperty('team_id');
+  });
+
+  // faultmaven-dashboard#166 — contract 3.9.0. The field was DECLARED on
+  // `CaseSearchRequest` long before the service read it, so for a while
+  // sending it was accepted, ignored, and answered 200 with unfiltered results
+  // (#51 one layer down). This client withheld it until 3.9.0 made it real.
+  it('sends `state` so the server can narrow the search by it', async () => {
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('db', 100, { state: 'resolved' });
+
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toEqual({ query: 'db', limit: 100, state: 'resolved' });
+  });
+
+  it('omits `state` entirely when no chip is active', async () => {
+    // `{"state": null}` is a DIFFERENT request from one with no `state` key:
+    // the contract types it `CaseState | null`, so null is a value the server
+    // may come to read. The absent filter must send nothing, and this is the
+    // assertion that catches a switch back to spelling the key with
+    // `undefined` in a way `JSON.stringify` stops dropping.
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('db', 100, {});
+
+    // Structural, not a substring match on the serialized body. `not
+    // .toContain('state')` held only because the fixture query is 'db' — a
+    // query of 'stateful set', or a case id containing the letters, would turn
+    // it red while the key was correctly absent. `toHaveProperty` is also the
+    // stronger assertion: it fails for `{"state": null}`, which the contract
+    // types as a real value and a substring check cannot distinguish from a
+    // key that is genuinely missing.
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty('state');
+    expect(Object.keys(body).sort()).toEqual(['limit', 'query']);
+  });
+
+  it('omits an EMPTY team id rather than sending a blank filter', async () => {
+    // Regression: the first cut of #166 rewrote `...(teamId && {team_id})` to
+    // a written-out `team_id: teamId`, which sends `""`. The server's
+    // `if search_request.team_id:` happens to treat that as no filter, so it
+    // looked harmless — but relying on Python falsiness to absorb a value we
+    // should not have sent is the "`if x:` fails open" shape, and the contract
+    // types the field `string | null` with no mention of `""`.
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('db', 100, { teamId: '' });
+
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty('team_id');
+    expect(Object.keys(body).sort()).toEqual(['limit', 'query']);
+  });
+
+  it('carries the team and the state together', async () => {
+    // Both narrowings at once is the state a user reaches by picking a team
+    // and then typing — nothing in the client drops one for the other.
+    mockRequest.mockResolvedValueOnce({ json: async () => [] });
+
+    await searchCases('db', 100, { teamId: 'team_42', state: 'investigating' });
+
+    const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toEqual({
+      query: 'db',
+      limit: 100,
+      team_id: 'team_42',
+      state: 'investigating',
+    });
+  });
+
+  it('does not filter the RESULTS client-side', async () => {
+    // The temptation, and a silent bug: the contract says `state` is applied
+    // "in the same query as the text search, so it constrains what the `limit`
+    // returns". Post-filtering a 100-row page instead would turn a full page
+    // of matches into however many happened to survive, and call that the
+    // answer. Whatever the server returns IS the answer.
+    const rows = [
+      { case_id: 'c1', state: 'resolved' },
+      { case_id: 'c2', state: 'investigating' },
+    ];
+    mockRequest.mockResolvedValueOnce({ json: async () => rows });
+
+    const out = await searchCases('db', 100, { state: 'resolved' });
+
+    expect(out).toEqual(rows);
   });
 });

@@ -105,19 +105,45 @@ describe('CaseFiltersBar', () => {
     });
   });
 
-  it('DISABLES the state chips during a search, because the endpoint ignores them', () => {
-    // Pins CURRENT client behaviour, not a server limitation: contract 3.9.0
-    // made `POST /cases/search` apply `state`, but `searchCases` still does not
-    // send it, so the chip would not narrow anything. Adopting 3.9.0 here means
-    // re-enabling these and sending the field (#166) — at which point this test
-    // is the one that should change.
+  it('KEEPS the state chips live during a search, and they compose with it', () => {
+    // The inverse of the test that stood here until #166, and the reason it
+    // stood: contract 3.9.0 made `POST /cases/search` apply `state`, and
+    // `searchCases` now sends it, so the chip narrows the search rather than
+    // being accepted and dropped. Disabling it now would be the defect —
+    // a working filter presented as unavailable.
     const onChange = vi.fn();
     render(<CaseFiltersBar filters={{ search: 'db' }} onChange={onChange} />);
 
     const chip = screen.getByRole('button', { name: 'Resolved' });
-    expect(chip).toBeDisabled();
+    expect(chip).toBeEnabled();
     fireEvent.click(chip);
-    expect(onChange).not.toHaveBeenCalled();
+
+    // COMPOSES — the search term survives the chip. Emitting `{state}` alone
+    // would silently widen the list back to every resolved case, which looks
+    // like the filter working right up until you read the rows.
+    expect(applyLast(onChange, { search: 'db' })).toEqual({
+      search: 'db',
+      state: 'resolved',
+    });
+  });
+
+  it('puts the "does not apply" note with the dates, not above the live chips', () => {
+    // The note explains the DATE inputs. While it rendered at the top of the
+    // bar it sat above the state chips, which since #166 work during a search
+    // — so it read as explaining why THEY were unavailable, the opposite of
+    // true. DOM order is the assertion because that is what a reader sees;
+    // "it exists somewhere" was true before the fix too.
+    render(<CaseFiltersBar filters={{ search: 'db' }} onChange={vi.fn()} />);
+
+    const note = screen.getByText(/does not apply to a text search/i);
+    const chip = screen.getByRole('button', { name: 'Resolved' });
+    const dateInput = screen.getByLabelText('Created from');
+
+    // Node.compareDocumentPosition: FOLLOWING === 4.
+    const noteAfterChip = chip.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING;
+    const dateAfterNote = note.compareDocumentPosition(dateInput) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(noteAfterChip, 'the note should come AFTER the state chips').toBeTruthy();
+    expect(dateAfterNote, 'the note should come immediately BEFORE the dates').toBeTruthy();
   });
 });
 
@@ -265,10 +291,12 @@ describe('CaseFiltersBar — creation-date range', () => {
     for (const label of ['Created from', 'Created to']) {
       expect(screen.getByLabelText(label).getAttribute('aria-describedby')).toBe(reason.id);
     }
-    // The state chips are gated by the same rule and point at the same sentence.
+    // ...and NAMES the date range, because it no longer covers everything it
+    // sits above. The chips below it are live (#166), so a bare "this filter"
+    // would now read as applying to them.
+    expect(reason).toHaveTextContent(/creation-date range/i);
     const chip = screen.getByRole('button', { name: 'Resolved' });
-    expect(chip).toBeDisabled();
-    expect(chip.getAttribute('aria-describedby')).toBe(reason.id);
+    expect(chip.getAttribute('aria-describedby')).toBeNull();
   });
 
   it('carries no stale reason once the search is cleared', () => {

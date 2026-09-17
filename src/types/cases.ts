@@ -162,6 +162,21 @@ export type AdminCaseMessagesResponse = Omit<
   messages: CaseMessagesResponse;
 };
 
+/**
+ * The `POST /cases/search` request body, as the pinned contract declares it.
+ *
+ * Lives here with the other generated aliases rather than in the client that
+ * sends it, so the case domain keeps ONE home for contract types — and so
+ * faultmaven-dashboard#165 has an obvious place to put the next dozen.
+ *
+ * ‼ Build the body by assigning this type to an object literal with the
+ * optional keys WRITTEN OUT. TypeScript does not excess-property-check spread
+ * operands, so `...(state && { state })` compiles clean even against a
+ * contract that has no `state` at all, and the binding becomes decoration.
+ * Measured both ways — see `searchCases`.
+ */
+export type CaseSearchRequest = components['schemas']['CaseSearchRequest'];
+
 // ==================== Frontend-only request / filter shapes ====================
 // (no generated counterpart — these are dashboard query/write bags)
 
