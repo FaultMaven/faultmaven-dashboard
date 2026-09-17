@@ -41,31 +41,58 @@ describe('case types guard their narrowings', () => {
     expect(source).not.toContain('narrows the generated');
   });
 
-  it('guards each Omit with a DERIVED Pick, never a restated key list', () => {
-    const omits = source.match(/Omit<\s*\n?\s*components\['schemas'\]/g) ?? [];
-    const derived = source.match(/Pick<\s*\n?\s*components\['schemas'\]\['[A-Za-z]+'\],\s*\n?\s*keyof\s+[A-Za-z]+\s*\n?\s*>/g) ?? [];
-    expect(omits.length).toBeGreaterThan(0);
-    expect(derived.length).toBeGreaterThanOrEqual(omits.length);
-    // A hand-written key list is a second thing to keep in step, and the day
-    // someone overrides another key and forgets it, the guard stops covering
-    // it — the same blindness one level up.
+  it('pairs BOTH guards with every narrowing, by name', () => {
+    // ‼ Assert the PAIRS, not a count. `derived.length >= omits.length` cannot
+    // see the two edits most likely to break this: a narrowing spelled through
+    // an intermediate alias (which the `Omit<components[...]` regex does not
+    // match at all), and a guard whose `keyof` operand was copy-pasted from a
+    // sibling. `AdminCaseListResponse` and `AdminCaseMetadataListResponse` have
+    // byte-identical key sets, so the wrong operand compiles, matches the
+    // regex, and keeps the count balanced while guarding nothing.
+    const narrowings: [string, string][] = [
+      ['CaseListResponse', 'CaseListResponse'],
+      ['AdminCaseFullListResponse', 'AdminCaseListResponse'],
+      ['AdminCaseMetadataListResponse', 'AdminCaseMetadataListResponse'],
+      ['AdminCaseContentResponse', 'AdminCaseContentResponse'],
+      ['AdminCaseMessagesResponse', 'AdminCaseMessagesResponse'],
+    ];
+    for (const [local, wire] of narrowings) {
+      // keys guard: the wire schema and the local alias, tied together.
+      expect(source).toMatch(
+        new RegExp(`Pick<\\s*components\\['schemas'\\]\\['${wire}'\\],\\s*keyof ${local}\\s*>`)
+      );
+      // subtype guard: same pair, and wrapped in `_Assert`.
+      expect(source).toMatch(
+        new RegExp(`_Assert<\\s*_IsSubtype<\\s*${local},\\s*components\\['schemas'\\]\\['${wire}'\\]\\s*>\\s*>`)
+      );
+    }
+    // No guard may hand-restate a key list.
     expect(source).not.toMatch(/Pick<\s*components\['schemas'\]\['[A-Za-z]+'\],\s*'/);
   });
 
-  it('states the checks as constraints, not bare conditionals', () => {
-    // A conditional type resolving to `never` is not an error — it is just
-    // `never`, and the build stays green. Only `T extends true` rejects it.
+  it('wraps EVERY guard member in _Assert, not just declares it', () => {
+    // Declaring `_Assert` somewhere proves nothing about its use: drop the
+    // wrapper from one member and it resolves to the type `false`, which is
+    // not an error — the guard goes inert while every other assertion here
+    // stays green. That is the same "a conditional is not an error" defect the
+    // guards themselves exist to avoid.
     expect(source).toMatch(/type\s+_Assert<\s*T\s+extends\s+true\s*>/);
-    expect(source).not.toMatch(/\?\s*true\s*:\s*never/);
+    const members = source.match(/^\s*[a-zA-Z]+(?:Subtype|Source|SourceNotNull):\s*[^;]+;/gm) ?? [];
+    expect(members.length).toBeGreaterThanOrEqual(9);
+    for (const m of members) {
+      expect(m.replace(/^\s*[a-zA-Z]+:\s*/, '')).toMatch(/^_Assert</);
+    }
   });
 
-  it('guards the `& { source }` narrowings through an indexed access', () => {
-    // `_IsSubtype<Wire & { source }, Wire>` is a TAUTOLOGY — an intersection is
-    // always assignable to its parts, including when the wire drops `source`
-    // and the `&` half goes on promising it. `Wire['source']` stops compiling
-    // instead.
+  it('does not strip nullability out of the `source` comparison', () => {
+    // `NonNullable<Wire['source']>` erases exactly the change the
+    // `& { source?: CaseSource }` narrowing cannot survive — the intersection
+    // annihilates `null`, so consumers are told `source` is always one of three
+    // literals while rows arrive `null`. Measured: with `NonNullable` the
+    // nullability change compiled clean.
+    expect(source).not.toMatch(/NonNullable<\s*components\['schemas'\]\['[A-Za-z]+'\]\['source'\]/);
     for (const schema of ['CaseSummary', 'CaseDetail', 'AdminCaseMetadata']) {
-      expect(source).toContain(`components['schemas']['${schema}']['source']`);
+      expect(source).toContain(`_NotNullable<components['schemas']['${schema}']['source']>`);
     }
   });
 });

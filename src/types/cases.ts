@@ -351,29 +351,61 @@ type _Assert<T extends true> = T;
 /** Each narrowed member is still a subtype of the wire member. */
 type _IsSubtype<Narrowed, Wire> = [Narrowed] extends [Wire] ? true : false;
 
+/**
+ * The wire member is NOT nullable.
+ *
+ * `_IsSubtype` cannot see this: a union of string literals is happily
+ * assignable to `string | null`, so the subtype check stays true exactly when
+ * the intersection has become a lie. See the `*Source` guards.
+ */
+type _NotNullable<Wire> = null extends Wire ? false : true;
+
 // `Pick<Wire, keyof Narrowed>` is written out per type rather than wrapped in a
 // generic helper: inside a generic, `keyof Narrowed` widens to
 // `string | number | symbol` and stops satisfying `keyof Wire`, so the helper
 // compiles for everything and checks nothing.
+// ‼ BOTH GUARDS ON EVERY NARROWING. The keys guard catches the overridden key
+// being renamed away; the subtype guard catches its TYPE changing underneath.
+// Neither substitutes for the other, and the first version of this file paired
+// them only on `CaseListResponse`. Measured on the other four: changing
+// `AdminCaseListResponse.cases` from `CaseSummary[]` to `string[]` compiled
+// CLEAN — `AdminCaseFullListResponse` would have gone on declaring
+// `cases: CaseSummary[]`, and every Title cell in the operator list would have
+// rendered `undefined` on a green build.
 export type CaseTypeGuards = {
   listKeys: Pick<components['schemas']['CaseListResponse'], keyof CaseListResponse>;
   listSubtype: _Assert<_IsSubtype<CaseListResponse, components['schemas']['CaseListResponse']>>;
 
   adminFullKeys: Pick<components['schemas']['AdminCaseListResponse'], keyof AdminCaseFullListResponse>;
+  adminFullSubtype: _Assert<
+    _IsSubtype<AdminCaseFullListResponse, components['schemas']['AdminCaseListResponse']>
+  >;
 
   adminMetadataKeys: Pick<
     components['schemas']['AdminCaseMetadataListResponse'],
     keyof AdminCaseMetadataListResponse
+  >;
+  adminMetadataSubtype: _Assert<
+    _IsSubtype<
+      AdminCaseMetadataListResponse,
+      components['schemas']['AdminCaseMetadataListResponse']
+    >
   >;
 
   adminContentKeys: Pick<
     components['schemas']['AdminCaseContentResponse'],
     keyof AdminCaseContentResponse
   >;
+  adminContentSubtype: _Assert<
+    _IsSubtype<AdminCaseContentResponse, components['schemas']['AdminCaseContentResponse']>
+  >;
 
   adminMessagesKeys: Pick<
     components['schemas']['AdminCaseMessagesResponse'],
     keyof AdminCaseMessagesResponse
+  >;
+  adminMessagesSubtype: _Assert<
+    _IsSubtype<AdminCaseMessagesResponse, components['schemas']['AdminCaseMessagesResponse']>
   >;
 
   // ‼ The `Wire & { source?: CaseSource }` types need a DIFFERENT guard, and
@@ -385,13 +417,26 @@ export type CaseTypeGuards = {
   // The indexed access is what bites: `Wire['source']` stops compiling the
   // moment the wire has no `source`, and the refinement check catches its type
   // changing underneath the narrowing.
-  summarySource: _Assert<
-    _IsSubtype<CaseSource, NonNullable<components['schemas']['CaseSummary']['source']>>
-  >;
-  detailSource: _Assert<
-    _IsSubtype<CaseSource, NonNullable<components['schemas']['CaseDetail']['source']>>
-  >;
+  //
+  // ‼ NO `NonNullable` HERE, and that is the point. It would strip exactly the
+  // change this narrowing is least able to survive: the wire making `source`
+  // nullable. `Wire & { source?: CaseSource }` computes `source` as
+  // `(string | null) & (CaseSource | undefined)` — the `null` is ANNIHILATED by
+  // the intersection — so every consumer would be told `source` is always one
+  // of three literals while rows arrive with `null`, every `switch` falls
+  // through, and the ADR-012 origin badge renders nothing with no error.
+  // Wrapping the wire side in `NonNullable` erased the same `null` before
+  // comparing, so the guard stayed green on precisely that change.
+  summarySource: _Assert<_IsSubtype<CaseSource, components['schemas']['CaseSummary']['source']>>;
+  summarySourceNotNull: _Assert<_NotNullable<components['schemas']['CaseSummary']['source']>>;
+
+  detailSource: _Assert<_IsSubtype<CaseSource, components['schemas']['CaseDetail']['source']>>;
+  detailSourceNotNull: _Assert<_NotNullable<components['schemas']['CaseDetail']['source']>>;
+
   metadataSource: _Assert<
-    _IsSubtype<CaseSource, NonNullable<components['schemas']['AdminCaseMetadata']['source']>>
+    _IsSubtype<CaseSource, components['schemas']['AdminCaseMetadata']['source']>
+  >;
+  metadataSourceNotNull: _Assert<
+    _NotNullable<components['schemas']['AdminCaseMetadata']['source']>
   >;
 };
