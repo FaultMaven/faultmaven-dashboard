@@ -18,13 +18,20 @@ import {
 } from '../../context/AuthContext';
 
 function Probe() {
-  const { deployment, loginUrl, configStatus, supportsScreenHint, retryConfigDetection } =
-    useAuth();
+  const {
+    deployment,
+    loginUrl,
+    configStatus,
+    supportsScreenHint,
+    selfServiceSignupEnabled,
+    retryConfigDetection,
+  } = useAuth();
   return (
     <div>
       <span data-testid="deployment">{deployment ?? 'null'}</span>
       <span data-testid="loginUrl">{loginUrl ?? 'null'}</span>
       <span data-testid="supportsScreenHint">{String(supportsScreenHint)}</span>
+      <span data-testid="selfServiceSignupEnabled">{String(selfServiceSignupEnabled)}</span>
       <span data-testid="configStatus">{configStatus}</span>
       <button data-testid="retry" onClick={retryConfigDetection}>
         retry
@@ -130,6 +137,57 @@ describe('AuthProvider — cloud hosted-login URL resolution', () => {
 
     await waitFor(() => expect(screen.getByTestId('deployment')).toHaveTextContent('cloud'));
     expect(screen.getByTestId('supportsScreenHint')).toHaveTextContent('false');
+  });
+
+  it('reads the advertised self-service sign-up capability', async () => {
+    mockAuthConfig({
+      auth_mode: 'oauth',
+      oauth: {
+        hosted_login_url: '/sso/login',
+        supports_screen_hint: true,
+        self_service_signup_enabled: true,
+      },
+    });
+
+    renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('deployment')).toHaveTextContent('cloud'));
+    expect(screen.getByTestId('selfServiceSignupEnabled')).toHaveTextContent('true');
+  });
+
+  it('keeps the two capabilities independent', async () => {
+    // Forwarding the hint is mechanics; being able to finish is policy. With
+    // sign-up off, an org-less identity completes the sign-up screen and is
+    // refused at the callback — so a client must not infer one from the other.
+    mockAuthConfig({
+      auth_mode: 'oauth',
+      oauth: { hosted_login_url: '/sso/login', supports_screen_hint: true },
+    });
+
+    renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('deployment')).toHaveTextContent('cloud'));
+    expect(screen.getByTestId('supportsScreenHint')).toHaveTextContent('true');
+    expect(screen.getByTestId('selfServiceSignupEnabled')).toHaveTextContent('false');
+  });
+
+  it('publishes no hosted-login capability for a standalone deployment', async () => {
+    // A standalone response carrying an oauth block — a merging proxy, or a
+    // future build that fills it — must not turn a sign-up control on. Both
+    // capabilities describe a hosted login, and loginUrl is null here.
+    mockAuthConfig({
+      auth_mode: 'local',
+      oauth: { supports_screen_hint: true, self_service_signup_enabled: true },
+    });
+
+    renderProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('deployment')).toHaveTextContent('standalone')
+    );
+    expect(screen.getByTestId('loginUrl')).toHaveTextContent('null');
+    expect(screen.getByTestId('supportsScreenHint')).toHaveTextContent('false');
+    expect(screen.getByTestId('selfServiceSignupEnabled')).toHaveTextContent('false');
   });
 
   it('leaves loginUrl null when cloud advertises only the PKCE authorize_url', async () => {

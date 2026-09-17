@@ -119,6 +119,7 @@ describe('LoginPage', () => {
       deployment: 'cloud',
       loginUrl: 'https://idp.example/login',
       supportsScreenHint: true,
+      selfServiceSignupEnabled: true,
       setAuthState: vi.fn(),
     });
 
@@ -135,6 +136,7 @@ describe('LoginPage', () => {
       deployment: 'cloud',
       loginUrl: 'https://idp.example/login',
       supportsScreenHint: true,
+      selfServiceSignupEnabled: true,
       setAuthState: vi.fn(),
     });
 
@@ -181,8 +183,11 @@ describe('LoginPage', () => {
     renderLogin();
 
     expect(screen.queryByRole('button', { name: /create an account/i })).toBeNull();
-    // …and the copy goes back to telling the truth for that backend.
-    expect(screen.getByText(/signing in creates your account/i)).toBeInTheDocument();
+    // …and the copy tells the truth for that backend. NOT "signing in creates
+    // your account" — it does not; AuthKit's sign-in screen is a credentials
+    // form with a sign-up link on it.
+    expect(screen.getByText(/choose .Sign up. on the next screen/i)).toBeInTheDocument();
+    expect(screen.queryByText(/signing in creates your account/i)).toBeNull();
   });
 
   it('treats an absent capability as unsupported, not as unknown-therefore-fine', () => {
@@ -197,6 +202,43 @@ describe('LoginPage', () => {
     renderLogin();
 
     expect(screen.queryByRole('button', { name: /create an account/i })).toBeNull();
+  });
+
+  it('hides the control when the hint works but sign-up cannot finish', () => {
+    // The dead end one step further down: with self-service sign-up off, an
+    // org-less identity completes the sign-up screen and is refused at the
+    // callback. Gating on the hint alone sends someone through a form to an
+    // error.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      supportsScreenHint: true,
+      selfServiceSignupEnabled: false,
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.queryByRole('button', { name: /create an account/i })).toBeNull();
+  });
+
+  it('does not claim sign-in creates an account when it offers the real control', () => {
+    // The true arm of the copy was untested: collapsing the ternary to the
+    // fallback passed the whole suite while shipping a working "Create an
+    // account" button above a sentence saying Sign In does the same thing.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      supportsScreenHint: true,
+      selfServiceSignupEnabled: true,
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.getByRole('button', { name: /create an account/i })).toBeInTheDocument();
+    expect(screen.queryByText(/next screen/i)).toBeNull();
+    expect(screen.getByText(/free while it is in beta/i)).toBeInTheDocument();
   });
 
   it('standalone mode: offers no Create-an-account control', () => {

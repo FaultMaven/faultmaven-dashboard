@@ -107,11 +107,19 @@ interface AuthContextValue {
   /**
    * Whether `loginUrl` honours `?screen_hint=` (core contract 6.2.0).
    *
-   * Gate any sign-up control on this rather than assuming: an API without it
-   * accepts the parameter, drops it, and serves the sign-in screen — so the
-   * control renders, looks right, and does nothing.
+   * MECHANICS only. An API without it accepts the parameter, drops it, and
+   * serves the sign-in screen — so a control gated on this renders, looks
+   * right, and does nothing.
    */
   supportsScreenHint: boolean;
+  /**
+   * Whether someone with no account can actually finish signing up.
+   *
+   * POLICY, and not implied by the above: with self-service sign-up off an
+   * org-less identity reaches the sign-up screen, completes it, and is
+   * refused at the callback. Offer a sign-up control only when BOTH hold.
+   */
+  selfServiceSignupEnabled: boolean;
   setAuthState: (state: AuthState | null) => Promise<void>;
   clearAuthState: () => Promise<void>;
 }
@@ -120,6 +128,7 @@ type DetectedConfig = {
   dep: Deployment;
   resolvedLoginUrl: string | null;
   supportsScreenHint: boolean;
+  selfServiceSignupEnabled: boolean;
 };
 
 /**
@@ -147,6 +156,7 @@ async function fetchAuthConfigOnce(): Promise<DetectedConfig | null> {
         hosted_login_url?: string;
         authorize_url?: string;
         supports_screen_hint?: boolean;
+        self_service_signup_enabled?: boolean;
       } | null;
     } = await res.json();
     if (authConfig.auth_mode !== 'local' && authConfig.auth_mode !== 'oauth') return null;
@@ -174,8 +184,22 @@ async function fetchAuthConfigOnce(): Promise<DetectedConfig | null> {
     // the hint, and every test in three repositories stayed green.
     //
     // `=== true`, not a truthy check: only the advertised boolean counts.
-    const supportsScreenHint = authConfig.oauth?.supports_screen_hint === true;
-    return { dep, resolvedLoginUrl, supportsScreenHint };
+    //
+    // Both are scoped to `dep === 'cloud'` for the same reason
+    // `resolvedLoginUrl` is: they describe a hosted login, and publishing a
+    // capability of a URL that is null would contradict their own meaning.
+    // A standalone response carrying an oauth block — a merging proxy, a
+    // future build that fills it — must not turn a sign-up control on.
+    const cloud = dep === 'cloud';
+    const supportsScreenHint =
+      cloud && authConfig.oauth?.supports_screen_hint === true;
+    // Separate from the hint on purpose: forwarding it is mechanics, being
+    // able to finish is policy. With self-service sign-up off an org-less
+    // identity completes the sign-up screen and is refused at the callback,
+    // so a control gated on the hint alone is a dead end one step further on.
+    const selfServiceSignupEnabled =
+      cloud && authConfig.oauth?.self_service_signup_enabled === true;
+    return { dep, resolvedLoginUrl, supportsScreenHint, selfServiceSignupEnabled };
   } catch {
     return null;
   }
@@ -194,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // sign-up control, matching the fail-closed rule the rest of this module
   // follows.
   const [supportsScreenHint, setSupportsScreenHint] = useState(false);
+  const [selfServiceSignupEnabled, setSelfServiceSignupEnabled] = useState(false);
 
   /**
    * Generation counter for detection runs. Every run captures the counter at
@@ -221,6 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDeployment(result.dep);
       setLoginUrl(result.resolvedLoginUrl);
       setSupportsScreenHint(result.supportsScreenHint);
+      setSelfServiceSignupEnabled(result.selfServiceSignupEnabled);
       setConfigStatus('ok');
     };
 
@@ -358,6 +384,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         loginUrl,
         supportsScreenHint,
+        selfServiceSignupEnabled,
         setAuthState,
         clearAuthState,
       }}
