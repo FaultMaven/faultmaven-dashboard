@@ -14,6 +14,8 @@ const CLOUD = {
   configStatus: 'ok',
   loginUrl: 'https://api.example/api/v1/auth/sso/login',
   isAuthenticated: false,
+  supportsScreenHint: true,
+  selfServiceSignupEnabled: true,
 };
 
 function renderSignUp() {
@@ -101,12 +103,27 @@ describe('SignUpPage', () => {
     expect(screen.getByTestId('cases-page')).toBeInTheDocument();
   });
 
+  it.each([
+    ['the backend cannot forward the hint', { supportsScreenHint: false, selfServiceSignupEnabled: true }],
+    ['self-service sign-up is off', { supportsScreenHint: true, selfServiceSignupEnabled: false }],
+  ])('falls to /login rather than promising sign-up it cannot deliver: %s', (_l, caps) => {
+    // Without this the page says "Taking you to sign-up…" and delivers the
+    // sign-in screen — website#42's original defect, with the app having just
+    // announced the opposite. One extra hop, and it tells the truth.
+    mockUseAuth.mockReturnValue({ ...CLOUD, ...caps });
+    renderSignUp();
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('login-page')).toBeInTheDocument();
+  });
+
   it('waits for config rather than guessing while detection is pending', () => {
     mockUseAuth.mockReturnValue({
       deployment: null,
       configStatus: 'pending',
       loginUrl: null,
       isAuthenticated: false,
+      supportsScreenHint: false,
+      selfServiceSignupEnabled: false,
     });
     renderSignUp();
     expect(replaceSpy).not.toHaveBeenCalled();
@@ -117,7 +134,12 @@ describe('SignUpPage', () => {
     ['standalone — single-user, no hosted login and no sign-up', { deployment: 'standalone', configStatus: 'ok', loginUrl: null }],
     ['cloud advertising no IdP', { deployment: 'cloud', configStatus: 'ok', loginUrl: null }],
   ])('falls to /login: %s', (_label, state) => {
-    mockUseAuth.mockReturnValue({ ...state, isAuthenticated: false });
+    mockUseAuth.mockReturnValue({
+      ...state,
+      isAuthenticated: false,
+      supportsScreenHint: true,
+      selfServiceSignupEnabled: true,
+    });
     renderSignUp();
     expect(replaceSpy).not.toHaveBeenCalled();
     expect(screen.getByTestId('login-page')).toBeInTheDocument();
@@ -133,6 +155,8 @@ describe('SignUpPage', () => {
       configStatus: 'unreachable',
       loginUrl: 'https://api.example/api/v1/auth/sso/login',
       isAuthenticated: false,
+      supportsScreenHint: true,
+      selfServiceSignupEnabled: true,
     });
     renderSignUp();
     expect(replaceSpy).not.toHaveBeenCalled();

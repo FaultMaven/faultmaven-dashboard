@@ -90,7 +90,22 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { deployment, configStatus, retryConfigDetection, loginUrl, setAuthState } = useAuth();
+  const {
+    deployment,
+    configStatus,
+    retryConfigDetection,
+    loginUrl,
+    supportsScreenHint,
+    selfServiceSignupEnabled,
+    setAuthState,
+  } = useAuth();
+
+  // Both, not either. The hint is mechanics (does the URL forward it) and
+  // self-service sign-up is policy (can a new person finish). With the hint
+  // alone the button reaches the sign-up screen and the callback then refuses
+  // the account — a dead end further down than the one the gate was added to
+  // close.
+  const canOfferSignUp = supportsScreenHint && selfServiceSignupEnabled;
 
   // The sign-out that sent the user here could not confirm that the account's
   // other sessions ended (logoutAuth). The menu that asked is long gone by now,
@@ -262,23 +277,37 @@ export default function LoginPage() {
             Sign In
           </button>
 
-          {/* A real control, not a sentence. This page used to say "the same
-              button creates your account" because the hosted login opens on
-              its sign-in screen and there was no way to ask for the other one
-              — so someone without an account had to click "Sign In", read a
-              form asking for credentials they do not have, and find the
-              sign-up link on it. `screen_hint` (core 6.1.0) removed the
-              excuse. */}
-          <button
-            type="button"
-            onClick={() => handleCloudSignIn('sign-up')}
-            className={`${secondaryButtonClass} mt-3`}
-          >
-            Create an account
-          </button>
+          {/* A real control, not a sentence — but only where it WORKS.
+              This page used to say "the same button creates your account",
+              because the hosted login opens on its sign-in screen and there
+              was no way to ask for the other one. `screen_hint` removed that
+              excuse, and then the button shipped against an API that did not
+              yet understand it: an unknown query parameter is accepted,
+              dropped, and the sign-in screen served, so both buttons produced
+              the same URL and did the same thing. Gate on the ADVERTISED
+              capability (core 6.2.0, `oauth.supports_screen_hint`), never on
+              a version — a silently ignored parameter is indistinguishable
+              from one that worked. ADR-019: the Dashboard degrades, never
+              requires. */}
+          {canOfferSignUp && (
+            <button
+              type="button"
+              onClick={() => handleCloudSignIn('sign-up')}
+              className={`${secondaryButtonClass} mt-3`}
+            >
+              Create an account
+            </button>
+          )}
 
           <p className="mt-3 text-center text-sm text-fm-text-secondary">
-            Cloud beta is open — free while it is in beta.
+            {canOfferSignUp
+              ? 'Cloud beta is open — free while it is in beta.'
+              : // NOT "signing in creates your account": it does not. AuthKit's
+                // sign-in screen is a credentials form with a sign-up link on
+                // it, and claiming otherwise is the same false sentence #161
+                // removed — a dead button traded for an untrue claim. Say what
+                // the next screen actually requires.
+                'New here? Choose “Sign up” on the next screen. Cloud beta is free while it is in beta.'}
           </p>
 
           <div className="mt-8 pt-6 border-t border-fm-border">

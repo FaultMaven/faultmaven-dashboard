@@ -23,7 +23,8 @@ import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
  * request is byte-identical to before.
  */
 export default function SignUpPage() {
-  const { deployment, configStatus, loginUrl, isAuthenticated } = useAuth();
+  const { deployment, configStatus, loginUrl, isAuthenticated, supportsScreenHint, selfServiceSignupEnabled } =
+    useAuth();
 
   // Every state this page can be in resolves to exactly one of three
   // outcomes, decided once here so the effect and the render cannot disagree.
@@ -31,7 +32,17 @@ export default function SignUpPage() {
   // below were driven by it, so an unreachable config with a stale loginUrl
   // rendered "go to /login" *and* fired the redirect.
   const ready = configStatus === 'ok';
-  const canHandOff = ready && deployment === 'cloud' && !!loginUrl && !isAuthenticated;
+  // The same pair LoginPage gates its button on. Without them this page says
+  // "Taking you to sign-up…" and delivers the sign-in screen — website#42's
+  // original defect, now with the app having announced the opposite. Falling
+  // to /login is one more hop and tells the truth.
+  const canHandOff =
+    ready &&
+    deployment === 'cloud' &&
+    !!loginUrl &&
+    !isAuthenticated &&
+    supportsScreenHint &&
+    selfServiceSignupEnabled;
 
   useEffect(() => {
     if (!canHandOff || !loginUrl) return;
