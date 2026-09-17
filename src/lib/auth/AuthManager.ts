@@ -658,7 +658,18 @@ export class AuthManager {
           ? { ...authState.user, roles: refreshedRoles }
           : authState.user,
         access_token: body.access_token,
-        refresh_token: body.refresh_token,
+        // ‼ FALL BACK, never overwrite with nothing. `refresh_token` is
+        // optional on the wire, and a 200 that omits it must mean "keep using
+        // the one you have" — not "you no longer have one". Writing
+        // `body.refresh_token` straight through destroyed the session's only
+        // renewal credential, and did it SILENTLY: the current access token
+        // keeps working until it expires, and the failure lands on the NEXT
+        // refresh, which finds no token, calls
+        // `clearAuthStateAndEndIdpSession()` and signs the user out mid-session
+        // with nothing logged. The hand-written type this replaced declared
+        // `refresh_token: string` — asserting a presence the server never
+        // promised, which is what hid the gap.
+        refresh_token: body.refresh_token ?? authState.refresh_token,
         expires_at: expiresAt,
       };
       await this.saveAuthState(next);

@@ -8,6 +8,12 @@ import { isSafeLogoutUrl } from './logoutUrl';
 
 export type PublishableScope = 'personal' | 'team' | 'global';
 
+const PUBLISHABLE_SCOPES: readonly PublishableScope[] = ['personal', 'team', 'global'];
+
+function isPublishableScope(scope: string): scope is PublishableScope {
+  return (PUBLISHABLE_SCOPES as readonly string[]).includes(scope);
+}
+
 /**
  * `GET /auth/me/available-scopes`, bound to the pinned contract (#165).
  *
@@ -25,17 +31,26 @@ type AvailableScopesResponse = Omit<
   scopes: PublishableScope[];
 };
 
-/** The guard: `scopes` still exists upstream, and still refines to strings. */
+/**
+ * The guards. BOTH kinds, because each misses what the other catches.
+ *
+ * `keys` catches the field being renamed away; `subtype` catches its TYPE
+ * changing underneath the narrowing. Measured: with `keys` alone, changing the
+ * wire's `scopes` from `string[]` to `string` compiles clean — and then
+ * `getAvailableScopes` returns a bare string typed as an array, and the first
+ * `.map()` in the publish UI throws. A `[number]` refinement check does not
+ * help there either: `string[number]` is `string`, so it is a near-tautology.
+ */
 type _Assert<T extends true> = T;
+type _IsSubtype<Narrowed, Wire> = [Narrowed] extends [Wire] ? true : false;
+
 export type AvailableScopesGuards = {
   keys: Pick<
     components['schemas']['AvailableScopesResponse'],
     keyof AvailableScopesResponse
   >;
-  refines: _Assert<
-    PublishableScope extends components['schemas']['AvailableScopesResponse']['scopes'][number]
-      ? true
-      : false
+  subtype: _Assert<
+    _IsSubtype<AvailableScopesResponse, components['schemas']['AvailableScopesResponse']>
   >;
 };
 
@@ -45,44 +60,6 @@ export type AvailableScopesGuards = {
  * Backend gates by actual memberships (not AUTH_MODE), so this is the
  * single source of truth for which radio buttons / select options to render.
  */
-/**
- * Turn a validated token response into the session this app STORES.
- *
- * ‼ `AuthState` is not the wire shape and must not be bound to it. It holds
- * `expires_at` (epoch ms, derived here) where the contract sends `expires_in`
- * (seconds), and it is read back out of `localStorage`, so it has to tolerate
- * sessions stored by older builds. Binding it to `AuthTokenResponse` would
- * make a stored session from last month a type error about this month's
- * contract.
- *
- * What IS bound is the body this reads — by name, and partially, because the
- * caller has already decided a 2xx can lie (#165). Constructing the fields
- * explicitly rather than spreading is the point: `{...body}` typechecked only
- * because `body` was `any`, and it quietly carried through `user` and
- * `session_id` that nothing had checked. A login response with no `user` was
- * accepted and stored, and the app then crashed on the first `user.user_id`.
- */
-function toAuthState(
-  body: Partial<components['schemas']['AuthTokenResponse']>,
-  accessToken: string,
-  expiresAt: number,
-): AuthState {
-  if (!body.user) {
-    // Same class as a missing token: a 2xx that cannot identify the account is
-    // unusable, so fail here rather than three screens later.
-    throw new AuthenticationError('Login response missing the account profile');
-  }
-  return {
-    access_token: accessToken,
-    token_type: 'bearer',
-    expires_at: expiresAt,
-    refresh_token: body.refresh_token ?? undefined,
-    session_id: body.session_id,
-    idp_logout_url: body.idp_logout_url,
-    user: body.user,
-  };
-}
-
 export async function getAvailableScopes(): Promise<PublishableScope[]> {
   const token = await authManager.getAccessToken();
   if (!token) throw new AuthenticationError('Not authenticated');
@@ -100,7 +77,14 @@ export async function getAvailableScopes(): Promise<PublishableScope[]> {
   }
 
   const body = (await response.json()) as AvailableScopesResponse;
-  return body.scopes;
+  // ‼ FILTERED, not asserted. The contract declares `scopes: string[]`, so any
+  // string conforms — the narrowing above is this client's claim, not the
+  // server's promise. Add a fourth tier upstream and an unfiltered cast hands
+  // the publish UI a value no `switch` has a case for, which is the
+  // exhaustiveness guarantee the narrowing exists to provide, silently false.
+  // Dropping the unknown member is the conservative reading: a scope this
+  // build cannot render is a scope it cannot let someone publish at.
+  return body.scopes.filter(isPublishableScope);
 }
 
 /** The tenant a session is bound to, as `/auth/me` names it.
@@ -150,6 +134,44 @@ export async function getAccountProfile(): Promise<AccountProfile> {
   }
 
   return (await response.json()) as AccountProfile;
+}
+
+/**
+ * Turn a validated token response into the session this app STORES.
+ *
+ * ‼ `AuthState` is not the wire shape and must not be bound to it. It holds
+ * `expires_at` (epoch ms, derived here) where the contract sends `expires_in`
+ * (seconds), and it is read back out of `localStorage`, so it has to tolerate
+ * sessions stored by older builds. Binding it to `AuthTokenResponse` would
+ * make a stored session from last month a type error about this month's
+ * contract.
+ *
+ * What IS bound is the body this reads — by name, and partially, because the
+ * caller has already decided a 2xx can lie (#165). Constructing the fields
+ * explicitly rather than spreading is the point: `{...body}` typechecked only
+ * because `body` was `any`, and it quietly carried through `user` and
+ * `session_id` that nothing had checked. A login response with no `user` was
+ * accepted and stored, and the app then crashed on the first `user.user_id`.
+ */
+function toAuthState(
+  body: Partial<components['schemas']['AuthTokenResponse']>,
+  accessToken: string,
+  expiresAt: number,
+): AuthState {
+  if (!body.user) {
+    // Same class as a missing token: a 2xx that cannot identify the account is
+    // unusable, so fail here rather than three screens later.
+    throw new AuthenticationError('Login response missing the account profile');
+  }
+  return {
+    access_token: accessToken,
+    token_type: 'bearer',
+    expires_at: expiresAt,
+    refresh_token: body.refresh_token ?? undefined,
+    session_id: body.session_id,
+    idp_logout_url: body.idp_logout_url,
+    user: body.user,
+  };
 }
 
 /**

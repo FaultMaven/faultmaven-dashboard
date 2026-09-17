@@ -80,7 +80,6 @@ describe('devLogin', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: true,
-        is_active: true,
         roles: ['user'],
       },
     };
@@ -173,7 +172,6 @@ describe('devLogin', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: true,
-        is_active: true,
         roles: [],
       },
     };
@@ -209,7 +207,6 @@ describe('devLogin', () => {
         email: 'test@example.com',
         display_name: 'Test User',
         is_dev_user: true,
-        is_active: true,
         roles: [],
       },
     };
@@ -391,7 +388,6 @@ describe('ssoExchange', () => {
       email: 'jane@example.com',
       display_name: 'Jane Doe',
       is_dev_user: false,
-      is_active: true,
       roles: ['user'],
     },
   };
@@ -708,6 +704,15 @@ describe('devLogin — a response that cannot identify the account', () => {
     vi.clearAllMocks();
   });
 
+  // Restore, not just clear: `clearAllMocks` drops call history but leaves the
+  // `fetch` spy installed, so without this every describe appended below would
+  // inherit a fetch that answers any URL with a successful dev-login payload —
+  // and a test that forgot its own stub would pass for the wrong reason. Every
+  // other block in this file pairs its setup this way.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('refuses a 2xx login with no user profile', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
@@ -722,6 +727,28 @@ describe('devLogin — a response that cannot identify the account', () => {
     } as unknown as Response);
 
     await expect(devLogin('ada')).rejects.toThrow(/account profile/i);
+    // The invariant is "not STORED", not merely "threw" — the defect was a
+    // broken session being persisted and failing screens later.
+    expect(mockSaveAuthState).not.toHaveBeenCalled();
+  });
+
+  it('refuses the same on the SSO exchange, which is the cloud login', async () => {
+    // `ssoExchange` shares `toAuthState`, so it inherits this refusal — and it
+    // is the path that actually ships to customers (`SSOCallbackPage`). Testing
+    // only `devLogin` would leave the hosted-login return leg uncovered.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        access_token: 'tok',
+        token_type: 'bearer',
+        expires_in: 3600,
+        session_id: 's1',
+      }),
+    } as unknown as Response);
+
+    await expect(ssoExchange('completion-code')).rejects.toThrow(/account profile/i);
+    expect(mockSaveAuthState).not.toHaveBeenCalled();
   });
 
   it('stores the session when the profile is present', async () => {

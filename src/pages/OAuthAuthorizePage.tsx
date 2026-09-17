@@ -279,18 +279,16 @@ export default function OAuthAuthorizePage() {
         state: consent.state,
       });
 
-      if (approval.code && approval.state) {
-        redirectToExtension(approval, consent.redirect_uri);
-      } else {
-        // A 2xx with no code/state. There is no `{error, error_description}`
-        // arm to read here and there never was: both routes raise
-        // `HTTPException`, so every refusal is a non-2xx that
-        // `submitOAuthApproval` has already turned into a thrown Error, caught
-        // below. The branch that read those fields was unreachable, and the
-        // fields themselves were never on the wire (#165).
-        setError('Authorization failed');
-        setSubmitting(false);
-      }
+      // UNCONDITIONAL: `redirectToExtension` already checks `code`/`state` and
+      // says WHICH half is missing, so re-checking here only duplicated the
+      // condition with a worse message.
+      //
+      // There is no `{error, error_description}` arm to read and there never
+      // was: both routes raise `HTTPException`, so every refusal is a non-2xx
+      // that `submitOAuthApproval` has already turned into a thrown Error,
+      // caught below. The branch that read those fields was unreachable and
+      // the fields were never on the wire (#165).
+      redirectToExtension(approval, consent.redirect_uri);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to authorize application';
       setError(message);
@@ -350,12 +348,18 @@ export default function OAuthAuthorizePage() {
     if (!redirectUri) {
       setError('Invalid authorization request: missing redirect_uri');
       setLoading(false);
+      // Also clear `submitting`: reached from the approve path, these
+      // returned with the button still disabled and the spinner running.
+      setSubmitting(false);
       return;
     }
 
     if (!approval.code || !approval.state) {
       setError(`Invalid OAuth response from server. Missing ${!approval.code ? 'code' : 'state'}`);
       setLoading(false);
+      // Also clear `submitting`: reached from the approve path, these
+      // returned with the button still disabled and the spinner running.
+      setSubmitting(false);
       return;
     }
 

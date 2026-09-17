@@ -1,4 +1,3 @@
-import type { components } from '../../types/api.generated';
 /**
  * OAuth API Client
  *
@@ -6,6 +5,7 @@ import type { components } from '../../types/api.generated';
  * Dashboard acts as the Identity Provider (IdP) for the browser extension.
  */
 
+import type { components } from '../../types/api.generated';
 import config from '../../config';
 import { authManager } from '../auth';
 
