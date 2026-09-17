@@ -30,6 +30,18 @@ vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({ deployment: 'standalone', role: 'individual', isAdmin: false }),
 }));
 
+// ‼ STATIC, like every other test file that touches `App`. This was
+// `await import('../../App')` INSIDE the test body, and it is what made this
+// file flaky: the import pulls the whole route graph through Vite's transform,
+// and under CPU contention that exceeds the 5s test timeout. The second test
+// then failed with "Found multiple elements" — a CASCADE, not a second bug:
+// the timed-out test's `render` resolves AFTER RTL's `afterEach` cleanup has
+// run, so its tree is left in the document for the next test to trip over.
+//
+// Paying the import once at module scope charges it to collection rather than
+// to a single test's budget. `vi.mock` is hoisted above imports by the
+// transform, so the mocks above still apply.
+import { ChatSurfaceRoute } from '../../App';
 import { useNavigationItems } from '../../hooks/useNavigationItems';
 import { resolvePostSignInLanding } from '../../lib/auth/landing';
 import {
@@ -90,10 +102,9 @@ describe('the /investigate route', () => {
     return <span data-testid="where">{pathname}</span>;
   }
 
-  async function renderAt(path: string) {
+  function renderAt(path: string) {
     // The real guard, with a stand-in for the page so this test is about the
     // routing decision rather than about mounting a panel.
-    const { ChatSurfaceRoute } = await import('../../App');
     return render(
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -112,8 +123,8 @@ describe('the /investigate route', () => {
     );
   }
 
-  it('renders the full-page surface by default', async () => {
-    await renderAt('/investigate');
+  it('renders the full-page surface by default', () => {
+    renderAt('/investigate');
     expect(screen.getByTestId('investigate-page')).toBeInTheDocument();
   });
 
@@ -122,7 +133,7 @@ describe('the /investigate route', () => {
     // back button or a stale link would otherwise mount a second composer for
     // someone who has explicitly asked for one surface.
     setPrefersExtensionForChat(true);
-    await renderAt('/investigate');
+    renderAt('/investigate');
 
     expect(screen.queryByTestId('investigate-page')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/cases'));
