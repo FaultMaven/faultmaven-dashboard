@@ -129,8 +129,12 @@ describe('KBPage — scope filter reflects visible documents, not publish rights
   });
 
   it('confirms before batch-removing runbooks and reports a partial failure', async () => {
-    // Batch remove drives `DELETE /knowledge/documents/{id}`, which is
-    // operator-only — the toolbar is not offered to anyone else.
+    // Batch remove drives `DELETE /knowledge/documents/{id}`. That was
+    // operator-only once; FaultMaven/faultmaven#834 made it ownership-aware, so
+    // the toolbar is offered to whoever may delete something HERE. These rows
+    // carry `owner_id: 'u1'` so the case exercises OWNERSHIP — without it the
+    // fixtures passed only through the operator arm and the test silently
+    // covered a different branch than it appears to.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
@@ -142,8 +146,8 @@ describe('KBPage — scope filter reflects visible documents, not publish rights
     const listDocuments = api.listDocuments as ReturnType<typeof vi.fn>;
     const deleteDocument = api.deleteDocument as ReturnType<typeof vi.fn>;
     const docs = [
-      { document_id: 'd1', title: 'Runbook One', document_type: 'runbook', tags: [], scope: 'personal', created_at: '2024-01-01T00:00:00Z' },
-      { document_id: 'd2', title: 'Runbook Two', document_type: 'runbook', tags: [], scope: 'personal', created_at: '2024-01-01T00:00:00Z' },
+      { document_id: 'd1', title: 'Runbook One', document_type: 'runbook', tags: [], scope: 'personal', owner_id: 'u1', created_at: '2024-01-01T00:00:00Z' },
+      { document_id: 'd2', title: 'Runbook Two', document_type: 'runbook', tags: [], scope: 'personal', owner_id: 'u1', created_at: '2024-01-01T00:00:00Z' },
     ];
     listDocuments.mockResolvedValue({ documents: docs, total_count: 2, limit: 20, offset: 0, scope_counts: { global: 0, team: 0, personal: 2 } });
     // First delete succeeds, second fails → a partial failure.
@@ -426,5 +430,125 @@ describe('KBPage — personal-scope edit rights come from owner_id alone', () =>
     await renderOwned({ owner_id: null }, null);
 
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The client write gate matches the SERVER write policy (faultmaven#834/#866).
+ *
+ * `ensure_document_write_allowed` governs `PUT` and `DELETE` alike:
+ *
+ *   global          → platform admin (single-tenant only)
+ *   personal / team → the OWNER, or the platform operator
+ *
+ * This client encoded the pre-#834 world, where the routes were
+ * unconditionally operator-only. Two user-visible consequences, both fixed
+ * here: the AUTHOR of a team runbook was denied Edit on their own document,
+ * and a standard user had no delete path for a runbook they wrote at all —
+ * the batch toolbar was gated on `isAdmin` and the per-card Remove is
+ * suppressed on this page.
+ */
+describe('KBPage — the write gate follows the server policy', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseAvailableScopes.mockReturnValue({
+      scopes: ['personal'],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  async function renderDocs(
+    docs: Record<string, unknown>[],
+    viewerId: string | null,
+    isAdmin = false
+  ) {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      role: isAdmin ? 'platform_admin' : 'standard_user',
+      isAdmin,
+      authState: viewerId === null ? null : { user: { user_id: viewerId } },
+      clearAuthState: vi.fn(),
+    });
+    const api = await import('../../lib/api');
+    (api.listDocuments as ReturnType<typeof vi.fn>).mockResolvedValue({
+      documents: docs.map((d, i) => ({
+        document_id: `doc-${i + 1}`,
+        title: `Runbook ${i + 1}`,
+        content: '# Runbook',
+        document_type: 'runbook',
+        tags: [],
+        created_at: '2026-09-01T00:00:00Z',
+        updated_at: '2026-09-01T00:00:00Z',
+        ...d,
+      })),
+      total_count: docs.length,
+      limit: 20,
+      offset: 0,
+      scope_counts: { global: 0, team: 0, personal: docs.length },
+    });
+    await act(async () => {
+      renderPage();
+    });
+  }
+
+  it('offers Edit to the AUTHOR of a team runbook', async () => {
+    // The regression: `scope === 'team'` returned `isAdmin`, so the person who
+    // wrote this could not edit it while `PUT` would have accepted them.
+    await renderDocs([{ scope: 'team', owner_id: 'u-1' }], 'u-1');
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('withholds Edit on a team runbook owned by someone else', async () => {
+    await renderDocs([{ scope: 'team', owner_id: 'u-2' }], 'u-1');
+
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('withholds Edit from the operator on another account\'s personal runbook', async () => {
+    // ADR-012: operator access to tenant content is the audited break-glass
+    // path, never a standing bypass — and `personal` is the most tenant-private
+    // tier. An earlier draft of this change granted it here by mirroring the
+    // server, which was wrong twice over: the server's operator arm is
+    // single-tenant only (a term this client cannot evaluate), and the branch
+    // had never granted it before, so it was a NEW bypass rather than a
+    // preserved one.
+    await renderDocs([{ scope: 'personal', owner_id: 'u-2' }], 'u-1', true);
+
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('gives a standard user a delete path for a runbook they wrote', async () => {
+    // Previously `isAdmin &&` hid the whole toolbar, and the per-card Remove is
+    // suppressed on this page — so there was NO route to delete your own work.
+    await renderDocs([{ scope: 'personal', owner_id: 'u-1' }], 'u-1');
+
+    expect(screen.getByText('Select all')).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0);
+  });
+
+  it('offers no delete affordance when nothing on the page is theirs', async () => {
+    await renderDocs([{ scope: 'personal', owner_id: 'u-2' }], 'u-1');
+
+    expect(screen.queryByText('Select all')).not.toBeInTheDocument();
+  });
+
+  it('puts a checkbox only on the rows the viewer may delete', async () => {
+    // One theirs, one not. A per-list boolean would check-box both and stage a
+    // batch the server refuses half of.
+    await renderDocs(
+      [
+        { scope: 'personal', owner_id: 'u-1' },
+        { scope: 'personal', owner_id: 'u-2' },
+      ],
+      'u-1'
+    );
+
+    // Name the ROW, not the count: with one of each, an inverted predicate
+    // check-boxes the other account's runbook and the count is still 2.
+    expect(screen.getByRole('checkbox', { name: 'Select Runbook 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select Runbook 2' })).not.toBeInTheDocument();
   });
 });

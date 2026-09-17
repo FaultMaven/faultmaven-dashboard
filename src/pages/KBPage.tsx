@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { logoutAuth, uploadDocument } from '../lib/api';
+import { canWriteDocument } from '../lib/knowledge/writePolicy';
 import {
   convertDocument,
   updateDraft,
@@ -132,39 +133,6 @@ function ScopeBadge({ scope }: { scope: string }) {
 // Documents Tab Content
 // =============================================================================
 
-function canModifyDocument(
-  // Only `scope` and `owner_id` are read. Typed structurally rather than as
-  // `KBDocument`, which would assert `content`/`status`/`verification_*` that
-  // the LIST endpoint never sends and forced an `as KBDocument` at the call
-  // site that hid exactly that. Both are widened to match `DocumentCardData`,
-  // the type `DocumentList.canEditFn` actually hands over; an absent `scope`
-  // already falls through to `'global'` below, i.e. fail-closed to admin-only.
-  doc: { scope?: string | null; owner_id?: string | null },
-  isAdmin: boolean,
-  userId: string | null,
-): boolean {
-  const scope = doc.scope || 'global';
-  if (scope === 'global') return isAdmin;
-  if (scope === 'team') return isAdmin; // TODO: check team admin when team roles are implemented
-  // `owner_id` alone, and it must be a REAL id on both sides.
-  //
-  // This used to read `doc.owner_id === userId || doc.user_id === userId`.
-  // The second clause could never fire: `user_id` is not a field of the
-  // backend's `KnowledgeBaseDocument` (no `extra="allow"` either, so Pydantic
-  // never emits one) and was only ever declared by this repo's hand-written
-  // copy of the shape. It type-checked everywhere and was `undefined` on every
-  // response — the blind spot faultmaven-dashboard#165 is about, sitting in a
-  // permission gate. Binding `KBDocument` to the contract turns it into a
-  // build error instead.
-  //
-  // The `userId` null-guard is NOT redundant: the contract types `owner_id` as
-  // `string | null`, and an unowned document (null) compared against a signed-
-  // out viewer (null) is `null === null` — true. The hand-written type said
-  // `owner_id?: string`, so that pairing was invisible before the bind.
-  if (scope === 'personal') return userId !== null && doc.owner_id === userId;
-  return false;
-}
-
 function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
@@ -198,10 +166,18 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
 
   // A selection must never outlive the rows it was made against: a filter,
   // scope, or page change swaps the visible set, so a stale id could act on a
-  // row the user can no longer see. Clear on any such change.
+  // row the user can no longer see.
+  //
+  // ‼ The ROWS are a dependency, not just the controls that usually change
+  // them. The Runbooks tab is hidden rather than unmounted, so this state
+  // survives a tab switch — and verifying a draft bumps `refreshKey`, which
+  // calls `loadPage(0)` while `page` is already 0. Keyed on the controls alone
+  // the rows were replaced, nothing fired, and the toolbar went on offering to
+  // remove ids that now pointed at documents the user could not see.
+  const rowIdentity = filteredDocuments.map((d) => d.document_id).join(',');
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page]);
+  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page, rowIdentity]);
 
   // Derive filter options from loaded documents
   const domains = useMemo(() =>
@@ -248,12 +224,29 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
     });
   };
 
-  const allSelected = displayDocuments.length > 0 && displayDocuments.every((d) => selectedIds.has(d.document_id));
+  // ONE predicate, memoised, for the Edit button AND the checkbox AND this
+  // filter. The server applies one policy to PUT and DELETE, so handing
+  // `DocumentList` two separate callbacks would be two things that can drift —
+  // the very class of bug this page is fixing. Memoised because it was being
+  // evaluated three times per row per render, next to neighbours that are all
+  // `useMemo`d.
+  const canWrite = useCallback(
+    (d: { scope?: string | null; owner_id?: string | null }) => canWriteDocument(d, isAdmin, userId),
+    [isAdmin, userId],
+  );
+  const removableDocuments = useMemo(
+    () => displayDocuments.filter(canWrite),
+    [displayDocuments, canWrite],
+  );
+  const canRemoveAny = removableDocuments.length > 0;
+  const allSelected = canRemoveAny && removableDocuments.every((d) => selectedIds.has(d.document_id));
   const toggleAll = () => {
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(displayDocuments.map((d) => d.document_id)));
+      // The removable set, not the page — otherwise "Select all" stages rows
+      // the server will refuse and the batch reports partial failure.
+      setSelectedIds(new Set(removableDocuments.map((d) => d.document_id)));
     }
   };
 
@@ -262,8 +255,14 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
     setBatchDeleting(true);
     setBatchError(null);
     let failed = 0;
+    // Intersect with the rows in hand. The effect above clears the selection
+    // when they change, but that is a render-time correction and this is the
+    // irreversible step: it deletes only what the user can currently see and
+    // is currently allowed to remove, whatever the selection happens to hold.
+    const removableIds = new Set(removableDocuments.map((d) => d.document_id));
+    const targets = [...selectedIds].filter((id) => removableIds.has(id));
     try {
-      for (const id of selectedIds) {
+      for (const id of targets) {
         try {
           await deleteById(id);
         } catch {
@@ -352,11 +351,14 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
         </div>
       </div>
 
-      {/* Select all + batch Remove. Gated on the operator role because
-          `DELETE /knowledge/documents/{id}` is unconditionally operator-only —
-          without this a user could select their own personal runbook and get a
-          403 on Remove. */}
-      {isAdmin && displayDocuments.length > 0 && (
+      {/* Select all + batch Remove, shown when there is something HERE this
+          account may delete — not when it happens to be an operator.
+          `DELETE /knowledge/documents/{id}` was unconditionally operator-only
+          once, which is what this comment used to say; FaultMaven/faultmaven#834
+          made it ownership-aware and #866 extended that to the bulk routes. The
+          stale gate left a standard user unable to delete a runbook they wrote
+          by ANY route, since the per-card Remove is suppressed below. */}
+      {canRemoveAny && (
         <div className="flex items-center gap-3 mb-3">
           <label className="flex items-center gap-2 text-xs text-fm-text-tertiary">
             <input
@@ -403,10 +405,10 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
         onDelete={() => {}}
         onUpdated={() => loadPage(page)}
         emptyMessage="No runbooks in your knowledge base yet."
-        canEditFn={(doc) => canModifyDocument(doc, isAdmin, userId)}
+        canWriteFn={canWrite}
         canRemove={false}
-        selectedIds={isAdmin ? selectedIds : undefined}
-        onToggleSelect={isAdmin ? toggleSelect : undefined}
+        selectedIds={canRemoveAny ? selectedIds : undefined}
+        onToggleSelect={canRemoveAny ? toggleSelect : undefined}
       />
       <PaginationControls page={page} pageSize={pageSize} total={totalCount} onPageChange={(p) => loadPage(p)} />
 
