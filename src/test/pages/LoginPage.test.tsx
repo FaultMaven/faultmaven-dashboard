@@ -118,6 +118,7 @@ describe('LoginPage', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
       loginUrl: 'https://idp.example/login',
+      supportsScreenHint: true,
       setAuthState: vi.fn(),
     });
 
@@ -133,6 +134,7 @@ describe('LoginPage', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'cloud',
       loginUrl: 'https://idp.example/login',
+      supportsScreenHint: true,
       setAuthState: vi.fn(),
     });
 
@@ -161,6 +163,40 @@ describe('LoginPage', () => {
 
     expect(assignSpy).toHaveBeenCalledWith('https://idp.example/login');
     assignSpy.mockRestore();
+  });
+
+  it('hides the sign-up control when the backend cannot honour the hint', () => {
+    // THE regression this gate exists for. The button shipped against an API
+    // without `screen_hint`: the parameter was accepted, dropped, and the
+    // sign-in screen served — two buttons, byte-identical authorize URLs,
+    // same screen. Offering a control that silently does nothing is worse
+    // than not offering it.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      supportsScreenHint: false,
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.queryByRole('button', { name: /create an account/i })).toBeNull();
+    // …and the copy goes back to telling the truth for that backend.
+    expect(screen.getByText(/signing in creates your account/i)).toBeInTheDocument();
+  });
+
+  it('treats an absent capability as unsupported, not as unknown-therefore-fine', () => {
+    // An older API sends no such field at all. Reading undefined as "probably
+    // fine" is how the dead control would come back.
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.queryByRole('button', { name: /create an account/i })).toBeNull();
   });
 
   it('standalone mode: offers no Create-an-account control', () => {

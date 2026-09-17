@@ -18,11 +18,13 @@ import {
 } from '../../context/AuthContext';
 
 function Probe() {
-  const { deployment, loginUrl, configStatus, retryConfigDetection } = useAuth();
+  const { deployment, loginUrl, configStatus, supportsScreenHint, retryConfigDetection } =
+    useAuth();
   return (
     <div>
       <span data-testid="deployment">{deployment ?? 'null'}</span>
       <span data-testid="loginUrl">{loginUrl ?? 'null'}</span>
+      <span data-testid="supportsScreenHint">{String(supportsScreenHint)}</span>
       <span data-testid="configStatus">{configStatus}</span>
       <button data-testid="retry" onClick={retryConfigDetection}>
         retry
@@ -85,6 +87,49 @@ describe('AuthProvider — cloud hosted-login URL resolution', () => {
 
     await waitFor(() => expect(screen.getByTestId('deployment')).toHaveTextContent('cloud'));
     expect(screen.getByTestId('loginUrl')).toHaveTextContent('http://test-api.local/sso/login');
+  });
+
+  it('reads the advertised screen-hint capability', async () => {
+    mockAuthConfig({
+      auth_mode: 'oauth',
+      oauth: { hosted_login_url: '/sso/login', supports_screen_hint: true },
+    });
+
+    renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('deployment')).toHaveTextContent('cloud'));
+    expect(screen.getByTestId('supportsScreenHint')).toHaveTextContent('true');
+  });
+
+  it('treats an ABSENT screen-hint capability as unsupported', async () => {
+    // What an API older than core 6.2.0 actually sends: no such field. Absent
+    // must read as "no". An API without the parameter accepts it, drops it and
+    // serves the sign-in screen, so a client that reads undefined as
+    // unknown-therefore-fine renders a sign-up control that does nothing —
+    // which is what shipped, with every test in three repos green.
+    mockAuthConfig({
+      auth_mode: 'oauth',
+      oauth: { hosted_login_url: '/sso/login' },
+    });
+
+    renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('deployment')).toHaveTextContent('cloud'));
+    expect(screen.getByTestId('supportsScreenHint')).toHaveTextContent('false');
+  });
+
+  it('treats a non-boolean screen-hint capability as unsupported', async () => {
+    // `=== true`, not truthiness: a proxy or a future encoding sending the
+    // string "false" would otherwise turn the control back on.
+    mockAuthConfig({
+      auth_mode: 'oauth',
+      oauth: { hosted_login_url: '/sso/login', supports_screen_hint: 'false' },
+    });
+
+    renderProvider();
+
+    await waitFor(() => expect(screen.getByTestId('deployment')).toHaveTextContent('cloud'));
+    expect(screen.getByTestId('supportsScreenHint')).toHaveTextContent('false');
   });
 
   it('leaves loginUrl null when cloud advertises only the PKCE authorize_url', async () => {

@@ -104,11 +104,23 @@ interface AuthContextValue {
    * deployment's auth config advertises.
    */
   loginUrl: string | null;
+  /**
+   * Whether `loginUrl` honours `?screen_hint=` (core contract 6.2.0).
+   *
+   * Gate any sign-up control on this rather than assuming: an API without it
+   * accepts the parameter, drops it, and serves the sign-in screen — so the
+   * control renders, looks right, and does nothing.
+   */
+  supportsScreenHint: boolean;
   setAuthState: (state: AuthState | null) => Promise<void>;
   clearAuthState: () => Promise<void>;
 }
 
-type DetectedConfig = { dep: Deployment; resolvedLoginUrl: string | null };
+type DetectedConfig = {
+  dep: Deployment;
+  resolvedLoginUrl: string | null;
+  supportsScreenHint: boolean;
+};
 
 /**
  * One attempt against `/auth/config`. Returns null when the deployment could
@@ -131,7 +143,11 @@ async function fetchAuthConfigOnce(): Promise<DetectedConfig | null> {
     if (!res.ok) return null;
     const authConfig: {
       auth_mode?: string;
-      oauth?: { hosted_login_url?: string; authorize_url?: string } | null;
+      oauth?: {
+        hosted_login_url?: string;
+        authorize_url?: string;
+        supports_screen_hint?: boolean;
+      } | null;
     } = await res.json();
     if (authConfig.auth_mode !== 'local' && authConfig.auth_mode !== 'oauth') return null;
     const dep: Deployment = authConfig.auth_mode === 'oauth' ? 'cloud' : 'standalone';
@@ -149,7 +165,17 @@ async function fetchAuthConfigOnce(): Promise<DetectedConfig | null> {
         ? advertised
         : `${config.apiUrl}${advertised.startsWith('/') ? '' : '/'}${advertised}`;
     }
-    return { dep, resolvedLoginUrl };
+    // Whether the hosted login honours `?screen_hint=` (core contract 6.2.0).
+    // An API that predates it sends nothing, and absent MUST read as "no":
+    // an older build accepts the parameter, drops it, and serves the sign-in
+    // screen, so a client that offers a sign-up control anyway is offering
+    // one that silently does nothing. That is not hypothetical — it is what
+    // shipped when the Dashboard deployed ahead of the API that understood
+    // the hint, and every test in three repositories stayed green.
+    //
+    // `=== true`, not a truthy check: only the advertised boolean counts.
+    const supportsScreenHint = authConfig.oauth?.supports_screen_hint === true;
+    return { dep, resolvedLoginUrl, supportsScreenHint };
   } catch {
     return null;
   }
@@ -164,6 +190,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [configStatus, setConfigStatus] = useState<ConfigStatus>('pending');
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  // Defaults false so a deployment whose config never resolves offers no
+  // sign-up control, matching the fail-closed rule the rest of this module
+  // follows.
+  const [supportsScreenHint, setSupportsScreenHint] = useState(false);
 
   /**
    * Generation counter for detection runs. Every run captures the counter at
@@ -190,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const apply = (result: DetectedConfig): void => {
       setDeployment(result.dep);
       setLoginUrl(result.resolvedLoginUrl);
+      setSupportsScreenHint(result.supportsScreenHint);
       setConfigStatus('ok');
     };
 
@@ -326,6 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         retryConfigDetection,
         role,
         loginUrl,
+        supportsScreenHint,
         setAuthState,
         clearAuthState,
       }}
