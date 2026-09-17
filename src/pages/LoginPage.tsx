@@ -5,6 +5,7 @@ import { resolvePostSignInLanding } from '../lib/auth/landing';
 import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
+import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
 import { COMMUNITY_SLACK_URL, TRANSCRIPT_URL } from '../lib/community';
 
 const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -199,12 +200,9 @@ export default function LoginPage() {
     // (SSOCallbackPage) with a completion code. Forward the ProtectedRoute-saved
     // destination as return_to so the backend echoes it through the IdP round
     // trip (belt to sessionStorage's braces — survives a cleared tab state).
-    const returnTo = sessionStorage.getItem('oauth_redirect_after_login');
-    const target =
-      returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
-        ? `${loginUrl}${loginUrl.includes('?') ? '&' : '?'}return_to=${encodeURIComponent(returnTo)}`
-        : loginUrl;
-    window.location.assign(target);
+    const saved = sessionStorage.getItem('oauth_redirect_after_login');
+    const returnTo = saved && saved.startsWith('/') && !saved.startsWith('//') ? saved : null;
+    window.location.assign(buildHostedLoginUrl(loginUrl, { returnTo }));
   };
 
   // Deployment could not be confirmed: fail CLOSED with a retriable error.
