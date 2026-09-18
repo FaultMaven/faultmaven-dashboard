@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { stripComments } from '../support/stripComments';
+import { findGuardCalls, findNarrowings } from '../support/contractNarrowings';
 
 /**
  * ONE subject for every contract guard in the app (#174).
@@ -56,19 +57,12 @@ const sources: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * LINE comments stripped FIRST. The other order lets a `// … /* …` comment
- * start a block match that runs to the next `*\/`, deleting real declarations
- * and making every `not.toMatch` below pass against a hole. The `[^:]` guard
- * keeps a `https://` from eating its line.
- *
- * Stripping matters more here than usual: the prose in these files NAMES the
- * very identifiers being asserted on, so matching raw text would pass on
- * documentation alone.
+ * ‼ The WHY of line-comments-first lives with the helper, in
+ * `src/test/support/stripComments.ts`, and is not restated here. Two copies of
+ * a reason drift — which is the thesis of the change this file tests.
  */
-const strip = stripComments;
-
 const stripped: Record<string, string> = Object.fromEntries(
-  Object.entries(sources).map(([f, raw]) => [f, strip(raw)])
+  Object.entries(sources).map(([f, raw]) => [f, stripComments(raw)])
 );
 
 const HELPERS = 'src/types/contractGuards.ts';
@@ -77,27 +71,6 @@ const HELPERS = 'src/types/contractGuards.ts';
 const guarded = Object.entries(stripped).filter(
   ([f, src]) => f !== HELPERS && src.includes("components['schemas']")
 );
-
-/**
- * Local aliases of a schema, so the sweeps can see through them.
- *
- * ‼ A narrowing spelled through an intermediate alias is invisible to a regex
- * anchored on `components['schemas']`, and one exists in the tree
- * (`AuthConfigSchema` in `context/AuthContext.tsx`). The test this file
- * replaced documented that blindness and compensated with a hand-written pair
- * list; dropping the list without resolving aliases would have left the
- * acknowledged hole as the only mechanism.
- */
-const aliasesOf = (src: string): Record<string, string> =>
-  Object.fromEntries(
-    [...src.matchAll(/(?:export )?type (\w+) = components\['schemas'\]\['(\w+)'\];/g)].map(
-      (m) => [m[1], m[2]]
-    )
-  );
-
-/** `components['schemas']['X']` or a local alias of it → the schema name. */
-const schemaNamed = (ref: string, aliases: Record<string, string>): string | undefined =>
-  ref.match(/components\['schemas'\]\['(\w+)'\]/)?.[1] ?? aliases[ref.trim()];
 
 /**
  * The region of a file where a guard may legitimately appear: the `*Guards`
@@ -112,7 +85,10 @@ const schemaNamed = (ref: string, aliases: Record<string, string>): string | und
  */
 const guardRegion = (src: string): string => {
   const block = src.match(/export type \w*Guards = \{[\s\S]*?\n\};/)?.[0] ?? '';
-  if (!block) return src.includes('GuardNarrowing<') ? src : '';
+  // ‼ ALL THREE tokens. Checking only `GuardNarrowing<` returned '' for a file
+  // guarding read models with `GuardSubset` alone, and the caller skips an
+  // empty region — so every ban below silently stopped running on it.
+  if (!block) return /Guard(?:Narrowing|NarrowedMember|Subset)</.test(src) ? src : '';
   // ‼ `(?:<[^>]*>)?` — the declaration may be GENERIC. Matching only
   // `type _X =` silently dropped `type _Inert<T> = …` from the region, and the
   // bans below then missed an inert guard sitting inside the block itself.
@@ -130,7 +106,17 @@ describe('contract guards: the sweep sees what it claims to', () => {
     // The sweep is only as good as what it sweeps. If the glob silently stops
     // resolving, every `for` loop below iterates nothing and passes.
     expect(Object.keys(sources).length).toBeGreaterThan(50);
-    for (const f of [HELPERS, 'src/types/llm.ts', 'src/types/cases.ts', 'src/lib/auth/functions.ts']) {
+    // ‼ All FOUR guard sites plus the helpers. Omitting `lib/knowledge/types.ts`
+    // — the site this PR's triage found the issue had missed — meant the glob
+    // could stop resolving it while `guarded.length >= 4` still held on the
+    // other three, silently dropping all three `GuardSubset` pairings.
+    for (const f of [
+      HELPERS,
+      'src/types/llm.ts',
+      'src/types/cases.ts',
+      'src/lib/auth/functions.ts',
+      'src/lib/knowledge/types.ts',
+    ]) {
       expect(Object.keys(sources), `${f} not discovered`).toContain(f);
     }
     expect(guarded.length).toBeGreaterThanOrEqual(4);
@@ -160,119 +146,131 @@ describe('contract guards: the sweep sees what it claims to', () => {
   });
 });
 
-describe('every narrowing is guarded, and the list is DERIVED', () => {
-  // ‼ The narrowings are found BY READING THE SOURCE, never restated here. A
-  // hand-written list is a second list to keep in step — the exact blindness
-  // these guards exist to remove, one level up. It also cannot see a narrowing
-  // added to a file nobody remembered to add to the list, which is how
-  // `llm.ts` and `functions.ts` ended up with no source coverage at all.
+describe('every narrowing is guarded, and the list is PARSED', () => {
+  // ‼ The narrowings are found by PARSING each source, never restated here and
+  // no longer pattern-matched. Three review rounds each found more spellings a
+  // regex could not see — `Pick<components['schemas']['X'], …>`, a declaration
+  // wrapped after the `=`, an inline nested object read as sibling members, and
+  // a schema alias imported from another file — every one of them ordinary, and
+  // every one measured with an unguarded probe that kept the suite green. See
+  // `src/test/support/contractNarrowings.ts`.
+  const narrowings = findNarrowings(sources);
+  const guardCalls = findGuardCalls(sources);
+  const guarded = (guard: string, pred: (args: string[]) => boolean) =>
+    guardCalls.some((g) => g.guard === guard && pred(g.args));
+
+  it('finds the narrowings that are actually there', () => {
+    // A parser that silently stops returning anything makes every `for` below
+    // vacuous. These floors are the shape of the tree today.
+    const n = (k: string) => narrowings.filter((x) => x.kind === k).length;
+    expect(n('whole'), 'whole-shape narrowings').toBeGreaterThanOrEqual(10);
+    expect(n('member'), 'member narrowings').toBeGreaterThanOrEqual(3);
+    expect(n('subset'), 'Pick-derived read models').toBeGreaterThanOrEqual(3);
+    expect(guardCalls.length).toBeGreaterThanOrEqual(16);
+  });
 
   it('pairs every `Omit<Wire, K> & { K: N }` narrowing with a GuardNarrowing', () => {
-    let found = 0;
-    for (const [file, src] of guarded) {
-      const aliases = aliasesOf(src);
-      // `Omit<` in HEAD position only. `Partial<Omit<Wire, K>> & { K: N }` is a
-      // deliberately-DEFENSIVE parse type, not a narrowing — `AuthConfigWire`
-      // weakens the contract on purpose because its reader "must not assume
-      // conformance". Guarding it would assert the very thing it is checking.
-      const narrowings = src.matchAll(
-        /(?:export )?type (\w+) = Omit<\s*([\w'[\]]+(?:\['\w+'\])?),/g
-      );
-      for (const [, local, wireRef] of narrowings) {
-        const wire = schemaNamed(wireRef, aliases);
-        if (!wire) continue;
-        found += 1;
-        expect(src, `${file}: ${local} narrows ${wire} but has no GuardNarrowing`).toMatch(
-          new RegExp(
-            `GuardNarrowing<\\s*(?:components\\['schemas'\\]\\['${wire}'\\]|\\w+),\\s*${local}\\s*>`
-          )
-        );
-      }
+    for (const x of narrowings) {
+      if (x.kind !== 'whole') continue;
+      expect(
+        guarded('GuardNarrowing', (a) => a[1] === x.local),
+        `${x.file}: ${x.local} narrows ${x.wire} but has no GuardNarrowing`
+      ).toBe(true);
     }
-    // A regex that silently stops matching would make this vacuously true.
-    expect(found).toBeGreaterThanOrEqual(10);
   });
 
   it('pairs every `Wire & { k?: N }` member narrowing with a GuardNarrowedMember', () => {
-    // A DIFFERENT guard, because the whole-shape one degenerates to a tautology
-    // here: an intersection is always assignable to its own parts.
-    //
-    // ‼ EVERY member of the body, not the first one. Anchoring on the
-    // declaration head matches once per `type`, so `Wire & { a?: A; b?: B }`
-    // yielded only `a`, and `b` was required to have no guard at all. Every
-    // member narrowing in the tree is single-keyed today, which is exactly why
-    // that read correctly.
-    //
-    // ‼ And `\??:`, not `\?:`. All three are optional today, so demanding the
-    // `?` matched all three and looked right — while a REQUIRED one
-    // (`& { kind: SomeUnion }`) stayed invisible, guarded by nothing.
-    let found = 0;
-    for (const [file, src] of guarded) {
-      const decls = src.matchAll(
-        /(?:export )?type (\w+) = components\['schemas'\]\['(\w+)'\] & \{([\s\S]*?)\n\};/g
-      );
-      for (const [, local, wire, body] of decls) {
-        const members = [...body.matchAll(/^\s*(\w+)\??:\s*([^;]+);/gm)];
-        expect(members.length, `${file}: ${local} narrows nothing?`).toBeGreaterThan(0);
-        for (const [, key, declaredType] of members) {
-          found += 1;
-          // ‼ THE GUARD MUST NAME THE TYPE THE DECLARATION USES — checked HERE,
-          // by reading both spellings, rather than by deriving the guard's
-          // third argument from the alias.
-          //
-          // Deriving is the obvious fix and it is WRONG: `Local['key']` on a
-          // `Wire & { key?: N }` alias is an INTERSECTION WITH THE WIRE, so a
-          // wire retype flows into both sides of the comparison and cancels
-          // out. Measured — the derived form compiles clean on exactly the
-          // mutation the guard exists to catch. A test can compare two
-          // spellings without creating that circularity; a type cannot.
-          const t = declaredType.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          expect(
-            src,
-            `${file}: ${local} narrows ${wire}.${key} as ${declaredType.trim()} — ` +
-              `GuardNarrowedMember must name that same type`
-          ).toMatch(
-            new RegExp(
-              `GuardNarrowedMember<\\s*components\\['schemas'\\]\\['${wire}'\\],\\s*'${key}',\\s*${t}\\s*>`
-            )
-          );
-        }
-      }
+    for (const x of narrowings) {
+      if (x.kind !== 'member') continue;
+      // ‼ REQUIRED member narrowings are refused, not silently admitted. The
+      // guard cannot police them: `Narrowed` does not carry the declaration's
+      // optionality, so `& { k: N }` and `& { k?: N }` pass it the same type,
+      // and the wire turning the key optional is then indistinguishable from
+      // the three optional narrowings that must stay green. For a required one
+      // the intersection annihilates the `undefined` exactly as it annihilates
+      // `null`, so consumers would be told the key is always present while the
+      // server omits it.
+      expect(
+        x.optional,
+        `${x.file}: ${x.local}.${x.key} is a REQUIRED member narrowing, which ` +
+          `GuardNarrowedMember cannot check — declare it \`${x.key}?:\` (see contractGuards.ts)`
+      ).toBe(true);
+      // ‼ The guard must name the type the DECLARATION uses. Deriving the third
+      // argument instead (`Local['k']`) is the obvious fix and is wrong: that
+      // alias is an intersection WITH THE WIRE, so a wire retype flows into
+      // both sides and cancels out — measured, it compiles clean on exactly the
+      // mutation the guard exists to catch. A test can compare two spellings
+      // without creating that circularity; a type cannot.
+      expect(
+        guarded(
+          'GuardNarrowedMember',
+          (a) => a[1] === `'${x.key}'` && a[2] === x.type && a[0].includes(`'${x.wire}'`)
+        ),
+        `${x.file}: ${x.local} narrows ${x.wire}.${x.key} as ${x.type} — ` +
+          `GuardNarrowedMember must name that same type`
+      ).toBe(true);
     }
-    expect(found).toBeGreaterThanOrEqual(3);
   });
 
   it('pairs every `Pick<Wire, …>` read model with a GuardSubset', () => {
     // A subset is NOT a subtype — it is missing required properties — so
     // `GuardNarrowing` rejects it outright and a third helper exists for it.
-    // ‼ Swept, not listed: `GuardSubset` arrived guarding one of the three
-    // `Pick`-derived read models in `lib/knowledge/types.ts`, and the other two
-    // shipped unguarded beside it.
-    let found = 0;
-    for (const [file, src] of guarded) {
-      const aliases = aliasesOf(src);
-      const subsets = src.matchAll(/(?:export )?type (\w+) = Pick<\s*(\w+),/g);
-      for (const [, local, wireRef] of subsets) {
-        if (!schemaNamed(wireRef, aliases)) continue;
-        found += 1;
-        expect(src, `${file}: ${local} subsets ${wireRef} but has no GuardSubset`).toMatch(
-          new RegExp(`GuardSubset<\\s*${wireRef},\\s*${local}\\s*>`)
-        );
-      }
+    for (const x of narrowings) {
+      if (x.kind !== 'subset') continue;
+      expect(
+        guarded('GuardSubset', (a) => a[1] === x.local),
+        `${x.file}: ${x.local} subsets ${x.wire} but has no GuardSubset`
+      ).toBe(true);
     }
-    expect(found).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe('the helpers are declared ONCE, as constraints', () => {
   it('no file re-declares a guard primitive', () => {
-    // THE #174 FIX, asserted directly, over EVERY app file rather than a list —
-    // a fresh copy in a module nobody listed is exactly the regression this
-    // test exists to prevent.
+    // THE #174 FIX, asserted over EVERY app file.
+    //
+    // ‼ THE BAN IS ON THE SHAPE, NOT ON THREE NAMES. A list of `_Assert` /
+    // `_IsSubtype` / `_NotNullable` is itself the hand-written list this whole
+    // file argues against: a fresh loose primitive called `_Sub`, `_KeysExist`
+    // or `IsSubtype` re-creates #174 in a new module with every test green.
+    // What identifies one is the bracketed-tuple conditional they are all
+    // spelled with — `[A] extends [B] ? … : …` — which is also why it catches
+    // the inert `? … : never` variants without enumerating those either.
     for (const [file, src] of Object.entries(stripped)) {
+      if (file === HELPERS) continue;
+      expect(
+        src,
+        `${file} declares a loose guard primitive — the pairing helpers in ` +
+          `${HELPERS} are the only place this shape belongs`
+      ).not.toMatch(/type\s+\w+<[^>]*>\s*=\s*\[[^\]]+\]\s+extends\s+\[/);
+      // The three original names, still, so a copy under its old name is named
+      // in the failure rather than described.
       for (const prim of ['_Assert', '_IsSubtype', '_NotNullable']) {
         expect(src, `${file} re-declares ${prim}`).not.toMatch(new RegExp(`type\\s+${prim}\\s*<`));
       }
+    }
+  });
+
+  it('leaves no single-line block comment that the strip order would swallow', () => {
+    // ‼ THE MIRROR HAZARD OF LINE-COMMENTS-FIRST. Stripping `//` first is right
+    // — it stops a `// … /*` from opening a block match that eats real
+    // declarations — but it has its own failure: a single-line
+    // `/* keep this // note */` loses its `*/` to the line stripper, and the
+    // block stripper then runs from that `/*` to the NEXT `*/` anywhere in the
+    // file, deleting declarations after it. Every `not.toMatch` in every source
+    // test then passes against a hole.
+    //
+    // Two files were flipped to this order when `stripComments` was extracted,
+    // and the sweep now runs it over all app files rather than three hand-picked
+    // ones — so the exposure is far larger than it was. Nothing asserted against
+    // it; this does.
+    for (const [file, raw] of Object.entries(sources)) {
+      // `[^:\n]` before the `//` mirrors the line stripper's OWN exemption:
+      // it skips a `//` preceded by `:`, so `/* see https://x */` is safe and
+      // must not be flagged. Anything else on one line is not.
+      expect(raw, `${file} has a single-line block comment containing \`//\``).not.toMatch(
+        /\/\*[^\n]*[^:\n]\/\/[^\n]*\*\//
+      );
     }
   });
 
@@ -304,7 +302,15 @@ describe('the helpers are declared ONCE, as constraints', () => {
     expect(helpers).toMatch(
       /Narrowed extends Wire\[Key\] & \(null extends Wire\[Key\] \? never : unknown\)/
     );
-    expect(helpers).toMatch(/Subset extends Partial<Wire> &/);
+    expect(helpers).toMatch(/Subset extends Pick<Wire, Extract<keyof Subset, keyof Wire>> &/);
+    // ‼ NOT `Partial<Wire>`. Partial makes every key optional and so erases the
+    // required/optional distinction: measured, a hand-written subset declaring
+    // `owner_id: string` against a contract saying `owner_id?: string | null`
+    // compiled CLEAN, and `row.owner_id.slice(0, 8)` would throw — the `user_id`
+    // defect in its next disguise, on the guard whose job is to survive exactly
+    // that replacement.
+    expect(helpers).not.toMatch(/Subset extends Partial<Wire>/);
+    expect(helpers).toMatch(/NullishPreserved<Wire, Subset>/);
   });
 
   it('catches a key going nullable or optional, which subtyping cannot see', () => {

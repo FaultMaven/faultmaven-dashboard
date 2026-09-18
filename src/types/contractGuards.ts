@@ -189,6 +189,20 @@ export type GuardNarrowing<
  * A WIDENED wire is deliberately accepted: narrowing `string` to a union is the
  * whole purpose, so `Wire[Key]` growing more permissive is not a failure.
  *
+ * ‼ THE NARROWED MEMBER MUST BE DECLARED OPTIONAL (`& { k?: N }`), and the
+ * source test rejects a required one rather than letting it through unchecked.
+ * This guard CANNOT check the required form, and the reason is that `Narrowed`
+ * does not carry the declaration's optionality: `& { k?: N }` and `& { k: N }`
+ * both pass `N` here. So the wire turning an already-narrowed key optional is
+ * indistinguishable from today's three narrowings, which are optional over a
+ * required wire and must stay green.
+ *
+ * That matters because for a REQUIRED narrowing the intersection annihilates
+ * the `undefined` exactly as it annihilates `null` — `(X | undefined) & N` is
+ * `N` — so every consumer would be told the key is always present while the
+ * server omits it. A shape the guard cannot police is refused at the door
+ * instead.
+ *
  * @example
  *   type CaseSummary = components['schemas']['CaseSummary'] & { source?: CaseSource };
  *
@@ -216,9 +230,18 @@ export type GuardNarrowedMember<
  *   hand-written object type, a field the contract never had can slip in and be
  *   read as `undefined` forever.
  *
- * - **A shared member being retyped or WIDENED** — `Partial<Wire>`. Partial,
- *   because the point of a subset is that the absent keys are absent; what it
- *   must not do is disagree about the keys it does carry.
+ * - **A shared member being retyped or WIDENED** — `Pick<Wire, Extract<keyof
+ *   Subset, keyof Wire>>`, which keeps only the keys the subset carries and
+ *   leaves the absent ones absent, because absent keys are the point.
+ *
+ * - **An optional-or-nullable member PROMOTED to required** — the same
+ *   `NullishPreserved` arm `GuardNarrowing` uses. ‼ This was `Partial<Wire>`,
+ *   which makes every key optional and so erases the distinction entirely:
+ *   measured, a hand-written subset declaring `owner_id: string` against a
+ *   contract that says `owner_id?: string | null` compiled CLEAN, and
+ *   `row.owner_id.slice(0, 8)` would throw. That is the `user_id` defect this
+ *   file exists to prevent, in its next disguise — and surviving a hand-written
+ *   replacement is the guard's whole stated job.
  *
  *   ‼ Unlike `GuardNarrowedMember`, a widened member is REJECTED here, and the
  *   asymmetry is deliberate. There the app narrows a deliberately-loose wire
@@ -239,5 +262,7 @@ export type GuardNarrowedMember<
  */
 export type GuardSubset<
   Wire,
-  Subset extends Partial<Wire> & Record<Exclude<keyof Subset, keyof Wire>, never>,
+  Subset extends Pick<Wire, Extract<keyof Subset, keyof Wire>> &
+    Record<Exclude<keyof Subset, keyof Wire>, never> &
+    NullishPreserved<Wire, Subset>,
 > = Subset;

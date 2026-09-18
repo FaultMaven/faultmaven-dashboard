@@ -672,7 +672,7 @@ type**, so a narrowing gets both checks or neither:
 |---|---|---|
 | `Omit<Wire, K> & { K: N }` | `GuardNarrowing<Wire, N>` | the wire renaming/dropping `K`, `K`'s type changing underneath, and `K` becoming **nullable or optional** |
 | `Wire & { k?: N }` | `GuardNarrowedMember<Wire, 'k', N>` | the wire dropping `k`, retyping it, or making it **nullable** |
-| `Pick<Wire, K1 \| K2>` | `GuardSubset<Wire, Subset>` | an invented key, and a shared member retyped **or widened** |
+| `Pick<Wire, K1 \| K2>` | `GuardSubset<Wire, Subset>` | an invented key, a shared member retyped **or widened**, and an optional-or-nullable member **promoted to required** |
 
 - ‼ **`Omit` IS BLIND TO THE RENAME IT LOOKS LIKE IT CATCHES.** Its key
   parameter is `keyof any`, not `keyof T`, so `Omit<Wire, 'cases'>` omits
@@ -687,6 +687,19 @@ type**, so a narrowing gets both checks or neither:
   that change compiled with ZERO errors while the alias went on declaring the
   key required and non-null, and `listCases` would run `.cases.map` on `null`.
   Optional and nullable are two different ways to go missing and both count.
+- ‼ **A member narrowing must be declared OPTIONAL** (`& { k?: N }`); the source
+  test refuses a required one. The guard cannot police that shape — `Narrowed`
+  does not carry the declaration's optionality, so `& { k: N }` and `& { k?: N }`
+  pass it the same type — and for a required narrowing the intersection
+  annihilates `undefined` exactly as it annihilates `null`, telling every
+  consumer the key is always present while the server omits it. A shape the
+  guard cannot check is refused at the door rather than admitted unchecked.
+- ‼ **`GuardSubset` uses `Pick<Wire, …>`, never `Partial<Wire>`.** Partial makes
+  every key optional and so erases the required/optional distinction: measured,
+  a hand-written subset declaring `owner_id: string` against a contract saying
+  `owner_id?: string | null` compiled CLEAN, and `row.owner_id.slice(0, 8)`
+  would throw — the `user_id` defect in its next disguise, on the guard whose
+  whole stated job is surviving a hand-written replacement.
 - ‼ **A member narrowing's guard NAMES its type, it does not derive it.**
   `GuardNarrowedMember<Wire, 'source', CaseSource>`, never
   `CaseSummary['source']` — that alias is an *intersection with the wire*, so a
@@ -718,8 +731,17 @@ type**, so a narrowing gets both checks or neither:
   which is how `functions.ts` grew a bespoke `[number]` refinement that let
   `scopes: string[]` → `string` compile clean.
 
-`src/test/types/contractGuards.test.ts` is the ONE subject for all of this. It
-**derives** the narrowing list by reading each source rather than restating it,
-so a narrowing added to a file nobody remembered to add to a list is still
-covered — three per-file tests, each blind to the other two files, is what #174
-was.
+`src/test/types/contractGuards.test.ts` is the ONE subject for all of this, and
+it **parses** each source (`src/test/support/contractNarrowings.ts`, via the
+TypeScript AST) rather than pattern-matching it — so a narrowing added to a file
+nobody remembered is still covered. Three per-file tests, each blind to the
+other two, is what #174 was.
+
+‼ **The sweep was regexes and the regexes kept being wrong the same way.** Three
+review rounds each found more spellings it could not see, all ordinary:
+`Pick<components['schemas']['X'], …>`, a declaration wrapped after the `=`, an
+inline nested object whose keys were read as siblings, and a schema alias
+imported from another file. Each was measured with an unguarded probe that kept
+the whole suite green. A regex cannot be made to read TypeScript, so it no
+longer tries: `ts.createSourceFile` is a parse only — no program, no type
+checker — costing milliseconds per file.
