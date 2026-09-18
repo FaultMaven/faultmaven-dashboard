@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
+import { stripComments } from '../../support/stripComments';
+
 /**
  * KB response shapes are BOUND to the pinned contract, not restated.
  *
@@ -43,7 +45,7 @@ const raw = (await import('../../../lib/knowledge/types.ts?raw')).default as unk
  * `https://` anywhere in the file eats the rest of its line, silently removing
  * code from what the assertions see.
  */
-const source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+const source = stripComments(raw);
 
 /** The `KBDocumentListItem` declaration alone, `export type` through `>;`. */
 function listItemDeclaration(): string {
@@ -100,9 +102,19 @@ describe('knowledge types are sourced from the generated contract', () => {
 
   it('keeps the compile-time guards where CI can see them', () => {
     // If these move to a test file they stop being enforced — see the note at
-    // the top of this file.
-    expect(source).toContain('_KBDocumentIsContractShape');
-    expect(source).toContain('_ListItemKeysExistOnContract');
+    // the top of this file. Their SHAPE is asserted once for the whole app in
+    // `src/test/types/contractGuards.test.ts`; what matters here is that this
+    // file still carries them.
+    expect(source).toContain('GuardNarrowing<');
+    expect(source).toContain('GuardSubset<');
+    expect(source).toMatch(/document:\s*_DocumentIsContractShape/);
+    // ‼ The REVERSE guard too. It is the only one that catches `KBDocument`
+    // narrowing a contract member — the forward guard already covers missing
+    // keys, invented keys and incompatible retypes — so deleting it leaves
+    // `tsc` and every other test green while the "BOTH WAYS ROUND" invariant
+    // this file's own doc comment states goes unenforced.
+    expect(source).toMatch(/documentReverse:\s*_ContractIsDocumentShape/);
+    expect(source).toMatch(/listItem:\s*_ListItemMatchesContract/);
   });
 
   it('declares no phantom fields', () => {

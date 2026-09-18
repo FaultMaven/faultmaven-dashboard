@@ -1,4 +1,5 @@
 import type { components } from './api.generated';
+import type { GuardNarrowing } from './contractGuards';
 
 // ============================================================================
 // LLM configuration types, bound to the pinned contract (#165)
@@ -16,7 +17,8 @@ import type { components } from './api.generated';
 // every consumer. Bind the names, keep the guarantees the app relies on.
 //
 // The idiom for that is `Omit<Wire, K> & { K: Narrowed }`, as `types/cases.ts`
-// already does. See the guards at the bottom for the hole it leaves.
+// already does. It leaves a hole — `Omit` does not catch the rename it looks
+// like it catches — which `GuardNarrowing` at the bottom closes.
 
 /** Providers the router can route to. Narrower than the contract's `string`. */
 export type ProviderName =
@@ -108,57 +110,17 @@ export type EnvConfigStatus = Omit<
 // Compile-time guards
 // ============================================================================
 //
-// ‼ `Omit` IS BLIND TO THE RENAME IT LOOKS LIKE IT CATCHES. Its key parameter
-// is `keyof any`, not `keyof T`, so `Omit<Wire, 'gone'>` omits nothing and
-// compiles clean — and the `& { gone: Narrowed }` half then puts the field
-// back. A client goes on reading a key the contract dropped, which is the very
-// defect the binding exists to prevent. Measured: `Omit` reports nothing,
-// `Pick` reports TS2344.
-//
-// ‼ THE GUARDS DERIVE THEIR KEYS, they do not restate them. A hand-written
-// `Pick<Wire, 'a' | 'b'>` is a second list that must be kept in step with the
-// `Omit` beside it, and the day someone narrows a third key and forgets to add
-// it, the guard silently stops covering it — the same blindness one level up.
-// `keyof Narrowed` cannot drift from the type it is taken from. This is the
-// form `lib/knowledge/types.ts` already uses; restating the keys here was a
-// regression from it.
+// One `GuardNarrowing` per narrowing, applying BOTH halves of the check — the
+// overridden key still existing on the wire, and its type still being a
+// supertype of the narrowed one. The helper and the reasoning live in
+// `types/contractGuards.ts`; the short version is that `Omit` is blind to the
+// rename it looks like it catches, so the keys half is not optional.
 //
 // These live in an app file, not a test: `tsconfig.json` excludes
 // `src/test/**` and CI's only typecheck runs against it. They erase completely.
-
-/**
- * …and each narrowed member is still a SUBTYPE of the wire member.
- *
- * Existence alone would accept a member whose type changed underneath — a
- * `string` field becoming a number, or an object swapped for another schema.
- */
-type _IsSubtype<Narrowed, Wire> = [Narrowed] extends [Wire] ? true : false;
-
-/**
- * Forces the check above to FAIL THE BUILD rather than merely evaluate oddly.
- *
- * ‼ A conditional type that resolves to `never` is not an error — it is just
- * `never`, and the build stays green. The assertion has to be expressed as a
- * CONSTRAINT (`T extends true`) for the compiler to reject it. Measured: the
- * `never` form reported nothing when a narrowed member's type changed
- * underneath it, which is the whole failure this was meant to catch.
- */
-type _Assert<T extends true> = T;
-
-// `Pick<Wire, keyof Narrowed>` is written out per type rather than wrapped in a
-// generic helper: inside a generic, `keyof Narrowed` widens to
-// `string | number | symbol` and no longer satisfies `keyof Wire`, so the
-// helper compiles for everything and checks nothing.
 export type LlmTypeGuards = {
-  providerKeys: Pick<components['schemas']['LLMProviderDetail'], keyof LLMProvider>;
-  providerSubtype: _Assert<_IsSubtype<LLMProvider, components['schemas']['LLMProviderDetail']>>;
-
-  configKeys: Pick<components['schemas']['LLMConfigResponse'], keyof LLMConfig>;
-  configSubtype: _Assert<_IsSubtype<LLMConfig, components['schemas']['LLMConfigResponse']>>;
-
-  updateKeys: Pick<components['schemas']['LLMConfigUpdateRequest'], keyof LLMConfigUpdate>;
-  updateSubtype: _Assert<_IsSubtype<LLMConfigUpdate, components['schemas']['LLMConfigUpdateRequest']>>;
-
-  envKeys: Pick<components['schemas']['EnvConfigStatusResponse'], keyof EnvConfigStatus>;
-  envSubtype: _Assert<_IsSubtype<EnvConfigStatus, components['schemas']['EnvConfigStatusResponse']>>;
+  provider: GuardNarrowing<components['schemas']['LLMProviderDetail'], LLMProvider>;
+  config: GuardNarrowing<components['schemas']['LLMConfigResponse'], LLMConfig>;
+  update: GuardNarrowing<components['schemas']['LLMConfigUpdateRequest'], LLMConfigUpdate>;
+  env: GuardNarrowing<components['schemas']['EnvConfigStatusResponse'], EnvConfigStatus>;
 };
