@@ -6,7 +6,7 @@ import {
   canManageLlmConfig,
   canManageUsers,
   canUseTeams,
-  offersAllCasesNav,
+  canViewAllCases,
 } from '../lib/access';
 
 export interface NavItem {
@@ -72,10 +72,10 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     items.push({ label: 'Teams', path: '/teams' });
   }
 
-  // All Cases (cross-tenant admin view): absent in standalone, where it is
-  // usually a copy of `Cases` — see offersAllCasesNav, which is the OFFER and
-  // not the access gate (the route keeps canViewAllCases).
-  if (offersAllCasesNav(deployment, isAdmin)) {
+  // All Cases (cross-tenant admin view): cloud operator only — see
+  // canViewAllCases. Standalone is single-user, so there is nothing there for
+  // it to show; the ROUTE uses the same predicate, so the two cannot drift.
+  if (canViewAllCases(deployment, isAdmin)) {
     items.push({ label: 'All Cases', path: '/admin/cases' });
   }
 

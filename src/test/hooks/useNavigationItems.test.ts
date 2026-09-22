@@ -141,8 +141,9 @@ describe('useNavigationItems', () => {
     // single-account deployment that operator owns every case on the server, so
     // the `full` arm serves back the list they already have — measured on a
     // live stack, `GET /cases` and `GET /admin/cases` returned the same 21 ids.
-    // The ROUTE stays reachable; see `offersAllCasesNav` for why the offer and
-    // the guard part company here, and what it costs a multi-account install.
+    // Standalone is single-user by design, so that is the whole population,
+    // not one install's luck. The ROUTE is denied the same way, by the same
+    // predicate — see `canViewAllCases` and `adminCasesRoute.test.tsx`.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
@@ -157,15 +158,15 @@ describe('useNavigationItems', () => {
     expect(labels).toContain('LLM Settings');
   });
 
-  it('still offers "All Cases" before the deployment is confirmed', () => {
+  it('still shows "All Cases" before the deployment is confirmed', () => {
     // AuthContext starts config detection alongside the auth load and blanks
     // pages on the auth load ALONE, so the nav genuinely renders with
     // `deployment: null` — on every hard refresh, and for as long as
     // `/auth/config` is unreachable. `isAdmin` is available synchronously from
     // stored auth state, so requiring a confirmed 'cloud' here would take the
-    // item away from the CLOUD operator in both windows. This fix is scoped to
-    // standalone, so the unconfirmed window keeps its old answer. Pinned so a
-    // later `=== 'cloud'` tightening cannot land it unnoticed.
+    // item away from the CLOUD operator in both windows. The unconfirmed window
+    // therefore keeps its old answer, and the ROUTE waits for detection rather
+    // than acting on it. Pinned so a `=== 'cloud'` tightening cannot land here.
     mockUseAuth.mockReturnValue({
       deployment: null,
       role: null,

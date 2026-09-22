@@ -369,8 +369,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * deployment and the React-visible auth state, so it cannot diverge from
    * either (imperative setRole sites could bind a role to a different
    * principal than `authState` displayed, or resurrect one after an auth
-   * wipe). Unconfirmed deployment ⇒ null role ⇒ every role gate
-   * (canManageUsers, canViewAllCases, admin routes) fails closed.
+   * wipe). Unconfirmed deployment ⇒ null role ⇒ every gate that reads `role`
+   * (canManageUsers, canManageConsole, the routes behind them) fails closed.
+   *
+   * ‼ `canViewAllCases` is NOT one of them. It reads `isAdmin` and `deployment`
+   * directly, never `role`, and it fails OPEN on a null deployment — see its own
+   * docstring for why (failing closed would bounce a cloud operator off their
+   * bookmark during the config round trip, for a client check whose authority is
+   * the backend). Do not generalise this sentence to it.
    */
   const role = useMemo<DashboardRole | null>(
     () =>

@@ -21,8 +21,9 @@ const SOURCE_OPTIONS: { value: CaseSource | undefined; label: string }[] = [
 /**
  * Platform-admin cross-tenant case list (ADR-012 D9) — every user's cases on
  * this server (Copilot- and Slack-agent-originated) in one place. Reachable for
- * a `platform_admin` in either deployment (see `canViewAllCases`); the backend
- * enforces the same role.
+ * the CLOUD `platform_admin` only (see `canViewAllCases`) — the backend enforces
+ * the role, and standalone is denied here because it is single-user by design,
+ * so this view could only ever be a weaker copy of `Cases`.
  *
  * What a row contains is the deployment split, and it is read off the RESPONSE,
  * not off this app's notion of the deployment mode. `GET /api/v1/admin/cases`
@@ -172,9 +173,13 @@ export default function AdminCaseListPage() {
               Retry
             </button>
           </div>
-        ) : result?.view === 'metadata' ? (
-          <AdminCaseMetadataTable cases={result.cases} loading={loading} />
-        ) : (
+        ) : result?.view === 'full' ? (
+          // The NARROWED arm, not the default. Cloud is the only deployment that
+          // can reach this page, and cloud serves `metadata` — but this ternary's
+          // fallback is also what renders while `result` is still null, so having
+          // `full` there put the wrong table under the loading state for the only
+          // real consumer. `full` is now reachable only in the degraded window
+          // where deployment detection has not landed (see `AllCasesRoute`).
           <CaseTable
             cases={result?.cases ?? []}
             loading={loading}
@@ -192,6 +197,8 @@ export default function AdminCaseListPage() {
                 : `/admin/cases/${c.case_id}?enterprise=${encodeURIComponent(c.enterprise_id)}`
             }
           />
+        ) : (
+          <AdminCaseMetadataTable cases={result?.cases ?? []} loading={loading} />
         )}
 
         {!error && (

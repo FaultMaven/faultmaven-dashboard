@@ -79,6 +79,38 @@ export function makeAuthManagerMock(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * The two `/auth/config` bodies every suite needs, and one way to install them.
+ *
+ * `auth_mode` is what AuthContext turns into `deployment` ('oauth' → cloud,
+ * anything else → standalone), so almost every route or nav test has to stub
+ * this fetch. Six suites had grown their own spelling of the same object; when
+ * the payload gained `supports_screen_hint` and `self_service_signup_enabled`,
+ * that meant six places to find. New suites should use these.
+ */
+export const STANDALONE_AUTH_CONFIG = { auth_mode: 'local', oauth: null };
+
+export const CLOUD_AUTH_CONFIG = {
+  auth_mode: 'oauth',
+  oauth: {
+    hosted_login_url: '/api/v1/auth/sso/login',
+    supports_screen_hint: true,
+    self_service_signup_enabled: true,
+  },
+};
+
+/**
+ * Point the global `fetch` at one of the bodies above.
+ *
+ * ‼ Pair it with `afterEach(() => vi.unstubAllGlobals())`. `vi.clearAllMocks()`
+ * clears call history but leaves the stub installed, so a fetch that never
+ * settles outlives its test into `cleanup()` and teardown — which surfaces as an
+ * AbortError from `AsyncTaskManager.abortAll` rather than as a failing test.
+ */
+export function stubAuthConfig(body: unknown = STANDALONE_AUTH_CONFIG) {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => body }));
+}
+
 /** A stand-in for the shared Copilot UI package. */
 export function makeCopilotUiMock(
   Panel: (props: { initialCase?: unknown; chrome?: unknown }) => ReactElement,
