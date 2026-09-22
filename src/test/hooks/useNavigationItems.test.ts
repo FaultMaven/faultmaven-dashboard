@@ -135,7 +135,14 @@ describe('useNavigationItems', () => {
     expect(labels).not.toContain('Users');
   });
 
-  it('standalone admin sees "All Cases" (cross-tenant admin view)', () => {
+  it('standalone admin does NOT see "All Cases" — it duplicates "Cases" there', () => {
+    // Standalone bootstraps ONE account and re-grants it `platform_admin` every
+    // startup, so "the operator" and "the only user" are the same person, and
+    // the backend serves the `full` arm (titles included) over a case set that
+    // is entirely that account's own. Measured on a live stack: `GET /cases`
+    // and `GET /admin/cases` returned the same 21 ids. The item was a second
+    // "Cases" with fewer filters. The ROUTE stays reachable — see
+    // `offersAllCasesNav` for why the offer and the guard part company here.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
@@ -145,10 +152,30 @@ describe('useNavigationItems', () => {
     const { result } = renderHook(() => useNavigationItems('/cases'));
     const labels = result.current.map((i) => i.label);
 
-    expect(labels).toContain('All Cases');
+    expect(labels).not.toContain('All Cases');
+    // …and it is the ITEM that went, not the operator's nav as a whole.
+    expect(labels).toContain('LLM Settings');
   });
 
-  it('standalone non-admin does NOT see "All Cases"', () => {
+  it('does not offer "All Cases" before the deployment is confirmed', () => {
+    // AuthContext starts config detection alongside the auth load and blanks
+    // pages on the auth load ALONE, so the nav genuinely renders with
+    // `deployment: null` — on every hard refresh, and indefinitely while
+    // `/auth/config` is unreachable. Offering it here would flash the item into
+    // a standalone nav and then pull it back out, shifting every pill right of
+    // it. Pinned so a later `!== 'standalone'` spelling cannot sneak that in.
+    mockUseAuth.mockReturnValue({
+      deployment: null,
+      role: null,
+      isAdmin: true,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+
+    expect(result.current.map((i) => i.label)).not.toContain('All Cases');
+  });
+
+  it('standalone non-admin does NOT see "All Cases" either', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',

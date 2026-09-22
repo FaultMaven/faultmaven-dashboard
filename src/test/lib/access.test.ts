@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { canManageConsole, canManageUsers, canUseTeams, canViewAllCases } from '../../lib/access';
+import {
+  canManageConsole,
+  canManageUsers,
+  canUseTeams,
+  canViewAllCases,
+  offersAllCasesNav,
+} from '../../lib/access';
 
 describe('canManageUsers', () => {
   it('allows only cloud platform_admin', () => {
@@ -76,4 +82,49 @@ describe('canViewAllCases', () => {
   // guard against a deployment gate creeping back in lives in
   // `useNavigationItems.test.ts`, which pins that a cloud platform_admin still
   // sees the "All Cases" item.
+  //
+  // The NAV OFFER is deployment-gated, and that is not this predicate leaking:
+  // `offersAllCasesNav` below is a separate question (is the item worth a nav
+  // slot?) from this one (may this caller reach the page?). `/admin/cases`
+  // still guards on THIS, so a standalone operator keeps the route.
+  it('is the route guard, and stays deployment-blind', () => {
+    // The signature is the assertion. A `deployment` parameter added back here
+    // would take the route away from the standalone operator, which is the one
+    // thing hiding the nav item deliberately does not do.
+    expect(canViewAllCases).toHaveLength(1);
+  });
+});
+
+describe('offersAllCasesNav', () => {
+  it('offers it to the cloud operator', () => {
+    expect(offersAllCasesNav('cloud', true)).toBe(true);
+  });
+
+  it('denies a cloud non-operator', () => {
+    expect(offersAllCasesNav('cloud', false)).toBe(false);
+  });
+
+  it('withholds it in standalone even from the operator', () => {
+    // Standalone re-grants `platform_admin` to its one bootstrap account on
+    // every startup, and serves the `full` arm over a server whose entire case
+    // set belongs to that account — so the item duplicates `Cases`.
+    expect(offersAllCasesNav('standalone', true)).toBe(false);
+  });
+
+  it('withholds it while the deployment is unconfirmed', () => {
+    // `null` is the real state on a hard refresh and for as long as
+    // `/auth/config` is unreachable — AuthContext gates `loading` on the auth
+    // load alone. Showing it here and retracting it a moment later would
+    // flicker exactly the item this removes.
+    expect(offersAllCasesNav(null, true)).toBe(false);
+  });
+
+  it('defers the role half to canViewAllCases rather than restating it', () => {
+    // Anti-drift: the offer may differ from the guard on DEPLOYMENT (that is
+    // its whole purpose) but never on who counts as an operator. Restating
+    // `isAdmin` here is how the two would come apart.
+    for (const isAdmin of [true, false]) {
+      expect(offersAllCasesNav('cloud', isAdmin)).toBe(canViewAllCases(isAdmin));
+    }
+  });
 });

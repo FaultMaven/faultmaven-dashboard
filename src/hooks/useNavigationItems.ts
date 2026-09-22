@@ -6,7 +6,7 @@ import {
   canManageLlmConfig,
   canManageUsers,
   canUseTeams,
-  canViewAllCases,
+  offersAllCasesNav,
 } from '../lib/access';
 
 export interface NavItem {
@@ -72,10 +72,13 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     items.push({ label: 'Teams', path: '/teams' });
   }
 
-  // All Cases (cross-tenant admin view): operator-only in both deployments —
-  // see canViewAllCases. Cloud serves ambient metadata; titles need break-glass
-  // (ADR-012 D9).
-  if (canViewAllCases(isAdmin)) {
+  // All Cases (cross-tenant admin view): OFFERED to the cloud operator only —
+  // see offersAllCasesNav, which is not the access gate. Cloud serves ambient
+  // metadata; titles need break-glass (ADR-012 D9). Standalone grants every
+  // account the operator role and serves the full arm over a one-account
+  // server, so the item is a duplicate of `Cases` there; the route keeps
+  // `canViewAllCases` and stays reachable by URL.
+  if (offersAllCasesNav(deployment, isAdmin)) {
     items.push({ label: 'All Cases', path: '/admin/cases' });
   }
 
