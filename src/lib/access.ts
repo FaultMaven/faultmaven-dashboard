@@ -146,17 +146,23 @@ export function canManageLlmConfig(isAdmin: boolean): boolean {
  * never by a login path (ADR-015 D5), so few hold it and the rows they see are
  * other tenants' — a genuinely different view, served as metadata only.
  *
- * ‼ THIS IS A HEURISTIC, and the multi-account standalone deployment is where
- * it is wrong. Add accounts with `faultmaven.sh create-user` and the bootstrap
- * operator's `/admin/cases` does contain rows their own list cannot show
- * (standalone has no teams, so `/cases` is owner-only). The discriminating fact
- * is "does the admin list hold rows I do not own?", which only the backend
- * knows; `deployment` is a proxy for it and the proxy is wrong for that
- * population. It is a deliberate trade, not an oversight: hiding the ITEM
- * leaves `/admin/cases` reachable by URL — the route keeps `canViewAllCases` —
- * so that operator loses a nav slot, not the view. Publishing the real fact as
- * a backend capability, the way `managementConsole` and `teamSharing` already
- * work, is the principled fix and is follow-up.
+ * So this predicate governs the OFFER only. `/admin/cases` keeps
+ * `canViewAllCases`, which matches what the backend actually serves in each
+ * deployment and is the surface ADR-012 D9 designs a standalone arm for
+ * (`access: 'standing'` — recorded, not gated). Narrowing what the nav
+ * advertises is not a decision about what the deployment serves.
+ *
+ * ‼ STANDALONE IS SINGLE-USER BY DESIGN — one person, running it locally. That
+ * is how it is positioned and how it is expected to be used, so "the operator's
+ * cases are all the cases" is a property of the product, not a coincidence of
+ * one install. It CAN technically hold more accounts
+ * (`faultmaven.sh create-user`, which makes ordinary `["user"]` accounts), and
+ * that is the one shape where this view would show the bootstrap operator
+ * something `Cases` cannot. Multi-user standalone is not a supported
+ * configuration and is not worth a nav slot, a capability flag, or a branch
+ * here — carrying a non-use-case as "a limitation to fix later" is precisely
+ * how UI and configuration accrete around it. Nothing is unreachable either
+ * way: the ROUTE mirrors the backend rather than this predicate (see below).
  *
  * ‼ `!== 'standalone'`, NOT `=== 'cloud'`, and the difference is only visible
  * while the deployment is unconfirmed. `isAdmin` comes from stored auth state

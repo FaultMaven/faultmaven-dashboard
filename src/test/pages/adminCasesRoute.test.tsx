@@ -4,12 +4,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 /**
  * THE ROUTE HALF of the All-Cases offer/guard split, on App's REAL route table.
  *
- * Hiding the nav item in standalone (`offersAllCasesNav`) is only defensible
- * because `/admin/cases` stays reachable: a multi-account standalone install
- * has one real operator, and their admin list genuinely holds rows their own
- * `/cases` cannot show. The whole trade is "they lose a nav slot, not the
- * view" — and nothing asserted the second half. `grep -rn 'AllCasesRoute'
- * src/test/` returned nothing before this file.
+ * The nav item and the route now ask DIFFERENT predicates — `offersAllCasesNav`
+ * and `canViewAllCases` — so "we hid the item" and "we closed the page" became
+ * two things that can happen independently, and only one of them was asserted.
+ * The route is meant to keep mirroring what the backend serves, which in
+ * standalone is the `full` arm under ADR-012 D9's standing (recorded, not
+ * gated) access; narrowing what the nav advertises is not a decision about what
+ * the deployment serves. `grep -rn 'AllCasesRoute' src/test/` returned nothing
+ * before this file.
  *
  * ‼ It is mounted through `<App />` and not a hand-built `<MemoryRouter>`,
  * for the reason `panelNotBeforeSignIn.test.tsx` already records: deleting
@@ -102,6 +104,9 @@ async function renderAppAt(path: string) {
 
 describe('/admin/cases in standalone', () => {
   it('stays reachable for the operator even though the nav item is gone', async () => {
+    // Standalone is single-user by design, so this page shows that one operator
+    // their own cases — the reason the ITEM went. The page still answers,
+    // because the backend still serves it and this change was scoped to the nav.
     getAuthState.mockResolvedValue(OPERATOR);
 
     await renderAppAt('/admin/cases');

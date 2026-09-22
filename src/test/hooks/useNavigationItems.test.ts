@@ -141,8 +141,9 @@ describe('useNavigationItems', () => {
     // single-account deployment that operator owns every case on the server, so
     // the `full` arm serves back the list they already have — measured on a
     // live stack, `GET /cases` and `GET /admin/cases` returned the same 21 ids.
-    // The ROUTE stays reachable; see `offersAllCasesNav` for why the offer and
-    // the guard part company here, and what it costs a multi-account install.
+    // Standalone is single-user by design, so that is the whole population, not
+    // one install's luck. The ROUTE stays reachable — it mirrors the backend,
+    // not this predicate; see `offersAllCasesNav`.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
