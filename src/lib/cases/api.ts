@@ -70,10 +70,13 @@ export async function listCases(
 /**
  * List cases across ALL users/orgs — the platform-admin cross-tenant view
  * (ADR-012 D9, GET /api/v1/admin/cases). Reachable for a `platform_admin` in
- * either deployment (see `canViewAllCases`); the backend enforces the same role.
+ * CLOUD only (see `canViewAllCases`); the backend enforces the same role.
  *
  * The response is a union discriminated on `view`, and the *deployment* decides
- * which arm arrives: `"full"` (standalone) carries complete summaries including
+ * which arm arrives. ‼ The `"full"` arm is a statement about the BACKEND, not a
+ * reachable client state: standalone still serves it, but this app denies
+ * standalone the route, so in practice only `"metadata"` arrives.
+ * `"full"` (standalone) carries complete summaries including
  * titles, `"metadata"` (cloud) carries ambient metadata with no title or
  * description keys at all — titles are content and need the audited break-glass
  * path (faultmaven#815). Callers must narrow on `view` rather than on their own
