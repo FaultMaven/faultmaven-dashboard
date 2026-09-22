@@ -135,7 +135,14 @@ describe('useNavigationItems', () => {
     expect(labels).not.toContain('Users');
   });
 
-  it('standalone admin sees "All Cases" (cross-tenant admin view)', () => {
+  it('standalone admin does NOT see "All Cases" — it copies "Cases" there', () => {
+    // Standalone bootstraps ONE account and re-grants IT the operator roles on
+    // every startup; every other standalone account is an ordinary user. On the
+    // single-account deployment that operator owns every case on the server, so
+    // the `full` arm serves back the list they already have — measured on a
+    // live stack, `GET /cases` and `GET /admin/cases` returned the same 21 ids.
+    // The ROUTE stays reachable; see `offersAllCasesNav` for why the offer and
+    // the guard part company here, and what it costs a multi-account install.
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',
@@ -145,10 +152,36 @@ describe('useNavigationItems', () => {
     const { result } = renderHook(() => useNavigationItems('/cases'));
     const labels = result.current.map((i) => i.label);
 
-    expect(labels).toContain('All Cases');
+    expect(labels).not.toContain('All Cases');
+    // …and it is the ITEM that went, not the operator's nav as a whole.
+    expect(labels).toContain('LLM Settings');
   });
 
-  it('standalone non-admin does NOT see "All Cases"', () => {
+  it('still offers "All Cases" before the deployment is confirmed', () => {
+    // AuthContext starts config detection alongside the auth load and blanks
+    // pages on the auth load ALONE, so the nav genuinely renders with
+    // `deployment: null` — on every hard refresh, and for as long as
+    // `/auth/config` is unreachable. `isAdmin` is available synchronously from
+    // stored auth state, so requiring a confirmed 'cloud' here would take the
+    // item away from the CLOUD operator in both windows. This fix is scoped to
+    // standalone, so the unconfirmed window keeps its old answer. Pinned so a
+    // later `=== 'cloud'` tightening cannot land it unnoticed.
+    mockUseAuth.mockReturnValue({
+      deployment: null,
+      role: null,
+      isAdmin: true,
+    });
+
+    const { result } = renderHook(() => useNavigationItems('/cases'));
+    const labels = result.current.map((i) => i.label);
+
+    expect(labels).toContain('All Cases');
+    // Not vacuous: a hook that emitted nothing at all would satisfy the
+    // absence-style assertions elsewhere in this file, so say what else is here.
+    expect(labels).toContain('Cases');
+  });
+
+  it('standalone non-admin does NOT see "All Cases" either', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
       role: 'individual',

@@ -6,7 +6,7 @@ import {
   canManageLlmConfig,
   canManageUsers,
   canUseTeams,
-  canViewAllCases,
+  offersAllCasesNav,
 } from '../lib/access';
 
 export interface NavItem {
@@ -72,10 +72,10 @@ export function useNavigationItems(currentPath: string): NavItem[] {
     items.push({ label: 'Teams', path: '/teams' });
   }
 
-  // All Cases (cross-tenant admin view): operator-only in both deployments —
-  // see canViewAllCases. Cloud serves ambient metadata; titles need break-glass
-  // (ADR-012 D9).
-  if (canViewAllCases(isAdmin)) {
+  // All Cases (cross-tenant admin view): absent in standalone, where it is
+  // usually a copy of `Cases` — see offersAllCasesNav, which is the OFFER and
+  // not the access gate (the route keeps canViewAllCases).
+  if (offersAllCasesNav(deployment, isAdmin)) {
     items.push({ label: 'All Cases', path: '/admin/cases' });
   }
 
