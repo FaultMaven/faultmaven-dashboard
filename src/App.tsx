@@ -99,16 +99,32 @@ export function ChatSurfaceRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * The cross-tenant operator view, and its per-case content page (ADR-012 D9).
+ *
+ * Same predicate as the nav item, so the two cannot drift — and since
+ * `canViewAllCases` now reads the deployment, standalone is turned away here
+ * too, not merely left without a link. Standalone is single-user, so this page
+ * could only ever show that one account its own cases, and its content arm
+ * would write an operator-access audit row for reading them.
+ *
+ * ‼ It WAITS for deployment detection instead of guessing. `configStatus`
+ * starts 'pending' and is not covered by `loading`, so deciding immediately
+ * would bounce a cloud operator arriving on a bookmark. Blanking for the round
+ * trip costs a frame; redirecting costs them the page. If detection never
+ * lands, `deployment` stays null, the predicate allows, and the backend — the
+ * real authority — still refuses anyone who does not hold the role.
+ */
 function AllCasesRoute({ children }: { children: React.ReactNode }) {
-  const { isAdmin, loading, authState } = useAuth();
+  const { isAdmin, loading, authState, deployment, configStatus } = useAuth();
 
-  if (loading) return null;
+  if (loading || configStatus === 'pending') return null;
 
   if (!authState) {
     return <Navigate to="/login" replace />;
   }
 
-  if (canViewAllCases(isAdmin)) {
+  if (canViewAllCases(deployment, isAdmin)) {
     return <>{children}</>;
   }
 

@@ -2,23 +2,20 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * THE ROUTE HALF of the All-Cases offer/guard split, on App's REAL route table.
+ * THE OPERATOR ROUTE, on App's REAL route table.
  *
- * The nav item and the route now ask DIFFERENT predicates — `offersAllCasesNav`
- * and `canViewAllCases` — so "we hid the item" and "we closed the page" became
- * two things that can happen independently, and only one of them was asserted.
- * The route is meant to keep mirroring what the backend serves, which in
- * standalone is the `full` arm under ADR-012 D9's standing (recorded, not
- * gated) access; narrowing what the nav advertises is not a decision about what
- * the deployment serves. `grep -rn 'AllCasesRoute' src/test/` returned nothing
- * before this file.
+ * `canViewAllCases` reads the deployment, so standalone is turned AWAY here —
+ * not merely left without a nav link. Standalone is single-user by design, so
+ * this page could only show that one account its own cases, and its content arm
+ * would write an operator-access audit row for reading them. #177 kept the
+ * route open for the multi-account standalone operator; that configuration is
+ * not supported, so the offer/guard split it needed is gone.
  *
- * ‼ It is mounted through `<App />` and not a hand-built `<MemoryRouter>`,
- * for the reason `panelNotBeforeSignIn.test.tsx` already records: deleting
- * `<ChatSurfaceRoute>` from App left 1200 tests green, because the only test
- * of it rendered the guard component directly and never touched App's routes.
- * A bookmark — the exact thing this route exists to serve — arrives through
- * App's router or not at all.
+ * ‼ Mounted through `<App />`, not a hand-built `<MemoryRouter>`, for the
+ * reason `panelNotBeforeSignIn.test.tsx` records: deleting `<ChatSurfaceRoute>`
+ * from App left 1200 tests green, because the only test of it rendered the
+ * guard component directly and never touched App's routes. A bookmark — the
+ * thing a route guard exists for — arrives through App's router or not at all.
  */
 
 import { makeAuthManagerMock, TEST_AUTH_STATE, TEST_PROFILE } from '../support/authFixtures';
@@ -73,6 +70,16 @@ const ORDINARY = {
   user: { ...TEST_AUTH_STATE.user, roles: ['user'] },
 };
 
+const STANDALONE_CONFIG = { auth_mode: 'local', oauth: null };
+const CLOUD_CONFIG = {
+  auth_mode: 'oauth',
+  oauth: { hosted_login_url: '/api/v1/auth/sso/login', supports_screen_hint: true },
+};
+
+function stubConfig(body: unknown) {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => body }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -84,15 +91,9 @@ beforeEach(() => {
     offset: 0,
     has_more: false,
   });
-  // A STANDALONE deployment — `auth_mode: 'local'` is what makes
-  // `deployment === 'standalone'` (AuthContext), which is the state under test.
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ auth_mode: 'local', oauth: null }),
-    }),
-  );
+  // A STANDALONE deployment by default — `auth_mode: 'local'` is what makes
+  // `deployment === 'standalone'` (AuthContext). The cloud block overrides it.
+  stubConfig(STANDALONE_CONFIG);
 });
 
 async function renderAppAt(path: string) {
@@ -103,46 +104,90 @@ async function renderAppAt(path: string) {
 }
 
 describe('/admin/cases in standalone', () => {
-  it('stays reachable for the operator even though the nav item is gone', async () => {
-    // Standalone is single-user by design, so this page shows that one operator
-    // their own cases — the reason the ITEM went. The page still answers,
-    // because the backend still serves it and this change was scoped to the nav.
+  it('turns the operator away — single-user, so there is nothing to show', async () => {
     getAuthState.mockResolvedValue(OPERATOR);
 
     await renderAppAt('/admin/cases');
 
-    // The page, not a redirect.
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /^All Cases$/i })).toBeInTheDocument(),
-    );
-    expect(window.location.pathname).toBe('/admin/cases');
+    await waitFor(() => expect(window.location.pathname).toBe('/cases'));
+    expect(screen.queryByRole('heading', { name: /^All Cases$/i })).not.toBeInTheDocument();
   });
 
-  it('is the WHOLE design in one render: no nav item, and the page anyway', async () => {
-    // Asserting these together is the point. Separately, each passes in a build
-    // that has quietly lost the other — a route that redirects while the item
-    // is hidden leaves the standalone operator with no way in at all, which is
-    // the outcome the offer/guard split exists to avoid.
-    getAuthState.mockResolvedValue(OPERATOR);
-
-    await renderAppAt('/admin/cases');
-
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: /^All Cases$/i })).toBeInTheDocument(),
-    );
-    expect(screen.queryByRole('link', { name: 'All Cases' })).not.toBeInTheDocument();
-    // Not vacuous — the nav IS rendered on this page, just without that item.
-    expect(screen.getByRole('link', { name: 'Cases' })).toBeInTheDocument();
-  });
-
-  it('turns an ordinary standalone account away', async () => {
-    // The route is not open to everyone just because the nav gate moved: it
-    // still guards on `canViewAllCases`, which the backend enforces too.
+  it('turns an ordinary standalone account away too', async () => {
     getAuthState.mockResolvedValue(ORDINARY);
 
     await renderAppAt('/admin/cases');
 
     await waitFor(() => expect(window.location.pathname).toBe('/cases'));
     expect(screen.queryByRole('heading', { name: /^All Cases$/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('/admin/cases in cloud', () => {
+  beforeEach(() => {
+    stubConfig(CLOUD_CONFIG);
+    // Cloud serves the metadata arm (ADR-012 D9) — no titles.
+    getAdminCases.mockResolvedValue({
+      view: 'metadata',
+      cases: [],
+      total_count: 0,
+      limit: 20,
+      offset: 0,
+      has_more: false,
+    });
+  });
+
+  it('is where the view still lives', async () => {
+    // The non-vacuity of the standalone cases above: the route is denied by
+    // DEPLOYMENT, not broken outright.
+    getAuthState.mockResolvedValue(OPERATOR);
+
+    await renderAppAt('/admin/cases');
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^All Cases$/i })).toBeInTheDocument(),
+    );
+    expect(window.location.pathname).toBe('/admin/cases');
+  });
+
+  it('does not bounce an operator who arrives before detection lands', async () => {
+    /**
+     * ‼ THE REASON THE GUARD WAITS. `configStatus` starts 'pending' and is not
+     * covered by `loading`, so a guard that decided immediately would read
+     * `deployment: null`, and any future tightening to `=== 'cloud'` would
+     * redirect a cloud operator off their own bookmark before the app had any
+     * idea which deployment it was. Held here with a fetch that does not
+     * resolve until the assertion has been made — a zero-latency mock cannot
+     * observe this window at all.
+     */
+    let release!: (v: unknown) => void;
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => pending.then(() => ({ ok: true, json: async () => CLOUD_CONFIG }))),
+    );
+    getAuthState.mockResolvedValue(OPERATOR);
+
+    await renderAppAt('/admin/cases');
+
+    // Detection is still in flight, so the guard has decided NOTHING: it has
+    // neither navigated away nor rendered the page. Both halves are needed —
+    // the pathname catches a fail-closed guard, and the absent heading catches
+    // a guard that dropped the wait and acted on `deployment: null` (which this
+    // predicate happens to allow, so it would render and the pathname alone
+    // would not notice).
+    expect(window.location.pathname).toBe('/admin/cases');
+    expect(screen.queryByRole('heading', { name: /^All Cases$/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      release(undefined);
+      await pending;
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^All Cases$/i })).toBeInTheDocument(),
+    );
   });
 });

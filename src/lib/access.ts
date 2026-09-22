@@ -75,33 +75,56 @@ export function canUseTeams(teamSharing: boolean): boolean {
 
 /**
  * Single source of truth for "can this user reach the cross-tenant All-Cases
- * admin view?" (ADR-012 D9 — GET /api/v1/admin/cases).
+ * view?" (ADR-012 D9 — `GET /api/v1/admin/cases`).
  *
- * The `platform_admin` operator reaches it in BOTH deployments. What differs is
- * not access but *what a row contains* — the D9 metadata/content split:
+ * TWO signals, and the deployment is the load-bearing one:
  *
- * - Standalone: full summaries, titles included. The operator and the data
- *   controller are the same party, so content reads are audited, not gated.
- * - Cloud: ambient metadata only (ids, org, state, timestamps, counts). Titles
+ * - **Cloud**: the `platform_admin` operator, whose rows are other tenants' and
+ *   arrive as ambient metadata — ids, org, state, timestamps, counts. Titles
  *   and transcripts are content, reachable only through the audited break-glass
- *   grant (faultmaven#815).
+ *   grant (faultmaven#815). A genuinely different view from `Cases`.
+ * - **Standalone**: nobody, because there is nothing for it to show.
+ *   ‼ **Standalone is single-user by design** — a personal assistant running
+ *   locally, which is what makes its passwordless username login acceptable in
+ *   the first place. So "every case on the server" and "my cases" are the same
+ *   list, and this view can only ever be a weaker copy of `Cases`: the same
+ *   rows and the same table, an Owner column of one repeated value, and none of
+ *   the date or search filters the admin endpoint accepts. Opening one through
+ *   `AdminCaseContentPage` would also write an operator-access audit row for
+ *   reading your own case, which is a trail of nothing.
  *
- * That split is deliberately NOT decided here. The response is a union
- * discriminated on `view`, so the page renders the columns the backend actually
- * served instead of the columns it expects from its own notion of the
- * deployment — the two therefore cannot drift, and a mode misread cannot
- * surface a title the policy withheld. This predicate answers only "is this the
- * operator?", which is why it no longer takes a `deployment`.
+ * It CAN technically hold more accounts (`faultmaven.sh create-user` makes
+ * ordinary `["user"]` ones; only the bootstrap account is the operator), and
+ * that is the single shape where this view would show the operator something
+ * `Cases` cannot. Multi-user standalone is **not a supported configuration**
+ * and earns no route, no nav slot and no branch — carrying a non-use-case as
+ * "a limitation to fix later" is how UI and configuration accrete around it.
+ * A deployment that genuinely has several people is `AUTH_MODE=oauth`, which
+ * this app reads as cloud and which brings real identity, teams and RBAC with
+ * it. That is the axis multi-user lives on, not a flag on standalone.
  *
- * The ROUTE GUARD imports it. The nav item does NOT — it asks
- * `offersAllCasesNav` below, which answers a different question and answers it
- * differently in standalone. That split is deliberate and is the one place in
- * this file where an offer and a guard are allowed to disagree; they still
- * share this predicate for the ROLE half, so they cannot drift on who counts
- * as an operator.
+ * ‼ `null` deployment ALLOWS, and the route waits rather than guessing.
+ * `isAdmin` resolves synchronously from stored auth state but `deployment`
+ * needs a `/auth/config` round trip that `loading` does not cover, so an
+ * unconfirmed deployment is a real state on every hard refresh and for as long
+ * as that endpoint is unreachable. A gate that failed CLOSED here would bounce
+ * a cloud operator off their own bookmark — destructive, and for a client-side
+ * check whose authority is the backend anyway. `AllCasesRoute` therefore blanks
+ * while `configStatus` is `'pending'` and decides once it settles; if detection
+ * never lands, this allows, and the server still refuses anyone who should not
+ * be here.
+ *
+ * ONE predicate for the nav item AND the route, which is the point. #177 split
+ * them — a deployment-blind guard plus an `offersAllCasesNav` offer — purely to
+ * keep the route open for the multi-account standalone operator. With that
+ * configuration unsupported there is nothing on the other side of the split, so
+ * it is gone and the two cannot drift again.
  */
-export function canViewAllCases(isAdmin: boolean): boolean {
-  return isAdmin;
+export function canViewAllCases(
+  deployment: Deployment | null,
+  isAdmin: boolean,
+): boolean {
+  return deployment !== 'standalone' && isAdmin;
 }
 
 /**
@@ -119,68 +142,3 @@ export function canManageLlmConfig(isAdmin: boolean): boolean {
   return isAdmin;
 }
 
-/**
- * Single source of truth for "do we OFFER the All-Cases view in the nav?"
- *
- * Deliberately NOT `canViewAllCases`, and the split is the point. That
- * predicate answers access; this one answers whether the item earns a slot in
- * the nav bar, which standalone answers differently — because there the view it
- * leads to is usually a copy of `Cases`:
- *
- * - The standalone bootstrap creates ONE account, `admin`, and re-grants it the
- *   operator roles on every startup (`ensure_default_admin_exists` →
- *   `assign_operator_roles`). Every OTHER standalone account is an ordinary
- *   user — `scripts/auth/create_user.py` defaults to `["user"]` — so the
- *   operator is one specific account, not "whoever is signed in".
- * - The backend serves standalone the `full` arm of `GET /admin/cases` (titles
- *   included, `metadata_only = settings.is_cloud`), which the page renders with
- *   the same `CaseTable` as `/cases`.
- * - On the single-account deployment — the default, and what `faultmaven.sh up`
- *   gives you — that one account owns every case on the server, so the two
- *   lists are the same rows. Measured on a live stack: `GET /cases` and
- *   `GET /admin/cases` returned the same 21 ids, all owned by the operator. The
- *   item was a second `Cases` with an Owner column of one repeated value and
- *   without the date and search filters the admin endpoint does not accept.
- *
- * Cloud is the opposite case: the operator role is granted out-of-band and
- * never by a login path (ADR-015 D5), so few hold it and the rows they see are
- * other tenants' — a genuinely different view, served as metadata only.
- *
- * So this predicate governs the OFFER only. `/admin/cases` keeps
- * `canViewAllCases`, which matches what the backend actually serves in each
- * deployment and is the surface ADR-012 D9 designs a standalone arm for
- * (`access: 'standing'` — recorded, not gated). Narrowing what the nav
- * advertises is not a decision about what the deployment serves.
- *
- * ‼ STANDALONE IS SINGLE-USER BY DESIGN — one person, running it locally. That
- * is how it is positioned and how it is expected to be used, so "the operator's
- * cases are all the cases" is a property of the product, not a coincidence of
- * one install. It CAN technically hold more accounts
- * (`faultmaven.sh create-user`, which makes ordinary `["user"]` accounts), and
- * that is the one shape where this view would show the bootstrap operator
- * something `Cases` cannot. Multi-user standalone is not a supported
- * configuration and is not worth a nav slot, a capability flag, or a branch
- * here — carrying a non-use-case as "a limitation to fix later" is precisely
- * how UI and configuration accrete around it. Nothing is unreachable either
- * way: the ROUTE mirrors the backend rather than this predicate (see below).
- *
- * ‼ `!== 'standalone'`, NOT `=== 'cloud'`, and the difference is only visible
- * while the deployment is unconfirmed. `isAdmin` comes from stored auth state
- * synchronously, but `deployment` needs a `/auth/config` round trip that
- * `loading` does not cover (AuthContext starts the probe alongside the auth
- * load and blanks pages on the auth load alone), so the nav really does render
- * with `deployment === null` on every hard refresh — and stays there for as
- * long as that endpoint is unreachable. Requiring a confirmed `'cloud'` would
- * take the item away from the CLOUD operator in both of those windows, which is
- * a change to the deployment this fix is not supposed to touch. So null shows
- * it, exactly as before this predicate existed, and the cost lands where the
- * change already lives: a standalone nav briefly renders the item before
- * detection resolves and then drops it. Cloud behaviour is byte-identical to
- * the old `canViewAllCases(isAdmin)`.
- */
-export function offersAllCasesNav(
-  deployment: Deployment | null,
-  isAdmin: boolean,
-): boolean {
-  return deployment !== 'standalone' && canViewAllCases(isAdmin);
-}

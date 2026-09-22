@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  canManageConsole,
-  canManageUsers,
-  canUseTeams,
-  canViewAllCases,
-  offersAllCasesNav,
-} from '../../lib/access';
+import { canManageConsole, canManageUsers, canUseTeams, canViewAllCases } from '../../lib/access';
 
 describe('canManageUsers', () => {
   it('allows only cloud platform_admin', () => {
@@ -68,78 +62,46 @@ describe('canUseTeams', () => {
 });
 
 describe('canViewAllCases', () => {
-  it('allows the platform_admin operator', () => {
-    expect(canViewAllCases(true)).toBe(true);
-  });
-
-  it('denies a non-operator', () => {
-    expect(canViewAllCases(false)).toBe(false);
-  });
-
-  // No deployment case here on purpose: ADR-012 D9 makes deployment decide the
-  // COLUMNS, not the access, so this predicate takes no deployment at all and
-  // there is no deployment-dependent behaviour left to assert. The behavioural
-  // guard against a deployment gate creeping back in lives in
-  // `useNavigationItems.test.ts`, which pins that a cloud platform_admin still
-  // sees the "All Cases" item.
-  //
-  // The NAV OFFER is deployment-gated, and that is not this predicate leaking:
-  // `offersAllCasesNav` below is a separate question (is the item worth a nav
-  // slot?) from this one (may this caller reach the page?). `/admin/cases`
-  // still guards on THIS, so a standalone operator keeps the route — asserted
-  // on App's real route table in `adminCasesRoute.test.tsx`, because that is
-  // the wiring a bookmark actually arrives through.
-  //
-  // No arity assertion here. `Function.length` stops counting at the first
-  // parameter with a default, so `(isAdmin, deployment = null)` reports 1 and
-  // a gate reading the deployment from module scope reports 1 too — it cannot
-  // express "deployment-blind". The two behavioural cases above already fail
-  // on anything that changes the answer.
-});
-
-describe('offersAllCasesNav', () => {
-  it('offers it to the cloud operator', () => {
-    expect(offersAllCasesNav('cloud', true)).toBe(true);
+  it('allows the cloud platform_admin operator', () => {
+    expect(canViewAllCases('cloud', true)).toBe(true);
   });
 
   it('denies a cloud non-operator', () => {
-    expect(offersAllCasesNav('cloud', false)).toBe(false);
+    expect(canViewAllCases('cloud', false)).toBe(false);
   });
 
-  it('withholds it in standalone even from the operator', () => {
-    // Standalone re-grants the operator roles to its ONE bootstrap account on
-    // every startup and serves the `full` arm, so on the single-account
-    // deployment the view is that account's own cases — a copy of `Cases`.
-    expect(offersAllCasesNav('standalone', true)).toBe(false);
+  it('denies STANDALONE even to the operator', () => {
+    // Standalone is single-user by design, so "every case on the server" and
+    // "my cases" are the same list and this view is a weaker copy of `Cases`.
+    // It is denied the ROUTE too, not merely left without a nav link — #177
+    // kept the route open for the multi-account standalone operator, and that
+    // configuration is not supported.
+    expect(canViewAllCases('standalone', true)).toBe(false);
   });
 
-  it('still offers it while the deployment is unconfirmed', () => {
+  it('denies a standalone non-operator', () => {
+    expect(canViewAllCases('standalone', false)).toBe(false);
+  });
+
+  it('ALLOWS while the deployment is unconfirmed, rather than failing closed', () => {
     // `null` is the real state on every hard refresh and for as long as
-    // `/auth/config` is unreachable — AuthContext gates `loading` on the auth
-    // load alone. Requiring a confirmed 'cloud' would take the item away from
-    // the CLOUD operator in both windows, which is a change to the deployment
-    // this fix does not touch. Pinned so a later `=== 'cloud'` cannot land it.
-    expect(offersAllCasesNav(null, true)).toBe(true);
+    // `/auth/config` is unreachable. Failing closed would bounce a cloud
+    // operator off their own bookmark, for a client check whose authority is
+    // the backend. `AllCasesRoute` blanks while configStatus is 'pending' so
+    // this branch is reached only when detection has genuinely given up.
+    expect(canViewAllCases(null, true)).toBe(true);
   });
 
-  it('is byte-identical to the old gate everywhere except standalone', () => {
-    // The scope claim, as an assertion: cloud and the unconfirmed window must
-    // answer exactly what `canViewAllCases(isAdmin)` answered before this
-    // predicate existed.
-    for (const deployment of ['cloud', null] as const) {
-      for (const isAdmin of [true, false]) {
-        expect(offersAllCasesNav(deployment, isAdmin)).toBe(canViewAllCases(isAdmin));
-      }
-    }
+  it('still needs the operator role when the deployment is unconfirmed', () => {
+    // Failing open on DEPLOYMENT must not fail open on the role.
+    expect(canViewAllCases(null, false)).toBe(false);
   });
 
-  it('never offers it to a non-operator, in any deployment', () => {
-    // The offer may differ from the guard on DEPLOYMENT — that is its whole
-    // purpose — but never on who counts as an operator. A standalone
-    // non-operator is refused by BOTH halves, so this pins that widening the
-    // deployment half alone cannot let one through.
-    for (const deployment of ['cloud', 'standalone', null] as const) {
-      expect(offersAllCasesNav(deployment, false)).toBe(false);
-    }
-  });
+  // No arity assertion. `Function.length` stops counting at the first parameter
+  // with a default, so it cannot express a signature claim. The behavioural
+  // cases above already fail on anything that changes an answer.
+  //
+  // ONE predicate for the nav item and the route: `offersAllCasesNav` is gone.
+  // The route half is asserted on App's real route table in
+  // `src/test/pages/adminCasesRoute.test.tsx`.
 });
