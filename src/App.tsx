@@ -20,6 +20,7 @@ import { useCapabilities } from './hooks/useCapabilities';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { usePrefersExtensionForChat } from './hooks/useChatSurface';
 import { AdminProtectedRoute } from './components/AdminProtectedRoute';
+import { DeploymentUndetermined } from './components/DeploymentUndetermined';
 import { canManageConsole, canManageLlmConfig, canUseTeams, canViewAllCases } from './lib/access';
 
 function LLMConfigRoute({ children }: { children: React.ReactNode }) {
@@ -41,13 +42,22 @@ function LLMConfigRoute({ children }: { children: React.ReactNode }) {
 }
 
 function ManagementConsoleRoute({ children }: { children: React.ReactNode }) {
-  const { role, loading, authState } = useAuth();
+  const { role, loading, authState, configStatus } = useAuth();
   const { managementConsole, loading: capLoading } = useCapabilities();
 
   if (loading || capLoading) return null;
 
   if (!authState) {
     return <Navigate to="/login" replace />;
+  }
+
+  // `capLoading` is the CAPABILITIES fetch and does not cover deployment
+  // detection. `role` is derived from `deployment`, so it is null while
+  // `/auth/config` is in flight and `canManageConsole` answers false — not
+  // "unknown" — which redirected a cloud operator off their own bookmark with
+  // `replace`. Two different fetches, both of which have to have landed.
+  if (configStatus !== 'ok') {
+    return <DeploymentUndetermined />;
   }
 
   // Same predicate the nav item uses (anti-drift): the console is unreachable by
