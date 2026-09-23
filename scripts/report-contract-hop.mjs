@@ -116,14 +116,19 @@ function entriesBetween(source, from, to) {
         .trim(),
     });
   }
-  // ‼ VERSION order, not file order. The notes are deliberately not in version
-  // order (the docstring above says why), so walking `headers` emits whatever
-  // order the file happens to have. Measured on the 6.2.0 -> 9.0.0 hop: 8.0.0,
-  // 7.2.0, 7.1.0, 7.0.0, 9.0.0 — the newest MAJOR printed LAST, behind a
-  // 16,241-character entry. This tool's whole argument is that a disclosure
-  // destroyed by volume is worse than none; burying the newest change under
-  // the longest one is that failure in miniature.
-  found.sort((a, b) => compare(a.version, b.version));
+  // ‼ NEWEST FIRST. The notes are deliberately not in version order (the
+  // docstring above says why), so walking `headers` emits whatever order the
+  // file happens to have: on the real 6.2.0 -> 9.0.0 hop that was 8.0.0,
+  // 7.2.0, 7.1.0, 7.0.0, 9.0.0 — the newest MAJOR last, behind a
+  // 16,241-character entry.
+  //
+  // Sorting ASCENDING does not fix that and was the first attempt here: it
+  // left 9.0.0 at character offset 21,108 of 22,691 — still last — and moved
+  // the 16k entry to the FRONT, so a skimmer hit the wall immediately instead
+  // of eventually. Measured both ways. Descending is what the argument
+  // actually asks for: the change most likely to break a client is the one a
+  // reviewer should meet first.
+  found.sort((a, b) => compare(b.version, a.version));
   return found.map((entry) => entry.text);
 }
 
@@ -182,31 +187,49 @@ export function describe({ before, after, notes }) {
 // Retried AND authenticated AND drained, because three different things can
 // silence this disclosure and only one of them is a blip.
 //
-//  - AUTH. `check-copilot-ui-pin.mjs` one file over already says why:
-//    "raw.githubusercontent is rate-limited per IP and CI shares a pool, so an
-//    unauthenticated read is a coin flip". A 429 resets on an hourly window,
-//    so retrying at t+0/2/4s gets the same 429 three times. The retry treats a
-//    symptom the token removes.
+//  - AUTHENTICATED, and the reasoning here was wrong once in each direction.
+//    First a token was added on rate-limit grounds alone; then it was removed
+//    on the grounds that a repo-scoped workflow token cannot read another
+//    repository's raw file — probed, and the probe answered 200
+//    unauthenticated, 404 with an unusable bearer, which says only what a
+//    BROKEN bearer does. What a VALID cross-repo one does is settled by the
+//    `copilot-ui-pin` job in faultmaven-dashboard's ci.yml: it sends that
+//    repository's own workflow token to
+//    raw.githubusercontent.com/FaultMaven/faultmaven-copilot AND to
+//    .../FaultMaven/faultmaven, and prints the contract it read from both. A
+//    public raw read accepts any valid token; it is the INVALID one that 404s
+//    instead of falling back to anonymous.
+//
+//    So the header is worth having — `check-copilot-ui-pin.mjs` one file over
+//    says why: "raw.githubusercontent is rate-limited per IP and CI shares a
+//    pool, so an unauthenticated read is a coin flip", and a 429 resets on an
+//    hourly window that retrying at t+0/2/4s cannot outwait.
+//
+//    ‼ It is set ONLY from the environment, and only when present. A token
+//    that is set but unusable fails CLOSED — 404, taken as an answer, and the
+//    hop degrades to "unlisted" behind `continue-on-error`. That is the one
+//    real hazard, it is why nothing here invents a token, and it is the same
+//    exposure the sibling gate already carries.
 //  - DRAINING. An un-consumed response body keeps the socket alive and the
 //    process never exits — measured: three un-drained 503s hang `node` until
-//    killed, and no job in ci.yml sets `timeout-minutes`, so the default is
-//    SIX HOURS. `continue-on-error` does not rescue a hang; it only forgives a
-//    non-zero exit. The retry made this worse before this fix, leaving up to
-//    three bodies open where the original left one.
+//    killed. `continue-on-error` does not rescue a hang; it only forgives a
+//    non-zero exit.
 //  - A DEADLINE. Without a signal, undici's 300s headersTimeout applies per
-//    attempt, so the retry tripled the worst-case stall to ~15 minutes.
-//
-// Retried for genuine blips, which is what the retry is actually for.
+//    attempt, so a retry loop multiplies the worst-case stall.
 const NOTES_ATTEMPTS = 3;
 const NOTES_RETRY_MS = 2000;
 const NOTES_TIMEOUT_MS = 15000;
 
-async function fetchNotes(pin) {
+// The statuses worth another attempt. 403 belongs here: it is one of the two
+// GitHub uses for a secondary rate limit, so treating it as an answer drops
+// the retry in precisely the case a retry is for.
+const NOTES_RETRY_STATUSES = new Set([403, 429]);
+
+export async function fetchNotes(pin) {
   const url = `https://raw.githubusercontent.com/${pin.repository}/${pin.ref}/faultmaven/api/contract_version.py`;
   const headers = { 'User-Agent': 'faultmaven-contract-hop' };
-  if (process.env.GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  }
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
   for (let attempt = 1; attempt <= NOTES_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetch(url, {
@@ -214,14 +237,16 @@ async function fetchNotes(pin) {
         signal: AbortSignal.timeout(NOTES_TIMEOUT_MS),
       });
       if (response.ok) return await response.text();
-      // Drain before deciding anything: the early return below would otherwise
+      // Drain before deciding anything: an early return below would otherwise
       // leave the socket open for the life of the process.
       await response.body?.cancel();
-      // Any non-429 4xx is an ANSWER, not a blip — the same rule
-      // `check-copilot-ui-pin.mjs` applies, and it is the rule rather than a
-      // 404 special-case because raw.githubusercontent also 404s a ref it has
-      // not yet propagated.
-      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+      // Any other 4xx is an ANSWER, not a blip — a missing ref, a repository
+      // rename — and retrying cannot change it.
+      if (
+        response.status >= 400 &&
+        response.status < 500 &&
+        !NOTES_RETRY_STATUSES.has(response.status)
+      ) {
         return '';
       }
     } catch {
