@@ -1,7 +1,6 @@
 import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import { canManageUsers } from '../lib/access';
+import { GatedRoute } from './GatedRoute';
 
 interface AdminProtectedRouteProps {
   children: ReactNode;
@@ -17,19 +16,18 @@ interface AdminProtectedRouteProps {
  * nav. Both this guard and the navigation hook delegate to `canManageUsers`, so
  * they can never drift (the drift that previously let a standalone admin reach
  * /admin/users directly, since the standalone operator carries the `admin` role).
+ *
+ * `requires: { deployment: true }` because `canManageUsers` needs a confirmed
+ * `'cloud'` and therefore answers *false* — not "unknown" — while `/auth/config`
+ * is in flight. `GatedRoute` owns what happens in that window and why.
  */
 export function AdminProtectedRoute({ children }: AdminProtectedRouteProps) {
-  const { authState, loading, deployment, role } = useAuth();
-
-  if (loading) return null;
-
-  if (!authState) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!canManageUsers(deployment, role)) {
-    return <Navigate to="/cases" replace />;
-  }
-
-  return <>{children}</>;
+  return (
+    <GatedRoute
+      requires={{ deployment: true }}
+      allow={({ deployment, role }) => canManageUsers(deployment, role)}
+    >
+      {children}
+    </GatedRoute>
+  );
 }

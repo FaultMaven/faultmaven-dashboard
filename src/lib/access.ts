@@ -109,10 +109,14 @@ export function canUseTeams(teamSharing: boolean): boolean {
  * unconfirmed deployment is a real state on every hard refresh and for as long
  * as that endpoint is unreachable. A gate that failed CLOSED here would bounce
  * a cloud operator off their own bookmark — destructive, and for a client-side
- * check whose authority is the backend anyway. `AllCasesRoute` therefore blanks
- * while `configStatus` is `'pending'` and decides once it settles; if detection
- * never lands, this allows, and the server still refuses anyone who should not
- * be here.
+ * check whose authority is the backend anyway. ‼ `AllCasesRoute` therefore
+ * decides IMMEDIATELY and lists nothing in its `GatedRoute` `requires` — an
+ * earlier revision blanked it while `configStatus` was `'pending'`, which was
+ * wrong twice: no `configStatus` value means "detection has settled" (it flips to
+ * 'unreachable' after the FIRST failed probe, then runs the ladder), and the nav
+ * item has no such wait, so the pair offered a link that led to a blank page.
+ * While detection is out this allows, and the server still refuses anyone who
+ * should not be here.
  *
  * ONE predicate for the nav item AND the route, which is the point. #177 split
  * them — a deployment-blind guard plus an `offersAllCasesNav` offer — purely to

@@ -26,9 +26,24 @@ import type { MetaCapabilities } from '../../types/meta';
  * The core has served this path since bf41e0fda and keeps the alias for older
  * clients, so this is a client-side correction only.
  */
+/**
+ * Per-attempt bound, mirroring `CONFIG_FETCH_TIMEOUT_MS` in AuthContext and for
+ * the same reason stated there: without it a blackholed host (firewall DROP, an
+ * unanswered Chrome local-network prompt) hangs this fetch for the browser's TCP
+ * timeout, so `useCapabilities().loading` never goes false.
+ *
+ * That is not cosmetic. Route guards gate on `capLoading` and render nothing
+ * while it is true, so an unbounded fetch is an indefinite blank page — measured
+ * on `/admin/organization`, which sat empty with no affordance while
+ * `/admin/users` (whose guard reads no capability) showed its retry card.
+ */
+const CAPABILITIES_FETCH_TIMEOUT_MS = 8_000;
+
 export async function getCapabilities(): Promise<MetaCapabilities> {
   const path = '/api/v1/meta/capabilities';
-  const response = await fetch(`${config.apiUrl}${path}`);
+  const response = await fetch(`${config.apiUrl}${path}`, {
+    signal: AbortSignal.timeout(CAPABILITIES_FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) {
     throw new Error(`capabilities fetch failed: ${response.status}`);
   }
