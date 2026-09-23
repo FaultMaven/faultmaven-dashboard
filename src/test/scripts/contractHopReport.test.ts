@@ -51,6 +51,49 @@ describe('the hop report', () => {
     expect(out).toContain('One contract adopted');
     expect(out).toContain('The ordinal reaches the evidence rows');
     expect(out).not.toContain('contracts adopted, not one');
+    // ‼ And ONLY that entry. This assertion is the one that was missing: the
+    // file's every subsequent header is itself a `#` line, so a walk bounded
+    // only by "not a comment" runs through all of them and the newest entry
+    // absorbs the whole history below it. On the real file that is 6,236 lines
+    // instead of 370 — under a heading that correctly counts the contracts.
+    // Without these two lines, reverting the `limit` bound leaves 23/23 green.
+    expect(out).not.toContain('The ordinal reaches the conversation rows');
+    expect(out).not.toContain('The first act of the version');
+  });
+
+  it('never pastes code into the prose', () => {
+    // The OTHER half of the same boundary, and the first version's bug: the
+    // last entry in the file has no header after it, so a next-header-only
+    // rule runs it to EOF and `API_CONTRACT_VERSION` lands in the disclosure.
+    // Both halves are load-bearing; each alone has already shipped.
+    const out = describeHop({ before: pin('2.0.0'), after: pin('3.6.0'), notes: NOTES });
+    expect(out).toContain('Upload gains `scope`');
+    expect(out).not.toContain('API_CONTRACT_VERSION =');
+  });
+
+  it('prints the entries in VERSION order, not file order', () => {
+    // The notes are deliberately out of order, so walking the file emits them
+    // that way. Measured on the real 6.2.0 -> 9.0.0 hop before this was fixed:
+    // 8.0.0, 7.2.0, 7.1.0, 7.0.0, 9.0.0 — the newest MAJOR last, behind a
+    // 16,241-character entry, in a tool whose argument is that a disclosure
+    // destroyed by volume is worse than none.
+    const out = describeHop({ before: pin('2.0.0'), after: pin('3.7.0'), notes: NOTES });
+    const order = [...out.matchAll(/(\d+\.\d+\.\d+) — /g)].map((m) => m[1]);
+    expect(order).toEqual([...order].sort());
+  });
+
+  it('reads CRLF notes as cleanly as LF', () => {
+    // `contract_version.py` is read over the network; a CRLF checkout or a
+    // proxy that rewrites line endings would otherwise leave a carriage
+    // return on every emitted line. Every other fixture here joins with '\n',
+    // so nothing else in this file can tell the two apart.
+    const out = describeHop({
+      before: pin('3.6.0'),
+      after: pin('3.7.0'),
+      notes: NOTES.replace(/\n/g, '\r\n'),
+    });
+    expect(out).toContain('The ordinal reaches the evidence rows');
+    expect(out).not.toContain('\r');
   });
 
   it('WARNS when the bump crossed more than one', () => {
