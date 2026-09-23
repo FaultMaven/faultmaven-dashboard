@@ -68,15 +68,22 @@ const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 /**
  * The entries strictly above `from` and at or below `to`.
  *
- * An entry ends at the next header OR at the first line that is not a comment
- * — NOT merely at the next header. The notes are not in version order (3.6.0
- * sits below 2.0.0, because "#1389 took 3.5.0 while this sat in review"), so
- * the last entry in the file has no header after it and a next-header-only rule
- * runs it to EOF, pasting `API_CONTRACT_VERSION = "3.7.0"` into the prose. That
- * is not hypothetical: it is what the first version of this script printed.
+ * An entry ends at the next header OR at the first line that is not a comment,
+ * and BOTH halves are load-bearing — each one alone has already shipped a bug.
+ *
+ * Without the not-a-comment half: the notes are not in version order (3.6.0
+ * sits below 2.0.0, because "#1389 took 3.5.0 while this sat in review"), so the
+ * last entry in the file has no header after it, a next-header-only rule runs it
+ * to EOF, and `API_CONTRACT_VERSION` lands in the prose. That is what the first
+ * version of this script printed.
+ *
+ * Without the next-header half: every subsequent header is itself a `#` line, so
+ * the walk passes through all of them and the newest entry absorbs the whole
+ * file below it — 528 lines for a single-contract hop, under a heading that said
+ * "One contract adopted". That is what the second version printed.
  */
 function entriesBetween(source, from, to) {
-  const lines = source.split('\n');
+  const lines = source.split(/\r?\n/);
   const headers = [];
   lines.forEach((line, i) => {
     const match = /^#\s+(\d+\.\d+\.\d+)\s+[—-]\s/.exec(line);
@@ -84,10 +91,16 @@ function entriesBetween(source, from, to) {
   });
 
   const found = [];
-  for (const { index, version } of headers) {
+  for (const [k, { index, version }] of headers.entries()) {
     if (!version || compare(version, from) <= 0 || compare(version, to) > 0) continue;
+    // Both halves of the boundary, in one expression each: `limit` is the next
+    // header (the ordering `headers` already has, so no lookup is needed), and
+    // the loop condition is the not-a-comment half.
+    const limit = headers[k + 1]?.index ?? lines.length;
     let end = index + 1;
-    while (end < lines.length && (lines[end].startsWith('#') || lines[end].trim() === '')) end += 1;
+    while (end < limit && (lines[end].startsWith('#') || lines[end].trim() === '')) {
+      end += 1;
+    }
     found.push(
       lines
         .slice(index, end)
@@ -151,16 +164,35 @@ export function describe({ before, after, notes }) {
   );
 }
 
+// Retried, because the failure mode is silent and expensive. One flaked GET
+// is swallowed below and `describe()` degrades to "what this crossed is
+// unlisted" — on precisely the pull requests where the list matters most, the
+// large hops. Recovering means re-running a ~10-minute job (install, spec
+// download, full client regeneration) to retry one text fetch. The CI step
+// alongside this one already curls the same host with `--retry 3
+// --retry-delay 2 --retry-all-errors`; this is that, in-process.
+const NOTES_ATTEMPTS = 3;
+const NOTES_RETRY_MS = 2000;
+
 async function fetchNotes(pin) {
-  try {
-    const response = await fetch(
-      `https://raw.githubusercontent.com/${pin.repository}/${pin.ref}/faultmaven/api/contract_version.py`,
-      { headers: { 'User-Agent': 'faultmaven-contract-hop' } },
-    );
-    return response.ok ? await response.text() : '';
-  } catch {
-    return '';
+  const url = `https://raw.githubusercontent.com/${pin.repository}/${pin.ref}/faultmaven/api/contract_version.py`;
+  for (let attempt = 1; attempt <= NOTES_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'faultmaven-contract-hop' },
+      });
+      if (response.ok) return await response.text();
+      // A 404 is an answer, not a blip: the ref has no such file, and retrying
+      // cannot change that. Only transient-looking failures are worth a retry.
+      if (response.status === 404) return '';
+    } catch {
+      // fall through to the retry
+    }
+    if (attempt < NOTES_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, NOTES_RETRY_MS));
+    }
   }
+  return '';
 }
 
 // `import.meta.main` is not available on every Node this repo supports, so the
