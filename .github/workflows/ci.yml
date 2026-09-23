@@ -266,9 +266,12 @@ jobs:
         if: success()
         continue-on-error: true
         # Raises the raw.githubusercontent rate limit off the shared runner IP,
-        # for the same reason the pin-check job above sets it: unauthenticated
-        # reads from a shared pool are a coin flip, and a 429 resets hourly, so
-        # the script's retry cannot clear one. Without this the disclosure
+        # for the same reason the `copilot-ui-pin` job above sets it: an
+        # unauthenticated read from a shared pool is a coin flip, and a 429
+        # resets hourly, so the script's retry cannot clear one. That job is
+        # also the proof this WORKS cross-repository — it sends this token to
+        # FaultMaven/faultmaven-copilot and to FaultMaven/faultmaven and
+        # prints the contract it read from each. Without it the disclosure
         # degrades to "unlisted" on exactly the large hops that need it.
         env:
           GITHUB_TOKEN: ${{ github.token }}
