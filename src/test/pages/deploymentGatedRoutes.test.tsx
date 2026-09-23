@@ -63,8 +63,16 @@ vi.mock('../../lib/organization/api', () => ({
   getOrganization: vi.fn().mockResolvedValue(null),
 }));
 
+// The WHOLE tuple. `GatedRoute` reads `error` and `refetch` too, and a double
+// that omits them is not neutral — it decides differently from the real hook.
 vi.mock('../../hooks/useCapabilities', () => ({
-  useCapabilities: () => ({ managementConsole: true, teamSharing: false, loading: false }),
+  useCapabilities: () => ({
+    managementConsole: true,
+    teamSharing: false,
+    loading: false,
+    error: null,
+    refetch: vi.fn().mockResolvedValue(undefined),
+  }),
 }));
 
 import App from '../../App';
@@ -171,4 +179,30 @@ describe('when detection never lands', () => {
     expect(window.location.pathname).toBe('/admin/users');
     expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
   });
+});
+
+describe('a signed-out visitor', () => {
+  /**
+   * `!authState` sits ABOVE every fetch in `GatedRoute`, because authentication
+   * is knowable without the network and no request's answer can change where an
+   * unauthenticated visitor is going.
+   *
+   * Measured before the fix: with `/meta/capabilities` hanging, a signed-out
+   * visitor on `/admin/organization` was held on a blank page indefinitely and
+   * never reached `/login` — while the same visitor on `/admin/users`, whose
+   * guard read no capability, got there immediately. The principle was stated in
+   * one guard's comment and applied to one guard.
+   */
+  it.each(['/admin/users', '/admin/organization', '/teams', '/admin/cases'])(
+    'reaches /login from %s without waiting on any fetch',
+    async (path) => {
+      getAuthState.mockResolvedValue(null);
+      // Detection deliberately never settles: it must not matter.
+      deferredConfig();
+
+      await renderAppAt(path);
+
+      await waitFor(() => expect(window.location.pathname).toBe('/login'));
+    },
+  );
 });

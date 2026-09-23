@@ -49,7 +49,7 @@ describe('the path it requests', () => {
 
     await getCapabilities();
 
-    expect(fetchMock).toHaveBeenCalledWith('https://api.faultmaven.ai/api/v1/meta/capabilities');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.faultmaven.ai/api/v1/meta/capabilities');
   });
 
   it('is not the un-prefixed path the SPA rewrite would answer', async () => {
@@ -71,7 +71,7 @@ describe('the path it requests', () => {
 
     await sameOrigin();
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/meta/capabilities');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/meta/capabilities');
     vi.doUnmock('../../../config');
     vi.resetModules();
   });
@@ -107,5 +107,29 @@ describe('an outright failure', () => {
 
     await expect(getCapabilities()).rejects.toThrow(/503/);
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('the per-attempt timeout', () => {
+  /**
+   * ‼ LOAD-BEARING, not hygiene. Route guards render nothing while
+   * `useCapabilities().loading` is true, so an unbounded fetch is an indefinite
+   * blank page — measured on `/admin/organization`, which sat empty with no
+   * affordance under a blackholed host while `/admin/users` (whose guard reads no
+   * capability) showed its retry card. AuthContext bounds `/auth/config` for
+   * exactly this reason; this call was the one that did not.
+   */
+  it('passes an abort signal, so a blackholed host cannot hang the fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ features: {} }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getCapabilities();
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit | undefined;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.signal?.aborted).toBe(false);
   });
 });
