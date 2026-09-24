@@ -19,3 +19,12 @@ export const COMMUNITY_SLACK_URL =
 
 /** The published investigation transcript — the zero-friction "see it work". */
 export const TRANSCRIPT_URL = 'https://www.faultmaven.ai/investigation';
+
+/**
+ * The marketing site's self-hosting landing, linked from the cloud sign-in
+ * screen: Cloud runs a fair-source engine anyone can run themselves.
+ *
+ * Points at the site's `/self-host` page, not the engine README directly, so
+ * the visit is counted by the site's page analytics.
+ */
+export const SELF_HOST_URL = 'https://www.faultmaven.ai/self-host';
