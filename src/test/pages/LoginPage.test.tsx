@@ -19,7 +19,7 @@ vi.mock('../../context/AuthContext', () => ({
 }));
 
 import LoginPage from '../../pages/LoginPage';
-import { COMMUNITY_SLACK_URL, TRANSCRIPT_URL } from '../../lib/community';
+import { COMMUNITY_SLACK_URL, SELF_HOST_URL, TRANSCRIPT_URL } from '../../lib/community';
 
 /**
  * Every non-test source under `src/`, read as text — the same globbing
@@ -97,6 +97,50 @@ describe('LoginPage', () => {
     }
   });
 
+  it('cloud mode: says the engine can be self-hosted, linking the site page that counts the visit', () => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      setAuthState: vi.fn(),
+    });
+
+    renderLogin();
+
+    const selfHost = screen.getByRole('link', { name: /run it yourself/i });
+    expect(selfHost).toHaveAttribute('href', SELF_HOST_URL);
+    expect(screen.getByText(/never locked in/i)).toBeInTheDocument();
+    // The site's /self-host page, not the README, so the visit is counted
+    // by the site's page analytics.
+    expect(new URL(SELF_HOST_URL).pathname).toBe('/self-host');
+  });
+
+  // Both arms of the sign-up gate, because the expectation is the screen's
+  // job whichever button it can offer — the hosted sign-up screen after it is
+  // configured in the IdP, not here.
+  it.each([
+    ['offers Create an account', true],
+    ['sends new users through the next screen', false],
+  ])('cloud mode (%s): says what an account is — run for you, same engine, free in beta, a daily limit', (_arm, canSignUp) => {
+    mockUseAuth.mockReturnValue({
+      deployment: 'cloud',
+      loginUrl: 'https://idp.example/login',
+      supportsScreenHint: canSignUp,
+      selfServiceSignupEnabled: canSignUp,
+      setAuthState: vi.fn(),
+    });
+
+    const { container } = renderLogin();
+
+    const text = container.textContent ?? '';
+    expect(text).toMatch(/FaultMaven run for you/i);
+    expect(text).toMatch(/same engine as the\s+self-hosted version/i);
+    expect(text).toMatch(/free while it is in beta/i);
+    expect(text).toMatch(/daily limit on investigation turns/i);
+    // Trial-funnel language implies a paywall on a date, and plan terms are
+    // compared on the pricing page, not the sign-in screen; nothing here may.
+    expect(text).not.toMatch(/free trial|trial ends|days left|upgrade|no usage limits/i);
+  });
+
   it('standalone mode: does not offer the no-account paths — the operator already chose', () => {
     mockUseAuth.mockReturnValue({
       deployment: 'standalone',
@@ -108,6 +152,9 @@ describe('LoginPage', () => {
 
     expect(screen.queryByRole('link', { name: /community slack/i })).toBeNull();
     expect(screen.queryByRole('link', { name: /read a real investigation/i })).toBeNull();
+    // The operator is already self-hosting; the Cloud expectation copy is not theirs.
+    expect(screen.queryByRole('link', { name: /run it yourself/i })).toBeNull();
+    expect(screen.queryByText(/daily limit on investigation turns/i)).toBeNull();
   });
 
   it('cloud mode: offers a real Create-an-account control, not a sentence about one', () => {

@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
 import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
-import { COMMUNITY_SLACK_URL, TRANSCRIPT_URL } from '../lib/community';
+import { COMMUNITY_SLACK_URL, SELF_HOST_URL, TRANSCRIPT_URL } from '../lib/community';
 
 const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 const warningBannerClass = 'mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn';
@@ -301,13 +301,35 @@ export default function LoginPage() {
 
           <p className="mt-3 text-center text-sm text-fm-text-secondary">
             {canOfferSignUp
-              ? 'Cloud beta is open — free while it is in beta.'
+              ? null
               : // NOT "signing in creates your account": it does not. AuthKit's
                 // sign-in screen is a credentials form with a sign-up link on
                 // it, and claiming otherwise is the same false sentence #161
                 // removed — a dead button traded for an untrue claim. Say what
                 // the next screen actually requires.
-                'New here? Choose “Sign up” on the next screen. Cloud beta is free while it is in beta.'}
+                'New here? Choose “Sign up” on the next screen. '}
+            {/* What a new account is. This screen owns that, because the
+                hosted sign-up screen after it is configured in the IdP, not
+                here. No trial, no paywall date, and the limit named rather
+                than discovered mid-case. */}
+            FaultMaven Cloud is FaultMaven run for you, on the same engine as the
+            self-hosted version. It is free while it is in beta, with a daily
+            limit on investigation turns.
+          </p>
+
+          {/* The engine is fair source and self-hostable. Plan terms are
+              compared on the marketing site's pricing page, not here. */}
+          <p className="mt-3 text-center text-sm text-fm-text-secondary">
+            The engine is fair source, and you can also{' '}
+            <a
+              href={SELF_HOST_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-fm-accent hover:underline"
+            >
+              run it yourself
+            </a>{' '}
+            — so you are never locked in.
           </p>
 
           <div className="mt-8 pt-6 border-t border-fm-border">
