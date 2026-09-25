@@ -125,8 +125,9 @@ Cloud hosted-login return leg; public — it IS the login. The backend redirects
 here with a single-use completion `code` (+ optional same-origin `return_to`) or
 a sanitized `error` slug; the page POSTs `{code}` to
 `/api/v1/auth/sso/exchange`, stores the standard token response exactly like a
-LoginPage sign-in, and forwards to the explicit `return_to` when one was
-carried, otherwise to `resolvePostSignInLanding()` — the same landing a
+LoginPage sign-in, and forwards to the backend-echoed `return_to`, else the
+ProtectedRoute-saved destination (`sessionStorage` `oauth_redirect_after_login`,
+cleared on success), else `resolvePostSignInLanding()` — the same landing a
 LoginPage sign-in gets. Error slugs map to friendly messages with a "Back to
 sign in" link; raw query content is never echoed. The handled slugs are a
 cross-repo contract that `openapi.json` does not carry; `pnpm check:sso-slugs`

@@ -94,8 +94,8 @@ src/
 ├── hooks/                   # useKBList, useCaseList, useCapabilities, useAvailableScopes, useChatSurface,
 │                            #   useCopilotPresence, useDockFits, useNavigationItems, useTeamSharing
 ├── lib/
-│   ├── api.ts               # Barrel over the per-area clients below (its header calls it backward-compat;
-│   │                        #   the pages import through it)
+│   ├── api.ts               # Backward-compat barrel over auth/cases/knowledge/llm/users (+ listTeams);
+│   │                        #   the newer clients are imported from their module (see Conventions)
 │   ├── auth/                # AuthManager, devLogin/ssoExchange/logoutAuth, landing.ts, hostedLoginUrl,
 │   │                        #   ssoErrors, crossTab, lnaDiagnosis
 │   ├── cases/               # Cases API + conversationSurface.ts (the one rule), dockPreference.ts,
@@ -119,7 +119,9 @@ src/
 
 - TypeScript strict, no `any` (`no-explicit-any` warns locally and blocks CI)
   and no escape hatches in app code: no `@ts-ignore` / `@ts-expect-error`
-  (there are none under `src/` outside tests).
+  (there are none under `src/` outside tests), and no `as unknown as T` to
+  force a value's type — read the value in a way that types correctly (the
+  one under `src/` is the `window.browser` polyfill install in `storage.ts`).
 - Path aliases: `~/*` → `src/*`, `~lib/*` → `src/lib/*` (`tsconfig.json` and
   `vite.config.ts` both declare them).
 - Auth state through `AuthContext` / `AuthManager`; never read the auth keys
@@ -134,10 +136,13 @@ src/
 - Gate on an advertised capability, never on a version, and absent reads as NO
   (`=== true`): `useCapabilities` (`/meta/capabilities`) and the `oauth.*` flags
   on `/auth/config` share the convention.
-- KB lists go through `useKBList` (paging / search / delete). API clients live
-  under `src/lib/<area>/` and are re-exported by the `src/lib/api.ts` barrel,
-  which is what the pages import from; a new client goes in its area module
-  and is added to the barrel.
+- KB lists go through `useKBList` (paging / search / delete). The older
+  clients (`auth`, `cases`, `knowledge`, `llm`, `users`) are re-exported by
+  `src/lib/api.ts` — a backward-compat barrel by its own header — and pages
+  import those through it; the newer clients (`teams`, `organization`,
+  `breakGlass`, `api/oauth`, `meta`) are not in the barrel (only `listTeams`
+  is) and are imported from their module directly. A new client goes in
+  `src/lib/<area>/` and is imported directly.
 - Modal dialogs carry `role="dialog"` and `aria-modal`; a control the user is
   standing on is never unmounted to change its label (focus would drop to
   `<body>`).
