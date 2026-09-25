@@ -116,8 +116,8 @@ export type EnvConfigStatus = Omit<
 // `types/contractGuards.ts`; the short version is that `Omit` is blind to the
 // rename it looks like it catches, so the keys half is not optional.
 //
-// These live in an app file, not a test: `tsconfig.json` excludes
-// `src/test/**` and CI's only typecheck runs against it. They erase completely.
+// These live in an app file, not a test, so the app's own typecheck enforces
+// them (see `types/contractGuards.ts`). They erase completely.
 export type LlmTypeGuards = {
   provider: GuardNarrowing<components['schemas']['LLMProviderDetail'], LLMProvider>;
   config: GuardNarrowing<components['schemas']['LLMConfigResponse'], LLMConfig>;

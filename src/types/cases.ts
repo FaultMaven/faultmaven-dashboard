@@ -319,9 +319,8 @@ export interface KnowledgeSuggestion {
 // with `null`, every `switch` falls through, and the ADR-012 origin badge
 // renders nothing with no error.
 //
-// They live here, in an app file, because `tsconfig.json` excludes
-// `src/test/**` and CI's only typecheck (`pnpm typecheck`) runs against it —
-// an assertion in a test file is evaluated by nothing. They erase completely.
+// They live here, in an app file, so the app's own typecheck enforces them
+// (see `types/contractGuards.ts`). They erase completely.
 export type CaseTypeGuards = {
   list: GuardNarrowing<components['schemas']['CaseListResponse'], CaseListResponse>;
   adminFull: GuardNarrowing<

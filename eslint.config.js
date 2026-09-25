@@ -14,7 +14,12 @@ export default tseslint.config(
       ecmaVersion: 2020,
       globals: globals.browser,
       parserOptions: {
-        project: ['./tsconfig.eslint.json', './tsconfig.node.json'],
+        // A file is typed by the FIRST project whose program contains it, so
+        // the order is load-bearing: app code resolves to tsconfig.json (the
+        // browser environment it ships to) even though tests import it into
+        // tsconfig.test.json's program too, and a test file — which no app
+        // module imports — falls through to tsconfig.test.json.
+        project: ['./tsconfig.json', './tsconfig.test.json', './tsconfig.node.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },

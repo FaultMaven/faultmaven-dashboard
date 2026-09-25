@@ -8,10 +8,11 @@
  * remove exhaustiveness checking from every consumer. Those narrowings are
  * claims about the contract, and this file is where the compiler checks them.
  *
- * ‼ THESE LIVE IN AN APP FILE, NOT A TEST. `tsconfig.json` excludes
- * `src/test/**` and CI's only typecheck (`pnpm typecheck`) runs against it, so
- * a type-level assertion written in a test file is evaluated by nothing. They
- * erase completely — no runtime cost, no emitted code.
+ * ‼ THESE LIVE IN AN APP FILE, NOT A TEST, so `pnpm typecheck` — the same
+ * check `pnpm build` runs — enforces them beside the types they guard.
+ * `tsconfig.json` excludes `src/test/**`; a test file is type-checked only by
+ * the separate `pnpm typecheck:tests`, under the test environment. They erase
+ * completely — no runtime cost, no emitted code.
  *
  * ## Why one helper per narrowing KIND, and no loose primitives
  *

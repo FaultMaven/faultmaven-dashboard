@@ -1,0 +1,27 @@
+{
+  // The project for TEST files: `pnpm typecheck:tests` checks it, and ESLint's
+  // typed linting reads it for them. tsconfig.json excludes every test so none
+  // can ship in the app build, and keeps checking (and, for ESLint, typing) all
+  // app code under the browser environment the app targets.
+  //
+  // Tests run under Vitest on Node, so this project describes that runtime
+  // instead: the ES2022 library (`Array.prototype.at` and friends; Node 20
+  // ships it) and Node's own modules, which some tests read the filesystem
+  // with. Node's types come from `src/test/node-env.d.ts`, a test-only ambient
+  // file, so `types` is inherited from tsconfig.json rather than restated.
+  //
+  // The include is all of `src`, not just the tests, so app code is checked a
+  // second time here, under the test environment. That is deliberate: the app
+  // declares some globals in files no module imports (`lib/auth/storage.ts`
+  // augments `Window`), and a program built from the tests and their imports
+  // alone misses them. It does not loosen the app: `pnpm typecheck` still
+  // checks every app file under tsconfig.json alone.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  // `exclude` is restated because an omitted one inherits the parent's, which
+  // drops every test.
+  "include": ["src"],
+  "exclude": ["dist", "node_modules"]
+}

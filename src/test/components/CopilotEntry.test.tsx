@@ -35,9 +35,7 @@ const PLACEHOLDER = 'https://chromewebstore.google.com/detail/faultmaven-copilot
 const LISTING_URL = /^https:\/\/chromewebstore\.google\.com\/detail\/[a-z0-9-]+\/[a-p]{32}$/;
 
 /**
- * Every non-test source under `src/`, read as text. Globbed through Vite rather
- * than `node:fs` because this repo ships no `@types/node`, so a filesystem walk
- * would be untyped.
+ * Every non-test source under `src/`, read as text, globbed through Vite.
  */
 const sources = import.meta.glob<string>(['../../**/*.{ts,tsx}', '!../../**/*.test.{ts,tsx}'], {
   query: '?raw',

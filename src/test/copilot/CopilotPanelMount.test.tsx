@@ -1,8 +1,4 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import {
-  DASHBOARD_PANEL_MESSAGE,
-  DASHBOARD_PANEL_WITHDRAWN_MESSAGE,
-} from '@faultmaven/copilot-ui/contract';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { ApiTransport, InitialCase, WiredHost } from '@faultmaven/copilot-ui';
@@ -73,6 +69,10 @@ vi.mock('../../config', () => ({
 
 import CopilotPanelMount from '../../copilot/CopilotPanelMount';
 import { PANEL_STORAGE_NAMESPACE } from '../../copilot/webHost';
+import {
+  DASHBOARD_PANEL_MESSAGE,
+  DASHBOARD_PANEL_WITHDRAWN_MESSAGE,
+} from '../../copilot/advertisement';
 
 const PROFILE = {
   user_id: 'u1',

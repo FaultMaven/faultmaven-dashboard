@@ -95,13 +95,6 @@ and adopted by moving the pin.
    - Dark code blocks with syntax highlighting
    - Hoverable source citations
 
-## Performance
-
-- Bundle size impact: ~2KB
-- Runtime: Optimized with memoization
-- No new dependencies
-- Backward compatible
-
 ## Supported PII Tokens (17 types)
 
 - US_DRIVER_LICENSE → Driver License

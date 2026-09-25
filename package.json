@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "typecheck:tests": "tsc -p tsconfig.eslint.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
     "generate:api-types": "node scripts/generate-api-types.mjs",
     "check:sso-slugs": "node scripts/check-sso-error-slugs.mjs",
     "test": "vitest",

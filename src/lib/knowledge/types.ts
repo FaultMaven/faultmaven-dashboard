@@ -154,13 +154,11 @@ export interface UploadAdminDocumentParams {
 // Compile-time guards
 // =============================================================================
 //
-// These live HERE, not in a test, and that placement is the whole point.
-// `tsconfig.json` excludes `src/test/**`, and CI's only typecheck is
-// `pnpm typecheck` (= `tsc --noEmit` against `tsconfig.json`), so a type
-// assertion written in a test file is checked by nothing: `pnpm lint:tests` is
-// ESLint and reports lint violations, not assignability, and
-// `tsc -p tsconfig.eslint.json` is run by no workflow. A type-level assertion
-// in an app file is enforced by the same build that ships.
+// These live HERE, not in a test: a type-level assertion in an app file is
+// enforced by `pnpm typecheck`, the same check the build that ships runs.
+// `tsconfig.json` excludes `src/test/**`, so a test file is type-checked only
+// by the separate `pnpm typecheck:tests` (and `pnpm lint:tests` is ESLint,
+// which reports lint violations, not assignability).
 //
 // They erase completely — no runtime cost, no emitted code.
 
