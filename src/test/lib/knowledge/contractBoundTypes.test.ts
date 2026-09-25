@@ -17,13 +17,9 @@ import { stripComments } from '../../support/stripComments';
  * `KBPage.canModifyDocument` read it inside a permission gate.
  *
  * ‼ THE TYPE-LEVEL GUARDS ARE NOT IN THIS FILE. They live at the bottom of
- * `src/lib/knowledge/types.ts`, because `tsconfig.json` excludes `src/test/**`
- * and CI's only typecheck is `pnpm typecheck` against it. A `const f = (d: A):
- * B => d` written here is checked by nothing — `lint:tests` is ESLint, which
- * reports lint violations and not assignability, and `tsc -p
- * tsconfig.eslint.json` is run by no workflow and is already red on main. An
- * assertion that no job evaluates is decoration; this file was drafted with
- * one, and it would have passed against any body at all.
+ * `src/lib/knowledge/types.ts`, so the app's own typecheck (`pnpm typecheck`,
+ * against `tsconfig.json`, which excludes `src/test/**`) enforces them beside
+ * the types they guard.
  *
  * What is left here is the SOURCE check — the thing a type cannot state:
  * that the binding is still spelled the way it has to be spelled.

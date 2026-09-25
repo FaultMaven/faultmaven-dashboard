@@ -131,7 +131,7 @@ describe('the turn a transcript DISPLAYS', () => {
   // `row`, not `aside`: these build ordinary investigation rows as often as
   // asides, and a helper named for one of the two reads as the opposite of
   // what half the fixtures assert.
-  const row = (id: string, role: string, clock: number, ordinal: number) =>
+  const row = (id: string, role: CaseMessage['role'], clock: number, ordinal: number) =>
     message({ message_id: id, role, turn_number: clock, investigation_turn: ordinal });
 
   it('prefers the row ordinal over its position in the list', () => {

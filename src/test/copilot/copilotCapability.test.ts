@@ -104,13 +104,8 @@ describe('the wire values this repo implements against', () => {
 });
 
 /**
- * The module under guard, read as TEXT through Vite's `?raw`.
- *
- * Not `node:fs`: this repo ships no `@types/node` (`tsconfig.json` pins
- * `types` to vite/react deliberately), so a `node:fs` import adds an error to
- * `tsc -p tsconfig.eslint.json`, the command CLAUDE.md prescribes for test
- * files. `packageImportBoundary.test.ts` and `CopilotEntry.test.tsx` both read
- * sources this way and both say why.
+ * The module under guard, read as TEXT through Vite's `?raw`, the way
+ * `packageImportBoundary.test.ts` and `CopilotEntry.test.tsx` read sources.
  */
 const capabilitySources = import.meta.glob<string>('../../copilot/copilotCapability.ts', {
   query: '?raw',

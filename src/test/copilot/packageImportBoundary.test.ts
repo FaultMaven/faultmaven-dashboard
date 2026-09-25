@@ -26,9 +26,7 @@ import { describe, it, expect } from 'vitest';
 const PACKAGE = '@faultmaven/copilot-ui';
 
 /**
- * Every non-test source under `src/`, as text. Globbed through Vite rather than
- * `node:fs` because this repo ships no `@types/node` (same reason as
- * CopilotEntry.test.tsx).
+ * Every non-test source under `src/`, as text, globbed through Vite.
  */
 const sources = import.meta.glob<string>(['../../**/*.{ts,tsx}', '!../../**/*.test.{ts,tsx}'], {
   query: '?raw',

@@ -7,9 +7,9 @@ import { findGuardCalls, findNarrowings } from '../support/contractNarrowings';
  * ONE subject for every contract guard in the app (#174).
  *
  * This replaces the per-file source checks that grew alongside #171–#173. The
- * guards themselves are type-level and live in app files — `tsconfig.json`
- * excludes `src/test/**` and CI's only typecheck runs against it, so an
- * assertion written here is evaluated by nothing. What this file holds is the
+ * guards themselves are type-level and live in app files, where the app's own
+ * typecheck (`pnpm typecheck`, against `tsconfig.json`, which excludes
+ * `src/test/**`) enforces them. What this file holds is the
  * SHAPE of them: that every narrowing has one, that the guard names the right
  * pair, and that the helpers are still spelled the way they have to be spelled.
  *
@@ -34,8 +34,8 @@ import { findGuardCalls, findNarrowings } from '../support/contractNarrowings';
  * co-located `.test.ts(x)` files. There are 11 of those under `src/lib`; with
  * only the first exclusion they are swept as app code, and a fixture narrowing
  * inside one would demand a `GuardNarrowing` be written INTO a test file —
- * where the constraint is evaluated by nothing. That is the exact trap this
- * whole module exists to warn about, enforced by the test.
+ * outside the app typecheck that gates the build, which is the placement this
+ * whole module exists to prevent, enforced by the test.
  *
  * `api.generated.ts` is excluded because it IS the contract — the thing
  * narrowings are checked against, not one of them. Excluding in the glob rather

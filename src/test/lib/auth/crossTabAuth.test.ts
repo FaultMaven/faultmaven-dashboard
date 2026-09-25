@@ -47,7 +47,7 @@ function installGlobals() {
     addEventListener: (type: string, fn: (e: StorageEvent) => void) => {
       if (type === 'storage') listeners.push(fn);
     },
-    removeEventListener: (type: string, fn: (e: StorageEvent) => void) => {
+    removeEventListener: (_type: string, fn: (e: StorageEvent) => void) => {
       const i = listeners.indexOf(fn);
       if (i >= 0) listeners.splice(i, 1);
     },

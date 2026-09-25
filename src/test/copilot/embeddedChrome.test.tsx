@@ -26,6 +26,7 @@ import CopilotPanel, {
   clearApiTransport,
   clearHostEndpoints,
   clearHostStore,
+  type AuthOutcome,
   type PanelChrome,
   type WiredHost,
 } from '@faultmaven/copilot-ui';
@@ -150,7 +151,7 @@ function stubHost(): WiredHost {
         roles: ['user'],
       },
       accessToken: async () => 'tok-live',
-      onUnauthorized: () => {},
+      onUnauthorized: (): AuthOutcome => 'ended',
       signOut: null,
       subscribeAuthState: () => () => {},
     },

@@ -687,10 +687,7 @@ describe('CaseListPage — the date column follows the creation-date filter', ()
 
     // The request really did go out without a bound — the column is agreeing
     // with the query, not merely being cautious.
-    // Indexed, not `.at(-1)`: `tsconfig.eslint.json`'s `lib` predates
-    // `Array.prototype.at`, and the test typecheck is held at zero NEW errors.
-    const { calls } = mockListCases.mock;
-    const sent = calls[calls.length - 1]?.[0];
+    const sent = mockListCases.mock.calls.at(-1)?.[0];
     expect(sent).toEqual({ date_from: '0002-09-14' });
 
     // ...and finishing the year swaps it, so this is not just "never swaps".

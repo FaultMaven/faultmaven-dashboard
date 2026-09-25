@@ -3,19 +3,21 @@
  * Fail if src/lib/auth/ssoErrors.ts does not handle exactly the SSO error slugs
  * the backend can emit.
  *
- * These slugs ride a 302 as `?error=` query params, so they appear nowhere in
- * openapi.json and `api-types-drift` is structurally blind to them. Nothing
- * connected the two sides: faultmaven#869 added `sso_org_unmapped` six days
- * after the callback page shipped, and the dashboard told every affected user
- * to "try again" — the one SSO failure retrying can never fix — until
- * faultmaven-dashboard#79.
+ * These slugs ride a 302 as `?error=` query params, so openapi.json carries
+ * none of them as a schema and `api-types-drift` is structurally blind to
+ * them. Nothing connected the two sides: faultmaven#869 added
+ * `sso_org_unmapped` six days after the callback page shipped, and the
+ * dashboard told every affected user to "try again" — the one SSO failure
+ * retrying can never fix — until faultmaven-dashboard#79.
  *
  * The backend's `_dashboard_redirect()` is the single writer of that param and
  * its `ERROR_*` module constants are the whole domain, so those constants are
- * the oracle. This reads them from faultmaven `main` — the same live-from-main
- * choice `generate:api-types` makes, and for the same reason: pinning a ref
- * stops unrelated PRs going red but recreates a lock that nothing forces anyone
- * to bump. Red-on-contract-change IS the signal.
+ * the oracle. This reads them from faultmaven `main`, NOT from the ref in
+ * api-contract.pin.json — unlike `generate:api-types` and `api-types-drift`,
+ * which read the pinned contract. That openapi.json does not carry the slugs
+ * (one is merely mentioned in an endpoint's description prose), and pinning a
+ * ref for them here would stop unrelated PRs going red but recreate a lock
+ * that nothing forces anyone to bump. Red-on-contract-change IS the signal.
  *
  *   pnpm check:sso-slugs                          # against faultmaven main
  *   pnpm check:sso-slugs --source ../faultmaven   # against a local checkout

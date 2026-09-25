@@ -6,9 +6,8 @@ import { stripComments } from '../../support/stripComments';
  * LLM config types are BOUND to the pinned contract, not restated (#165).
  *
  * The type-level guards are NOT here — they are at the bottom of
- * `src/types/llm.ts`, because `tsconfig.json` excludes `src/test/**` and CI's
- * only typecheck (`pnpm typecheck`) runs against it. An assertion in a test
- * file is evaluated by nothing.
+ * `src/types/llm.ts`, so the app's own typecheck (`pnpm typecheck`, against
+ * `tsconfig.json`, which excludes `src/test/**`) enforces them.
  *
  * The guards exist because `Omit` DOES NOT CATCH THE RENAME IT LOOKS LIKE IT
  * CATCHES. Its key parameter is `keyof any`, so `Omit<Wire, 'gone'>` omits

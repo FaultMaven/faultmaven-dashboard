@@ -13,8 +13,6 @@ export {
   getCaseUI,
   getCaseReports,
   getCaseReportDownloadUrl,
-  generateCaseReport,
-  getReportRecommendations,
 } from './api';
 
 /**
@@ -56,11 +54,6 @@ export type {
   CaseReport,
   CaseMessage,
   InvestigationStage,
-  ReportType,
-  ReportGenerationRequest,
-  ReportGenerationResponse,
-  ReportRecommendation,
-  RunbookRecommendation,
   SuggestionStatus,
   PIIScanStatus,
   KnowledgeSuggestion,

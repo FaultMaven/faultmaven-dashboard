@@ -252,28 +252,6 @@ export type CaseEvidenceListResponse = components['schemas']['CaseEvidenceListRe
 // ==================== Reports ====================
 
 export type CaseReport = components['schemas']['CaseReport'];
-export type ReportType = components['schemas']['ReportType'];
-export type ReportGenerationRequest = components['schemas']['ReportGenerationRequest'];
-export type ReportGenerationResponse = components['schemas']['ReportGenerationResponse'];
-
-/**
- * Report recommendations. The generated `ReportRecommendationResponse` types
- * `runbook_recommendation` as an opaque object (openapi-typescript loses the
- * nested schema), so these hand-written shapes are a strictly-better-typed
- * refinement of the same payload, not drift.
- */
-export interface ReportRecommendation {
-  case_id: string;
-  available_for_generation: ReportType[];
-  runbook_recommendation: RunbookRecommendation;
-}
-
-export interface RunbookRecommendation {
-  action: 'reuse' | 'review_or_generate' | 'generate';
-  existing_runbook?: CaseReport;
-  similarity_score?: number;
-  reason: string;
-}
 
 // ==================== Case issue (Issue tab view model) ====================
 // Frontend view model assembled from case detail + reports; no single backend type.
@@ -341,9 +319,8 @@ export interface KnowledgeSuggestion {
 // with `null`, every `switch` falls through, and the ADR-012 origin badge
 // renders nothing with no error.
 //
-// They live here, in an app file, because `tsconfig.json` excludes
-// `src/test/**` and CI's only typecheck (`pnpm typecheck`) runs against it —
-// an assertion in a test file is evaluated by nothing. They erase completely.
+// They live here, in an app file, so the app's own typecheck enforces them
+// (see `types/contractGuards.ts`). They erase completely.
 export type CaseTypeGuards = {
   list: GuardNarrowing<components['schemas']['CaseListResponse'], CaseListResponse>;
   adminFull: GuardNarrowing<

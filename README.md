@@ -127,9 +127,10 @@ pnpm install
 # Run dev server (requires backend at localhost:8090)
 pnpm dev
 
-# Lint and type-check (CI runs both)
+# Lint and type-check (CI runs all three)
 pnpm lint
-pnpm typecheck
+pnpm typecheck        # app code
+pnpm typecheck:tests  # test files
 
 # Run tests
 pnpm test
