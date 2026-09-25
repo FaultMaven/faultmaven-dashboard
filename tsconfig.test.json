@@ -5,10 +5,12 @@
   // app code under the browser environment the app targets.
   //
   // Tests run under Vitest on Node, so this project describes that runtime
-  // instead: the ES2022 library (`Array.prototype.at` and friends; Node 20
-  // ships it) and Node's own modules, which some tests read the filesystem
-  // with. Node's types come from `src/test/node-env.d.ts`, a test-only ambient
-  // file, so `types` is inherited from tsconfig.json rather than restated.
+  // instead: the ES2022 library (what Node 20 runs; today `@types/node` 20's
+  // compatibility shim also declares `.at`, so this line is what keeps `.at`
+  // typed when that shim goes) and Node's own modules, which some tests read
+  // the filesystem with. Node's types come from `src/test/node-env.d.ts`, a
+  // test-only ambient file, so `types` is inherited from tsconfig.json rather
+  // than restated.
   //
   // The include is all of `src`, not just the tests, so app code is checked a
   // second time here, under the test environment. That is deliberate: the app
