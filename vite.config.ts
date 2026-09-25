@@ -36,7 +36,10 @@ export default defineConfig({
     // Spread the defaults rather than replacing them: assigning `exclude`
     // overrides vitest's list wholesale, so a bare array would silently stop
     // excluding node_modules.
-    exclude: [...configDefaults.exclude, '**/.worktrees/**'],
+    //
+    // `.claude/worktrees/` is the location Claude Code checks its worktrees out
+    // under, and it is the same footgun in a second directory.
+    exclude: [...configDefaults.exclude, '**/.worktrees/**', '**/.claude/worktrees/**'],
     coverage: {
       provider: 'v8',
       // Ratchet floors set just below current coverage so it can't silently sink.

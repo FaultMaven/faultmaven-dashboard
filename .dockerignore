@@ -2,6 +2,10 @@ node_modules
 dist
 .git
 .gitignore
+# Git worktrees checked out under the repo: a second copy of the source tree
+# that `COPY . .` would otherwise ship into the build context.
+.worktrees
+.claude/worktrees
 *.md
 # Never bake developer env into the image. `COPY . .` in the build stage would
 # otherwise pull a local .env with VITE_* values straight into the bundle.
