@@ -15,9 +15,6 @@ import type {
   CaseUIResponse,
   CaseEvidenceListResponse,
   EvidenceDetails,
-  ReportGenerationRequest,
-  ReportGenerationResponse,
-  ReportRecommendation,
   UploadedFilesResponse,
   UploadedFileDetails,
 } from '../../types/cases';
@@ -343,30 +340,5 @@ export async function getCaseReports(caseId: string): Promise<CaseReport[]> {
  */
 export function getCaseReportDownloadUrl(caseId: string, reportId: string): string {
   return `${CASES_BASE}/${caseId}/reports/${reportId}/download`;
-}
-
-/**
- * Generate reports for a case.
- */
-export async function generateCaseReport(
-  caseId: string,
-  request: ReportGenerationRequest
-): Promise<ReportGenerationResponse> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/reports`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  });
-  await handleAPIResponse(response, 'Failed to generate report');
-  return response.json();
-}
-
-/**
- * Get report recommendations for a case.
- */
-export async function getReportRecommendations(caseId: string): Promise<ReportRecommendation> {
-  const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/report-recommendations`);
-  await handleAPIResponse(response, 'Failed to get report recommendations');
-  return response.json();
 }
 

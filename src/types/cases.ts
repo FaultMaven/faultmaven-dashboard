@@ -252,28 +252,6 @@ export type CaseEvidenceListResponse = components['schemas']['CaseEvidenceListRe
 // ==================== Reports ====================
 
 export type CaseReport = components['schemas']['CaseReport'];
-export type ReportType = components['schemas']['ReportType'];
-export type ReportGenerationRequest = components['schemas']['ReportGenerationRequest'];
-export type ReportGenerationResponse = components['schemas']['ReportGenerationResponse'];
-
-/**
- * Report recommendations. The generated `ReportRecommendationResponse` types
- * `runbook_recommendation` as an opaque object (openapi-typescript loses the
- * nested schema), so these hand-written shapes are a strictly-better-typed
- * refinement of the same payload, not drift.
- */
-export interface ReportRecommendation {
-  case_id: string;
-  available_for_generation: ReportType[];
-  runbook_recommendation: RunbookRecommendation;
-}
-
-export interface RunbookRecommendation {
-  action: 'reuse' | 'review_or_generate' | 'generate';
-  existing_runbook?: CaseReport;
-  similarity_score?: number;
-  reason: string;
-}
 
 // ==================== Case issue (Issue tab view model) ====================
 // Frontend view model assembled from case detail + reports; no single backend type.
