@@ -24,7 +24,7 @@ pnpm dev                     # Vite dev server on http://localhost:3333 (vite.co
 pnpm lint                    # ESLint over src/ — ignores src/test/**
 pnpm lint:tests              # ESLint over the test files
 pnpm typecheck               # tsc --noEmit against tsconfig.json — excludes tests
-npx tsc -p tsconfig.eslint.json --noEmit   # type-check the tests too (no gate runs it; see Testing)
+pnpm typecheck:tests         # tsconfig.test.json — type-checks the tests too (CI runs it)
 pnpm test                    # Vitest (watch); `pnpm test:coverage` is what CI runs
 pnpm build                   # tsc && vite build → dist/
 pnpm generate:api-types      # regenerate src/types/api.generated.ts from the pinned contract
@@ -37,7 +37,7 @@ node scripts/brand-lint.mjs  # brand terminology in README.md / package.json (wo
 
 CI (`.github/workflows/ci.yml`) runs `pnpm lint --max-warnings 0` — warnings
 are blocking there, including `@typescript-eslint/no-explicit-any` — then
-`pnpm typecheck`, `pnpm build` plus the two bundle checks, `pnpm test:coverage`,
+`pnpm typecheck`, `pnpm typecheck:tests`, `pnpm build` plus the two bundle checks, `pnpm test:coverage`,
 `pnpm audit --audit-level high`, the `copilot-ui-pin` / `sso-slug-drift` /
 `api-types-drift` jobs, a Docker image build with a Trivy scan, and an nginx
 smoke test.
@@ -150,23 +150,20 @@ src/
 ## Testing
 
 - `tsconfig.json` excludes `src/test/**` and `*.test.ts(x)` so tests never ship
-  in the app build, and `pnpm typecheck` runs against it. `tsconfig.eslint.json`
-  restates `include`/`exclude` to cover the tests for typed linting; use
-  `pnpm lint:tests` and `npx tsc -p tsconfig.eslint.json --noEmit` for them.
-- Nothing in CI runs `tsc -p tsconfig.eslint.json`, and on `main` it reports
-  pre-existing errors (`node:*` imports in a few tests against a project with
-  no `@types/node`; `.at()` under the ES2020 lib). Those are not a regression
-  of yours; do not add to them. The repo ships no `@types/node` (`tsconfig.json`
-  pins `types` to `vite/client`, `react`, `react-dom`), so a NEW test that needs
-  a source as text reads it through Vite `?raw` / `import.meta.glob`, not
-  `node:fs`.
+  in the app build; app files are typed by it, and `pnpm typecheck` runs
+  against it. `tsconfig.test.json` (ES2022 + Node via `src/test/node-env.d.ts`)
+  types the tests for both ESLint's typed linting and `pnpm typecheck:tests`;
+  use `pnpm lint:tests` and `pnpm typecheck:tests` for them.
+- `pnpm typecheck:tests` gates CI (the "Type-check tests" job) and must be
+  clean — tests have Node types and the ES2022 lib, so there are no
+  pre-existing `node:*` / `.at()` errors to carry.
 - Vitest runs on happy-dom with `src/test/setup.ts`; coverage floors live in
   `vite.config.ts` and are never lowered to make a PR pass. `.worktrees/` and
   `.claude/worktrees/` are excluded from the test glob (and from the Docker
   build context), because a worktree under the repo is collected as a second
   copy of the suite — `.gitignore` alone does not stop Vitest.
-- A type-level assertion in a test file is checked by nothing that gates CI;
-  contract guards live in app files (next section).
+- Contract guards live in app files (next section), where `pnpm typecheck`
+  enforces them; test files are checked separately by `pnpm typecheck:tests`.
 
 ## API contract
 

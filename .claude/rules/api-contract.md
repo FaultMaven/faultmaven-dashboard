@@ -75,9 +75,9 @@ through would be a DOWNGRADE that removes exhaustiveness checking from every
 consumer. So a narrowing is a *claim* about the contract, and every one carries
 a compile-time guard.
 
-‼ The guards live in **app files, never tests**. `tsconfig.json` excludes
-`src/test/**` and CI's only typecheck (`pnpm typecheck`) runs against it, so a
-type-level assertion in a test file is evaluated by nothing. They erase
+‼ The guards live in **app files, never tests**, so `pnpm typecheck` enforces
+them; `tsconfig.json` excludes `src/test/**` from it. Test files are checked
+separately, by `pnpm typecheck:tests` against `tsconfig.test.json`. They erase
 completely — no runtime cost.
 
 One helper per narrowing KIND, and each applies its whole pairing as a **single
