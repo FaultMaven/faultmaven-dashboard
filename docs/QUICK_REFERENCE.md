@@ -1,5 +1,12 @@
 # Quick Reference - Formatting Fixes
 
+This formatting belongs to the shared chat panel, `@faultmaven/copilot-ui`,
+which is developed in the faultmaven-copilot repository and consumed here at
+the commit pinned in `package.json`. The dashboard renders it wherever it
+mounts that panel: the case page (its conversation dock, or the Transcript tab
+at narrow width) and the Investigate page.
+None of the files below live in this repository.
+
 ## What Changed?
 
 ### 1. PII Tokens: Before → After
@@ -68,26 +75,25 @@ Click: Opens full document (if available)
 
 ## Files to Review
 
-1. **Main Component:** `src/shared/ui/components/InlineSourcesRenderer.tsx`
-2. **Text Processor:** `src/lib/utils/text-processor.ts`
-3. **Tests:** `src/test/utils/text-processor.test.ts`
+In the faultmaven-copilot repository (the package is its `packages/copilot-ui`):
+
+1. **Main Component:** `packages/copilot-ui/shared/ui/components/InlineSourcesRenderer.tsx`
+2. **Text Processor:** `packages/copilot-ui/lib/utils/text-processor.ts`
+3. **Tests:** `src/test/utils/text-processor.test.ts` (run them in that repository)
+
+In this repository the installed copy is under
+`node_modules/@faultmaven/copilot-ui/` — read-only; a change is made upstream
+and adopted by moving the pin.
 
 ## How to Verify
 
-1. Load the extension in Chrome
-2. Start a conversation
-3. Check for:
+1. Open one of your cases in the dashboard and start a conversation in its panel
+2. Check for:
    - Yellow badges instead of `<TOKEN>` markers
    - Fewer [1], [2], [3] markers in text
    - Proper markdown rendering (bold, code, lists)
    - Dark code blocks with syntax highlighting
    - Hoverable source citations
-
-## Testing
-
-Run tests: `pnpm test text-processor`
-
-Expected: ✅ 15 tests passing
 
 ## Performance
 
@@ -119,10 +125,12 @@ Expected: ✅ 15 tests passing
 ## Common Issues & Solutions
 
 **Issue:** PII tokens still showing as raw text
-**Solution:** Clear browser cache and reload extension
+**Solution:** Hard-reload the page, and check that `node_modules` matches the
+pinned package (`pnpm install`)
 
 **Issue:** Footnotes not removed
-**Solution:** Check that text-processor.ts is imported correctly
+**Solution:** The fix lives in the package's `text-processor.ts`; check the
+pinned commit includes it
 
 **Issue:** Markdown not rendering
 **Solution:** Verify ReactMarkdown plugins are loaded

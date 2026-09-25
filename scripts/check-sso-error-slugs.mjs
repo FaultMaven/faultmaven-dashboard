@@ -12,10 +12,12 @@
  *
  * The backend's `_dashboard_redirect()` is the single writer of that param and
  * its `ERROR_*` module constants are the whole domain, so those constants are
- * the oracle. This reads them from faultmaven `main` — the same live-from-main
- * choice `generate:api-types` makes, and for the same reason: pinning a ref
- * stops unrelated PRs going red but recreates a lock that nothing forces anyone
- * to bump. Red-on-contract-change IS the signal.
+ * the oracle. This reads them from faultmaven `main`, NOT from the ref in
+ * api-contract.pin.json — unlike `generate:api-types` and `api-types-drift`,
+ * which read the pinned contract. The slugs are not in that pinned
+ * openapi.json, and pinning a ref for them here would stop unrelated PRs going
+ * red but recreate a lock that nothing forces anyone to bump.
+ * Red-on-contract-change IS the signal.
  *
  *   pnpm check:sso-slugs                          # against faultmaven main
  *   pnpm check:sso-slugs --source ../faultmaven   # against a local checkout
