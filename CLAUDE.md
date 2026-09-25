@@ -162,8 +162,8 @@ src/
   `.claude/worktrees/` are excluded from the test glob (and from the Docker
   build context), because a worktree under the repo is collected as a second
   copy of the suite — `.gitignore` alone does not stop Vitest.
-- A type-level assertion in a test file is checked by nothing that gates CI;
-  contract guards live in app files (next section).
+- Contract guards live in app files (next section), where `pnpm typecheck`
+  enforces them; test files are checked separately by `pnpm typecheck:tests`.
 
 ## API contract
 
