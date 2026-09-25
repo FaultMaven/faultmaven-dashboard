@@ -88,7 +88,7 @@ pnpm install
 pnpm dev
 ```
 
-Access at `http://localhost:5173`.
+Access at `http://localhost:3333` (Vite's `server.port` in `vite.config.ts`; Vite picks the next free port if 3333 is already taken, for example by the Docker dashboard).
 
 > **Note**: You need the FaultMaven API running at `http://localhost:8090`. See [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/getting-started/local-setup.md).
 
