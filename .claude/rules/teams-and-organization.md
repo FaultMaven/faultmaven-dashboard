@@ -48,7 +48,6 @@ a deployment role), the invitations it has issued plus an invite-by-email form.
 Behind `ManagementConsoleRoute` (`canManageConsole`). The **billing**
 organization (ADR-017 D5): its name, slug, enterprise, member count, and the
 members with their **management** roles. `GET /admin/organization` answering
-**404 means the caller is in no organization** — the normal state for every beta
-account — and the client turns it into `null` so the page renders an empty state
-rather than a failure. No team management here at all; cloud contract 2.0.0
+**404 means the caller is in no organization**, and the client turns it into
+`null` so the page renders an empty state rather than a failure. No team management here at all; cloud contract 2.0.0
 deleted `/admin/teams*`.

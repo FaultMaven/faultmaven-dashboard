@@ -8,7 +8,16 @@ paths:
   - "src/components/AccountMenu.tsx"
   - "src/components/CasePanelMount.tsx"
   - "src/components/ConversationDock.tsx"
+  - "src/components/CaseTabs.tsx"
+  - "src/components/PageHeader.tsx"
+  - "src/pages/InvestigatePage.tsx"
+  - "src/App.tsx"
+  - "src/hooks/useNavigationItems.ts"
   - "src/test/copilot/**"
+  - "src/test/App.test.tsx"
+  - "src/test/hooks/useNavigationItems.test.ts"
+  - "src/test/components/PageHeaderNav.test.tsx"
+  - "src/test/scripts/gates.test.ts"
   - "src/test/lib/chatSurfacePreference.test.ts"
   - "src/test/components/CopilotEntry.test.tsx"
   - "src/test/components/AccountMenu.test.tsx"
@@ -79,8 +88,8 @@ change reaches both or reaches neither.
   repositories' `api-contract.pin.json` disagreeing. Staleness — the package
   having moved on — is an ADVISORY note only: copilot's main moves on its own,
   so failing on it would redden every open PR here and forbid developing the
-  two repositories together. Whether this job is *required* depends on the
-  ruleset applied to `main`; it is not required by default.
+  two repositories together. The job is a **required check** on `main`
+  (branch ruleset, alongside `Lint & Type Check` and `Pipeline Summary`).
 - **`pnpm check:web-boundary`** and **`pnpm check:shared-ui-styles`** run in the
   CI `lint` job after a build (that job already installs, and `build`/`smoke`
   already build the image twice — a further full build to ask two questions
@@ -101,10 +110,12 @@ change reaches both or reaches neither.
   rendering the real thing.
 - **State that lives outside React** — a DOM attribute another world writes,
   or a module-level store — is read with `useSyncExternalStore` over a
-  subscription (`copilotCapability.ts`, `chatSurfacePreference.ts`,
-  `useCopilotPresence.ts`), never with `useState` plus a one-shot re-check: a
-  signal that starts LATER (a host-permission grant on an already-open tab,
-  #144) is missed by any timer.
+  subscription, never with `useState` plus a one-shot re-check: a signal that
+  starts LATER (a host-permission grant on an already-open tab, #144) is missed
+  by any timer. `copilotCapability.ts` and `chatSurfacePreference.ts` export
+  the subscriptions; `useCopilotPresence`, `useChatSurface`,
+  `usePanelAdvertisement`, `useCapabilities`, `useAvailableScopes` and
+  `useDockFits` are the hooks that call it.
 
 ## Where chat lives: the preference (ADR-018 D3)
 

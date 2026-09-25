@@ -25,6 +25,7 @@ paths:
   - "src/test/components/IssueTab.test.tsx"
   - "src/test/components/BreakGlassRequestDialog.test.tsx"
   - "src/test/lib/cases/**"
+  - "src/test/lib/messageAttribution.test.tsx"
   - "src/test/hooks/useCaseList.test.ts"
   - "src/test/support/caseConversationLayout.ts"
   - "src/test/support/caseDateColumn.tsx"
@@ -128,6 +129,10 @@ everybody who never gets a side panel (Firefox, managed browsers, self-hosted).
 
 Case header (title, description, state badge, stage cell when investigating,
 case ID, created date) + tabbed content + resolution notes (terminal cases only).
+**Export / Archive to Markdown** (ADR-018 D2) is a read-only, client-side
+download: `fetchCaseMarkdown` (`src/lib/cases/exportMarkdown.ts`) builds the
+record and the page hands it to the browser as a `text/markdown` Blob — no
+state change on the server.
 
 - **ReportTab**: view-only display of auto-generated terminal summaries
   (resolution or closure), markdown-rendered, with download. No manual generate.

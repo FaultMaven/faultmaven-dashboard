@@ -24,7 +24,7 @@ pnpm dev                     # Vite dev server on http://localhost:3333 (vite.co
 pnpm lint                    # ESLint over src/ — ignores src/test/**
 pnpm lint:tests              # ESLint over the test files
 pnpm typecheck               # tsc --noEmit against tsconfig.json — excludes tests
-npx tsc -p tsconfig.eslint.json --noEmit   # type-check the tests too
+npx tsc -p tsconfig.eslint.json --noEmit   # type-check the tests too (no gate runs it; see Testing)
 pnpm test                    # Vitest (watch); `pnpm test:coverage` is what CI runs
 pnpm build                   # tsc && vite build → dist/
 pnpm generate:api-types      # regenerate src/types/api.generated.ts from the pinned contract
@@ -68,8 +68,9 @@ smoke test.
 
 ```
 src/
-├── App.tsx                  # Route table + the route guards (ProtectedRoute, AdminProtectedRoute,
-│                            #   GatedRoute predicates from lib/access.ts, ChatSurfaceRoute)
+├── App.tsx                  # Route table + the per-route wrappers (TeamsRoute, ManagementConsoleRoute,
+│                            #   AllCasesRoute, LLMConfigRoute, ChatSurfaceRoute); the guards they compose are
+│                            #   components/{ProtectedRoute,AdminProtectedRoute,GatedRoute}.tsx
 ├── config.ts                # getApiUrl() precedence + input limits (see Configuration)
 ├── pages/                   # One component per route: /login LoginPage · /signup SignUpPage ·
 │   │                        #   /auth/sso/callback SSOCallbackPage · /auth/authorize OAuthAuthorizePage ·
@@ -93,7 +94,8 @@ src/
 ├── hooks/                   # useKBList, useCaseList, useCapabilities, useAvailableScopes, useChatSurface,
 │                            #   useCopilotPresence, useDockFits, useNavigationItems, useTeamSharing
 ├── lib/
-│   ├── api.ts               # Barrel re-exporting the modular clients below
+│   ├── api.ts               # Barrel over the per-area clients below (its header calls it backward-compat;
+│   │                        #   the pages import through it)
 │   ├── auth/                # AuthManager, devLogin/ssoExchange/logoutAuth, landing.ts, hostedLoginUrl,
 │   │                        #   ssoErrors, crossTab, lnaDiagnosis
 │   ├── cases/               # Cases API + conversationSurface.ts (the one rule), dockPreference.ts,
@@ -116,25 +118,29 @@ src/
 ## Conventions
 
 - TypeScript strict, no `any` (`no-explicit-any` warns locally and blocks CI)
-  and no escape hatches: no `@ts-ignore`, and no cast to make a wrongly-typed
-  value compile — read the value in a way that types correctly instead.
+  and no escape hatches in app code: no `@ts-ignore` / `@ts-expect-error`
+  (there are none under `src/` outside tests).
 - Path aliases: `~/*` → `src/*`, `~lib/*` → `src/lib/*` (`tsconfig.json` and
   `vite.config.ts` both declare them).
-- Auth state through `AuthContext` / `AuthManager`; never read `localStorage`
-  directly. `src/lib/storage.ts` owns the prefixed codec (`STORAGE_KEY_PREFIX`)
-  and the `window.browser.storage` polyfill.
+- Auth state through `AuthContext` / `AuthManager`; never read the auth keys
+  from `localStorage` directly. `src/lib/storage.ts` owns the prefixed codec
+  (`STORAGE_KEY_PREFIX`) and the `window.browser.storage` polyfill.
 - State that lives outside React — a DOM attribute another world writes, or a
   module-level store — is read with `useSyncExternalStore` over a
   subscription, never `useState` plus a timed re-check (a signal that starts
-  later is missed by any timer): `src/copilot/copilotCapability.ts`,
-  `src/hooks/useCopilotPresence.ts`, `src/lib/copilot/chatSurfacePreference.ts`.
+  later is missed by any timer). The hooks that do this: `useChatSurface`,
+  `useCopilotPresence`, `useCapabilities`, `useAvailableScopes`, `useDockFits`,
+  and `src/copilot/usePanelAdvertisement.ts`.
 - Gate on an advertised capability, never on a version, and absent reads as NO
   (`=== true`): `useCapabilities` (`/meta/capabilities`) and the `oauth.*` flags
   on `/auth/config` share the convention.
-- KB lists go through `useKBList` (paging / search / delete); modular API
-  clients live under `src/lib/<area>/` and are re-exported by `src/lib/api.ts`.
-- Dialogs carry `role="dialog"` and `aria-modal`; a control the user is standing
-  on is never unmounted to change its label (focus would drop to `<body>`).
+- KB lists go through `useKBList` (paging / search / delete). API clients live
+  under `src/lib/<area>/` and are re-exported by the `src/lib/api.ts` barrel,
+  which is what the pages import from; a new client goes in its area module
+  and is added to the barrel.
+- Modal dialogs carry `role="dialog"` and `aria-modal`; a control the user is
+  standing on is never unmounted to change its label (focus would drop to
+  `<body>`).
 
 ## Testing
 
@@ -142,13 +148,18 @@ src/
   in the app build, and `pnpm typecheck` runs against it. `tsconfig.eslint.json`
   restates `include`/`exclude` to cover the tests for typed linting; use
   `pnpm lint:tests` and `npx tsc -p tsconfig.eslint.json --noEmit` for them.
-- The repo ships no `@types/node` (`tsconfig.json` pins `types` to
-  `vite/client`, `react`, `react-dom`); tests that need a source as text read
-  it through Vite `?raw` / `import.meta.glob`, not `node:fs`.
+- Nothing in CI runs `tsc -p tsconfig.eslint.json`, and on `main` it reports
+  pre-existing errors (`node:*` imports in a few tests against a project with
+  no `@types/node`; `.at()` under the ES2020 lib). Those are not a regression
+  of yours; do not add to them. The repo ships no `@types/node` (`tsconfig.json`
+  pins `types` to `vite/client`, `react`, `react-dom`), so a NEW test that needs
+  a source as text reads it through Vite `?raw` / `import.meta.glob`, not
+  `node:fs`.
 - Vitest runs on happy-dom with `src/test/setup.ts`; coverage floors live in
-  `vite.config.ts` and are never lowered to make a PR pass. `.worktrees/` is
-  excluded from the test glob, because a worktree under the repo is collected
-  as a second copy of the suite.
+  `vite.config.ts` and are never lowered to make a PR pass. `.worktrees/` and
+  `.claude/worktrees/` are excluded from the test glob (and from the Docker
+  build context), because a worktree under the repo is collected as a second
+  copy of the suite — `.gitignore` alone does not stop Vitest.
 - A type-level assertion in a test file is checked by nothing that gates CI;
   contract guards live in app files (next section).
 
@@ -171,7 +182,7 @@ never let one stand in for another.
 | Tier | Question | Where it shows up here |
 |---|---|---|
 | **Enterprise** (`enterprise_id`) | *May these two accounts ever see each other's data?* | Required on `CaseSummary`, `CaseDetail`, `AdminCaseMetadata`, `TeamResponse`, `InvitationResponse`, `AdminUserListItem`, `UserDetailResponse`, `InvestigationSessionResponse`. It is the tenant `?enterprise=` carries to the break-glass page and the tenant `BreakGlassGrantRequest.enterprise_id` names. |
-| **Organization** (`organization_id`) | *Who pays for these accounts?* | **Billing only.** Nullable on the three case shapes and null for every account nobody pays for; a filter on `CaseSearchRequest`; the subject of `OrganizationPage` and `GET /auth/me`'s `organization`. Never a visibility predicate, and never rendered as one. |
+| **Organization** (`organization_id`) | *Who pays for these accounts?* | **Billing only.** Nullable on `CaseSummary`, `CaseDetail` and `AdminCaseMetadata`, and null for every account nobody pays for; required only on `OrganizationSummary`; not a search filter anywhere at contract 9.0.0. The subject of `OrganizationPage` and `GET /auth/me`'s `organization`. Never a visibility predicate, and never rendered as one. |
 | **Team** (`team_id`) | *Who has agreed to share?* | `TeamsPage`, the share badges, the team case filter, `shared_team_ids`. Formed by consent: the invitee's own `POST /invitations/{id}/accept` is the only call that creates a membership. |
 
 - **`GET /auth/me` publishes no enterprise.** Nothing client-side may derive
@@ -206,7 +217,8 @@ never one.
   the header, resolved in `src/lib/cases/dateColumn.ts` from the filters that
   fetched the rows in hand.
 - Date filters are instants: `src/lib/cases/dateRange.ts` turns a picked day
-  into a half-open local-time window, and `listCases` is its only caller.
+  into a half-open local-time window. `listCases` is the only caller that SENDS
+  the bounds; `dateColumn.ts` calls the same resolvers to decide the column.
 - Operator views (`/admin/cases*`) exist for the cloud `platform_admin` only
   (`canViewAllCases`) and open a case through the audited operator route,
   carrying `?enterprise=`.
@@ -221,8 +233,10 @@ Detail: `.claude/rules/cases.md`.
   (`advertisement.ts`, `copilotCapability.ts`, `lib/cases/turnLabel.ts`);
   `src/test/copilot/packageImportBoundary.test.ts` enforces it.
 - The chat-surface preference (`src/lib/copilot/chatSurfacePreference.ts`)
-  defaults OFF and is never set by detection; it governs the interactive
-  surfaces only.
+  defaults OFF and is never set by detection. It governs the interactive
+  surfaces only — the dock, the `New Case` nav item, `/investigate`
+  (`ChatSurfaceRoute`), the case list's CTAs, the first-run landing and the D0
+  advertisement — and never the Transcript tab.
 - The Dashboard degrades, never requires the extension; capabilities beat
   versions; an extension that cannot withdraw is never asserted to.
 - Adopting a package change is moving the SHA in `package.json` and running

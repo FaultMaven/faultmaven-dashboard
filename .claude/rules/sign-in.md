@@ -8,10 +8,19 @@ paths:
   - "src/lib/api/oauth.ts"
   - "src/lib/community.ts"
   - "src/context/**"
+  - "src/App.tsx"
   - "src/components/ProtectedRoute.tsx"
   - "src/components/AdminProtectedRoute.tsx"
   - "src/components/GatedRoute.tsx"
+  - "src/components/PageHeader.tsx"
+  - "src/hooks/useNavigationItems.ts"
   - "src/lib/access.ts"
+  - "src/test/App.test.tsx"
+  - "src/test/hooks/useNavigationItems.test.ts"
+  - "src/test/components/PageHeaderNav.test.tsx"
+  - "src/test/components/ProtectedRoute.test.tsx"
+  - "src/test/components/AdminProtectedRoute.test.tsx"
+  - "src/test/lib/api/oauth.test.ts"
   - "src/test/pages/LoginPage.test.tsx"
   - "src/test/pages/SignUpPage.test.tsx"
   - "src/test/pages/SSOCallbackPage.test.tsx"
@@ -55,9 +64,8 @@ otherwise.
 
 - ‼ **Gate on the advertised capability, never on a version**: an API without
   the parameter ACCEPTS it, DROPS it and serves the sign-in screen, so the
-  control renders, looks right and does nothing — which is exactly what shipped
-  when this deployed ahead of the API, with every test in three repos green.
-  Absent reads as NO (`=== true`), not as unknown-therefore-fine.
+  control renders, looks right and does nothing, and no test on either side
+  notices. Absent reads as NO (`=== true`), not as unknown-therefore-fine.
 - ‼ These two live on `/auth/config`, not in `useCapabilities` /
   `GET /meta/capabilities`, and that is deliberate: they qualify
   `oauth.hosted_login_url`, which is served from the same object by the same
@@ -83,10 +91,8 @@ otherwise.
   in `src/lib/community.ts`). Plan terms are compared on the site's pricing
   page, not here.
 - The **cloud branch only** offers the two paths that need no account — the
-  community workspace and the published investigation transcript — because
-  this screen is the first thing a curious visitor sees and "sign in" is a wall
-  to someone who has not decided yet. A self-hosted deployment's operator has
-  already decided, so the standalone screen carries neither.
+  community workspace and the published investigation transcript. The
+  standalone screen carries neither.
 
 ## SignUpPage (`/signup`)
 
@@ -119,18 +125,25 @@ Cloud hosted-login return leg; public — it IS the login. The backend redirects
 here with a single-use completion `code` (+ optional same-origin `return_to`) or
 a sanitized `error` slug; the page POSTs `{code}` to
 `/api/v1/auth/sso/exchange`, stores the standard token response exactly like a
-LoginPage sign-in, and forwards to `return_to` → saved destination → `/kb`.
-Error slugs map to friendly messages with a "Back to sign in" link; raw query
-content is never echoed. The handled slugs are a cross-repo contract that
-`openapi.json` does not carry; `pnpm check:sso-slugs` (CI job `sso-slug-drift`)
-compares them against the backend.
+LoginPage sign-in, and forwards to the explicit `return_to` when one was
+carried, otherwise to `resolvePostSignInLanding()` — the same landing a
+LoginPage sign-in gets. Error slugs map to friendly messages with a "Back to
+sign in" link; raw query content is never echoed. The handled slugs are a
+cross-repo contract that `openapi.json` does not carry; `pnpm check:sso-slugs`
+(CI job `sso-slug-drift`) compares them against the `ERROR_*` constants in the
+core repo's `sso_login_service.py` **on `main`** — not the pinned contract ref,
+unlike `generate:api-types`.
 
-## Route guards (`src/App.tsx`)
+## Route guards
 
-`ProtectedRoute` (signed in), `AdminProtectedRoute` (`/admin/users`), and
-`GatedRoute` with a predicate from `src/lib/access.ts`: `canManageLlmConfig`
-(`/settings/llm`), `canManageConsole` (`/admin/organization`), `canUseTeams`
-(`/teams`, capability-gated, no role), `canViewAllCases` (`/admin/cases*`).
-`ChatSurfaceRoute` guards `/investigate` on the chat-surface preference. The
-nav (`src/hooks/useNavigationItems.ts`) uses the same predicates, so a link and
-its route cannot disagree.
+The guards are components: `src/components/ProtectedRoute.tsx` (signed in),
+`AdminProtectedRoute.tsx` (`/admin/users`) and `GatedRoute.tsx`, which takes a
+predicate from `src/lib/access.ts`. `src/App.tsx` defines the per-route
+wrappers that compose them: `LLMConfigRoute` (`canManageLlmConfig`,
+`/settings/llm`), `ManagementConsoleRoute` (`canManageConsole`,
+`/admin/organization`), `TeamsRoute` (`canUseTeams`, `/teams`,
+capability-gated, no role), `AllCasesRoute` (`canViewAllCases`,
+`/admin/cases*`) and `ChatSurfaceRoute` (`/investigate`, on the chat-surface
+preference). The nav (`src/hooks/useNavigationItems.ts`, rendered by
+`PageHeader`) uses the same predicates, so a link and its route cannot
+disagree.
