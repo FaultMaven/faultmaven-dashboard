@@ -5,7 +5,7 @@ import {
 } from '@faultmaven/copilot-ui/contract';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import type { InitialCase, WiredHost } from '@faultmaven/copilot-ui';
+import type { ApiTransport, InitialCase, WiredHost } from '@faultmaven/copilot-ui';
 
 /**
  * What the host installs before the shared UI renders (ADR-016 D2, D4).
@@ -18,8 +18,8 @@ import type { InitialCase, WiredHost } from '@faultmaven/copilot-ui';
 
 const setHostStore = vi.fn();
 const setHostEndpoints = vi.fn();
-let currentTransport: unknown;
-const setApiTransport = vi.fn((t: unknown) => {
+let currentTransport: ApiTransport | undefined;
+const setApiTransport = vi.fn((t: ApiTransport) => {
   currentTransport = t;
 });
 const clearPersistedSession = vi.fn().mockResolvedValue(undefined);
@@ -73,7 +73,6 @@ vi.mock('../../config', () => ({
 
 import CopilotPanelMount from '../../copilot/CopilotPanelMount';
 import { PANEL_STORAGE_NAMESPACE } from '../../copilot/webHost';
-import { DASHBOARD_PANEL_MESSAGE } from '../../copilot/advertisement';
 
 const PROFILE = {
   user_id: 'u1',
@@ -263,7 +262,14 @@ describe('CopilotPanelMount', () => {
     expect(setApiTransport).toHaveBeenCalledTimes(1);
 
     // A second mount wins the singleton before the first one's cleanup runs.
-    const later = { marker: 'installed by the mount that replaced it' };
+    // A distinct object is the whole point: the guard compares by identity.
+    const later: ApiTransport = {
+      baseUrl: async () => 'https://api.faultmaven.ai',
+      accessToken: async () => 'tok-later',
+      sessionId: async () => null,
+      clearSession: async () => {},
+      onUnauthorized: () => 'ended',
+    };
     setApiTransport(later);
 
     unmount();

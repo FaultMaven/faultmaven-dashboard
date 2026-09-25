@@ -1,5 +1,5 @@
 import { render, waitFor, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import {
   DASHBOARD_PANEL_MESSAGE,
   DASHBOARD_PANEL_WITHDRAWN_MESSAGE,
@@ -34,7 +34,7 @@ function Harness({ showing }: { showing: PanelVisibility }) {
   return <div data-testid="harness" />;
 }
 
-let postMessage: ReturnType<typeof vi.spyOn>;
+let postMessage: MockInstance<typeof window.postMessage>;
 
 function postedTypes(): unknown[] {
   return postMessage.mock.calls.map((call) => (call[0] as { type?: unknown })?.type);

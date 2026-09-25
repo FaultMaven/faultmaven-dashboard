@@ -1,11 +1,22 @@
 {
-  // Typed-linting project for ESLint only. tsconfig.json excludes test files
+  // The project that covers test files — ESLint's typed linting and the
+  // `typecheck:tests` gate both read it. tsconfig.json excludes test files
   // (they must not ship in the app build), which left every *.test.ts(x) with a
   // "file not found in project" parse error and therefore unlinted. This project
   // widens the include to cover tests so ESLint's type-aware rules see them.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // Tests run under Vitest on Node, not in the browser the app targets, so
+    // this project describes that runtime: ES2022 library (Node 20 ships it —
+    // `Array.prototype.at` and friends) and Node's own modules, which the
+    // script and config-file tests read from disk. Neither widens the app:
+    // `pnpm typecheck` still checks every non-test file against tsconfig.json,
+    // which keeps ES2020 and has no Node types.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // Restates the parent's list and adds `node`: `types` replaces, it does not
+    // merge, so naming `node` alone would drop the Vite and React globals.
+    "types": ["vite/client", "react", "react-dom", "node"]
   },
   // `exclude` must be restated: an omitted `exclude` inherits the parent's
   // (which drops every *.test.ts(x)), re-hiding the files this project exists to

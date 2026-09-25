@@ -59,6 +59,13 @@ jobs:
       - name: Run TypeScript type check
         run: pnpm typecheck
 
+      # `pnpm typecheck` reads tsconfig.json, which excludes every test file so
+      # none can ship in the build — and so checks none of them. Vitest strips
+      # types without checking them, so a test can be type-wrong and still pass.
+      # This is the gate that reads the tests.
+      - name: Type-check tests
+        run: pnpm typecheck:tests
+
       # The two build-output gates live here rather than in a job of their own:
       # they need a build, and `build` already builds a Docker image while
       # `smoke` builds it again. A fifth full build to ask two questions about
