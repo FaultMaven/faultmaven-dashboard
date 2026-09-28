@@ -52,7 +52,8 @@ describe('TranscriptView — message attribution', () => {
 
   it('does not attribute a system message to the user', () => {
     // Verbatim shape of the runbook-conversion completion notice the backend
-    // appends to `case.messages` (milestone_engine `_run_runbook_conversion`).
+    // appends to `case.messages` (`RunbookCreator._run_runbook_conversion` in
+    // milestone_engine/runbook_creation.py).
     // Rendered as "You", it read as the user announcing their own runbook.
     const notice = 'Your runbook draft is ready. View it in the Dashboard.';
     render(
