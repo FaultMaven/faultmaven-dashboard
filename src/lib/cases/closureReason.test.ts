@@ -16,8 +16,8 @@ import {
 describe('closureReasonDisplay', () => {
   it('covers exactly the backend closure reasons', () => {
     // Mirrors VALID_CLOSURE_REASONS in
-    // faultmaven/modules/case/domain/models.py. Nothing shared crosses the repo
-    // boundary — `closure_reason` is a bare `string` in the generated types —
+    // faultmaven/modules/case/domain/models/lifecycle.py. Nothing shared crosses
+    // the repo boundary — `closure_reason` is a bare `string` in the generated types —
     // so this pins the map against a deliberate edit here, NOT against backend
     // drift. The fallback below is what actually protects users from drift.
     expect(Object.keys(CLOSURE_REASON_DISPLAY).sort()).toEqual([

@@ -3,10 +3,10 @@
  *
  * `closure_reason` is a CLASSIFICATION, not prose: the backend derives it from
  * case state at the terminal transition and the LLM never authors it (see
- * `VALID_CLOSURE_REASONS` in faultmaven/modules/case/domain/models.py). The
- * Dashboard was rendering the raw value under a "Resolution Notes" heading, so
- * a user saw `closed_insufficient_evidence` presented as if it were a sentence
- * someone wrote.
+ * `VALID_CLOSURE_REASONS` in faultmaven/modules/case/domain/models/lifecycle.py).
+ * The Dashboard was rendering the raw value under a "Resolution Notes" heading,
+ * so a user saw `closed_insufficient_evidence` presented as if it were a
+ * sentence someone wrote.
  *
  * It is also CLOSED-only — RESOLVED cases carry `null` — so the surrounding
  * copy must not promise resolution notes.
