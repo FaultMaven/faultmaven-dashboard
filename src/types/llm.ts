@@ -88,8 +88,11 @@ export type FeatureStatus = components['schemas']['FeatureStatus'];
  *
  *   session_storage  "fakeredis (inmemory)"                          not 'inmemory'
  *   vector_storage   "chromadb (persistent, split: kb + evidence)"   not 'chromadb'
- *   db_backend       `settings.database.case_storage_type`, overwritten only
- *                    when an alembic.ini is found and parseable
+ *
+ * What each field may say is the server's to document — the field descriptions
+ * in the API reference (`docs/reference/api/openapi.json` in the API repo) —
+ * not this file's; restating how the server derives a value here goes stale the
+ * first time the server changes it.
  *
  * Nothing switches on them (`EnvConfigStatusPanel` renders the raw string), so
  * the lie was invisible — and would have stayed invisible until the first
