@@ -68,7 +68,10 @@
   "pnpm": {
     "overrides": {
       "@humanfs/node": "^0.16.8",
+      "brace-expansion@1": "^1.1.21",
+      "brace-expansion@2": "^2.1.7",
       "browserslist": "^4.28.7",
+      "fast-uri": "^3.1.8",
       "js-yaml": "^4.3.2",
       "postcss-selector-parser": "^6.1.3"
     }
