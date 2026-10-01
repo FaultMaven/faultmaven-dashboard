@@ -269,13 +269,19 @@ state/source filters only.
   served policy: `view: "full"` (standalone) renders `CaseTable` with titles;
   `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids / state /
   timestamps / counts, **no title or description** (user free text is content
-  and needs the audited break-glass path, faultmaven#815). The endpoint still
-  403s under `TENANT_PROVIDER=multi` (RLS would make the list silently
-  partial); the page shows that refusal *instead of* a table.
-- Rows on **both** arms open through `/admin/cases/{id}` (the audited operator
-  read), never `/cases/{id}` — the latter has no operator bypass and 404s on
-  cases the operator does not own (faultmaven#846). The ENTERPRISE travels on
-  the link (`?enterprise=`) because requesting a grant needs it —
+  and needs the audited break-glass path, faultmaven#815). Under
+  `TENANT_PROVIDER=multi` the metadata view spans every enterprise (contract
+  9.1.0), so it carries an **Enterprise** column (the whole id, never a
+  prefix). If the server cannot read across enterprises it fails closed with a
+  5xx — never a list narrowed to one enterprise — and the page shows that
+  error *instead of* a table.
+- Where a row opens depends on **ownership**, on both arms: the operator's OWN
+  cases open at `/cases/{id}` (the full case page — routing them through the
+  operator view would strip it and write an access-audit row for their own
+  data); everyone else's open at `/admin/cases/{id}` (the audited operator
+  read), because `/cases/{id}` has no operator bypass and 404s on cases the
+  operator does not own (faultmaven#846). The ENTERPRISE travels on the
+  operator link (`?enterprise=`) because requesting a grant needs it —
   `BreakGlassGrantRequest.enterprise_id`, the isolation tenant (ADR-017 D1),
   never the billing organization.
 

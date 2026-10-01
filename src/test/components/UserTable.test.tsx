@@ -148,22 +148,11 @@ describe('UserTable rows the operator cannot administer', () => {
     expect(screen.queryByRole('button', { name: 'Deactivate' })).toBeNull();
   });
 
-  it('claims no role for an account whose roles are not reported', () => {
+  it('says the role is not reported, in visible text, instead of claiming one', () => {
     renderTable([foreign()]);
 
     expect(screen.queryByText('Standard User')).toBeNull();
-    expect(
-      screen.getByTitle(
-        'Roles are reported only for accounts in your company, and only those can be changed here.',
-      ).textContent,
-    ).toBe('—');
-  });
-
-  it("names the account's company by a short enterprise id, with the full id on hover", () => {
-    renderTable([foreign()]);
-
-    const company = screen.getByText('7f3a9c21');
-    expect(company.getAttribute('title')).toBe('7f3a9c21-0000-4000-8000-000000000000');
+    expect(screen.getByText('Not reported — you cannot administer this account')).toBeTruthy();
   });
 
   it('keeps both controls on the rows the operator can administer', () => {
@@ -171,20 +160,120 @@ describe('UserTable rows the operator cannot administer', () => {
 
     expect(screen.getAllByRole('combobox')).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Deactivate' })).toHaveLength(1);
-    expect(screen.getByText('Yours')).toBeTruthy();
   });
 });
 
-describe('UserTable account kind', () => {
-  it('reads a person as a person', () => {
+/**
+ * A server before contract 10.0.0 sends no `manageable` (and no
+ * `account_kind`): its list was confined to the operator's enterprise, so every
+ * row is administrable. Absence must read as manageable, or this build running
+ * ahead of the API would strip every control from the page.
+ */
+describe('UserTable against a server that predates contract 10.0.0', () => {
+  const legacyRow = (): UserProfile => {
+    const row = makeUser({
+      user_id: 'u-legacy',
+      email: 'legacy@example.com',
+      full_name: 'Lee Legacy',
+    }) as Record<string, unknown>;
+    delete row.manageable;
+    delete row.account_kind;
+    delete row.service_channel;
+    return row as unknown as UserProfile;
+  };
+
+  it('treats a row without `manageable` as administrable', () => {
+    renderTable([legacyRow()]);
+
+    expect(screen.getByRole('combobox')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Deactivate' })).toBeTruthy();
+    expect(screen.queryByText(/Not reported/)).toBeNull();
+  });
+
+  it('reads a row without `account_kind` as a person', () => {
+    renderTable([legacyRow()]);
+
+    expect(screen.getByText('Person')).toBeTruthy();
+    expect(screen.queryByText('Service account')).toBeNull();
+  });
+});
+
+describe('UserTable enterprise column', () => {
+  it("shows every row's enterprise id whole, as visible text", () => {
+    renderTable([
+      makeUser({ user_id: 'a', email: 'a@x.example', enterprise_id: '00000000-0000-0000-0000-000000000002' }),
+      makeUser({ user_id: 'b', email: 'b@y.example', enterprise_id: '00000000-0000-0000-0000-00000000000f', manageable: false, roles: [] }),
+    ]);
+
+    // Two ids sharing their first eight characters stay distinguishable.
+    expect(screen.getByText('00000000-0000-0000-0000-000000000002')).toBeTruthy();
+    expect(screen.getByText('00000000-0000-0000-0000-00000000000f')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Enterprise' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Company' })).toBeNull();
+  });
+});
+
+describe('UserTable deactivate offer', () => {
+  it("is not offered on the signed-in operator's own row (the backend answers 403)", () => {
+    renderTable([makeUser({ user_id: 'u-me', email: 'me@example.com' })], 'u-me');
+
+    expect(screen.queryByRole('button', { name: 'Deactivate' })).toBeNull();
+  });
+
+  it('is not offered on an account already inactive (409), which is marked as such', () => {
+    renderTable([makeUser({ is_active: false })]);
+
+    expect(screen.queryByRole('button', { name: 'Deactivate' })).toBeNull();
+    expect(screen.getByText('Inactive')).toBeTruthy();
+  });
+
+  it('hands the whole row to the caller, so the confirmation can describe it', () => {
+    const onDeactivate = vi.fn();
+    const row = makeUser({ account_kind: 'service', service_channel: 'slack' });
+    render(
+      <table>
+        <UserTable users={[row]} onChangeRole={vi.fn()} onDeactivate={onDeactivate} />
+      </table>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+    expect(onDeactivate).toHaveBeenCalledWith(row);
+  });
+});
+
+/**
+ * A service account is an integration's agent, not a person: it is made to
+ * stand out beside its name and in the Kind column, its org role is shown but
+ * never edited, and it stays deactivatable — the integration's kill switch.
+ */
+describe('UserTable service accounts', () => {
+  const service = () =>
+    makeUser({ full_name: 'slack-T0B9', account_kind: 'service', service_channel: 'slack' });
+
+  it('is badged beside its name and in the Kind column', () => {
+    renderTable([service()]);
+
+    expect(screen.getByText('Service account')).toBeTruthy();
+    expect(screen.getByText('Service · slack')).toBeTruthy();
+  });
+
+  it('shows its role read-only, with no select', () => {
+    renderTable([service()]);
+
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByText('Standard User')).toBeTruthy();
+  });
+
+  it('keeps Deactivate', () => {
+    renderTable([service()]);
+
+    expect(screen.getByRole('button', { name: 'Deactivate' })).toBeTruthy();
+  });
+
+  it('reads a person as a person, with no service badge', () => {
     renderTable([makeUser({ full_name: 'Ada Lovelace' })]);
 
     expect(screen.getByText('Person')).toBeTruthy();
-  });
-
-  it("names a service account's integration", () => {
-    renderTable([makeUser({ account_kind: 'service', service_channel: 'slack' })]);
-
-    expect(screen.getByText('Service · slack')).toBeTruthy();
+    expect(screen.queryByText('Service account')).toBeNull();
   });
 });
