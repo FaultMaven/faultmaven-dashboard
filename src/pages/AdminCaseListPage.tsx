@@ -87,10 +87,10 @@ export default function AdminCaseListPage() {
         setError(err instanceof Error ? err.message : 'Failed to load cases');
         // Drop the previous page rather than leave it on screen under an error
         // banner — and see the render below, which shows the message INSTEAD of
-        // a table. The endpoint refuses (403) under multi-tenant cloud because
-        // row-level security would make the list silently partial; an empty
-        // table there would read as "no cases exist", which is the specific
-        // wrong answer that refusal exists to prevent.
+        // a table. When the server cannot read across enterprises it fails
+        // closed (a 5xx) rather than serve a list narrowed to one enterprise;
+        // an empty table there would read as "no cases exist", which is the
+        // specific wrong answer that refusal exists to prevent.
         setResult(null);
         setTotalCount(0);
       } finally {

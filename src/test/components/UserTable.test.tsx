@@ -27,6 +27,9 @@ function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     enterprise_id: 'ent-1',
+    account_kind: 'individual',
+    service_channel: null,
+    manageable: true,
     ...overrides,
   } as UserProfile;
 }
@@ -118,5 +121,70 @@ describe('UserTable role control', () => {
 
     expect(screen.getAllByRole('combobox')).toHaveLength(2);
     expect(screen.queryByText('(you)')).toBeNull();
+  });
+});
+
+/**
+ * Under multi-tenancy the list spans every enterprise, and the server marks the
+ * rows the operator can administer with `manageable`. A row outside the
+ * operator's enterprise carries `roles: []` meaning NOT REPORTED, and its role
+ * and deactivate routes answer 404 — so it offers neither control and claims
+ * no role at all (it used to render as "Standard User").
+ */
+describe('UserTable rows the operator cannot administer', () => {
+  const foreign = () =>
+    makeUser({
+      user_id: 'u-foreign',
+      email: 'someone@other.example',
+      roles: [],
+      manageable: false,
+      enterprise_id: '7f3a9c21-0000-4000-8000-000000000000',
+    });
+
+  it('offers no role select and no deactivate button', () => {
+    renderTable([foreign()]);
+
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deactivate' })).toBeNull();
+  });
+
+  it('claims no role for an account whose roles are not reported', () => {
+    renderTable([foreign()]);
+
+    expect(screen.queryByText('Standard User')).toBeNull();
+    expect(
+      screen.getByTitle(
+        'Roles are reported only for accounts in your company, and only those can be changed here.',
+      ).textContent,
+    ).toBe('—');
+  });
+
+  it("names the account's company by a short enterprise id, with the full id on hover", () => {
+    renderTable([foreign()]);
+
+    const company = screen.getByText('7f3a9c21');
+    expect(company.getAttribute('title')).toBe('7f3a9c21-0000-4000-8000-000000000000');
+  });
+
+  it('keeps both controls on the rows the operator can administer', () => {
+    renderTable([foreign(), makeUser({ user_id: 'u-mine', email: 'mine@example.com' })]);
+
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Deactivate' })).toHaveLength(1);
+    expect(screen.getByText('Yours')).toBeTruthy();
+  });
+});
+
+describe('UserTable account kind', () => {
+  it('reads a person as a person', () => {
+    renderTable([makeUser({ full_name: 'Ada Lovelace' })]);
+
+    expect(screen.getByText('Person')).toBeTruthy();
+  });
+
+  it("names a service account's integration", () => {
+    renderTable([makeUser({ account_kind: 'service', service_channel: 'slack' })]);
+
+    expect(screen.getByText('Service · slack')).toBeTruthy();
   });
 });

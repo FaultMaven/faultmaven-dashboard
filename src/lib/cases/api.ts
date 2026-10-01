@@ -79,10 +79,11 @@ export async function listCases(
  * path (faultmaven#815). Callers must narrow on `view` rather than on their own
  * notion of the deployment mode, so the two cannot drift.
  *
- * Still 403s under `TENANT_PROVIDER=multi`: row-level security would scope the
- * list to the operator's own organization, so an "all tenants" answer would be
- * silently partial. The backend refuses rather than mislead, and the `detail` it
- * returns is the message worth showing.
+ * Under `TENANT_PROVIDER=multi` the metadata view spans every enterprise
+ * (contract 9.1.0 — earlier contracts refused it with a 403). When the server
+ * cannot read across enterprises it fails closed with a 5xx rather than serve a
+ * list narrowed to one enterprise, and the `detail` it returns is the message
+ * worth showing.
  */
 export async function getAdminCases(
   filters: CaseFilters = {},

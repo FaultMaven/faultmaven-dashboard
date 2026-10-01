@@ -9,6 +9,12 @@ const ROLE_LABELS: Record<DashboardRoleValue, string> = {
   admin: 'Organization Admin',
 };
 
+/** How an account's kind reads in the table: a person, or an integration's agent. */
+function kindLabel(user: UserProfile): string {
+  if (user.account_kind !== 'service') return 'Person';
+  return user.service_channel ? `Service · ${user.service_channel}` : 'Service';
+}
+
 interface UserTableProps {
   users: UserProfile[];
   onChangeRole: (userId: string, role: DashboardRoleValue) => void;
@@ -35,6 +41,8 @@ export function UserTable({ users, onChangeRole, onDeactivate, currentUserId }: 
       <thead className="bg-fm-elevated border-b border-fm-border">
         <tr>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">User</th>
+          <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Kind</th>
+          <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Company</th>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Role</th>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Last Login</th>
           <th className="px-4 py-3"></th>
@@ -60,15 +68,39 @@ export function UserTable({ users, onChangeRole, onDeactivate, currentUserId }: 
           // it too. Removing that lock makes the self case explicit rather than
           // a side effect.
           const isSelf = !!currentUserId && user.user_id === currentUserId;
+          // `manageable` is the server's answer to "may this operator administer
+          // this account" — false for an account outside the operator's
+          // enterprise under multi-tenancy, where the role and deactivate routes
+          // answer 404. Such a row's `roles` is `[]` meaning NOT REPORTED, not
+          // "holds no role", so it renders no role at all rather than a
+          // "Standard User" the account may not be.
+          const { manageable } = user;
           return (
             <tr key={user.user_id} className="hover:bg-fm-elevated/50 transition-colors">
               <td className="px-4 py-3">
                 <p className="font-medium text-fm-text-primary">{user.full_name || user.email}</p>
                 <p className="text-xs text-fm-text-tertiary mt-0.5">{user.email}</p>
               </td>
+              <td className="px-4 py-3 text-fm-text-secondary">{kindLabel(user)}</td>
+              <td className="px-4 py-3">
+                {manageable ? (
+                  <span className="text-fm-text-secondary">Yours</span>
+                ) : (
+                  <span className="font-mono text-xs text-fm-text-tertiary" title={user.enterprise_id}>
+                    {user.enterprise_id.slice(0, 8)}
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-3">
                 <div className="flex flex-col items-start gap-1">
-                  {isSelf ? (
+                  {!manageable ? (
+                    <span
+                      className="text-sm text-fm-text-tertiary"
+                      title="Roles are reported only for accounts in your company, and only those can be changed here."
+                    >
+                      —
+                    </span>
+                  ) : isSelf ? (
                     <span
                       className="inline-flex items-center gap-1 text-sm text-fm-text-secondary"
                       title="You cannot change your own role — another administrator has to."
@@ -101,12 +133,14 @@ export function UserTable({ users, onChangeRole, onDeactivate, currentUserId }: 
                 {user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : '—'}
               </td>
               <td className="px-4 py-3 text-right">
-                <button
-                  onClick={() => onDeactivate(user.user_id)}
-                  className="text-xs text-fm-text-tertiary hover:text-fm-critical transition-colors"
-                >
-                  Deactivate
-                </button>
+                {manageable && (
+                  <button
+                    onClick={() => onDeactivate(user.user_id)}
+                    className="text-xs text-fm-text-tertiary hover:text-fm-critical transition-colors"
+                  >
+                    Deactivate
+                  </button>
+                )}
               </td>
             </tr>
           );

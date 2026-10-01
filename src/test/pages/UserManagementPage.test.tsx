@@ -53,6 +53,9 @@ function authAs(userId: string) {
 const adminUser: UserProfile = {
   user_id: 'u-admin',
   enterprise_id: 'ent-1',
+  account_kind: 'individual',
+  service_channel: null,
+  manageable: true,
   email: 'ada@faultmaven.local',
   full_name: 'Ada Admin',
   roles: ['user', 'admin'],
@@ -66,6 +69,9 @@ const adminUser: UserProfile = {
 const standardUser: UserProfile = {
   user_id: 'u-standard',
   enterprise_id: 'ent-1',
+  account_kind: 'individual',
+  service_channel: null,
+  manageable: true,
   email: 'stan@faultmaven.local',
   full_name: 'Stan Standard',
   roles: ['user'],
