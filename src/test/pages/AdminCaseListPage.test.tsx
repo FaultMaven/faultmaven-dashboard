@@ -196,15 +196,13 @@ describe('AdminCaseListPage', () => {
     });
   });
 
-  it('shows a refusal message INSTEAD of an empty table (multi-tenant 403)', async () => {
-    // The backend refuses the cross-tenant list under TENANT_PROVIDER=multi
-    // because RLS would scope it to one org and make it silently partial. An
-    // empty table would read as "no cases exist" — precisely the wrong answer
-    // that refusal exists to prevent — so the page must not render one.
-    const detail =
-      'Cross-tenant case listing is not available under multi-tenant cloud: ' +
-      'row-level security would scope the result to a single organization, so ' +
-      'the list would be silently partial (ADR-012 D9).';
+  it('shows a fail-closed error INSTEAD of an empty table', async () => {
+    // Under TENANT_PROVIDER=multi the list spans every enterprise; when the
+    // server cannot read across them it fails closed with a 5xx rather than
+    // serve a list narrowed to one enterprise. An empty table would read as
+    // "no cases exist" — precisely the wrong answer the refusal exists to
+    // prevent — so the page must not render one.
+    const detail = 'Cross-enterprise case listing is not available';
     mockGetAdminCases.mockRejectedValue(new Error(detail));
 
     await act(async () => {
@@ -331,21 +329,23 @@ describe('AdminCaseListPage', () => {
       expect(screen.getByText('tenant_user')).toBeInTheDocument();
     });
 
-    it('omits Organization, which is constant wherever this arm is servable', async () => {
-      // Under TENANT_PROVIDER=single (cloud today) every row carries the
-      // Standalone org; under multi the endpoint 403s. A column with one value
-      // everywhere implies a tenant discrimination this view cannot make. It
-      // returns with the bounded cross-tenant read (faultmaven#815).
+    it('shows the Enterprise of each case, never the billing Organization', async () => {
+      // Under TENANT_PROVIDER=multi this list spans every enterprise, so the
+      // tenant a case belongs to is the first thing an operator reads off a
+      // row — whole, since ids can share a prefix. The billing organization
+      // answers a question nobody asks of this list and stays off it.
       await act(async () => {
         renderPage();
       });
 
       await waitFor(() => screen.getByText('case-cloud-1'));
+      expect(screen.getByRole('columnheader', { name: 'Enterprise' })).toBeInTheDocument();
+      expect(screen.getByText('ent-acme')).toBeInTheDocument();
       expect(screen.queryByRole('columnheader', { name: 'Organization' })).not.toBeInTheDocument();
       expect(screen.queryByText('org-acme')).not.toBeInTheDocument();
     });
 
-    it('opens content through the audited operator route, never /cases/{id}', async () => {
+    it("opens someone else's case through the audited operator route, never /cases/{id}", async () => {
       // `GET /cases/{id}` is owner-∪-shared scoped with no operator bypass, so
       // a link there would land the operator on 404 "Case not found or access
       // denied" for a case they can see listed right here (faultmaven#846).
@@ -361,12 +361,45 @@ describe('AdminCaseListPage', () => {
         'href',
         '/admin/cases/case-cloud-1?enterprise=ent-acme'
       );
-      // Nothing on this arm may route into the owner-scoped case page.
+      // A case the operator does not own never routes into the owner-scoped page.
       expect(document.querySelector('a[href^="/cases/"]')).toBeNull();
     });
 
-    it('carries the organization on the link, since a grant request needs it', async () => {
-      // Under multi-tenant cloud the case's organization cannot be read before
+    it("opens the operator's OWN case at the full case page, without break-glass", async () => {
+      // The list spans every enterprise, so the operator's own cases appear on
+      // this arm too. Routing them through break-glass would demand a grant
+      // for their own data and write an access-audit row on every open.
+      (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+        deployment: 'cloud',
+        role: 'platform_admin',
+        isAdmin: true,
+        clearAuthState: vi.fn(),
+        isAuthenticated: true,
+        authState: { user: { user_id: 'tenant_user' } }, // owner of `metadataCase`
+      });
+      await act(async () => {
+        renderPage();
+      });
+
+      try {
+        await waitFor(() => screen.getByText('case-cloud-1'));
+        expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/cases/case-cloud-1');
+        expect(screen.queryByRole('link', { name: /Open content/i })).not.toBeInTheDocument();
+      } finally {
+        // The module-level mock is shared: put back the default caller (no
+        // signed-in id), or every later test in this file inherits the owner.
+        (useAuth as ReturnType<typeof vi.fn>).mockReturnValue({
+          deployment: 'standalone',
+          role: 'individual',
+          isAdmin: true,
+          clearAuthState: vi.fn(),
+          isAuthenticated: true,
+        });
+      }
+    });
+
+    it('carries the enterprise on the link, since a grant request needs it', async () => {
+      // Under multi-tenant cloud the case's enterprise cannot be read before
       // the grant exists — that is precisely what the grant unlocks — so it has
       // to travel with the navigation rather than be looked up on the far side.
       await act(async () => {

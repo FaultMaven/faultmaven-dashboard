@@ -44,7 +44,9 @@ export async function listUsers(
  *
  * Both writes revoke the target's JWTs server-side. The caller cannot change
  * their own role (403), and cannot address a user outside their own
- * organization (404, indistinguishable from an id that names nobody).
+ * enterprise — the isolation tenant, not the billing organization (404,
+ * indistinguishable from an id that names nobody). The list marks those rows
+ * `manageable: false`, so the table never offers this write for them.
  */
 export async function updateUserRole(
   userId: string,

@@ -9,10 +9,26 @@ const ROLE_LABELS: Record<DashboardRoleValue, string> = {
   admin: 'Organization Admin',
 };
 
+/**
+ * An integration's service account is made to stand out: it is an agent acting
+ * for a whole workspace, not a person, and deactivating it stops that
+ * integration — so an operator scanning the list must never mistake one for a
+ * member. Shown beside the name AND in the Kind column.
+ */
+const SERVICE_PILL =
+  'inline-flex items-center px-2 py-0.5 text-fm-xs font-medium rounded-full border bg-fm-accent/10 text-fm-accent border-fm-accent/30';
+
+/** How an account's kind reads in the Kind column: a person, or an integration's agent. */
+function kindLabel(user: UserProfile): string {
+  if (user.account_kind !== 'service') return 'Person';
+  return user.service_channel ? `Service · ${user.service_channel}` : 'Service';
+}
+
 interface UserTableProps {
   users: UserProfile[];
   onChangeRole: (userId: string, role: DashboardRoleValue) => void;
-  onDeactivate: (userId: string) => void;
+  /** Given the whole row, so the confirmation can say what deactivating it does. */
+  onDeactivate: (user: UserProfile) => void;
   /**
    * The signed-in account, so this table can decline to offer a write the
    * backend refuses. `null`/absent means "unknown", and no row is treated as
@@ -35,6 +51,8 @@ export function UserTable({ users, onChangeRole, onDeactivate, currentUserId }: 
       <thead className="bg-fm-elevated border-b border-fm-border">
         <tr>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">User</th>
+          <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Kind</th>
+          <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Enterprise</th>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Role</th>
           <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Last Login</th>
           <th className="px-4 py-3"></th>
@@ -60,15 +78,62 @@ export function UserTable({ users, onChangeRole, onDeactivate, currentUserId }: 
           // it too. Removing that lock makes the self case explicit rather than
           // a side effect.
           const isSelf = !!currentUserId && user.user_id === currentUserId;
+          // `manageable` is the server's answer to "may this operator administer
+          // this account" — false for an account outside the operator's
+          // enterprise under multi-tenancy, where the role and deactivate routes
+          // answer 404. Such a row's `roles` is `[]` meaning NOT REPORTED, not
+          // "holds no role", so it renders no role at all rather than a
+          // "Standard User" the account may not be.
+          //
+          // ABSENT means manageable. A server before contract 10.0.0 sends no
+          // `manageable` at all — its list was already confined to the
+          // operator's enterprise, so every row it serves is one the operator
+          // administers. Reading absence as "not manageable" would strip every
+          // control from the page whenever this build runs ahead of the API.
+          const manageable = user.manageable !== false;
+          // An integration's service account carries no meaningful org role —
+          // it is an agent, not a member — so its role is shown, never edited.
+          // It CAN be deactivated: that is the deliberate kill switch for the
+          // integration, and the confirmation says so.
+          const isService = user.account_kind === 'service';
+          // Deactivate only what the backend would deactivate: never the
+          // operator's own account (403) and never one already inactive (409).
+          const canDeactivate = manageable && !isSelf && user.is_active;
           return (
             <tr key={user.user_id} className="hover:bg-fm-elevated/50 transition-colors">
               <td className="px-4 py-3">
-                <p className="font-medium text-fm-text-primary">{user.full_name || user.email}</p>
+                <p className="font-medium text-fm-text-primary">
+                  {user.full_name || user.email}
+                  {isService && <span className={`ml-2 align-middle ${SERVICE_PILL}`}>Service account</span>}
+                  {!user.is_active && (
+                    <span className="ml-2 align-middle text-xs font-normal text-fm-text-tertiary border border-fm-border rounded px-1.5 py-0.5">
+                      Inactive
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-fm-text-tertiary mt-0.5">{user.email}</p>
+              </td>
+              <td className="px-4 py-3 text-fm-text-secondary">
+                {isService ? <span className={SERVICE_PILL}>{kindLabel(user)}</span> : kindLabel(user)}
+              </td>
+              <td className="px-4 py-3">
+                {/* The account's own enterprise, whole: never inferred from
+                    `manageable` (which answers a different question), and never
+                    shortened — ids can share a prefix, and a hover-only full id
+                    is out of reach for keyboard, touch and screen readers. */}
+                <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
+                  {user.enterprise_id}
+                </span>
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-col items-start gap-1">
-                  {isSelf ? (
+                  {!manageable ? (
+                    <span className="text-xs text-fm-text-tertiary">
+                      Not reported — you cannot administer this account
+                    </span>
+                  ) : isService ? (
+                    <span className="text-sm text-fm-text-secondary">{ROLE_LABELS[role]}</span>
+                  ) : isSelf ? (
                     <span
                       className="inline-flex items-center gap-1 text-sm text-fm-text-secondary"
                       title="You cannot change your own role — another administrator has to."
@@ -101,12 +166,14 @@ export function UserTable({ users, onChangeRole, onDeactivate, currentUserId }: 
                 {user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : '—'}
               </td>
               <td className="px-4 py-3 text-right">
-                <button
-                  onClick={() => onDeactivate(user.user_id)}
-                  className="text-xs text-fm-text-tertiary hover:text-fm-critical transition-colors"
-                >
-                  Deactivate
-                </button>
+                {canDeactivate && (
+                  <button
+                    onClick={() => onDeactivate(user)}
+                    className="text-xs text-fm-text-tertiary hover:text-fm-critical transition-colors"
+                  >
+                    Deactivate
+                  </button>
+                )}
               </td>
             </tr>
           );

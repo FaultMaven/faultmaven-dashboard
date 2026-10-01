@@ -53,6 +53,9 @@ function authAs(userId: string) {
 const adminUser: UserProfile = {
   user_id: 'u-admin',
   enterprise_id: 'ent-1',
+  account_kind: 'individual',
+  service_channel: null,
+  manageable: true,
   email: 'ada@faultmaven.local',
   full_name: 'Ada Admin',
   roles: ['user', 'admin'],
@@ -66,6 +69,9 @@ const adminUser: UserProfile = {
 const standardUser: UserProfile = {
   user_id: 'u-standard',
   enterprise_id: 'ent-1',
+  account_kind: 'individual',
+  service_channel: null,
+  manageable: true,
   email: 'stan@faultmaven.local',
   full_name: 'Stan Standard',
   roles: ['user'],
@@ -139,20 +145,22 @@ describe('UserManagementPage — backend-real admin user shape', () => {
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
-  it('searches by name/email without throwing on the missing `username`', async () => {
+  it('sends the search to the server, from the first page, and shows what it answers', async () => {
+    // Filtering only the loaded page would miss accounts on every other page —
+    // and once the list spans every enterprise they are scattered across them.
     await act(async () => {
       renderPage();
     });
     await waitFor(() => expect(screen.getByText('Ada Admin')).toBeInTheDocument());
 
-    const searchBox = screen.getByLabelText('Search users');
-    // Before the fix this threw on `u.username.toLowerCase()` (undefined).
+    mockListUsers.mockResolvedValueOnce({ ...listResponse, users: [standardUser], total: 1 });
     await act(async () => {
-      fireEvent.change(searchBox, { target: { value: 'stan' } });
+      fireEvent.change(screen.getByLabelText('Search users'), { target: { value: ' stan ' } });
     });
 
+    await waitFor(() => expect(mockListUsers).toHaveBeenLastCalledWith(0, 50, 'stan'));
+    await waitFor(() => expect(screen.queryByText('Ada Admin')).not.toBeInTheDocument());
     expect(screen.getByText('Stan Standard')).toBeInTheDocument();
-    expect(screen.queryByText('Ada Admin')).not.toBeInTheDocument();
   });
 
   it('requests the admin users endpoint by page (offset derives in the api layer)', async () => {
@@ -160,7 +168,26 @@ describe('UserManagementPage — backend-real admin user shape', () => {
       renderPage();
     });
     await waitFor(() => expect(mockListUsers).toHaveBeenCalled());
-    expect(mockListUsers).toHaveBeenCalledWith(0, 50);
+    expect(mockListUsers).toHaveBeenCalledWith(0, 50, undefined);
+  });
+
+  it("names the integration a service account's deactivation stops", async () => {
+    mockListUsers.mockResolvedValue({
+      ...listResponse,
+      users: [{ ...standardUser, user_id: 'u-svc', full_name: 'slack-T0B9', account_kind: 'service', service_channel: 'slack' }],
+      total: 1,
+    });
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('slack-T0B9')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+    });
+
+    expect(screen.getByText('Deactivate Service Account')).toBeInTheDocument();
+    expect(screen.getByText(/The slack integration it serves stops working immediately/)).toBeInTheDocument();
   });
 
   // D3: user provisioning moves to the IdP/SCIM — the Dashboard has no invite.

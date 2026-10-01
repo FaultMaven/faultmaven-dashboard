@@ -45,11 +45,11 @@ const SOURCE_OPTIONS: { value: CaseSource | undefined; label: string }[] = [
  *   (faultmaven#815). `GET /cases/{id}` gates on owner ∪ shared-to-my-teams with
  *   no operator bypass, so those rows would otherwise 404 (faultmaven#846).
  *
- * On the `metadata` arm the operator owns nothing by construction — it only
- * appears in cloud, where the listed cases belong to tenants — so every row
- * there takes the operator route anyway.
+ * Both arms apply that rule. The `metadata` arm (cloud) spans every enterprise
+ * under `TENANT_PROVIDER=multi` (contract 9.1.0), so the operator's own cases
+ * appear there too and must keep the full case page like anywhere else.
  *
- * The organization travels with the link. Requesting a break-glass grant needs
+ * The enterprise travels with the link. Requesting a break-glass grant needs
  * it, and under multi-tenant cloud it cannot be read from the case itself —
  * that is what the grant unlocks — so the row has to carry it.
  */
@@ -87,10 +87,10 @@ export default function AdminCaseListPage() {
         setError(err instanceof Error ? err.message : 'Failed to load cases');
         // Drop the previous page rather than leave it on screen under an error
         // banner — and see the render below, which shows the message INSTEAD of
-        // a table. The endpoint refuses (403) under multi-tenant cloud because
-        // row-level security would make the list silently partial; an empty
-        // table there would read as "no cases exist", which is the specific
-        // wrong answer that refusal exists to prevent.
+        // a table. When the server cannot read across enterprises it fails
+        // closed (a 5xx) rather than serve a list narrowed to one enterprise;
+        // an empty table there would read as "no cases exist", which is the
+        // specific wrong answer that refusal exists to prevent.
         setResult(null);
         setTotalCount(0);
       } finally {
@@ -198,7 +198,11 @@ export default function AdminCaseListPage() {
             }
           />
         ) : (
-          <AdminCaseMetadataTable cases={result?.cases ?? []} loading={loading} />
+          <AdminCaseMetadataTable
+            cases={result?.cases ?? []}
+            loading={loading}
+            currentUserId={currentUserId}
+          />
         )}
 
         {!error && (

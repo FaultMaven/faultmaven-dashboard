@@ -7,25 +7,26 @@ import type { AdminCaseMetadata } from '../lib/api';
 interface AdminCaseMetadataTableProps {
   cases: AdminCaseMetadata[];
   loading: boolean;
+  /** The signed-in operator, so their OWN cases open at the full case page. */
+  currentUserId?: string | null;
 }
 
 /**
  * The cloud operator's All Cases table — ambient metadata only (ADR-012 D9).
  *
- * Columns: Case ID / Owner / State / Stage / Last Activity. There is no
+ * Columns: Case ID / Owner / Enterprise / State / Stage / Last Activity. There is no
  * Title and no description line, because in cloud the backend does not send
  * them: user free text is content, reachable only through the audited
  * break-glass grant (faultmaven#815).
  *
- * No tenant column either, despite the row carrying both ids. The ENTERPRISE
- * (`enterprise_id`, the isolation tenant — ADR-017 D1) would be constant in
- * every configuration that can reach this table: under `TENANT_PROVIDER=single`
- * (what cloud runs today) every case carries the Standalone enterprise, and
- * under `multi` the endpoint 403s rather than serve a list RLS has silently
- * narrowed to one tenant. A column with one value everywhere implies a
- * discrimination between tenants that this view cannot actually make. It
- * belongs with the bounded cross-tenant read in faultmaven#815, which is what
- * first makes the enterprise vary here.
+ * The ENTERPRISE (`enterprise_id`, the isolation tenant — ADR-017 D1) gets a
+ * column. Under `TENANT_PROVIDER=multi` this list spans every enterprise
+ * (contract 9.1.0), so which tenant a case belongs to is the first thing an
+ * operator needs to read off a row. It is shown whole, as selectable text:
+ * enterprise ids can share a prefix (the Standalone enterprise is
+ * `00000000-…-000000000002`), so a shortened id could make two tenants look
+ * like one, and a hover-only full id is out of reach for keyboard, touch and
+ * screen-reader users.
  *
  * The billing `organization_id` gets no column at all, and for a different
  * reason: it is nullable and is null for every account nobody pays for
@@ -43,23 +44,25 @@ interface AdminCaseMetadataTableProps {
  * components (`CaseStateBadge`, `CaseStageCell`, `SourceBadge`), so the two
  * tables cannot drift on how a state or a stage looks.
  *
- * There IS an open-content affordance now, and it goes to `/admin/cases/{id}`
- * rather than `/cases/{id}`. The latter is scoped to cases the caller owns or
- * has shared to a team, with no operator bypass, so for a cloud operator every
- * such link would land on 404 "Case not found or access denied" — reporting a
- * case they are looking at in this very list as nonexistent (faultmaven#846).
- * The operator route is the audited break-glass path (faultmaven#815): in cloud
- * it refuses until a live grant covers the case, and the refusal explains
- * itself. The case id stays selectable text; opening is a separate, explicit
- * action, because reading a tenant's content should not be something a stray
- * click does.
+ * Where a row opens depends on whether the operator OWNS it. Since the list
+ * spans every enterprise, the operator's own cases appear here too, and those
+ * open at `/cases/{id}` — the full case page; routing them through break-glass
+ * would demand a grant for the operator's own data and write an access-audit
+ * row each time. Everyone else's open at `/admin/cases/{id}`: `/cases/{id}` is
+ * scoped to cases the caller owns or has shared to a team, with no operator
+ * bypass, so it would land on 404 "Case not found or access denied" for a case
+ * listed right here (faultmaven#846). The operator route is the audited
+ * break-glass path (faultmaven#815): in cloud it refuses until a live grant
+ * covers the case, and the refusal explains itself. The case id stays
+ * selectable text; opening is a separate, explicit action, because reading a
+ * tenant's content should not be something a stray click does.
  *
  * The ENTERPRISE travels with the link (`?enterprise=`). Requesting a grant
  * needs it — `BreakGlassGrantRequest.enterprise_id` — and under multi-tenant
  * cloud it cannot be read from the case, which is exactly what the grant
  * unlocks, so it has to come from the row.
  */
-export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTableProps) {
+export function AdminCaseMetadataTable({ cases, loading, currentUserId }: AdminCaseMetadataTableProps) {
   return (
     <div className="bg-fm-surface rounded-fm-card border border-fm-border overflow-hidden">
       {loading ? (
@@ -74,6 +77,7 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
             <tr>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Case ID</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Enterprise</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
@@ -97,6 +101,11 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
                   <span className="font-mono text-xs text-fm-text-secondary">{c.user_id}</span>
                 </td>
                 <td className="px-4 py-3">
+                  <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
+                    {c.enterprise_id}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
                   <CaseStateBadge state={c.state} />
                 </td>
                 <td className="px-4 py-3">
@@ -110,12 +119,21 @@ export function AdminCaseMetadataTable({ cases, loading }: AdminCaseMetadataTabl
                   {new Date(c.last_activity_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Link
-                    to={`/admin/cases/${c.case_id}?enterprise=${encodeURIComponent(c.enterprise_id)}`}
-                    className="text-fm-accent hover:underline whitespace-nowrap"
-                  >
-                    Open content
-                  </Link>
+                  {currentUserId && c.user_id === currentUserId ? (
+                    <Link
+                      to={`/cases/${c.case_id}`}
+                      className="text-fm-accent hover:underline whitespace-nowrap"
+                    >
+                      Open
+                    </Link>
+                  ) : (
+                    <Link
+                      to={`/admin/cases/${c.case_id}?enterprise=${encodeURIComponent(c.enterprise_id)}`}
+                      className="text-fm-accent hover:underline whitespace-nowrap"
+                    >
+                      Open content
+                    </Link>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { UserTable } from '../components/UserTable';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -8,6 +8,21 @@ import { listUsers, updateUserRole, deactivateUser, logoutAuth } from '../lib/ap
 import type { UserProfile, DashboardRoleValue } from '../types/users';
 
 const PAGE_SIZE = 50;
+const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * What deactivating this account does, in words that fit it. A person loses
+ * access; an integration's service account is the integration's identity, so
+ * deactivating it stops that integration for its whole enterprise — the
+ * deliberate kill switch, worth naming before the click.
+ */
+function deactivateMessage(user: UserProfile | null): string {
+  if (user?.account_kind === 'service') {
+    const integration = user.service_channel ? `The ${user.service_channel} integration` : 'The integration';
+    return `Deactivate this service account? ${integration} it serves stops working immediately for its enterprise, and its active sessions are revoked.`;
+  }
+  return 'Deactivate this user? They will lose access immediately and all their active sessions are revoked.';
+}
 
 export default function UserManagementPage() {
   const { clearAuthState, authState } = useAuth();
@@ -17,7 +32,7 @@ export default function UserManagementPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
-  const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState<UserProfile | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const handleLogout = async () => {
@@ -25,11 +40,15 @@ export default function UserManagementPage() {
     await clearAuthState();
   };
 
-  const loadUsers = async (nextPage = 0) => {
+  // The search goes to the SERVER. Filtering only the page already loaded
+  // would miss every account on another page — and once the list spans every
+  // enterprise (contract 10.0.0, multi-tenant) the operator's own accounts are
+  // scattered across those pages.
+  const loadUsers = async (nextPage = 0, term = search) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await listUsers(nextPage, PAGE_SIZE);
+      const res = await listUsers(nextPage, PAGE_SIZE, term.trim() || undefined);
       setUsers(res.users);
       setTotalCount(res.total);
       setPage(nextPage);
@@ -46,19 +65,15 @@ export default function UserManagementPage() {
     }
   };
 
+  // Debounced, and always from the first page: a new search is a new result
+  // set, and the page the operator was on may not exist in it.
   useEffect(() => {
-    loadUsers(0);
-  }, []);
-
-  const filteredUsers = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return users;
-    return users.filter(
-      (u) =>
-        u.email.toLowerCase().includes(term) ||
-        (u.full_name ?? '').toLowerCase().includes(term)
-    );
-  }, [users, search]);
+    const handle = setTimeout(() => {
+      loadUsers(0, search);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadUsers is recreated each render; the search term is the only trigger
+  }, [search]);
 
   // The roles the table shows after a write are the SERVER's, never a list
   // rebuilt here from the select value. Rebuilding it locally would render an
@@ -77,15 +92,15 @@ export default function UserManagementPage() {
   };
 
   const handleDeactivate = async () => {
-    if (!confirmDeactivateId) return;
+    if (!confirmDeactivate) return;
     setActionError(null);
     try {
-      await deactivateUser(confirmDeactivateId);
+      await deactivateUser(confirmDeactivate.user_id);
       await loadUsers(page);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to deactivate user');
     } finally {
-      setConfirmDeactivateId(null);
+      setConfirmDeactivate(null);
     }
   };
 
@@ -130,9 +145,9 @@ export default function UserManagementPage() {
             <div className="p-8 text-center text-fm-text-tertiary text-sm">Loading users...</div>
           ) : (
             <UserTable
-              users={filteredUsers}
+              users={users}
               onChangeRole={handleChangeRole}
-              onDeactivate={(id) => setConfirmDeactivateId(id)}
+              onDeactivate={(user) => setConfirmDeactivate(user)}
               currentUserId={authState?.user?.user_id ?? null}
             />
           )}
@@ -142,17 +157,21 @@ export default function UserManagementPage() {
           page={page}
           pageSize={PAGE_SIZE}
           total={totalCount}
-          onPageChange={loadUsers}
+          onPageChange={(next) => loadUsers(next)}
         />
       </main>
 
       <ConfirmDialog
-        isOpen={!!confirmDeactivateId}
-        title="Deactivate User"
-        message="Deactivate this user? They will lose access immediately and all their active sessions are revoked."
+        isOpen={!!confirmDeactivate}
+        title={
+          confirmDeactivate?.account_kind === 'service'
+            ? 'Deactivate Service Account'
+            : 'Deactivate User'
+        }
+        message={deactivateMessage(confirmDeactivate)}
         confirmLabel="Deactivate"
         onConfirm={handleDeactivate}
-        onCancel={() => setConfirmDeactivateId(null)}
+        onCancel={() => setConfirmDeactivate(null)}
       />
     </div>
   );
