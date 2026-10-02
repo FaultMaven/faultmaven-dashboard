@@ -1073,7 +1073,7 @@ export default function KBPage() {
         setConversion({
           conversion_id: result.conversion_id,
           status: 'completed',
-          source_file: { filename: data.title, size_bytes: 0, content_type: 'text/markdown', retained_path: '' },
+          source_file: { filename: data.title, size_bytes: 0, content_type: 'text/markdown' },
           analysis: { is_actionable: true, failure_modes: [], source_assessment: { content_type: 'manual', actionability_rating: 'high', missing_information: [] } },
           drafts: [result.draft],
           warnings: [],
@@ -1088,7 +1088,7 @@ export default function KBPage() {
       setConversion({
         conversion_id: result.conversion_id,
         status: 'completed',
-        source_file: { filename: data.title, size_bytes: 0, content_type: 'text/markdown', retained_path: '' },
+        source_file: { filename: data.title, size_bytes: 0, content_type: 'text/markdown' },
         analysis: { is_actionable: true, failure_modes: [], source_assessment: { content_type: 'manual', actionability_rating: 'high', missing_information: [] } },
         drafts: [result.draft],
         warnings: [],
