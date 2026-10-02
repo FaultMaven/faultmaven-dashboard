@@ -13,7 +13,6 @@ export interface SourceFileInfo {
   filename: string;
   size_bytes: number;
   content_type: string;
-  retained_path: string;
 }
 
 export interface SourceAssessment {
@@ -66,7 +65,6 @@ export interface ConversionDraft {
   case_id: string | null;
   validation: ValidationResult;
   quality_score: QualityScore;
-  file_path: string;
   content_preview: string;
   content: string | null;
   quality_warning: string | null;
@@ -343,7 +341,6 @@ export interface ScanResult {
     scope: string;
     validation_passed: boolean;
     quality_score: number;
-    file_path: string;
   }>;
 }
 
