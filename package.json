@@ -66,6 +66,11 @@
     "vitest": "^4.1.11"
   },
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-vfj7-8cjw-p6xm"
+      ]
+    },
     "overrides": {
       "@humanfs/node": "^0.16.8",
       "brace-expansion@1": "^1.1.21",
