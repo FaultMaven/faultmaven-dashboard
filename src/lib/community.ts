@@ -17,6 +17,9 @@
 export const COMMUNITY_SLACK_URL =
   'https://join.slack.com/t/faultmaven-community/shared_invite/zt-493fv3w3o-mPBBI2v3mMYQKS4649mY1A';
 
+/** The marketing site's home page — the destination of the sign-in logo link. */
+export const MARKETING_SITE_URL = 'https://www.faultmaven.ai/';
+
 /** The published investigation transcript — the zero-friction "see it work". */
 export const TRANSCRIPT_URL = 'https://www.faultmaven.ai/investigation';
 

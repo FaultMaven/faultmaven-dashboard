@@ -6,12 +6,24 @@ import { useAuth } from '../context/AuthContext';
 import { invalidateAvailableScopes } from '../hooks/useAvailableScopes';
 import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
 import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
-import { COMMUNITY_SLACK_URL, SELF_HOST_URL, TRANSCRIPT_URL } from '../lib/community';
+import { COMMUNITY_SLACK_URL, MARKETING_SITE_URL, SELF_HOST_URL, TRANSCRIPT_URL } from '../lib/community';
 
 const inputClass = 'w-full px-4 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 const warningBannerClass = 'mb-4 text-sm text-fm-warning bg-fm-warning-bg border border-fm-warning-border p-3 rounded-fm-btn';
 const primaryButtonClass = 'w-full px-4 py-3 bg-fm-accent text-white font-medium rounded-fm-btn hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
 const secondaryButtonClass = 'w-full px-4 py-3 bg-fm-surface-alt text-fm-text-primary font-medium border border-fm-border rounded-fm-btn hover:bg-fm-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+
+/** The FaultMaven logo, linking to the marketing site. */
+function LogoLink() {
+  return (
+    <a
+      href={MARKETING_SITE_URL}
+      className="inline-block mb-6 rounded-fm-btn focus:outline-none focus-visible:ring-2 focus-visible:ring-fm-accent hover:opacity-80 transition-opacity"
+    >
+      <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto" />
+    </a>
+  );
+}
 
 /**
  * Rendered when deployment detection settled 'unreachable'. Owns the Chrome
@@ -54,7 +66,7 @@ function UnreachableCard({
     <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
       <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
         <div className="text-center mb-6 mt-2">
-          <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
+          <LogoLink />
           <h2 className="text-xl font-semibold text-fm-text-primary mb-2">
             Can&apos;t reach the FaultMaven API
           </h2>
@@ -255,7 +267,7 @@ export default function LoginPage() {
       <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
         <div className="bg-fm-surface border border-fm-border rounded-fm-card shadow-fm-card p-8 w-full max-w-md">
           <div className="text-center mb-8 mt-6">
-            <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
+            <LogoLink />
             <p className="text-fm-text-secondary">
               Review your cases, search the Knowledge Base, and start a new investigation.
             </p>
@@ -407,7 +419,7 @@ export default function LoginPage() {
 
         {/* Logo and Header */}
         <div className="text-center mb-8 mt-6">
-          <img src="/icon/design-transparent.svg" alt="FaultMaven — Always on call" className="h-12 mx-auto mb-6" />
+          <LogoLink />
           <p className="text-fm-text-secondary">
             Authenticate to search the Knowledge Base, review your cases, and start a new one with the Copilot.
           </p>
