@@ -227,6 +227,11 @@ export type HypothesisSummary = components['schemas']['HypothesisSummary'];
 
 export type CaseUIStatus = CaseState;
 
+/** The phases whose UI view carries a judged problem statement. */
+type JudgedUIResponse =
+  | components['schemas']['CaseUIResponse_Investigating']
+  | components['schemas']['CaseUIResponse_Resolved'];
+
 /**
  * Frontend read-adapter over `GET /cases/{id}/ui`. The endpoint returns a
  * phase-discriminated union (see `CaseUIResponse_*` in `case.ts`); the Dashboard
@@ -241,11 +246,11 @@ export interface CaseUIResponse {
   active_hypotheses?: HypothesisSummary[];
   agent_status?: string;
   // The Issue tab reads where the statement stands (#296's Dashboard
-  // counterpart). Typed FROM the generated INVESTIGATING member, not restated,
-  // so a contract change reaches here: the server sends both on that phase
-  // only, and RESOLVED/CLOSED carry no `problem_verification`.
-  problem_statement?: components['schemas']['CaseUIResponse_Investigating']['problem_statement'];
-  problem_verification?: components['schemas']['CaseUIResponse_Investigating']['problem_verification'];
+  // counterpart). Typed FROM the generated members, not restated, so a
+  // contract change reaches here: INVESTIGATING, RESOLVED and CLOSED all send
+  // both (the terminal response since contract 11.3.0).
+  problem_statement?: JudgedUIResponse['problem_statement'];
+  problem_verification?: JudgedUIResponse['problem_verification'];
 }
 
 /** Where a case's problem statement stands against the evidence (contract 11.1.0). */
