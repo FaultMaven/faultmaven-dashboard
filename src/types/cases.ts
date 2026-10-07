@@ -240,7 +240,16 @@ export interface CaseUIResponse {
   current_turn: number;
   active_hypotheses?: HypothesisSummary[];
   agent_status?: string;
+  // The Issue tab reads where the statement stands (#296's Dashboard
+  // counterpart). Typed FROM the generated INVESTIGATING member, not restated,
+  // so a contract change reaches here: the server sends both on that phase
+  // only, and RESOLVED/CLOSED carry no `problem_verification`.
+  problem_statement?: components['schemas']['CaseUIResponse_Investigating']['problem_statement'];
+  problem_verification?: components['schemas']['CaseUIResponse_Investigating']['problem_verification'];
 }
+
+/** Where a case's problem statement stands against the evidence (contract 11.1.0). */
+export type ProblemVerification = components['schemas']['ProblemVerificationData'];
 
 // ==================== Evidence ====================
 

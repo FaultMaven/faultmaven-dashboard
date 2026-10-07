@@ -21,6 +21,7 @@ describe('closureReasonDisplay', () => {
     // so this pins the map against a deliberate edit here, NOT against backend
     // drift. The fallback below is what actually protects users from drift.
     expect(Object.keys(CLOSURE_REASON_DISPLAY).sort()).toEqual([
+      'closed_false_alarm',
       'closed_insufficient_evidence',
       'closed_rca_infeasible',
       'closed_restatement_held',

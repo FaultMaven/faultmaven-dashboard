@@ -50,6 +50,11 @@ export const CLOSURE_REASON_DISPLAY: Record<string, ClosureReasonDisplay> = {
     description:
       'The evidence supported a cause, but it was never stated distinctly from the problem — what was missing was a mechanism, not more data.',
   },
+  closed_false_alarm: {
+    label: 'False alarm',
+    description:
+      'The evidence showed the reported problem was not present; there was nothing to fix.',
+  },
   closed_insufficient_evidence: {
     label: 'Insufficient evidence',
     description:
