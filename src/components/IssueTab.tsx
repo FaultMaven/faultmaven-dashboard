@@ -1,5 +1,8 @@
-import type { CaseDetail } from '../types/cases';
+import { useEffect, useState } from 'react';
+import type { CaseDetail, ProblemVerification } from '../types/cases';
+import { getCaseUI } from '../lib/api';
 import { closureReasonDisplay } from '../lib/cases/closureReason';
+import { problemStatementView } from '../lib/cases/problemStatus';
 import { caseTurnCount } from '../lib/cases/turnLabel';
 
 interface IssueTabProps {
@@ -17,7 +20,47 @@ function DurationDisplay({ createdAt, resolvedAt }: { createdAt: string; resolve
   return <span>{days}d {hours % 24}h</span>;
 }
 
+interface JudgedStatement {
+  statement: string;
+  verification: ProblemVerification | null;
+}
+
+/**
+ * The statement the server judged and its verification, for an INVESTIGATING
+ * case: `GET /cases/{id}` carries neither, so this reads the case's UI view, as
+ * the Hypotheses tab does. RESOLVED and CLOSED responses carry no
+ * verification. A failed read leaves the tab on `description`, as before.
+ */
+function useJudgedStatement(caseId: string, investigating: boolean): JudgedStatement | null {
+  // Keyed by case, so a result read for one case is never shown on another.
+  const [read, setRead] = useState<{ caseId: string; judged: JudgedStatement } | null>(null);
+  useEffect(() => {
+    if (!investigating) return;
+    let cancelled = false;
+    getCaseUI(caseId)
+      .then((ui) => {
+        const statement = ui.problem_statement?.trim();
+        if (!cancelled && statement) {
+          setRead({ caseId, judged: { statement, verification: ui.problem_verification ?? null } });
+        }
+      })
+      .catch(() => {
+        // The tab still renders the case's description; nothing to surface.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId, investigating]);
+  return investigating && read?.caseId === caseId ? read.judged : null;
+}
+
 export function IssueTab({ caseDetail }: IssueTabProps) {
+  const judged = useJudgedStatement(caseDetail.case_id, caseDetail.state === 'investigating');
+  // The verification judges the statement in the same response; the case's
+  // description is shown without one.
+  const problem = judged
+    ? problemStatementView(judged.statement, judged.verification)
+    : null;
   const milestones = caseDetail.milestones_completed || [];
   const hasRootCause = milestones.includes('root_cause_identified');
   const hasSolution = milestones.includes('solution_verified');
@@ -35,9 +78,27 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
           Problem Statement
         </h3>
-        <p className="text-sm text-fm-text-primary">
-          {caseDetail.description || 'No problem statement recorded.'}
-        </p>
+        {problem ? (
+          <>
+            <p
+              className={`text-sm ${problem.struck ? 'line-through text-fm-text-tertiary' : 'text-fm-text-primary'}`}
+            >
+              {problem.statement}
+            </p>
+            {problem.notes.map((note) => (
+              <p
+                key={note.text}
+                className={`text-xs mt-0.5 ${note.tone === 'warning' ? 'text-fm-warning' : 'text-fm-text-tertiary'}`}
+              >
+                {note.text}
+              </p>
+            ))}
+          </>
+        ) : (
+          <p className="text-sm text-fm-text-primary">
+            {caseDetail.description || 'No problem statement recorded.'}
+          </p>
+        )}
       </section>
 
       {/* Resolution Timeline */}

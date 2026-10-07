@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+
+vi.mock('../../lib/api', () => ({ getCaseUI: vi.fn() }));
+
+import { getCaseUI } from '../../lib/api';
 import { IssueTab } from '../../components/IssueTab';
 import type { CaseDetail } from '../../types/cases';
 
@@ -111,5 +115,45 @@ describe('IssueTab status colour', () => {
     expect(screen.getByText('Root cause unreachable')).toBeInTheDocument();
     expect(screen.queryByText('closed_rca_infeasible')).not.toBeInTheDocument();
     expect(screen.queryByText('Resolution Notes')).not.toBeInTheDocument();
+  });
+});
+
+// #296's Dashboard counterpart: `GET /cases/{id}` carries no verification, so an
+// INVESTIGATING case reads it from the case's UI view.
+describe('IssueTab problem statement against problem_status', () => {
+  beforeEach(() => {
+    // A block, not an expression: a function returned from beforeEach is run as
+    // a teardown, and the reset returns the mock itself.
+    vi.mocked(getCaseUI).mockReset();
+  });
+
+  it('strikes a statement the evidence showed was not present, with the finding', async () => {
+    vi.mocked(getCaseUI).mockResolvedValue({
+      problem_statement: 'Primary DB unresponsive',
+      problem_verification: {
+        problem_status: 'invalidated',
+        invalidation_finding: 'Health checks passed throughout the window.',
+      },
+    } as never);
+    render(<IssueTab caseDetail={makeCaseDetail({ state: 'investigating', is_terminal: false })} />);
+
+    expect(await screen.findByText('Not present: Health checks passed throughout the window.')).toBeInTheDocument();
+    expect(screen.getByText('Primary DB unresponsive')).toHaveClass('line-through');
+    expect(getCaseUI).toHaveBeenCalledWith('case-1');
+  });
+
+  it('reads no verification for a terminal case', () => {
+    render(<IssueTab caseDetail={makeCaseDetail({ state: 'closed' })} />);
+    expect(getCaseUI).not.toHaveBeenCalled();
+    expect(screen.getByText('Primary DB unresponsive')).not.toHaveClass('line-through');
+  });
+
+  it('keeps the description when the UI view cannot be read', async () => {
+    vi.mocked(getCaseUI).mockRejectedValue(new Error('offline'));
+    render(<IssueTab caseDetail={makeCaseDetail({ state: 'investigating', is_terminal: false })} />);
+    await waitFor(() => expect(getCaseUI).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(screen.getByText('Primary DB unresponsive')).not.toHaveClass('line-through');
+    expect(screen.queryByText(/Not present/)).toBeNull();
   });
 });

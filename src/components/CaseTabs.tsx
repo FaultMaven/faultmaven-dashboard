@@ -81,7 +81,6 @@ function hypothesisStatusStyle(state: HypothesisState): { color: string; symbol:
       return { color: 'text-fm-warning', symbol: '◌' };
     case 'retired':
       return { color: 'text-fm-text-tertiary', symbol: '○' };
-    case 'captured':
     default:
       return { color: 'text-fm-text-secondary', symbol: '○' };
   }
