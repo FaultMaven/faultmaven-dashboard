@@ -26,16 +26,18 @@ interface JudgedStatement {
 }
 
 /**
- * The statement the server judged and its verification, for an INVESTIGATING
- * case: `GET /cases/{id}` carries neither, so this reads the case's UI view, as
- * the Hypotheses tab does. RESOLVED and CLOSED responses carry no
- * verification. A failed read leaves the tab on `description`, as before.
+ * The statement the server judged and its verification, for a case past
+ * INQUIRY: `GET /cases/{id}` carries neither, so this reads the case's UI view,
+ * as the Hypotheses tab does. RESOLVED and CLOSED responses carry the
+ * verification since contract 11.3.0, so a closed false alarm stays struck
+ * through. A failed read, or a terminal response from an older server, leaves
+ * the tab on `description` or an unjudged statement, as before.
  */
-function useJudgedStatement(caseId: string, investigating: boolean): JudgedStatement | null {
+function useJudgedStatement(caseId: string, judged: boolean): JudgedStatement | null {
   // Keyed by case, so a result read for one case is never shown on another.
   const [read, setRead] = useState<{ caseId: string; judged: JudgedStatement } | null>(null);
   useEffect(() => {
-    if (!investigating) return;
+    if (!judged) return;
     let cancelled = false;
     getCaseUI(caseId)
       .then((ui) => {
@@ -50,12 +52,13 @@ function useJudgedStatement(caseId: string, investigating: boolean): JudgedState
     return () => {
       cancelled = true;
     };
-  }, [caseId, investigating]);
-  return investigating && read?.caseId === caseId ? read.judged : null;
+  }, [caseId, judged]);
+  return judged && read?.caseId === caseId ? read.judged : null;
 }
 
 export function IssueTab({ caseDetail }: IssueTabProps) {
-  const judged = useJudgedStatement(caseDetail.case_id, caseDetail.state === 'investigating');
+  // INQUIRY has no confirmed statement to judge: its proposal is in the chat.
+  const judged = useJudgedStatement(caseDetail.case_id, caseDetail.state !== 'inquiry');
   // The verification judges the statement in the same response; the case's
   // description is shown without one.
   const problem = judged

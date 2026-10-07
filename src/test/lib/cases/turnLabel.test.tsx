@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+
+// The Issue tab reads a resolved case's UI view (contract 11.3.0); this file is
+// about the turn counter, so that read never settles rather than reaching out.
+vi.mock('../../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/api')>()),
+  getCaseUI: vi.fn(() => new Promise(() => {})),
+}));
 import { caseTurnCount } from '../../../lib/cases/turnLabel';
 import { TranscriptView } from '../../../components/TranscriptView';
 import { IssueTab } from '../../../components/IssueTab';

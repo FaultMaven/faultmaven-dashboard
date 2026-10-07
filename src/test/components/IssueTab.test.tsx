@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 
-vi.mock('../../lib/api', () => ({ getCaseUI: vi.fn() }));
+// A read that never settles by default: a resolved or closed case reads its UI
+// view too (contract 11.3.0), and these status tests are not about it.
+vi.mock('../../lib/api', () => ({ getCaseUI: vi.fn(() => new Promise(() => {})) }));
 
 import { getCaseUI } from '../../lib/api';
 import { IssueTab } from '../../components/IssueTab';
@@ -118,8 +120,9 @@ describe('IssueTab status colour', () => {
   });
 });
 
-// #296's Dashboard counterpart: `GET /cases/{id}` carries no verification, so an
-// INVESTIGATING case reads it from the case's UI view.
+// #296's Dashboard counterpart: `GET /cases/{id}` carries no verification, so a
+// case past INQUIRY reads it from the case's UI view — a resolved or closed one
+// too since contract 11.3.0 (faultmaven#1874).
 describe('IssueTab problem statement against problem_status', () => {
   beforeEach(() => {
     // A block, not an expression: a function returned from beforeEach is run as
@@ -142,10 +145,56 @@ describe('IssueTab problem statement against problem_status', () => {
     expect(getCaseUI).toHaveBeenCalledWith('case-1');
   });
 
-  it('reads no verification for a terminal case', () => {
+  it('keeps a closed false alarm struck through, with the finding', async () => {
+    vi.mocked(getCaseUI).mockResolvedValue({
+      problem_statement: 'Primary DB unresponsive',
+      problem_verification: {
+        problem_status: 'invalidated',
+        invalidation_finding: 'Health checks passed throughout the window.',
+      },
+    } as never);
+    render(
+      <IssueTab
+        caseDetail={makeCaseDetail({
+          state: 'closed',
+          resolved_at: null,
+          closed_at: '2024-01-01T02:00:00Z',
+          closure_reason: 'closed_false_alarm',
+        })}
+      />
+    );
+
+    expect(await screen.findByText('Not present: Health checks passed throughout the window.')).toBeInTheDocument();
+    expect(screen.getByText('Primary DB unresponsive')).toHaveClass('line-through');
+  });
+
+  it("shows where a resolved case's revised statement started", async () => {
+    vi.mocked(getCaseUI).mockResolvedValue({
+      problem_statement: 'Orders API times out; DB latency is normal',
+      problem_verification: {
+        problem_status: 'verified',
+        original_problem_statement: 'Primary DB unresponsive',
+      },
+    } as never);
+    render(<IssueTab caseDetail={makeCaseDetail({ state: 'resolved' })} />);
+
+    expect(await screen.findByText(/Originally reported as.*Primary DB unresponsive/)).toBeInTheDocument();
+    expect(screen.getByText('Orders API times out; DB latency is normal')).not.toHaveClass('line-through');
+  });
+
+  it('renders a terminal case from a server older than 11.3.0 as before', async () => {
+    vi.mocked(getCaseUI).mockResolvedValue({ problem_statement: 'Primary DB unresponsive' } as never);
     render(<IssueTab caseDetail={makeCaseDetail({ state: 'closed' })} />);
-    expect(getCaseUI).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(getCaseUI).toHaveBeenCalledWith('case-1'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(screen.getByText('Primary DB unresponsive')).not.toHaveClass('line-through');
+    expect(screen.queryByText(/Not present|Originally reported/)).toBeNull();
+  });
+
+  it('reads no verification for an inquiry case, which has no confirmed statement', () => {
+    render(<IssueTab caseDetail={makeCaseDetail({ state: 'inquiry', is_terminal: false, resolved_at: null })} />);
+    expect(getCaseUI).not.toHaveBeenCalled();
   });
 
   it('keeps the description when the UI view cannot be read', async () => {
