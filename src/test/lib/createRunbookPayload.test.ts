@@ -13,10 +13,10 @@ vi.mock('./../../lib/knowledge/client', () => ({
   buildQueryParams: vi.fn(),
 }));
 
-import { createRunbookManually } from '../../lib/knowledge/conversion';
+import { createRunbookManually, type RunbookCreateInput } from '../../lib/knowledge/conversion';
 import { makeAuthenticatedRequest } from '../../lib/knowledge/client';
 
-const base = {
+const base: Omit<RunbookCreateInput, 'difficulty'> = {
   title: 'A sufficiently long runbook title',
   domain: 'database',
   service: 'postgresql',

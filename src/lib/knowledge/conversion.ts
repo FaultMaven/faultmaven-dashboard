@@ -1,5 +1,6 @@
 // Document-to-Runbook Conversion API client
 
+import type { components } from '../../types/api.generated';
 import { makeAuthenticatedRequest } from './client';
 import { handleAPIResponse } from './errors';
 
@@ -459,24 +460,25 @@ export async function deleteDraft(
   await handleAPIResponse(response, 'Failed to delete draft');
 }
 
+type RunbookCreateRequest = components['schemas']['RunbookCreateRequest'];
+
+/**
+ * The create request, with the taxonomy fields typed from the contract's enums.
+ * `difficulty` may also be '' (the form's "Not specified"): it is omitted, not sent.
+ */
+export type RunbookCreateInput = Pick<
+  RunbookCreateRequest,
+  | 'title' | 'domain' | 'service' | 'symptom_class' | 'severity' | 'scope'
+  | 'symptom_recognition' | 'applicability' | 'diagnostic_steps' | 'causes' | 'prevention'
+> & {
+  tags: string[];
+  difficulty: RunbookCreateRequest['difficulty'] | '';
+};
+
 /**
  * Create a runbook manually from template fields (no LLM).
  */
-export async function createRunbookManually(data: {
-  title: string;
-  domain: string;
-  service: string;
-  symptom_class: string[];
-  severity: string;
-  scope: string;
-  tags: string[];
-  difficulty: string;
-  symptom_recognition: string;
-  applicability: string;
-  diagnostic_steps: string;
-  causes: string;
-  prevention: string;
-}): Promise<{ conversion_id: string; draft: ConversionDraft }> {
+export async function createRunbookManually(data: RunbookCreateInput): Promise<{ conversion_id: string; draft: ConversionDraft }> {
   // An UNSET optional field is omitted, not sent as ''. `difficulty` is the one
   // the backend defaults, so omitting it means "use the default" while `''`
   // would be an invalid value it rejects — the difference between a real
