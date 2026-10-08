@@ -1,3 +1,4 @@
+import type { PublishableScope } from '../lib/auth';
 import React, { useRef, useState } from 'react';
 import {
   isMember,
@@ -11,7 +12,7 @@ import {
 import type { RunbookCreateInput } from '../lib/knowledge/conversion';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 
-const SCOPE_LABELS: Record<string, string> = {
+const SCOPE_LABELS: Record<PublishableScope, string> = {
   personal: 'Personal',
   team: 'Team',
   global: 'Global',
@@ -121,6 +122,15 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
    * the author filled in.
    */
   const localErrors: string[] = [];
+  // The selects are `required`, but a submit event does not consult them
+  // everywhere (and a scope can become unavailable), so the same vocabulary
+  // check that narrows the payload also speaks to the author.
+  if (!isMember(RUNBOOK_DOMAINS, form.domain)) localErrors.push('Choose a domain.');
+  if (!isMember(RUNBOOK_SEVERITIES, form.severity)) localErrors.push('Choose a severity.');
+  if (!isMember(KNOWLEDGE_SCOPES, effectiveScope)) localErrors.push('Choose a KB scope.');
+  if (form.difficulty !== '' && !isMember(RUNBOOK_DIFFICULTIES, form.difficulty)) {
+    localErrors.push('Choose a difficulty from the list, or leave it unspecified.');
+  }
   if (form.symptom_class.length === 0) {
     localErrors.push('Pick at least one symptom class.');
   }
@@ -137,9 +147,12 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
   }
 
   const errorRef = useRef<HTMLDivElement>(null);
+  // A blocked submit must always show why, even on a form not yet "dirty".
+  const [attempted, setAttempted] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAttempted(true);
     if (localErrors.length > 0) {
       // A SILENT RETURN IS INDISTINGUISHABLE FROM A BROKEN BUTTON. The warning
       // renders at the top of a form with sixteen chips and five tall
@@ -147,13 +160,17 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
       // happened at all. Bring it to them, and make it the focus so a screen
       // reader announces it rather than leaving them on a button that appears
       // inert.
-      errorRef.current?.scrollIntoView({ block: 'center' });
-      errorRef.current?.focus();
+      // The box is not mounted until this render commits when the form was
+      // not yet dirty, so defer the focus a tick.
+      setTimeout(() => {
+        errorRef.current?.scrollIntoView?.({ block: 'center' });
+        errorRef.current?.focus();
+      }, 0);
       return;
     }
-    // The selects are `required`, but a submit event does not consult them
-    // everywhere; narrow rather than cast, so the payload is the contract's
-    // request type by construction.
+    // Narrow rather than cast, so the payload is the contract's request type
+    // by construction. localErrors above already covers every failing case;
+    // reaching the throw would be a bug, and a loud one, never a dead button.
     const { domain, severity, difficulty } = form;
     if (
       !isMember(RUNBOOK_DOMAINS, domain) ||
@@ -162,7 +179,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
       !(difficulty === '' || isMember(RUNBOOK_DIFFICULTIES, difficulty)) ||
       !form.symptom_class.every((s): s is SymptomClass => isMember(SYMPTOM_CLASSES, s))
     ) {
-      return;
+      throw new Error('Runbook form passed validation with an off-vocabulary value');
     }
     const data: RunbookCreateInput = {
       ...form,
@@ -227,7 +244,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
 
       {/* Shown only once the author has started filling the form, so an empty
           form is not scolded before anyone has done anything. */}
-      {localErrors.length > 0 && dirty && (
+      {localErrors.length > 0 && (dirty || attempted) && (
         <div
           ref={errorRef}
           tabIndex={-1}
@@ -336,7 +353,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
           >
             <option value="">Select…</option>
             {selectableScopes.map((s) => (
-              <option key={s} value={s}>{SCOPE_LABELS[s] ?? s}</option>
+              <option key={s} value={s}>{SCOPE_LABELS[s]}</option>
             ))}
           </select>
         </div>

@@ -34,6 +34,8 @@ import { ConversionResults } from '../components/ConversionResults';
 import { DraftEditor } from '../components/DraftEditor';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { CreateRunbookForm } from '../components/CreateRunbookForm';
+import type { PublishableScope } from '../lib/auth';
+import { RUNBOOK_SEVERITIES } from '../lib/knowledge/runbookVocabulary';
 import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
@@ -339,9 +341,9 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
           aria-label="Filter by severity"
         >
           <option value="">All severities</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+          {RUNBOOK_SEVERITIES.map((s) => (
+            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+          ))}
         </select>
         <div className="text-xs text-fm-text-tertiary whitespace-nowrap">
           {displayDocuments.length} runbook{displayDocuments.length !== 1 ? 's' : ''}
@@ -688,7 +690,7 @@ interface OverlayPanelProps {
   onClose: () => void;
 }
 
-const UPLOAD_SCOPE_LABELS: Record<string, string> = {
+const UPLOAD_SCOPE_LABELS: Record<PublishableScope, string> = {
   personal: 'Personal',
   team: 'Team',
   global: 'Global (platform)',
@@ -792,7 +794,7 @@ function OverlayPanel(props: OverlayPanelProps) {
               className={inputClass}
             >
               {uploadScopes.map((s) => (
-                <option key={s} value={s}>{UPLOAD_SCOPE_LABELS[s] ?? s}</option>
+                <option key={s} value={s}>{UPLOAD_SCOPE_LABELS[s]}</option>
               ))}
             </select>
           </div>
