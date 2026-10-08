@@ -10,6 +10,7 @@ import {
   verifyBatch,
   deleteDraft,
   createRunbookManually,
+  type RunbookCreateInput,
   listAllDrafts,
   getConversion,
   scanForRunbooks,
@@ -32,7 +33,7 @@ import { ConvertUpload } from '../components/ConvertUpload';
 import { ConversionResults } from '../components/ConversionResults';
 import { DraftEditor } from '../components/DraftEditor';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { CreateRunbookForm, type RunbookFormData } from '../components/CreateRunbookForm';
+import { CreateRunbookForm } from '../components/CreateRunbookForm';
 import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
@@ -675,7 +676,7 @@ interface OverlayPanelProps {
   // Manual
   manualLoading: boolean;
   manualError: string | null;
-  onManualCreate: (data: RunbookFormData) => Promise<void>;
+  onManualCreate: (data: RunbookCreateInput) => Promise<void>;
   // Results/Editor
   editingDraft: ConversionDraft | null;
   saving: boolean;
@@ -1039,7 +1040,7 @@ export default function KBPage() {
     }
   };
 
-  const handleManualCreate = async (data: RunbookFormData) => {
+  const handleManualCreate = async (data: RunbookCreateInput) => {
     setManualLoading(true);
     setManualError(null);
     try {

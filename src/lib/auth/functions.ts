@@ -3,13 +3,14 @@
 import config from '../../config';
 import type { components } from '../../types/api.generated';
 import type { GuardNarrowing } from '../../types/contractGuards';
+import { KNOWLEDGE_SCOPES } from '../knowledge/runbookVocabulary';
 import { authManager, deriveExpiresAt } from './AuthManager';
 import { AuthenticationError, type AuthState } from './types';
 import { isSafeLogoutUrl } from './logoutUrl';
 
-export type PublishableScope = 'personal' | 'team' | 'global';
+export type PublishableScope = components['schemas']['KnowledgeScope'];
 
-const PUBLISHABLE_SCOPES: readonly PublishableScope[] = ['personal', 'team', 'global'];
+const PUBLISHABLE_SCOPES: readonly PublishableScope[] = KNOWLEDGE_SCOPES;
 
 function isPublishableScope(scope: string): scope is PublishableScope {
   return (PUBLISHABLE_SCOPES as readonly string[]).includes(scope);

@@ -1,4 +1,14 @@
 import React, { useRef, useState } from 'react';
+import {
+  isMember,
+  KNOWLEDGE_SCOPES,
+  RUNBOOK_DIFFICULTIES,
+  RUNBOOK_DOMAINS,
+  RUNBOOK_SEVERITIES,
+  SYMPTOM_CLASSES,
+  type SymptomClass,
+} from '../lib/knowledge/runbookVocabulary';
+import type { RunbookCreateInput } from '../lib/knowledge/conversion';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -8,13 +18,13 @@ const SCOPE_LABELS: Record<string, string> = {
 };
 
 interface CreateRunbookFormProps {
-  onSubmit: (data: RunbookFormData) => Promise<void>;
+  onSubmit: (data: RunbookCreateInput) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
   error: string | null;
 }
 
-export interface RunbookFormData {
+interface RunbookFormData {
   title: string;
   domain: string;
   service: string;
@@ -34,48 +44,6 @@ const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
 
 const textareaClass = `${inputClass} font-mono text-sm leading-relaxed`;
-
-/**
- * The `symptom_class` failure-mode taxonomy — a CLOSED vocabulary.
- *
- * A free-text field here accepted anything, and the backend rejects anything
- * off-vocabulary as a hard error: the author either extends the taxonomy
- * deliberately or moves a long-tail symptom into `tags`. So an author typing
- * `this_a_test_for_runbook_creation` got a valid-looking submission, a draft
- * saved with bad metadata, and a validation failure they could only repair by
- * hand-editing YAML frontmatter in the markdown editor. Choosing from the list
- * removes that entire path.
- *
- * A HAND-MAINTAINED COPY, like the three below it. The backend says so of its
- * own list (`runbook_validator.py`: "this is a hand-maintained copy — the repos
- * can't import each other — so grow it HERE and in kb-toolkit in lock-step"),
- * and this is the third such copy. It is not in the OpenAPI spec, which types
- * the field as a bare `string[]`, so there is nothing to generate from. Grow it
- * with the other two; if the backend ever publishes the vocabulary, delete this
- * and render from that instead.
- */
-const SYMPTOM_CLASSES = [
-  'auth_failure',
-  'connection_refused',
-  'cpu_saturation',
-  'crash_loop',
-  'data_loss',
-  'deployment_failure',
-  'disk_full',
-  'image_pull_failure',
-  'latency',
-  'node_failure',
-  'oom',
-  'replication_lag',
-  'scheduling_failure',
-  'service_unavailable',
-  'throughput_degradation',
-  'timeout',
-];
-
-const DOMAINS = ['database', 'networking', 'compute', 'application', 'security', 'storage', 'messaging'];
-const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
-const DIFFICULTIES = ['beginner', 'intermediate', 'advanced', 'expert'];
 
 const SECTION_PLACEHOLDERS: Record<string, string> = {
   symptom_recognition:
@@ -183,8 +151,24 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
       errorRef.current?.focus();
       return;
     }
-    const data = {
+    // The selects are `required`, but a submit event does not consult them
+    // everywhere; narrow rather than cast, so the payload is the contract's
+    // request type by construction.
+    const { domain, severity, difficulty } = form;
+    if (
+      !isMember(RUNBOOK_DOMAINS, domain) ||
+      !isMember(RUNBOOK_SEVERITIES, severity) ||
+      !isMember(KNOWLEDGE_SCOPES, effectiveScope) ||
+      !(difficulty === '' || isMember(RUNBOOK_DIFFICULTIES, difficulty)) ||
+      !form.symptom_class.every((s): s is SymptomClass => isMember(SYMPTOM_CLASSES, s))
+    ) {
+      return;
+    }
+    const data: RunbookCreateInput = {
       ...form,
+      domain,
+      severity,
+      difficulty,
       scope: effectiveScope,
       symptom_class: form.symptom_class,
       tags: tagsInput.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
@@ -305,7 +289,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
             className={inputClass}
           >
             <option value="">Select…</option>
-            {DOMAINS.map((d) => (
+            {RUNBOOK_DOMAINS.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
@@ -322,7 +306,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
             className={inputClass}
           >
             <option value="">Select…</option>
-            {SEVERITIES.map((s) => (
+            {RUNBOOK_SEVERITIES.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
@@ -334,7 +318,7 @@ export function CreateRunbookForm({ onSubmit, onCancel, loading, error }: Create
             {/* Genuinely optional — the backend defaults it — so "not specified"
                 is a real answer and the request omits the field entirely. */}
             <option value="">Not specified</option>
-            {DIFFICULTIES.map((d) => (
+            {RUNBOOK_DIFFICULTIES.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>

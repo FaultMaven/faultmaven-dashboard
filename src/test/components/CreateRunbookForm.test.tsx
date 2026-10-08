@@ -22,6 +22,12 @@ vi.mock('../../hooks/useAvailableScopes', () => ({
   useAvailableScopes: () => ({ scopes: ['personal', 'team'], loading: false }),
 }));
 
+import {
+  RUNBOOK_DIFFICULTIES,
+  RUNBOOK_DOMAINS,
+  RUNBOOK_SEVERITIES,
+  SYMPTOM_CLASSES,
+} from '../../lib/knowledge/runbookVocabulary';
 import { CreateRunbookForm } from '../../components/CreateRunbookForm';
 
 const onSubmit = vi.fn().mockResolvedValue(undefined);
@@ -215,5 +221,28 @@ describe('the required selects', () => {
     expect(select.value).toBe('');
     expect(select).not.toBeRequired();
     expect(screen.getByRole('option', { name: 'Not specified' })).toBeInTheDocument();
+  });
+});
+
+describe('taxonomy options come from the contract enums', () => {
+  const optionsOf = (label: string) =>
+    Array.from(
+      (screen.getByLabelText(new RegExp(`^${label}`), { selector: 'select' }) as HTMLSelectElement).options,
+    ).map((o) => o.value);
+
+  it('offers every generated member of severity, difficulty and domain', () => {
+    renderForm();
+    expect(optionsOf('Severity')).toEqual(['', ...RUNBOOK_SEVERITIES]);
+    expect(optionsOf('Severity')).toContain('info');
+    expect(optionsOf('Difficulty')).toEqual(['', ...RUNBOOK_DIFFICULTIES]);
+    expect(optionsOf('Difficulty')).toContain('expert');
+    expect(optionsOf('Domain')).toEqual(['', ...RUNBOOK_DOMAINS]);
+  });
+
+  it('renders one chip per generated symptom class', () => {
+    renderForm();
+    for (const symptom of SYMPTOM_CLASSES) {
+      expect(screen.getByRole('button', { name: symptom })).toBeInTheDocument();
+    }
   });
 });

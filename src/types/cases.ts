@@ -277,7 +277,6 @@ export interface CaseIssue {
   validated_hypotheses: string[];
   refuted_hypotheses: string[];
   milestones_completed: string[];
-  severity: string | null;
   resolution_time: string | null;
 }
 
