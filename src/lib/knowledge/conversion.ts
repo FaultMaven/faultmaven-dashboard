@@ -61,7 +61,9 @@ export interface ConversionDraft {
   runbook_id: string;
   title: string;
   scope: string;
-  status: 'draft' | 'verified' | 'deleted';
+  // Mirrors the server's UNPUBLISHED draft-row `DraftStatus` (faultmaven
+  // modules/knowledge/domain/models/conversion.py), not a published enum.
+  status: 'draft' | 'verified' | 'discarded';
   source_type: SourceType;
   case_id: string | null;
   validation: ValidationResult;

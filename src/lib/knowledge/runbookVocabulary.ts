@@ -22,7 +22,11 @@ type Vocabulary<U extends string, A extends readonly string[]> =
       : never
     : never;
 
-/** Identity at runtime; at compile time, `values` must list exactly the members of `U`. */
+/**
+ * Identity at runtime; at compile time, `values` must list exactly the members
+ * of `U`. The compiler does NOT catch duplicates or order: the Vitest order
+ * test (`runbookVocabulary.test.ts`) does.
+ */
 const exactly =
   <U extends string>() =>
   <const A extends readonly U[]>(values: A & Vocabulary<U, A>): A =>

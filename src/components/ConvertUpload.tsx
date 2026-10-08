@@ -1,9 +1,10 @@
+import type { PublishableScope } from '../lib/auth';
 import React, { useState } from 'react';
 import { UploadZone } from './UploadZone';
 import type { ConversionErrorInfo } from '../lib/knowledge/conversion';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 
-const SCOPE_LABELS: Record<string, string> = {
+const SCOPE_LABELS: Record<PublishableScope, string> = {
   personal: 'Personal',
   team: 'Team',
   global: 'Global',
@@ -110,7 +111,7 @@ export function ConvertUpload({ onConvert, onCancel, loading, error, onWriteRunb
                     onChange={() => setScope(s)}
                     className="accent-fm-accent"
                   />
-                  <span className="text-sm text-fm-text-primary">{SCOPE_LABELS[s] ?? s}</span>
+                  <span className="text-sm text-fm-text-primary">{SCOPE_LABELS[s]}</span>
                 </label>
               ))}
             </div>

@@ -44,6 +44,17 @@ function fillRequiredText() {
   fireEvent.change(screen.getByPlaceholderText(/postgresql, nginx, kubernetes/), {
     target: { value: 'postgresql' },
   });
+  // The three required selects too: unchosen, the submit is blocked by the
+  // vocabulary guard, and the tests below would pass for the wrong gate.
+  chooseSelect('Domain', 'database');
+  chooseSelect('Severity', 'high');
+  chooseSelect('KB Scope', 'personal');
+}
+
+function chooseSelect(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(new RegExp(`^${label}`), { selector: 'select' }), {
+    target: { value },
+  });
 }
 
 beforeEach(() => {
@@ -244,5 +255,61 @@ describe('taxonomy options come from the contract enums', () => {
     for (const symptom of SYMPTOM_CLASSES) {
       expect(screen.getByRole('button', { name: symptom })).toBeInTheDocument();
     }
+  });
+});
+
+describe('submitting', () => {
+  const submit = () =>
+    fireEvent.submit(screen.getByRole('button', { name: /create/i }).closest('form')!);
+
+  function fillEverything() {
+    fillRequiredText();
+    fireEvent.click(screen.getByRole('button', { name: 'latency' }));
+    for (const ta of screen.getAllByRole('textbox').filter((el) => el.tagName === 'TEXTAREA')) {
+      const isCauses = (ta as HTMLTextAreaElement).placeholder.includes('### Cause A');
+      fireEvent.change(ta, {
+        target: { value: isCauses ? '### Cause A: Pool exhaustion\n**Statement:** x' : 'details here' },
+      });
+    }
+  }
+
+  it('hands onSubmit the exact RunbookCreateInput, difficulty omitted as ""', async () => {
+    renderForm();
+    fillEverything();
+    submit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toEqual({
+      title: 'A sufficiently long runbook title',
+      domain: 'database',
+      service: 'postgresql',
+      symptom_class: ['latency'],
+      severity: 'high',
+      scope: 'personal',
+      tags: [],
+      difficulty: '',
+      symptom_recognition: 'details here',
+      applicability: 'details here',
+      diagnostic_steps: 'details here',
+      causes: '### Cause A: Pool exhaustion\n**Statement:** x',
+      prevention: 'details here',
+    });
+  });
+
+  it('passes a chosen difficulty through', async () => {
+    renderForm();
+    fillEverything();
+    chooseSelect('Difficulty', 'expert');
+    submit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].difficulty).toBe('expert');
+  });
+
+  it('says why when a required select is unchosen, never a silent no-op', async () => {
+    renderForm();
+    fillEverything();
+    chooseSelect('Severity', '');
+    submit();
+    expect(await screen.findByText('Choose a severity.')).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });
