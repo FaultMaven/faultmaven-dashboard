@@ -45,8 +45,9 @@ FROM nginx:alpine
 #                           libuuid is the only util-linux package in this image.
 #   - pcre2>=10.49-r0     → CVE-2026-103111 (out-of-bounds write via a crafted
 #                           regular expression)
+#   - tiff>=4.7.2-r0      → CVE-2026-4775 (HIGH; fixed in Alpine v3.24's 4.7.2-r0)
 RUN apk update && apk upgrade --no-cache \
-    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.8.5-r0" "c-ares>=1.34.8-r0" "libuuid>=2.42.3-r1" "pcre2>=10.49-r0"
+    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.8.5-r0" "c-ares>=1.34.8-r0" "libuuid>=2.42.3-r1" "pcre2>=10.49-r0" "tiff>=4.7.2-r0"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
