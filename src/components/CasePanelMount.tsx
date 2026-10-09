@@ -11,11 +11,14 @@ export function CasePanelMount({
   caseId,
   readOnly,
   visible,
+  onCaseChanged,
 }: {
   caseId: string;
   readOnly: boolean;
   /** On screen right now — not merely mounted. Drives the D0 advertisement. */
   visible: boolean;
+  /** The panel changed a case; the page re-reads its own. */
+  onCaseChanged?: (caseId: string) => void;
 }) {
   return (
     // `h-full min-h-0`, never a viewport fraction or a fixed floor. The panel
@@ -30,6 +33,7 @@ export function CasePanelMount({
         key={caseId}
         initialCase={{ kind: 'existing', caseId, readOnly }}
         visible={visible}
+        onCaseChanged={onCaseChanged}
       />
     </div>
   );

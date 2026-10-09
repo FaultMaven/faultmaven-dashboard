@@ -67,6 +67,8 @@ interface CaseTabsProps {
    * worth having.
    */
   readOnly: boolean;
+  /** Forwarded to the docked panel; see CopilotPanelMount. */
+  onCaseChanged?: (caseId: string) => void;
 }
 
 function hypothesisStatusStyle(state: HypothesisState): { color: string; symbol: string } {
@@ -504,7 +506,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
   );
 }
 
-export function CaseTabs({ caseId, caseDetail, layout, readOnly }: CaseTabsProps) {
+export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }: CaseTabsProps) {
   const { surface, transcriptTabShown, viewportBounded } = layout;
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -656,6 +658,7 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly }: CaseTabsProps
             caseId={caseId}
             readOnly={readOnly}
             visible={activeTab === 'transcript'}
+            onCaseChanged={onCaseChanged}
           />
         </div>
       )}
