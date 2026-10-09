@@ -1,6 +1,6 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
 /**
  * THE CASE HEADER FOLLOWS THE DOCKED PANEL (faultmaven-dashboard#204).
@@ -135,6 +135,13 @@ async function renderPage() {
   await waitFor(() => expect(fixtures.panel.onCaseChanged).toBeTypeOf('function'));
 }
 
+const nav: { go?: (p: string) => void } = {};
+function NavGrab() {
+  nav.go = useNavigate();
+  return null;
+}
+const CASE2 = { ...CASE, case_id: 'case-2', title: 'Second case title', state: 'inquiry' as const, current_turn: 7 };
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -192,5 +199,66 @@ describe('the case header follows the docked panel', () => {
     vi.mocked(getCaseDetail).mockResolvedValue(RESOLVED as never);
     act(() => fixtures.panel.onCaseChanged!('case-1'));
     await waitFor(() => expect(screen.getByText('Resolved')).toBeInTheDocument());
+  });
+
+  // A state-changing turn notifies twice by design, so reads overlap and can
+  // land out of order. The request-id guard in loadCase keeps the newest.
+  it('two notifications whose responses land out of order: the newer read wins', async () => {
+    await renderPage();
+    let relA!: (v: unknown) => void;
+    let relB!: (v: unknown) => void;
+    vi.mocked(getCaseDetail)
+      .mockImplementationOnce(() => new Promise((r) => (relA = r)) as never)
+      .mockImplementationOnce(() => new Promise((r) => (relB = r)) as never);
+    act(() => fixtures.panel.onCaseChanged!('case-1'));
+    act(() => fixtures.panel.onCaseChanged!('case-1'));
+
+    await act(async () => relB(RESOLVED));
+    await waitFor(() => expect(screen.getByText('Resolved')).toBeInTheDocument());
+    await act(async () => relA({ ...CASE, current_turn: 2 }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByText('Resolved')).toBeInTheDocument();
+    expect(screen.getByText('4 turns')).toBeInTheDocument();
+  });
+
+  it('a late read for the previous case does not overwrite the case navigated to', async () => {
+    vi.mocked(getCaseDetail).mockImplementation(
+      async (id: string) => (id === 'case-2' ? CASE2 : CASE) as never,
+    );
+    render(
+      <MemoryRouter initialEntries={['/cases/case-1']}>
+        <NavGrab />
+        <Routes>
+          <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { name: CASE.title });
+    await waitFor(() => expect(fixtures.panel.onCaseChanged).toBeTypeOf('function'));
+
+    let release!: (v: unknown) => void;
+    vi.mocked(getCaseDetail).mockImplementationOnce(() => new Promise((r) => (release = r)) as never);
+    act(() => fixtures.panel.onCaseChanged!('case-1'));
+    await act(async () => nav.go!('/cases/case-2'));
+    await screen.findByRole('heading', { name: CASE2.title });
+
+    await act(async () => release(RESOLVED));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByRole('heading', { name: CASE2.title })).toBeInTheDocument();
+    expect(screen.queryByText('Resolved')).not.toBeInTheDocument();
+    expect(screen.getByText('7 turns')).toBeInTheDocument();
+  });
+
+  it('a failed quiet refresh leaves the page, dock and panel up with no error view', async () => {
+    await renderPage();
+    vi.mocked(getCaseDetail).mockRejectedValueOnce(new Error('boom 500'));
+    act(() => fixtures.panel.onCaseChanged!('case-1'));
+    await waitFor(() => expect(vi.mocked(getCaseDetail)).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByRole('heading', { name: CASE.title })).toBeInTheDocument();
+    expect(screen.queryByText(/boom 500/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('conversation-dock')).toBeInTheDocument();
+    expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument();
+    expect(fixtures.panel.mounts).toBe(1);
   });
 });

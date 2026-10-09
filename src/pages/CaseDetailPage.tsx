@@ -97,12 +97,14 @@ export default function CaseDetailPage() {
   // the case from the server. QUIET (no spinner): `loading` unmounts the page
   // body, and with it the dock — a refresh must not drop the conversation the
   // user is in. An id that is not this page's case (the panel can switch cases)
-  // is not ours to refresh.
+  // is not ours to refresh. "Ours" is the case the panel was mounted with
+  // (`caseDetail.case_id`, what both mounts receive), not the route param.
+  const shownCaseId = caseDetail?.case_id;
   const handleCaseChanged = useCallback(
     (changedId: string) => {
-      if (changedId === caseId) void loadCase();
+      if (changedId === shownCaseId) void loadCase();
     },
-    [caseId, loadCase]
+    [shownCaseId, loadCase]
   );
 
   // "Export / Archive to Markdown" (D2): a read-only client-side download of a
