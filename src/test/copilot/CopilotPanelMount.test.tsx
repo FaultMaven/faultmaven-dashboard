@@ -31,6 +31,7 @@ const clearHostEndpoints = vi.fn();
 const clearHostStore = vi.fn();
 let lastHost: WiredHost | null = null;
 let lastInitialCase: InitialCase | undefined;
+let lastOnCaseChanged: ((id: string) => void) | undefined;
 
 vi.mock('@faultmaven/copilot-ui', () => ({
   setHostStore,
@@ -41,8 +42,17 @@ vi.mock('@faultmaven/copilot-ui', () => ({
   getApiTransport,
   clearHostEndpoints,
   clearHostStore,
-  CopilotPanel: ({ host, initialCase }: { host: WiredHost; initialCase?: InitialCase }) => {
+  CopilotPanel: ({
+    host,
+    initialCase,
+    onCaseChanged,
+  }: {
+    host: WiredHost;
+    initialCase?: InitialCase;
+    onCaseChanged?: (id: string) => void;
+  }) => {
     lastHost = host;
+    lastOnCaseChanged = onCaseChanged;
     lastInitialCase = initialCase;
     return <div data-testid="shared-copilot-ui">shared UI</div>;
   },
@@ -108,6 +118,7 @@ beforeEach(() => {
   localStorage.clear();
   lastHost = null;
   lastInitialCase = undefined;
+  lastOnCaseChanged = undefined;
   getAccountProfile.mockResolvedValue(PROFILE);
   getAccessToken.mockResolvedValue('tok-live');
 });
@@ -319,5 +330,40 @@ describe('CopilotPanelMount', () => {
     expect(types()).not.toContain(DASHBOARD_PANEL_MESSAGE);
 
     postMessage.mockRestore();
+  });
+
+  describe('onCaseChanged (faultmaven-dashboard#204)', () => {
+    it('forwards the notification to the panel, and a new closure per render reaches the latest handler without rebuilding the host', async () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      const tree = (fn: (id: string) => void) => (
+        <MemoryRouter>
+          <CopilotPanelMount initialCase={NEW_INVESTIGATION} onCaseChanged={fn} />
+        </MemoryRouter>
+      );
+      const { rerender } = render(tree(first));
+      await screen.findByTestId('shared-copilot-ui');
+      const hostBefore = lastHost;
+      const handoverBefore = lastOnCaseChanged;
+      expect(handoverBefore).toBeTypeOf('function');
+
+      lastOnCaseChanged!('case-9');
+      expect(first).toHaveBeenCalledWith('case-9');
+
+      rerender(tree(second));
+      expect(lastHost).toBe(hostBefore);
+      expect(lastOnCaseChanged).toBe(handoverBefore);
+      expect(setApiTransport).toHaveBeenCalledTimes(1);
+
+      lastOnCaseChanged!('case-10');
+      expect(second).toHaveBeenCalledWith('case-10');
+      expect(first).toHaveBeenCalledTimes(1);
+    });
+
+    it('is harmless when the page passes no handler', async () => {
+      mount(NEW_INVESTIGATION);
+      await screen.findByTestId('shared-copilot-ui');
+      expect(() => lastOnCaseChanged!('case-9')).not.toThrow();
+    });
   });
 });

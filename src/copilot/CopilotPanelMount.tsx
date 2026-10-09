@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
   CopilotPanelProps,
@@ -30,6 +30,13 @@ import { createWebSession, hostUserFromProfile } from './webSession';
  */
 
 interface CopilotPanelMountProps {
+  /**
+   * The panel's "this case changed" notification (faultmaven-copilot#320),
+   * forwarded as-is. The id may belong to a case other than the one shown here,
+   * so the receiver compares. Held in a ref below: a new closure per host
+   * render must not rebuild the panel or its host.
+   */
+  onCaseChanged?: (caseId: string) => void;
   /**
    * What the panel opens on: a new investigation, or a named case.
    *
@@ -85,6 +92,7 @@ const DASHBOARD_CHROME: PanelChrome = 'embedded';
 export default function CopilotPanelMount({
   initialCase,
   visible = true,
+  onCaseChanged,
 }: CopilotPanelMountProps) {
   const [panel, setPanel] = useState<{ Panel: PanelComponent; host: WiredHost } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +104,12 @@ export default function CopilotPanelMount({
   // reached, is the host's business and not the panel's.
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+
+  // Same pattern: the latest handler, reached through a stable function, so the
+  // panel is handed one identity for its whole life.
+  const onCaseChangedRef = useRef(onCaseChanged);
+  onCaseChangedRef.current = onCaseChanged;
+  const notifyCaseChanged = useCallback((id: string) => onCaseChangedRef.current?.(id), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,7 +272,12 @@ export default function CopilotPanelMount({
   const { Panel, host } = panel;
   return (
     <div data-testid="copilot-panel" className="h-full min-h-0">
-      <Panel host={host} initialCase={initialCase} chrome={DASHBOARD_CHROME} />
+      <Panel
+        host={host}
+        initialCase={initialCase}
+        chrome={DASHBOARD_CHROME}
+        onCaseChanged={notifyCaseChanged}
+      />
     </div>
   );
 }

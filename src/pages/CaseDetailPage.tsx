@@ -92,6 +92,19 @@ export default function CaseDetailPage() {
     void loadCase({ withSpinner: true });
   }, [loadCase]);
 
+  // The docked panel changed a case (a committed turn, or a state transition it
+  // saw). It has its own store and nobody here reads it, so the header re-reads
+  // the case from the server. QUIET (no spinner): `loading` unmounts the page
+  // body, and with it the dock — a refresh must not drop the conversation the
+  // user is in. An id that is not this page's case (the panel can switch cases)
+  // is not ours to refresh.
+  const handleCaseChanged = useCallback(
+    (changedId: string) => {
+      if (changedId === caseId) void loadCase();
+    },
+    [caseId, loadCase]
+  );
+
   // "Export / Archive to Markdown" (D2): a read-only client-side download of a
   // self-contained case record. Not a mutation — the backend retention-archiving
   // transition is a separate workstream (ADR-014).
@@ -297,6 +310,7 @@ export default function CaseDetailPage() {
               caseDetail={caseDetail}
               layout={layout}
               readOnly={!isOwner}
+              onCaseChanged={handleCaseChanged}
             />
           </div>
 
@@ -306,6 +320,7 @@ export default function CaseDetailPage() {
               readOnly={!isOwner}
               open={dockOpen}
               onToggle={toggleDock}
+              onCaseChanged={handleCaseChanged}
             />
           )}
         </div>

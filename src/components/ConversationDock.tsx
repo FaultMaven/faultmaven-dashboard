@@ -31,11 +31,13 @@ export function ConversationDock({
   readOnly,
   open,
   onToggle,
+  onCaseChanged,
 }: {
   caseId: string;
   readOnly: boolean;
   open: boolean;
   onToggle: () => void;
+  onCaseChanged?: (caseId: string) => void;
 }) {
   // STATE ADJUSTED DURING RENDER, which is React's own documented pattern for
   // deriving from a prop that has changed — not a ref. A ref looks tempting
@@ -110,7 +112,14 @@ export function ConversationDock({
       >
         {/* `visible={open}` — mounted but collapsed is NOT showing, so the
             extension gets its side panel back while the rail is closed. */}
-        {hasOpened && <CasePanelMount caseId={caseId} readOnly={readOnly} visible={open} />}
+        {hasOpened && (
+          <CasePanelMount
+            caseId={caseId}
+            readOnly={readOnly}
+            visible={open}
+            onCaseChanged={onCaseChanged}
+          />
+        )}
       </div>
     </aside>
   );
