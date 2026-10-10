@@ -12,6 +12,11 @@
  * about it became mutually exclusive tabs, and a teammate who could not type
  * paid for a whole panel mount to be told so.
  *
+ * WHO MAY TYPE is the case's DRIVER (ADR-020; ADR-018 D2 now asks "is this
+ * user the case's driver?"). Every reader views a case and one driver writes
+ * it — the creator until they hand it on. A creator who has handed their case
+ * to a teammate reads it like any other reader until they take it back.
+ *
  * D2's table, and the row each branch below answers:
  *
  * | Preference | Width  | Composer lives in | Conversation renders in |
@@ -19,7 +24,7 @@
  * | on         | any    | the extension     | the tab, read-only      |
  * | off        | wide   | the dock          | **the dock** (tab hidden) |
  * | off        | narrow | nowhere else      | the tab, live           |
- * | —          | any, not the owner | nowhere | the tab, read-only   |
+ * | —          | any, not the driver | nowhere | the tab, read-only  |
  *
  * COLLAPSE is not a fifth rule. A collapsed dock is still a composer, one click
  * away in the rail — so the same question answers it, and the tab comes back as
@@ -43,15 +48,17 @@ export type ConversationSurface =
 
 export interface ConversationSurfaceInput {
   /**
-   * Does this case belong to the person looking at it?
+   * Is the person looking at this case its driver (ADR-020)?
    *
-   * Non-ownership wins over everything: a teammate viewing a shared case never
+   * Not driving wins over everything: a reader who does not drive the case —
+   * a teammate it is shared with, or its creator after handing it on — never
    * gets a composer, at any width, under any preference. Derived from the
-   * case's own `user_id` and not from whether the page happens to offer a Share
-   * button — and it must FAIL CLOSED, because an unknown viewer or an unknown
-   * owner is not a match.
+   * case's own `driver_id` (always the EFFECTIVE driver on the wire), never
+   * from `user_id` and never from whether the page offers a Share button —
+   * and it must FAIL CLOSED: an unknown viewer or an unknown driver is not a
+   * match (`isCaseDriver`, `lib/cases/driver.ts`).
    */
-  isOwner: boolean;
+  isDriver: boolean;
 
   /**
    * Has this browser profile asked for chat to live in the Copilot extension?
@@ -84,12 +91,12 @@ export interface ConversationSurfaceInput {
 }
 
 export function resolveConversationSurface({
-  isOwner,
+  isDriver,
   prefersExtension,
   dockFits,
   dockOpen,
 }: ConversationSurfaceInput): ConversationSurface {
-  if (!isOwner) return 'tab-record';
+  if (!isDriver) return 'tab-record';
   if (prefersExtension) return 'tab-record';
   if (!dockFits) return 'tab-live';
   return dockOpen ? 'dock' : 'tab-record';
@@ -147,7 +154,7 @@ export function resolveCaseConversationLayout(
   input: ConversationSurfaceInput,
 ): CaseConversationLayout {
   const surface = resolveConversationSurface(input);
-  const dockPresent = input.isOwner && !input.prefersExtension && input.dockFits;
+  const dockPresent = input.isDriver && !input.prefersExtension && input.dockFits;
 
   return {
     surface,

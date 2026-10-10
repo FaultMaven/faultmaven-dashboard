@@ -38,6 +38,10 @@ vi.mock('@faultmaven/copilot-ui', async () => {
 
 vi.mock('../../lib/api', () => ({
   getCaseDetail: vi.fn(),
+  // The hand-off control reads its candidates; with nobody to hand to it stays
+  // hidden on these pages (CaseDetailDriver.test.tsx covers it).
+  getDriverCandidates: vi.fn().mockResolvedValue([]),
+  reassignCaseDriver: vi.fn(),
   fetchCaseMarkdown: vi.fn(),
   logoutAuth: vi.fn(),
   getCaseMessages: vi.fn().mockResolvedValue({ messages: [], total_count: 0 }),
@@ -106,6 +110,8 @@ const CASE = {
   closed_at: null,
   closure_reason: null,
   user_id: 'owner-1',
+  // The EFFECTIVE driver (ADR-020): the creator drives unless they hand it on.
+  driver_id: 'owner-1',
   enterprise_id: 'ent-1',
   current_turn: 1,
   source: 'copilot' as const,

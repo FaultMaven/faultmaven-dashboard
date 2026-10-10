@@ -65,13 +65,13 @@ function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
 function renderTabs(caseDetail: CaseDetail, route = '/') {
   return render(
     <MemoryRouter initialEntries={[route]}>
-      {/* The narrow-owner row of ADR-018 D2's table: no dock at this width, so
+      {/* The narrow-driver row of ADR-018 D2's table: no dock at this width, so
           the Transcript tab is present and live — which is the arrangement
           every assertion in this file was written against. */}
       <CaseTabs
         caseId={caseDetail.case_id}
         caseDetail={caseDetail}
-        layout={LAYOUTS.narrowOwner}
+        layout={LAYOUTS.narrowDriver}
         readOnly={false}
       />
     </MemoryRouter>

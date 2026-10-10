@@ -58,13 +58,13 @@ interface CaseTabsProps {
   /**
    * Belt and braces on the panel's own authoring guard.
    *
-   * The rule already sends a non-owner to the record, so the live arm below is
-   * unreachable for them — this is deliberately a SECOND, independent
-   * expression of the same fact, derived from the case's `user_id` by the page.
-   * The dock states it too. If a future input to the rule is wrong in one
-   * place, a viewer must still not be handed a composer on someone else's case,
-   * and the two mount points must not disagree about whether that guard is
-   * worth having.
+   * The rule already sends a reader who does not drive the case to the record,
+   * so the live arm below is unreachable for them — this is deliberately a
+   * SECOND, independent expression of the same fact, derived from the case's
+   * `driver_id` by the page (ADR-020). The dock states it too. If a future
+   * input to the rule is wrong in one place, a viewer must still not be handed
+   * a composer on a case someone else drives, and the two mount points must
+   * not disagree about whether that guard is worth having.
    */
   readOnly: boolean;
   /** Forwarded to the docked panel; see CopilotPanelMount. */

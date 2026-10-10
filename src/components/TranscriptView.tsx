@@ -58,9 +58,9 @@ const KIND_PRESENTATION: Record<MessageKind, { accent: string; labelColor: strin
  * - The OPERATOR break-glass page (ADR-012 D9) reads someone else's case
  *   through the audited `GET /api/v1/admin/cases/{id}/messages`, under a grant,
  *   with no interaction of any kind.
- * - The owner-facing Transcript tab, whenever that user's composer lives
+ * - The case page's Transcript tab, whenever the viewer's composer lives
  *   somewhere else (ADR-018 D2) — the extension, the dock, or nowhere at all
- *   for a non-owner.
+ *   for a reader who does not drive the case (ADR-020).
  *
  * ADR-016 D1 had retired it from the second of those in the name of "one
  * renderer, not two", and ADR-018 deliberately reverses that half: rendering a

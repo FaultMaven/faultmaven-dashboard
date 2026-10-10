@@ -27,6 +27,8 @@ import {
   searchCases,
   shareCaseWithTeam,
   unshareCaseFromTeam,
+  getDriverCandidates,
+  reassignCaseDriver,
 } from './api';
 
 const mockRequest = makeAuthenticatedRequest as ReturnType<typeof vi.fn>;
@@ -181,6 +183,20 @@ describe('listCases', () => {
     expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases?limit=20&offset=0');
   });
 
+  it('lists every case the caller can READ: no `access` narrowing (ADR-020 D8)', async () => {
+    // `access=write` is the extension's list — only the cases its user drives.
+    // The Dashboard shows every readable case, shared ones included, so the
+    // list sends nothing and takes the server's default, `read`.
+    mockRequest.mockResolvedValueOnce({
+      json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
+    });
+
+    await listCases({ state: 'investigating', team_id: 'team_42' }, 0, 20);
+
+    const url = mockRequest.mock.calls[0][0] as string;
+    expect(new URL(url, 'http://x').searchParams.has('access')).toBe(false);
+  });
+
   it('forwards state/source filters alongside limit/offset', async () => {
     mockRequest.mockResolvedValueOnce({
       json: async () => ({ cases: [], total_count: 0, limit: 20, offset: 0, has_more: false }),
@@ -325,6 +341,39 @@ describe('team filter + share (ADR-013 §D4)', () => {
   });
 });
 
+describe('the case driver (ADR-020 D4)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('getDriverCandidates reads the candidates endpoint and returns the list', async () => {
+    const candidates = [
+      { user_id: 'u-creator', display_name: 'Ada' },
+      { user_id: 'u-mate', display_name: null },
+    ];
+    mockRequest.mockResolvedValueOnce({ json: async () => ({ candidates }) });
+
+    const out = await getDriverCandidates('case_x');
+
+    expect(mockRequest).toHaveBeenCalledWith('/api/v1/cases/case_x/driver-candidates');
+    expect(out).toEqual(candidates);
+  });
+
+  it('reassignCaseDriver PUTs {driver_id} and returns the updated row', async () => {
+    const row = { case_id: 'case_x', driver_id: 'u-mate' };
+    mockRequest.mockResolvedValueOnce({ json: async () => row });
+
+    const out = await reassignCaseDriver('case_x', 'u-mate');
+
+    expect(mockRequest).toHaveBeenCalledWith(
+      '/api/v1/cases/case_x/driver',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ driver_id: 'u-mate' }),
+      })
+    );
+    expect(out).toEqual(row);
+  });
+});
+
 describe('read-only cases (D1)', () => {
   // The Dashboard views cases; it never mutates them. The write surfaces
   // (annotate/archive/unarchive) were removed — guard against reintroduction.
@@ -350,7 +399,7 @@ describe('searchCases', () => {
   beforeEach(() => vi.clearAllMocks());
 
   // Backend CaseSearchRequest supports only `limit` (max 100) — no page/offset.
-  it('sends only query + limit (no page/page_size)', async () => {
+  it('sends query + limit + access=read (no page/page_size)', async () => {
     mockRequest.mockResolvedValueOnce({ json: async () => [] });
 
     await searchCases('database outage');
@@ -360,7 +409,7 @@ describe('searchCases', () => {
       expect.objectContaining({ method: 'POST' })
     );
     const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
-    expect(body).toEqual({ query: 'database outage', limit: 100 });
+    expect(body).toEqual({ query: 'database outage', limit: 100, access: 'read' });
     expect(body).not.toHaveProperty('page');
     expect(body).not.toHaveProperty('page_size');
   });
@@ -371,7 +420,7 @@ describe('searchCases', () => {
     await searchCases('db', 25);
 
     const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
-    expect(body).toEqual({ query: 'db', limit: 25 });
+    expect(body).toEqual({ query: 'db', limit: 25, access: 'read' });
   });
 
   // U12 team filter on search, adapted to #166's (query, limit, options)
@@ -384,13 +433,13 @@ describe('searchCases', () => {
       '/api/v1/cases/search',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ query: 'disk full', limit: 100, team_id: 'team_42' }),
+        body: JSON.stringify({ query: 'disk full', limit: 100, access: 'read', team_id: 'team_42' }),
       })
     );
 
     await searchCases('disk full', 100);
     const body = JSON.parse((mockRequest.mock.calls[1][1] as RequestInit).body as string);
-    expect(body).toEqual({ query: 'disk full', limit: 100 });
+    expect(body).toEqual({ query: 'disk full', limit: 100, access: 'read' });
     expect(body).not.toHaveProperty('team_id');
   });
 
@@ -404,7 +453,7 @@ describe('searchCases', () => {
     await searchCases('db', 100, { state: 'resolved' });
 
     const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
-    expect(body).toEqual({ query: 'db', limit: 100, state: 'resolved' });
+    expect(body).toEqual({ query: 'db', limit: 100, access: 'read', state: 'resolved' });
   });
 
   it('omits `state` entirely when no chip is active', async () => {
@@ -426,7 +475,7 @@ describe('searchCases', () => {
     // key that is genuinely missing.
     const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
     expect(body).not.toHaveProperty('state');
-    expect(Object.keys(body).sort()).toEqual(['limit', 'query']);
+    expect(Object.keys(body).sort()).toEqual(['access', 'limit', 'query']);
   });
 
   it('omits an EMPTY team id rather than sending a blank filter', async () => {
@@ -442,7 +491,7 @@ describe('searchCases', () => {
 
     const body = JSON.parse((mockRequest.mock.calls[0][1] as RequestInit).body as string);
     expect(body).not.toHaveProperty('team_id');
-    expect(Object.keys(body).sort()).toEqual(['limit', 'query']);
+    expect(Object.keys(body).sort()).toEqual(['access', 'limit', 'query']);
   });
 
   it('carries the team and the state together', async () => {
@@ -456,9 +505,25 @@ describe('searchCases', () => {
     expect(body).toEqual({
       query: 'db',
       limit: 100,
+      access: 'read',
       team_id: 'team_42',
       state: 'investigating',
     });
+  });
+
+  it('searches every case the caller can READ, never only the ones they drive', async () => {
+    // ADR-020 D8: `access: 'write'` narrows to the cases the caller drives —
+    // the extension's list. The Dashboard lists every case its user can read,
+    // shared ones included, so search must say `read` whatever else it sends.
+    mockRequest.mockResolvedValue({ json: async () => [] });
+
+    await searchCases('db');
+    await searchCases('db', 100, { teamId: 'team_42', state: 'resolved' });
+
+    for (const call of mockRequest.mock.calls) {
+      const body = JSON.parse((call[1] as RequestInit).body as string);
+      expect(body.access).toBe('read');
+    }
   });
 
   it('does not filter the RESULTS client-side', async () => {

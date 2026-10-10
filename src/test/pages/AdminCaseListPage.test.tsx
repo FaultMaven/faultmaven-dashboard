@@ -52,6 +52,9 @@ const copilotCase: CaseSummary = {
   closed_at: null,
   closure_reason: null,
   user_id: 'copilot_user',
+  creator_display_name: 'Ada Lovelace',
+  driver_id: 'copilot_user',
+  driver_display_name: 'Ada Lovelace',
   enterprise_id: 'ent-1',
   current_turn: 3,
   stage: 'diagnosis',
@@ -66,6 +69,9 @@ const slackCase = {
   title: 'Slack Case',
   description: 'from the slack agent',
   user_id: 'slack-agent',
+  creator_display_name: 'Acme Slack workspace',
+  driver_id: 'slack-agent',
+  driver_display_name: 'Acme Slack workspace',
   source: 'slack' as const,
 };
 
@@ -124,9 +130,15 @@ describe('AdminCaseListPage', () => {
       expect(screen.getByText('Copilot Case')).toBeInTheDocument();
       expect(screen.getByText('Slack Case')).toBeInTheDocument();
     });
-    // Owner column surfaces the underlying user identity, incl. the slack agent.
-    expect(screen.getByText('slack-agent')).toBeInTheDocument();
-    expect(screen.getByText('copilot_user')).toBeInTheDocument();
+    // The Creator and Driver columns (ADR-020 D5) name the people — the slack
+    // workspace's service account included — on the same component path the
+    // per-user list uses; the raw-id Owner column they replaced is gone.
+    expect(cellUnderHeader('Creator', 1)).toHaveTextContent('Ada Lovelace');
+    expect(cellUnderHeader('Driver', 1)).toHaveTextContent('Ada Lovelace');
+    expect(cellUnderHeader('Creator', 2)).toHaveTextContent('Acme Slack workspace');
+    expect(cellUnderHeader('Driver', 2)).toHaveTextContent('Acme Slack workspace');
+    expect(screen.queryByRole('columnheader', { name: 'Owner' })).toBeNull();
+    expect(screen.queryByText('copilot_user')).toBeNull();
   });
 
   it('renders state filters only — no search control the endpoint ignores', async () => {

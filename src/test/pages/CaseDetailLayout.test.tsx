@@ -35,6 +35,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 vi.mock('../../lib/api', () => ({
   getCaseDetail: vi.fn(),
+  // The hand-off control reads its candidates; with nobody to hand to it stays
+  // hidden on these pages (CaseDetailDriver.test.tsx covers it).
+  getDriverCandidates: vi.fn().mockResolvedValue([]),
+  reassignCaseDriver: vi.fn(),
   fetchCaseMarkdown: vi.fn(),
   logoutAuth: vi.fn(),
   // Unused while the mocked viewer OWNS the case — which is what puts this file
@@ -125,6 +129,8 @@ const CASE = {
   closed_at: null,
   closure_reason: null,
   user_id: 'u1',
+  // The EFFECTIVE driver (ADR-020): the creator drives unless they hand it on.
+  driver_id: 'u1',
   enterprise_id: 'ent-1',
   current_turn: 5,
   source: 'copilot' as const,
@@ -224,7 +230,10 @@ describe('a page with NO composer grows with its content instead', () => {
    */
   async function renderReadOnly() {
     setViewport('wide');
-    vi.mocked(getCaseDetail).mockResolvedValue({ ...CASE, user_id: 'somebody-else' } as never);
+    // The viewer CREATED this case and handed it on: someone else drives it,
+    // so there is no composer here (ADR-020) — read-only is judged on the
+    // driver, never on the creator.
+    vi.mocked(getCaseDetail).mockResolvedValue({ ...CASE, driver_id: 'somebody-else' } as never);
     const result = render(
       <MemoryRouter initialEntries={['/cases/case-1?tab=transcript']}>
         <Routes>

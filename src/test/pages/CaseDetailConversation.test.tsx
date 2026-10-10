@@ -69,6 +69,10 @@ vi.mock('@faultmaven/copilot-ui', () => ({
 
 vi.mock('../../lib/api', () => ({
   getCaseDetail: vi.fn(),
+  // The hand-off control reads its candidates; with nobody to hand to it stays
+  // hidden on these pages (CaseDetailDriver.test.tsx covers it).
+  getDriverCandidates: vi.fn().mockResolvedValue([]),
+  reassignCaseDriver: vi.fn(),
   fetchCaseMarkdown: vi.fn(),
   logoutAuth: vi.fn(),
   getCaseMessages: vi
@@ -161,6 +165,8 @@ const CASE = {
   closed_at: null,
   closure_reason: null,
   user_id: 'owner-1',
+  // The EFFECTIVE driver (ADR-020): the creator drives unless they hand it on.
+  driver_id: 'owner-1',
   enterprise_id: 'ent-1',
   current_turn: 1,
   source: 'copilot' as const,
@@ -216,7 +222,7 @@ beforeEach(() => {
 });
 
 describe('the conversation is readable in every state', () => {
-  it('owner, wide, dock open — in the dock, on this case', async () => {
+  it('driver, wide, dock open — in the dock, on this case', async () => {
     await renderPage();
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
 
@@ -224,7 +230,7 @@ describe('the conversation is readable in every state', () => {
     expect(screen.getByTestId('shared-copilot-ui')).toHaveAttribute('data-case', 'case-1');
   });
 
-  it('owner, wide, dock collapsed — back in the tab, as the record', async () => {
+  it('driver, wide, dock collapsed — back in the tab, as the record', async () => {
     await renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /collapse the conversation/i }));
 
@@ -234,7 +240,7 @@ describe('the conversation is readable in every state', () => {
     expect(conversationSurface()).toBe('tab-record');
   });
 
-  it('owner, narrow — no dock at this width, so the tab carries the live panel', async () => {
+  it('driver, narrow — no dock at this width, so the tab carries the live panel', async () => {
     setViewport('narrow');
     await renderPage();
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
@@ -243,7 +249,7 @@ describe('the conversation is readable in every state', () => {
     expect(conversationSurface()).toBe('tab-live');
   });
 
-  it('not the owner — the record, with the words of the conversation on screen', async () => {
+  it('not the driver — the record, with the words of the conversation on screen', async () => {
     viewer.id = 'someone-else';
     await renderPage();
 
@@ -253,7 +259,7 @@ describe('the conversation is readable in every state', () => {
     expect(conversationSurface()).toBe('tab-record');
   });
 
-  it('not the owner, narrow — still readable, still no composer', async () => {
+  it('not the driver, narrow — still readable, still no composer', async () => {
     viewer.id = 'someone-else';
     setViewport('narrow');
     await renderPage();
@@ -519,9 +525,9 @@ describe('exactly one panel instance per page', () => {
     }
   });
 
-  it('never gives a non-owner a writable panel', async () => {
-    // Asserted against the case's `user_id`, not against the presence of a
-    // Share button. There is no composer for them at all — but the dock's own
+  it('never gives a reader who does not drive the case a writable panel', async () => {
+    // Asserted against the case's `driver_id` (ADR-020), not against the
+    // presence of a Share button. There is no composer for them at all — but the dock's own
     // `readOnly` is still correct, so a future input to the rule cannot hand a
     // viewer a composer by being wrong in one place.
     viewer.id = 'someone-else';

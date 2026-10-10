@@ -70,13 +70,13 @@ describe('CaseTable — the one date column', () => {
     expect(screen.queryByRole('columnheader', { name: 'Last Activity' })).toBeNull();
   });
 
-  it('still shows ONE date column, not a seventh', () => {
-    // Option 1 in #155 and the reason it was rejected: Title / State / Stage /
-    // date is already the width this table has.
+  it('still shows ONE date column, not a second', () => {
+    // Option 1 in #155 and the reason it was rejected: the table has no width
+    // for two dates — less still since Creator and Driver joined it (ADR-020).
     renderTable(CREATED_COLUMN);
 
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent?.trim());
-    expect(headers).toEqual(['Title', 'State', 'Stage', 'Created']);
+    expect(headers).toEqual(['Title', 'Creator', 'Driver', 'State', 'Stage', 'Created']);
   });
 
   /**
