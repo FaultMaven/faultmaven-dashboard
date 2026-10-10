@@ -19,7 +19,7 @@ export function layoutFor(
   overrides: Partial<ConversationSurfaceInput> = {},
 ): CaseConversationLayout {
   return resolveCaseConversationLayout({
-    isOwner: true,
+    isDriver: true,
     prefersExtension: false,
     dockFits: true,
     dockOpen: true,
@@ -28,14 +28,14 @@ export function layoutFor(
 }
 
 export const LAYOUTS = {
-  /** Owner, wide, dock open: the conversation is docked, the tab is hidden. */
+  /** Driver, wide, dock open: the conversation is docked, the tab is hidden. */
   docked: layoutFor(),
-  /** Owner, wide, dock collapsed to its rail: the tab returns as the record. */
+  /** Driver, wide, dock collapsed to its rail: the tab returns as the record. */
   dockCollapsed: layoutFor({ dockOpen: false }),
-  /** Owner, narrow: no dock at this width, so the tab carries the live panel. */
-  narrowOwner: layoutFor({ dockFits: false }),
-  /** Not the owner: no composer anywhere, at any width. */
-  nonOwner: layoutFor({ isOwner: false }),
+  /** Driver, narrow: no dock at this width, so the tab carries the live panel. */
+  narrowDriver: layoutFor({ dockFits: false }),
+  /** Not the driver (ADR-020): no composer anywhere, at any width. */
+  nonDriver: layoutFor({ isDriver: false }),
   /** Chat lives in the extension (ADR-018 row 6): read-only everywhere here. */
   prefersExtension: layoutFor({ prefersExtension: true }),
 } as const;

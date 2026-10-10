@@ -65,6 +65,8 @@ export {
   searchCases,
   shareCaseWithTeam,
   unshareCaseFromTeam,
+  getDriverCandidates,
+  reassignCaseDriver,
   getCaseMessages,
   getUploadedFiles,
   getUploadedFileDetails,
@@ -87,6 +89,7 @@ export type {
   AdminCaseMetadata,
   AdminCaseListResult,
   CaseFilters,
+  CaseDriverCandidate,
   Team,
   CaseMessagesResponse,
   UploadedFile,
@@ -104,9 +107,6 @@ export type {
   CaseReport,
   CaseMessage,
   InvestigationStage,
-  SuggestionStatus,
-  PIIScanStatus,
-  KnowledgeSuggestion,
 } from './cases';
 
 // Re-export teams module (read-only team listing, ADR-013 §D4)

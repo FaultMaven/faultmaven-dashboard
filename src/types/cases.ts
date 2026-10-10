@@ -178,6 +178,17 @@ export type AdminCaseMessagesResponse = Omit<
  */
 export type CaseSearchRequest = components['schemas']['CaseSearchRequest'];
 
+// ==================== The case driver (ADR-020) ====================
+
+/** One account a case's driving may be handed to — `GET /cases/{id}/driver-candidates`. */
+export type CaseDriverCandidate = components['schemas']['CaseDriverCandidate'];
+
+/** The creator (while active), then the active individual members of every team the case is shared with. */
+export type CaseDriverCandidateList = components['schemas']['CaseDriverCandidateList'];
+
+/** The `PUT /cases/{id}/driver` body. */
+export type CaseDriverUpdateRequest = components['schemas']['CaseDriverUpdateRequest'];
+
 // ==================== Frontend-only request / filter shapes ====================
 // (no generated counterpart — these are dashboard query/write bags)
 
@@ -278,34 +289,6 @@ export interface CaseIssue {
   refuted_hypotheses: string[];
   milestones_completed: string[];
   resolution_time: string | null;
-}
-
-// ==================== Knowledge suggestions ====================
-// No generated counterpart — kept hand-written.
-
-export type SuggestionStatus = 'pending_review' | 'approved' | 'rejected' | 'draft';
-export type PIIScanStatus =
-  | 'not_scanned'
-  | 'scanning'
-  | 'clean'
-  | 'pii_detected'
-  | 'remediated'
-  | 'scan_failed';
-
-export interface KnowledgeSuggestion {
-  suggestion_id: string;
-  case_id: string;
-  status: SuggestionStatus;
-  suggested_title: string;
-  suggested_content: string;
-  extracted_by: string;
-  extracted_at: string;
-  pii_scan_status: PIIScanStatus;
-  pii_remediated_by?: string;
-  pii_remediated_at?: string;
-  message_count: number;
-  evidence_count: number;
-  knowledge_item_id?: string;
 }
 
 // ============================================================================

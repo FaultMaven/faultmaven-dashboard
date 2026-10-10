@@ -41,8 +41,8 @@ export type AdminKBDocument = KBDocument;
  * its whole body `{[key: string]: unknown}` and `api-types-drift` can see
  * nothing about it. The rows are assembled by hand in
  * `knowledge_service.list_documents` and carry exactly the keys below —
- * notably NO `content`, `status`, `category`, `verification_level`,
- * `verification_status` or `source_suggestion_id`. The single-document route
+ * notably NO `content`, `status`, `category`, `verification_level` or
+ * `verification_status`. The single-document route
  * has those filled by FastAPI's `response_model` coercion; this one does not.
  *
  * So it is derived with `Pick`, not aliased to `KBDocument`. That binds every

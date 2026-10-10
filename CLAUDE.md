@@ -82,7 +82,8 @@ src/
 ├── components/              # Shared UI. Cases: CaseTabs (Transcript/Issue/Report/Hypotheses/Evidence — the
 │   │                        #   last two are inline here), ConversationDock, CasePanelMount, TranscriptView,
 │   │                        #   CaseTable, CaseStageCell, CaseStateBadge, CaseFiltersBar, AdminCaseMetadataTable,
-│   │                        #   BreakGlassRequestDialog, ReportTab, IssueTab. KB: DocumentCard, DocumentList,
+│   │                        #   CaseDriverField, CasePersonName, BreakGlassRequestDialog, ReportTab, IssueTab.
+│   │                        #   KB: DocumentCard, DocumentList,
 │   │                        #   DraftEditor, UploadModal, UploadZone, CreateRunbookForm, ConvertUpload.
 │   │                        #   Header: PageHeader, CopilotEntry, AccountMenu.
 │   ├── teams/               # TeamCard, MyInvitationsPanel
@@ -98,8 +99,9 @@ src/
 │   │                        #   the newer clients are imported from their module (see Conventions)
 │   ├── auth/                # AuthManager, devLogin/ssoExchange/logoutAuth, landing.ts, hostedLoginUrl,
 │   │                        #   ssoErrors, crossTab, lnaDiagnosis
-│   ├── cases/               # Cases API + conversationSurface.ts (the one rule), dockPreference.ts,
-│   │                        #   dateRange.ts, dateColumn.ts, turnLabel.ts, exportMarkdown.ts, closureReason.ts
+│   ├── cases/               # Cases API + conversationSurface.ts (the one rule), driver.ts (creator/driver),
+│   │                        #   dockPreference.ts, dateRange.ts, dateColumn.ts, turnLabel.ts, exportMarkdown.ts,
+│   │                        #   closureReason.ts
 │   ├── breakGlass/          # Operator break-glass API (grants + audited content/transcript open)
 │   ├── teams/               # Teams + invitations client (api.ts) and refusal-slug copy (copy.ts)
 │   ├── organization/        # The billing organization console client (/admin/organization*)
@@ -206,11 +208,21 @@ never one.
 - ONE question, resolved once in `src/lib/cases/conversationSurface.ts`
   (`resolveCaseConversationLayout` → `{surface, dockPresent, transcriptTabShown,
   viewportBounded}`, handed down whole, never re-derived by a consumer): *does
-  this user have a composer somewhere else?* Owner, preference off, wide → the
-  dock, Transcript tab hidden. Dock collapsed, preference on, or a non-owner →
-  the Transcript tab read-only (`TranscriptView`). Narrow width → the Transcript
-  tab hosts the live panel, because no dock exists there. Exactly one surface
-  renders the conversation, and reading it is never removed.
+  this user have a composer somewhere else?* Driver, preference off, wide → the
+  dock, Transcript tab hidden. Dock collapsed, preference on, or a reader who
+  does not drive the case → the Transcript tab read-only (`TranscriptView`).
+  Narrow width → the Transcript tab hosts the live panel, because no dock exists
+  there. Exactly one surface renders the conversation, and reading it is never
+  removed.
+- **Creator and driver (ADR-020).** A case has a creator (`user_id`) and one
+  driver (`driver_id`, always the EFFECTIVE driver on the wire). The composer is
+  the DRIVER's (`isCaseDriver`), Share is the CREATOR's (`isCaseCreator`), and
+  the hand-off (`CaseDriverField`, `PUT /cases/{id}/driver`) is either's when
+  `GET /cases/{id}/driver-candidates` names more than one account — terminal
+  cases included. All three live in `src/lib/cases/driver.ts` and fail closed on
+  an unknown id. Lists show Creator and Driver by display name, a short id only
+  when the name is absent; the Dashboard lists every case its user can READ (no
+  `access=write` — that is the extension's list).
 - `?tab=` (`?tab=report`, `?tab=issue`) is the cross-frontend linking contract
   with the Copilot: the URL wins when it names a visible tab, and a value the
   strip cannot honour is cleared from the URL (`replace`), never silently

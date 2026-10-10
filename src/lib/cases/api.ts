@@ -4,6 +4,9 @@ import { startOfLocalDay, exclusiveEndOfLocalDay } from './dateRange';
 import type {
   AdminCaseListResult,
   CaseDetail,
+  CaseDriverCandidate,
+  CaseDriverCandidateList,
+  CaseDriverUpdateRequest,
   CaseSearchRequest,
   CaseState,
   CaseSummary,
@@ -187,9 +190,14 @@ export async function searchCases(
   // not have sent, exactly the "`if x:` fails open" shape this codebase has
   // been bitten by, and the contract types the field `string | null` with no
   // mention of `""`. Send the field or do not; do not send a blank one.
+  //
+  // `access` is written out as `read` — every case the caller can read, which
+  // is what this list is (ADR-020 D8). `write` narrows to the cases the caller
+  // drives; that is the extension's list, never the Dashboard's.
   const body: CaseSearchRequest = {
     query,
     limit,
+    access: 'read',
     team_id: teamId || undefined,
     state: state || undefined,
   };
@@ -204,7 +212,7 @@ export async function searchCases(
 }
 
 /**
- * Share a case with a Team (ADR-013 §D4). Owner-only and the Team must be one
+ * Share a case with a Team (ADR-013 §D4). Creator-only (ADR-020 D2) and the Team must be one
  * the caller belongs to; the backend enforces both (403 otherwise). Idempotent —
  * re-sharing an already-shared case is a no-op. Cloud-only: standalone has no
  * teams, so the backend returns a clear "not available".
@@ -219,7 +227,7 @@ export async function shareCaseWithTeam(caseId: string, teamId: string): Promise
 }
 
 /**
- * Remove a case's share to a Team (ADR-013 §D4). Owner-only. No body is
+ * Remove a case's share to a Team (ADR-013 §D4). Creator-only (ADR-020 D2). No body is
  * returned (204); a 404 means the case was not shared with that Team.
  */
 export async function unshareCaseFromTeam(caseId: string, teamId: string): Promise<void> {
@@ -228,6 +236,51 @@ export async function unshareCaseFromTeam(caseId: string, teamId: string): Promi
     { method: 'DELETE' }
   );
   await handleAPIResponse(response, 'Failed to unshare case from team');
+}
+
+/**
+ * Who this case's driving may be handed to (ADR-020 D4):
+ * `GET /cases/{id}/driver-candidates`.
+ *
+ * The creator (while their account is active) first, then the active
+ * individual members of every team the case is shared with. Readable by the
+ * case's creator and its current driver only: any other reader gets 403 and a
+ * non-reader 404. In standalone, and for a case shared with nobody, the creator
+ * is the only candidate — there is nobody to hand it to.
+ */
+export async function getDriverCandidates(caseId: string): Promise<CaseDriverCandidate[]> {
+  const response = await makeAuthenticatedRequest(
+    `${CASES_BASE}/${encodeURIComponent(caseId)}/driver-candidates`
+  );
+  await handleAPIResponse(response, 'Failed to list who can drive this case');
+  const list: CaseDriverCandidateList = await response.json();
+  return list.candidates;
+}
+
+/**
+ * Hand this case's driving to `driverId` (ADR-020 D4): `PUT /cases/{id}/driver`.
+ *
+ * Open to the creator and the effective driver, terminal cases included. The
+ * refusals are distinct and the caller acts on each, so they arrive as an
+ * `APIError` carrying the status: 404 (the caller no longer reads the case),
+ * 403 (a reader who neither created nor drives it), 422 (the target is not a
+ * candidate — the list in hand is stale), 409 `CASE_VERSION_CONFLICT` (the
+ * case kept changing under the write). Naming the creator hands the case back
+ * to them. Answers the updated row, whose `driver_id` is the new effective
+ * driver.
+ */
+export async function reassignCaseDriver(caseId: string, driverId: string): Promise<CaseSummary> {
+  const body: CaseDriverUpdateRequest = { driver_id: driverId };
+  const response = await makeAuthenticatedRequest(
+    `${CASES_BASE}/${encodeURIComponent(caseId)}/driver`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
+  await handleAPIResponse(response, 'Failed to change who drives this case');
+  return response.json();
 }
 
 /**

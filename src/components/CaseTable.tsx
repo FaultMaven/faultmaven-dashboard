@@ -4,14 +4,14 @@ import { CaseStateBadge } from './CaseStateBadge';
 import { CaseStageCell } from './CaseStageCell';
 import { SourceBadge } from './SourceBadge';
 import { TeamShareBadge } from './TeamShareBadge';
+import { CasePersonName } from './CasePersonName';
+import { creatorLabel, driverLabel } from '../lib/cases/driver';
 import type { CaseSummary } from '../lib/api';
 import type { CaseDateColumn } from '../lib/cases/dateColumn';
 
 interface CaseTableProps {
   cases: CaseSummary[];
   loading: boolean;
-  /** Show an Owner column (the case's `user_id`) — used by the admin view. */
-  showOwner?: boolean;
   /** Optional trailing action cell per row (e.g. the Archive control). */
   renderActions?: (c: CaseSummary) => ReactNode;
   /** team_id → name for the team-share badge (ADR-013 §D4). Omit where team
@@ -50,14 +50,21 @@ interface CaseTableProps {
 }
 
 /**
- * Shared case list table (Title / [Owner] / State / Stage / date / [actions]).
- * Used by both the per-user `CaseListPage` and the cross-tenant
+ * Shared case list table (Title / Creator / Driver / State / Stage / date /
+ * [actions]). Used by both the per-user `CaseListPage` and the cross-tenant
  * `AdminCaseListPage` so the two never drift.
+ *
+ * CREATOR AND DRIVER ON EVERY ROW (ADR-020 D5). The list holds every case the
+ * viewer can READ — their own and those shared with their teams — and who may
+ * write each one is its driver, not its creator. Both are shown by display
+ * name (`CasePersonName`), falling back to a short id only when the server
+ * sent no name. They replace the operator view's raw-`user_id` Owner column:
+ * one component path, so both lists name people the same way.
  *
  * ONE date column, and `dateColumn` says which date it is — Last Activity
  * normally, Created while a creation-date filter is narrowing the list
- * (faultmaven-dashboard#155). A seventh column was the alternative and it is
- * width the table does not have.
+ * (faultmaven-dashboard#155). A second date column was the alternative, and it
+ * is width the table does not have.
  *
  * This is the **content-bearing** table: every row carries a title. The cloud
  * operator list has no titles to show (ADR-012 D9) and uses the separate
@@ -67,7 +74,6 @@ interface CaseTableProps {
 export function CaseTable({
   cases,
   loading,
-  showOwner = false,
   renderActions,
   teamsById,
   caseHref = (c) => `/cases/${c.case_id}`,
@@ -86,9 +92,8 @@ export function CaseTable({
           <thead className="bg-fm-elevated border-b border-fm-border">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Title</th>
-              {showOwner && (
-                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
-              )}
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Creator</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Driver</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
@@ -115,11 +120,12 @@ export function CaseTable({
                     <p className="text-xs text-fm-text-tertiary mt-0.5 line-clamp-1">{c.description}</p>
                   )}
                 </td>
-                {showOwner && (
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-fm-text-secondary">{c.user_id}</span>
-                  </td>
-                )}
+                <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-creator">
+                  <CasePersonName label={creatorLabel(c)} />
+                </td>
+                <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-driver">
+                  <CasePersonName label={driverLabel(c)} />
+                </td>
                 <td className="px-4 py-3">
                   <CaseStateBadge state={c.state} />
                 </td>

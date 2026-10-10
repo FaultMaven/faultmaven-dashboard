@@ -145,7 +145,7 @@ const CASE: CaseDetail = {
   escalated: false,
 };
 
-function renderTabs(tab: string, layout: CaseConversationLayout = LAYOUTS.nonOwner) {
+function renderTabs(tab: string, layout: CaseConversationLayout = LAYOUTS.nonDriver) {
   return render(
     <MemoryRouter initialEntries={[`/?tab=${tab}`]}>
       <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} readOnly />
@@ -182,7 +182,7 @@ describe('the read-only Transcript tab', () => {
   });
 
   it('and the live arm DOES import it — so the assertion above is not vacuous', async () => {
-    renderTabs('transcript', LAYOUTS.narrowOwner);
+    renderTabs('transcript', LAYOUTS.narrowDriver);
 
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
     expect(pkg.imports).toBe(1);

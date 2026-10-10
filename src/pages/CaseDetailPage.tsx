@@ -8,14 +8,17 @@ import { CaseTabs } from '../components/CaseTabs';
 import { ConversationDock } from '../components/ConversationDock';
 import { TeamShareBadge } from '../components/TeamShareBadge';
 import { ShareCaseModal } from '../components/ShareCaseModal';
+import { CaseDriverField } from '../components/CaseDriverField';
+import { CasePersonName } from '../components/CasePersonName';
 import { useAuth } from '../context/AuthContext';
 import { useTeamSharing } from '../hooks/useTeamSharing';
 import { useDockFits } from '../hooks/useDockFits';
 import { readDockCollapsed, writeDockCollapsed } from '../lib/cases/dockPreference';
 import { resolveCaseConversationLayout } from '../lib/cases/conversationSurface';
+import { creatorLabel, isCaseCreator, isCaseDriver } from '../lib/cases/driver';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { getCaseDetail, fetchCaseMarkdown, logoutAuth } from '../lib/api';
-import type { CaseDetail } from '../types/cases';
+import type { CaseDetail, CaseSummary } from '../types/cases';
 
 export default function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>();
@@ -107,6 +110,30 @@ export default function CaseDetailPage() {
     [shownCaseId, loadCase]
   );
 
+  // The driver changed (ADR-020 D4). Applied AT ONCE from the server's answer,
+  // so the dock and the read-only state follow the new driver in this render
+  // rather than after a round trip — a viewer who handed the case away must
+  // not keep a composer the server will now refuse. Then the whole case is
+  // re-read QUIETLY (the hand-off bumped its version). Only the driver fields
+  // are taken from the answer: it is a `CaseSummary`, and the page holds a
+  // `CaseDetail`. An answer for a case this page no longer shows is ignored.
+  const handleDriverReassigned = useCallback(
+    (updated: CaseSummary) => {
+      setCaseDetail((prev) =>
+        prev && prev.case_id === updated.case_id
+          ? {
+              ...prev,
+              driver_id: updated.driver_id,
+              driver_display_name: updated.driver_display_name,
+            }
+          : prev
+      );
+      void loadCase();
+    },
+    [loadCase]
+  );
+  const handleDriverStale = useCallback(() => void loadCase(), [loadCase]);
+
   // "Export / Archive to Markdown" (D2): a read-only client-side download of a
   // self-contained case record. Not a mutation — the backend retention-archiving
   // transition is a separate workstream (ADR-014).
@@ -152,31 +179,35 @@ export default function CaseDetailPage() {
     );
   }
 
-  // Share-to-team is owner-only (the backend enforces the same) and only shown
-  // where team sharing is live. The badge itself needs neither gate — a case
-  // carries team ids only where sharing is wired.
-  const canShare =
-    teamSharingEnabled && caseDetail.user_id === authState?.user?.user_id;
+  const viewerId = authState?.user?.user_id;
+
+  // Share-to-team is the CREATOR's (ADR-020 D2 — governance: share, unshare,
+  // delete; the backend enforces the same) and only shown where team sharing
+  // is live. Not the driver's: driving a case is not a right to widen who
+  // reads it. The badge itself needs neither gate — a case carries team ids
+  // only where sharing is wired.
+  const canShare = teamSharingEnabled && isCaseCreator(caseDetail, viewerId);
 
   /**
-   * Whether this case belongs to the person looking at it.
+   * Whether the person looking at this case DRIVES it (ADR-020).
    *
-   * A shared case is someone else's investigation, and a viewer must not be
-   * handed a composer for it — before the panel replaced the read-only
-   * transcript a teammate simply could not type, and the panel brought a live
-   * composer and an upload with it.
+   * Every reader views a case; its one driver writes it. A reader who does not
+   * drive it — a teammate it is shared with, or its creator after handing it
+   * on — must not be handed a composer: the server refuses their turns, and
+   * the panel would offer an upload and a composer that can only fail.
    *
-   * Derived from the case's own `user_id`, not from whether this page offers a
-   * Share button, and it FAILS CLOSED: an unknown viewer or an unknown owner is
-   * not a match.
+   * Derived from the case's own `driver_id` (the EFFECTIVE driver on the
+   * wire), never from `user_id` and never from whether this page offers a
+   * Share button, and it FAILS CLOSED: an unknown viewer or an unknown driver
+   * is not a match.
    */
-  const isOwner = !!authState?.user?.user_id && caseDetail.user_id === authState.user.user_id;
+  const isDriver = isCaseDriver(caseDetail, viewerId);
 
   // The one question, asked once for the whole page (ADR-018 D2). Every input
-  // is now real: ownership from the case, width from the viewport, the dock's
-  // own state, and the person's preference about where chat lives.
+  // is real: who drives from the case, width from the viewport, the dock's own
+  // state, and the person's preference about where chat lives.
   const layout = resolveCaseConversationLayout({
-    isOwner,
+    isDriver,
     prefersExtension,
     dockFits,
     dockOpen,
@@ -292,6 +323,27 @@ export default function CaseDetailPage() {
             <span>&middot;</span>
             <span>Created {new Date(caseDetail.created_at).toLocaleDateString()}</span>
             <span>&middot;</span>
+            {/* Creator and driver (ADR-020 D5): who governs the case and who
+                writes it. The driver field also carries the hand-off, for the
+                two people allowed it — keyed by case, so a candidate list read
+                for one case is never offered on the next. */}
+            <span data-testid="case-creator">
+              Creator{' '}
+              <span className="text-fm-text-secondary">
+                <CasePersonName label={creatorLabel(caseDetail)} />
+              </span>
+            </span>
+            <span>&middot;</span>
+            <CaseDriverField
+              key={caseDetail.case_id}
+              caseId={caseDetail.case_id}
+              parties={caseDetail}
+              sharedTeamIds={caseDetail.shared_team_ids}
+              viewerId={viewerId}
+              onReassigned={handleDriverReassigned}
+              onCaseStale={handleDriverStale}
+            />
+            <span>&middot;</span>
             <span>{turns} turn{turns !== 1 ? 's' : ''}</span>
           </div>
         </div>
@@ -311,7 +363,7 @@ export default function CaseDetailPage() {
               caseId={caseDetail.case_id}
               caseDetail={caseDetail}
               layout={layout}
-              readOnly={!isOwner}
+              readOnly={!isDriver}
               onCaseChanged={handleCaseChanged}
             />
           </div>
@@ -319,7 +371,7 @@ export default function CaseDetailPage() {
           {layout.dockPresent && (
             <ConversationDock
               caseId={caseDetail.case_id}
-              readOnly={!isOwner}
+              readOnly={!isDriver}
               open={dockOpen}
               onToggle={toggleDock}
               onCaseChanged={handleCaseChanged}

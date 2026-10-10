@@ -80,7 +80,7 @@ function renderRecord(caseId = CASE.case_id) {
       <CaseTabs
         caseId={caseId}
         caseDetail={{ ...CASE, case_id: caseId }}
-        layout={LAYOUTS.nonOwner}
+        layout={LAYOUTS.nonDriver}
         readOnly
       />
     </MemoryRouter>,
@@ -163,7 +163,7 @@ describe('the read-only transcript', () => {
         <CaseTabs
           caseId="case-2"
           caseDetail={{ ...CASE, case_id: 'case-2' }}
-          layout={LAYOUTS.nonOwner}
+          layout={LAYOUTS.nonDriver}
           readOnly
         />
       </MemoryRouter>,

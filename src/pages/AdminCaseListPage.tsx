@@ -183,7 +183,6 @@ export default function AdminCaseListPage() {
           <CaseTable
             cases={result?.cases ?? []}
             loading={loading}
-            showOwner
             // STATED, not defaulted. This bar is `stateOnly`, so it renders no
             // date inputs and no creation-date filter can be set here — there
             // is nothing for the column to follow (#155). Saying so is what

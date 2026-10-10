@@ -18,7 +18,7 @@ import {
  */
 
 const BASE: ConversationSurfaceInput = {
-  isOwner: true,
+  isDriver: true,
   prefersExtension: false,
   dockFits: true,
   dockOpen: true,
@@ -50,13 +50,13 @@ const TABLE: {
     surface: 'tab-live',
   },
   {
-    row: 'not the owner — no composer for them anywhere',
-    input: { isOwner: false },
+    row: 'not the driver — no composer for them anywhere',
+    input: { isDriver: false },
     surface: 'tab-record',
   },
   {
-    row: 'not the owner, narrow — non-ownership still wins over width',
-    input: { isOwner: false, dockFits: false },
+    row: 'not the driver, narrow — not driving still wins over width',
+    input: { isDriver: false, dockFits: false },
     surface: 'tab-record',
   },
 ];
@@ -66,14 +66,14 @@ describe("where a case's conversation renders", () => {
     expect(resolveConversationSurface({ ...BASE, ...input })).toBe(surface);
   });
 
-  it('never hands a composer to a non-owner, whatever else is true', () => {
+  it('never hands a composer to a reader who does not drive the case, whatever else is true', () => {
     // The rule's one safety property, stated separately from the table so that
     // editing a row cannot quietly delete it. Fails CLOSED by construction.
     for (const prefersExtension of [true, false]) {
       for (const dockFits of [true, false]) {
         for (const dockOpen of [true, false]) {
           expect(
-            resolveConversationSurface({ isOwner: false, prefersExtension, dockFits, dockOpen }),
+            resolveConversationSurface({ isDriver: false, prefersExtension, dockFits, dockOpen }),
           ).toBe('tab-record');
         }
       }
@@ -118,10 +118,10 @@ describe('what the page derives from it', () => {
     expect(collapsed.dockPresent).toBe(true);
   });
 
-  it('has no dock for a non-owner, at any width', () => {
+  it('has no dock for a reader who does not drive the case, at any width', () => {
     for (const dockFits of [true, false]) {
       expect(
-        resolveCaseConversationLayout({ ...BASE, isOwner: false, dockFits }).dockPresent,
+        resolveCaseConversationLayout({ ...BASE, isDriver: false, dockFits }).dockPresent,
       ).toBe(false);
     }
   });
@@ -140,7 +140,7 @@ describe('what the page derives from it', () => {
     ).toBe(true); // the tab IS the composer here
 
     expect(
-      resolveCaseConversationLayout({ ...BASE, isOwner: false }).viewportBounded,
+      resolveCaseConversationLayout({ ...BASE, isDriver: false }).viewportBounded,
     ).toBe(false);
     expect(
       resolveCaseConversationLayout({ ...BASE, prefersExtension: true }).viewportBounded,
@@ -148,12 +148,12 @@ describe('what the page derives from it', () => {
   });
 
   it('never bounds a page that has no composer, in any combination', () => {
-    for (const isOwner of [true, false]) {
+    for (const isDriver of [true, false]) {
       for (const prefersExtension of [true, false]) {
         for (const dockFits of [true, false]) {
           for (const dockOpen of [true, false]) {
             const layout = resolveCaseConversationLayout({
-              isOwner,
+              isDriver,
               prefersExtension,
               dockFits,
               dockOpen,

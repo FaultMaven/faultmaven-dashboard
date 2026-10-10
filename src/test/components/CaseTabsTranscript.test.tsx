@@ -83,7 +83,7 @@ vi.mock('../../lib/auth/AuthManager', () => ({
   },
 }));
 
-// `CaseTabs` no longer asks who is signed in — ownership reaches it through the
+// `CaseTabs` no longer asks who is signed in — who drives reaches it through the
 // resolved layout, decided once by the page. The mock stays only because other
 // modules in this render tree read the context.
 vi.mock('../../context/AuthContext', () => ({
@@ -139,12 +139,12 @@ const CASE: CaseDetail = {
 };
 
 /**
- * The narrow-owner row of ADR-018 D2's table by default: no dock at that width,
+ * The narrow-driver row of ADR-018 D2's table by default: no dock at that width,
  * so the Transcript tab is present and carries the live panel. That is the arm
  * this file is about; WHICH arm a user gets is decided by the page and covered
  * in `CaseDetailConversation.test.tsx`.
  */
-function renderTabs(layout: CaseConversationLayout = LAYOUTS.narrowOwner) {
+function renderTabs(layout: CaseConversationLayout = LAYOUTS.narrowDriver) {
   return render(
     <MemoryRouter initialEntries={['/?tab=transcript']}>
       <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} readOnly={false} />
@@ -234,7 +234,7 @@ describe('the Transcript tab', () => {
         <CaseTabs
           caseId="case-2"
           caseDetail={{ ...CASE, case_id: 'case-2' }}
-          layout={LAYOUTS.narrowOwner}
+          layout={LAYOUTS.narrowDriver}
           readOnly={false}
         />
       </MemoryRouter>,
@@ -249,12 +249,12 @@ describe('the Transcript tab', () => {
 
 describe('the arm the page chose', () => {
   it('renders the READ-ONLY record when the conversation is not this tab’s job', async () => {
-    // A shared case is another person's investigation. Replacing the read-only
-    // transcript with the panel handed a viewer a live composer and an upload,
-    // so a teammate could post turns into an owner's case — an authoring right
-    // the old view never granted. They get the record back (ADR-018 D2), and
+    // A case someone else drives is not this viewer's to write (ADR-020).
+    // Replacing the read-only transcript with the panel handed a viewer a live
+    // composer and an upload, so a reader could post turns into a case they do
+    // not drive — an authoring right the old view never granted. They get the record back (ADR-018 D2), and
     // stop paying for a panel mount to be told they cannot type.
-    renderTabs(LAYOUTS.nonOwner);
+    renderTabs(LAYOUTS.nonDriver);
     await waitFor(() => expect(screen.getByTestId('read-only-transcript-view')).toBeInTheDocument());
 
     expect(screen.queryByTestId('shared-copilot-ui')).not.toBeInTheDocument();
