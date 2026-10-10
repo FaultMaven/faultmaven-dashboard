@@ -4,6 +4,10 @@ import { describe, it, expect } from 'vitest';
 // may: this asserts what the PINNED package renders, and the source list has
 // no entry-level export. Test files are outside that boundary by design.
 import InlineSourcesRenderer from '@faultmaven/copilot-ui/shared/ui/components/InlineSourcesRenderer';
+import type { components } from '../../types/api.generated';
+
+/** The contract's `Source` — the same schema the package's `Source` aliases. */
+type Source = components['schemas']['Source'];
 
 /**
  * A RUNBOOK THE VIEWER CANNOT OPEN (contract 13.1.0, faultmaven#1920).
@@ -23,7 +27,7 @@ import InlineSourcesRenderer from '@faultmaven/copilot-ui/shared/ui/components/I
  * Rendered against the WIRE SHAPE, so the pin moving to a package that drops
  * the redaction arm fails here.
  */
-const RESTRICTED = {
+const RESTRICTED: Source = {
   type: 'knowledge_base',
   content: '',
   confidence: null,
@@ -31,7 +35,7 @@ const RESTRICTED = {
   new_this_turn: true,
 };
 
-const OPEN = {
+const OPEN: Source = {
   type: 'knowledge_base',
   content: 'Check replication lag before failover.',
   confidence: 0.82,
@@ -44,7 +48,7 @@ describe('a redacted knowledge-base source, as the pinned panel renders it', () 
     render(
       <InlineSourcesRenderer
         content="The replica is lagging."
-        sources={[RESTRICTED] as never}
+        sources={[RESTRICTED]}
         onDocumentView={() => {}}
       />,
     );
@@ -58,7 +62,7 @@ describe('a redacted knowledge-base source, as the pinned panel renders it', () 
     render(
       <InlineSourcesRenderer
         content="The replica is lagging."
-        sources={[OPEN, RESTRICTED] as never}
+        sources={[OPEN, RESTRICTED]}
         onDocumentView={() => {}}
       />,
     );

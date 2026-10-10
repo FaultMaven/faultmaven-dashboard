@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type FocusEvent } from 'react';
 import { CasePersonName } from './CasePersonName';
 import { getDriverCandidates, reassignCaseDriver } from '../lib/api';
-import { driverLabel, mayReassignDriver, personLabel, type CaseParties } from '../lib/cases/driver';
+import {
+  driverLabel,
+  effectiveDriverId,
+  mayReassignDriver,
+  personLabel,
+  type CaseParties,
+} from '../lib/cases/driver';
 import { APIError } from '../lib/knowledge/errors';
 import type { CaseDriverCandidate, CaseSummary } from '../lib/api';
 
@@ -22,11 +28,12 @@ interface CaseDriverFieldProps {
    */
   onReassigned: (updated: CaseSummary) => void;
   /**
-   * What the page holds about this case is out of date: re-read it. A lost
+   * What the page holds about case `caseId` is out of date: re-read it. A lost
    * version race (409), or a refusal that says the viewer may no longer move
-   * the driver (403) or read the case (404).
+   * the driver (403) or read the case (404). The id travels with the call so
+   * the page can refuse a notice about a case it no longer shows.
    */
-  onCaseStale: () => void;
+  onCaseStale: (caseId: string) => void;
 }
 
 interface Notice {
@@ -42,9 +49,10 @@ interface Notice {
  *
  * - the viewer is the case's creator or its effective driver (D4; a terminal
  *   case is not excluded — it still has driver-only writes), and
- * - `GET /cases/{id}/driver-candidates` names more than one account. In
- *   standalone, and for a case shared with nobody, the creator is the only
- *   candidate, so there is nobody to offer and the control stays hidden.
+ * - `GET /cases/{id}/driver-candidates` names someone other than the current
+ *   driver. In standalone, and for a case shared with nobody, the creator is
+ *   the only candidate and drives, so there is nobody to offer and the control
+ *   stays hidden.
  *
  * A DISCLOSURE OF BUTTONS, NOT A `<select>`. A native select fires `change`
  * on every arrow key while closed in some browsers, and here a change is a
@@ -80,9 +88,20 @@ export function CaseDriverField({
   const nameRef = useRef<HTMLSpanElement>(null);
   // Monotonic: a candidates read that a newer one superseded must not land.
   const readIdRef = useRef(0);
+  // Whether this field is still mounted. A hand-off answer can arrive after the
+  // user has navigated to another case (the page keys this field by case, so
+  // it unmounts); nothing from that answer may reach the page that now shows a
+  // different case.
+  const liveRef = useRef(true);
+  useEffect(() => {
+    liveRef.current = true;
+    return () => {
+      liveRef.current = false;
+    };
+  }, []);
 
   const sharesKey = (sharedTeamIds ?? []).join(',');
-  const driverId = parties.driver_id;
+  const driverId = effectiveDriverId(parties);
 
   useEffect(() => {
     const readId = ++readIdRef.current;
@@ -103,7 +122,13 @@ export function CaseDriverField({
     // current driver is marked; a share adds or removes a team's members).
   }, [caseId, allowed, driverId, sharesKey, candidatesEpoch]);
 
-  const offered = allowed && candidates !== null && candidates.length > 1;
+  // Offered when there is someone to hand to: any candidate who is not the
+  // current driver. Not "more than one candidate" — a driver who is no longer a
+  // candidate (a release that failed, or an unshare that raced a reassignment,
+  // ADR-020 D3) leaves the creator as the ONLY candidate, and handing the case
+  // back to them is exactly the recovery the ADR names.
+  const offered =
+    allowed && candidates !== null && candidates.some((c) => c.user_id !== driverId);
 
   // A list left open must not outlive the control it belongs to.
   if (!offered && open) setOpen(false);
@@ -114,6 +139,7 @@ export function CaseDriverField({
       setNotice(null);
       try {
         const updated = await reassignCaseDriver(caseId, target.user_id);
+        if (!liveRef.current) return;
         const name = personLabel(target.display_name, target.user_id)?.text ?? target.user_id;
         setOpen(false);
         setNotice({ text: `${name} now drives this case.`, tone: 'info' });
@@ -122,6 +148,7 @@ export function CaseDriverField({
         // may be too, so focus lands on the name it changed rather than <body>.
         nameRef.current?.focus();
       } catch (err) {
+        if (!liveRef.current) return;
         const status = err instanceof APIError ? err.statusCode : undefined;
         setOpen(false);
         if (status === 409) {
@@ -129,7 +156,7 @@ export function CaseDriverField({
             text: 'Someone else changed this case at the same time. It has been reloaded; choose again.',
             tone: 'error',
           });
-          onCaseStale();
+          onCaseStale(caseId);
           setCandidatesEpoch((n) => n + 1);
         } else if (status === 422) {
           setNotice({
@@ -139,7 +166,7 @@ export function CaseDriverField({
           setCandidatesEpoch((n) => n + 1);
         } else if (status === 403 || status === 404) {
           setNotice({ text: 'You can no longer change who drives this case.', tone: 'error' });
-          onCaseStale();
+          onCaseStale(caseId);
         } else {
           setNotice({
             text: err instanceof Error ? err.message : 'Could not change who drives this case.',
@@ -148,7 +175,7 @@ export function CaseDriverField({
         }
         nameRef.current?.focus();
       } finally {
-        setBusy(false);
+        if (liveRef.current) setBusy(false);
       }
     },
     [caseId, onReassigned, onCaseStale],
@@ -157,14 +184,15 @@ export function CaseDriverField({
   // A press anywhere outside the control closes the list. A document listener,
   // not `blur`: Safari and Firefox on macOS do not focus a button on click, so
   // pressing a candidate blurs the toggle with no `relatedTarget`, and a
-  // blur-to-close would hide the list before the click landed.
+  // blur-to-close would hide the list before the click landed. `pointerdown`,
+  // not `mousedown`: it covers touch and pen as well (an iOS tap).
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
       if (!controlRef.current?.contains(e.target as Node | null)) setOpen(false);
     };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {

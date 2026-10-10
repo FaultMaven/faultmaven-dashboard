@@ -10,11 +10,16 @@
  * - The CREATOR holds governance: delete, share and unshare.
  * - Either of them may hand the driving on (`PUT /cases/{id}/driver`).
  *
- * Every predicate here FAILS CLOSED: an unknown viewer, an unknown creator or
- * an unknown driver is not a match. A core older than contract 13.2.0 sends
- * no `driver_id`, and the answer for that row is "not the driver" — the server
- * is the authority, and offering a composer it would refuse is the defect
- * ADR-020 exists to remove.
+ * Every predicate here FAILS CLOSED on an unknown viewer or creator, and on a
+ * driver the server sent as `null`.
+ *
+ * ‼ An ABSENT `driver_id` key is different: it means a core older than
+ * contract 13.2.0, which has no driver field because, before ADR-020, the
+ * creator was the only writer. The Dashboard and the API deploy independently
+ * (separate image tags), so the Dashboard can run ahead of its core; reading
+ * "absent" as "nobody drives" took every creator's composer away on such a
+ * core. So an absent key resolves to the creator (`effectiveDriverId`), and a
+ * present `null` — which no 13.2.0 core sends — still matches nobody.
  */
 
 /** The fields of a case row these rules read. Both `CaseSummary` and `CaseDetail` carry them. */
@@ -29,9 +34,21 @@ function matches(id: string | null | undefined, viewerId: string | null | undefi
   return !!id && !!viewerId && id === viewerId;
 }
 
+/**
+ * Who drives this case, as far as this client can tell.
+ *
+ * `driver_id` when the server sent the key (13.2.0+: always the effective
+ * driver, so `null` there is "unknown" and matches nobody); the creator when
+ * the key is ABSENT, because a pre-13.2.0 core has no driver and its creator
+ * is the one who writes.
+ */
+export function effectiveDriverId(row: CaseParties): string | null | undefined {
+  return row.driver_id === undefined ? row.user_id : row.driver_id;
+}
+
 /** Is the viewer this case's (effective) driver — the one who may write it? */
 export function isCaseDriver(row: CaseParties, viewerId: string | null | undefined): boolean {
-  return matches(row.driver_id, viewerId);
+  return matches(effectiveDriverId(row), viewerId);
 }
 
 /** Did the viewer create this case — the one who may share, unshare and delete it? */
@@ -84,6 +101,9 @@ export function creatorLabel(row: CaseParties): PersonLabel | null {
   return personLabel(row.creator_display_name, row.user_id);
 }
 
+/** The driver's name; on a pre-13.2.0 core (no `driver_id` key), the creator's. */
 export function driverLabel(row: CaseParties): PersonLabel | null {
-  return personLabel(row.driver_display_name, row.driver_id);
+  return row.driver_id === undefined
+    ? creatorLabel(row)
+    : personLabel(row.driver_display_name, row.driver_id);
 }

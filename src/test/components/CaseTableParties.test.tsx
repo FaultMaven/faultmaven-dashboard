@@ -78,11 +78,19 @@ describe('CaseTable — Creator and Driver', () => {
     expect(cellUnderHeader('Driver')).not.toHaveTextContent('u-grace-');
   });
 
-  it('says "Unknown" rather than nothing for a driver a pre-13.2.0 core did not send', () => {
+  it('names the CREATOR as driver on a pre-13.2.0 core, which sends no driver key', () => {
+    // Before ADR-020 the creator was the only writer, and the Dashboard can
+    // run ahead of its core (the images deploy independently).
     const old: CaseSummary = { ...base };
     delete old.driver_id;
     delete old.driver_display_name;
     renderRows([old]);
+
+    expect(cellUnderHeader('Driver')).toHaveTextContent('Ada Lovelace');
+  });
+
+  it('says "Unknown" rather than nothing for a driver sent as null', () => {
+    renderRows([{ ...base, driver_id: null, driver_display_name: null }]);
 
     expect(cellUnderHeader('Driver')).toHaveTextContent('Unknown');
   });

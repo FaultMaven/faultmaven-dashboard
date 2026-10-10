@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
 /**
  * THE CASE DRIVER ON THE CASE PAGE (ADR-020, faultmaven#1898).
@@ -12,8 +13,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
  *
  * - is there a composer here?            → is the viewer the DRIVER
  * - is there a Share button?             → is the viewer the CREATOR
- * - is there a "Change driver" control?  → creator OR driver, AND more than one
- *                                          candidate to choose from
+ * - is there a "Change driver" control?  → creator OR driver, AND a candidate
+ *                                          other than the current driver
  *
  * Every fixture below separates the creator from the driver, so a rule that
  * keys on the wrong one fails here rather than passing by coincidence.
@@ -163,6 +164,16 @@ function composerShown(): boolean {
   return !!screen.queryByTestId('shared-copilot-ui') || !!screen.queryByTestId('case-panel-holder');
 }
 
+/** Publishes the router's navigate so a test can move to another case. */
+const nav: { go?: (to: string) => void } = {};
+function NavGrab() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    nav.go = navigate;
+  }, [navigate]);
+  return null;
+}
+
 const changeDriverButton = () => screen.queryByRole('button', { name: /change driver/i });
 
 beforeEach(() => {
@@ -241,13 +252,34 @@ describe('a composer is the DRIVER\'s (isDriver gates dock, tabs and layout)', (
     expect(composerShown()).toBe(false);
   });
 
-  it('an UNKNOWN driver fails closed — even for the creator', async () => {
-    // A core older than contract 13.2.0 sends no `driver_id`. Offering the
-    // creator a composer on a guess is the defect ADR-020 removes.
+  it('an ABSENT driver key (a pre-13.2.0 core) — the creator drives, as they did then', async () => {
+    // The Dashboard and the API deploy independently, so the Dashboard can run
+    // ahead of its core. Reading "no driver field" as "nobody drives" took
+    // every creator's composer away on such a core.
     const noDriver: CaseFixture = { ...CASE };
     delete noDriver.driver_id;
     delete noDriver.driver_display_name;
     await renderPage(noDriver);
+
+    await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
+    expect(screen.getByTestId('shared-copilot-ui')).toHaveAttribute('data-readonly', 'false');
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
+  });
+
+  it('an absent driver key does not make a READER the driver', async () => {
+    viewer.id = 'u-linus';
+    const noDriver: CaseFixture = { ...CASE };
+    delete noDriver.driver_id;
+    delete noDriver.driver_display_name;
+    await renderPage(noDriver);
+
+    await waitFor(() => expect(screen.getByTestId('transcript-record')).toBeInTheDocument());
+    expect(composerShown()).toBe(false);
+  });
+
+  it('a driver sent as NULL fails closed — even for the creator', async () => {
+    // No 13.2.0 core sends it; a present null is "unknown", never "the creator".
+    await renderPage({ ...CASE, driver_id: null, driver_display_name: null });
 
     await waitFor(() => expect(screen.getByTestId('transcript-record')).toBeInTheDocument());
     expect(composerShown()).toBe(false);
@@ -319,6 +351,19 @@ describe('who sees "Change driver"', () => {
     await waitFor(() => expect(screen.getByTestId('shared-copilot-ui')).toBeInTheDocument());
 
     expect(changeDriverButton()).not.toBeInTheDocument();
+  });
+
+  it('YES for the creator when the driver is no longer a candidate (ADR-020 D3 recovery)', async () => {
+    // A release that failed, or an unshare that raced a reassignment, leaves
+    // the case driven by someone who is no longer in its audience. The creator
+    // is then the ONLY candidate — and handing the case back to them is the
+    // recovery the ADR names, so the control must be offered.
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA]);
+    await renderPage({ ...CASE, driver_id: 'u-gone', driver_display_name: 'Gone' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    const list = screen.getByRole('list', { name: /hand this case to/i });
+    expect(within(list).getByRole('button', { name: /Ada Lovelace/ })).toBeEnabled();
   });
 
   it('NOT when the candidates cannot be read', async () => {
@@ -419,12 +464,28 @@ describe('the list closes when the user leaves it, and only then', () => {
 
     // A button that takes no focus on click (Safari, Firefox on macOS): the
     // toggle blurs with nowhere to go, and the list must still be there.
-    fireEvent.mouseDown(within(list).getByRole('button', { name: /Grace Hopper/ }));
+    fireEvent.pointerDown(within(list).getByRole('button', { name: /Grace Hopper/ }));
     fireEvent.blur(toggle, { relatedTarget: null });
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
-    fireEvent.mouseDown(screen.getByRole('heading', { name: CASE.title }));
+    // A pointer press — mouse, touch (an iOS tap) or pen — anywhere else.
+    fireEvent.pointerDown(screen.getByRole('heading', { name: CASE.title }));
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('a tap on a candidate still hands the case off', async () => {
+    await renderPage();
+    vi.mocked(reassignCaseDriver).mockResolvedValue({
+      ...CASE,
+      driver_id: 'u-grace',
+      driver_display_name: 'Grace Hopper',
+    } as never);
+    const grace = await pick('Grace Hopper');
+
+    fireEvent.pointerDown(grace);
+    fireEvent.click(grace);
+
+    await waitFor(() => expect(reassignCaseDriver).toHaveBeenCalledWith('case-1', 'u-grace'));
   });
 
   it('Tab past the control closes it', async () => {
@@ -434,6 +495,63 @@ describe('the list closes when the user leaves it, and only then', () => {
 
     fireEvent.blur(toggle, { relatedTarget: screen.getByRole('button', { name: 'Share' }) });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('one hand-off at a time', () => {
+  it('a second candidate pressed while the first PUT is held sends no second PUT', async () => {
+    await renderPage();
+    vi.mocked(reassignCaseDriver).mockReturnValue(new Promise(() => {}));
+
+    fireEvent.click(await pick('Grace Hopper'));
+    const list = screen.getByRole('list', { name: /hand this case to/i });
+    fireEvent.click(within(list).getByRole('button', { name: /Linus T/ }));
+
+    expect(reassignCaseDriver).toHaveBeenCalledTimes(1);
+    expect(reassignCaseDriver).toHaveBeenCalledWith('case-1', 'u-grace');
+  });
+});
+
+describe('a hand-off that answers after the user moved to another case', () => {
+  it('changes nothing on the case now shown', async () => {
+    const CASE2 = { ...CASE, case_id: 'case-2', title: 'Second case' };
+    vi.mocked(getCaseDetail).mockImplementation(
+      async (id: string) => (id === 'case-2' ? CASE2 : CASE) as never,
+    );
+    render(
+      <MemoryRouter initialEntries={['/cases/case-1']}>
+        <NavGrab />
+        <Routes>
+          <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { name: CASE.title });
+
+    let resolvePut: (v: unknown) => void = () => {};
+    vi.mocked(reassignCaseDriver).mockReturnValue(
+      new Promise((r) => {
+        resolvePut = r;
+      }) as never,
+    );
+    fireEvent.click(await pick('Grace Hopper'));
+
+    // Navigate to case-2 while the PUT is in flight.
+    nav.go?.('/cases/case-2');
+    await screen.findByRole('heading', { name: 'Second case' });
+    vi.mocked(getCaseDetail).mockClear();
+
+    // The old PUT now answers.
+    resolvePut({ ...CASE, driver_id: 'u-grace', driver_display_name: 'Grace Hopper' });
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Case-1 is not re-read under /cases/case-2, the page still shows case-2,
+    // and its composer is case-2's.
+    expect(getCaseDetail).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Second case' })).toBeInTheDocument();
+    expect(screen.queryByText(/Loading case/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('shared-copilot-ui')).toHaveAttribute('data-case', 'case-2');
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
   });
 });
 

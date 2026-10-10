@@ -218,9 +218,11 @@ never one.
   driver (`driver_id`, always the EFFECTIVE driver on the wire). The composer is
   the DRIVER's (`isCaseDriver`), Share is the CREATOR's (`isCaseCreator`), and
   the hand-off (`CaseDriverField`, `PUT /cases/{id}/driver`) is either's when
-  `GET /cases/{id}/driver-candidates` names more than one account — terminal
-  cases included. All three live in `src/lib/cases/driver.ts` and fail closed on
-  an unknown id. Lists show Creator and Driver by display name, a short id only
+  `GET /cases/{id}/driver-candidates` names someone other than the current
+  driver — terminal cases included. All three live in `src/lib/cases/driver.ts`
+  and fail closed on an unknown id or a `null` driver; an ABSENT `driver_id` key
+  is a pre-13.2.0 core, where the creator drives (the images deploy
+  independently, so the Dashboard can run ahead of its core). Lists show Creator and Driver by display name, a short id only
   when the name is absent; the Dashboard lists every case its user can READ (no
   `access=write` — that is the extension's list).
 - `?tab=` (`?tab=report`, `?tab=issue`) is the cross-frontend linking contract

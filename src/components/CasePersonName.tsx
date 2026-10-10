@@ -5,8 +5,8 @@ import type { PersonLabel } from '../lib/cases/driver';
  *
  * The display name when the server sent one; otherwise a short id in
  * monospace, with the whole id on hover, so a missing name never shows a
- * bare 36-character id and never shows nothing. A core that predates the
- * fields sends neither, which renders as a muted dash with a spoken "Unknown".
+ * bare 36-character id and never shows nothing. A person the server sent as
+ * `null` renders as a muted dash with a spoken "Unknown".
  */
 export function CasePersonName({ label }: { label: PersonLabel | null }) {
   if (!label) {

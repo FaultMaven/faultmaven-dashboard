@@ -60,6 +60,12 @@ export default function CaseDetailPage() {
   // previous caseId) resolving after a newer one and clobbering the page.
   const reqIdRef = useRef(0);
 
+  // The case the ROUTE names right now. A callback created for an earlier
+  // case (a hand-off answer that lands after the user navigated on) compares
+  // against this, never against the id its own closure captured.
+  const routeCaseIdRef = useRef(caseId);
+  routeCaseIdRef.current = caseId;
+
   const loadCase = useCallback(
     async (opts: { withSpinner?: boolean } = {}) => {
       if (!caseId) return;
@@ -116,9 +122,13 @@ export default function CaseDetailPage() {
   // not keep a composer the server will now refuse. Then the whole case is
   // re-read QUIETLY (the hand-off bumped its version). Only the driver fields
   // are taken from the answer: it is a `CaseSummary`, and the page holds a
-  // `CaseDetail`. An answer for a case this page no longer shows is ignored.
+  // `CaseDetail`. An answer for a case the route no longer names is ignored:
+  // its closure's `loadCase` would load THAT case under this URL — a live
+  // composer for the wrong case, or a spinner nothing clears. (The field also
+  // drops an answer that lands after it unmounted; this is the second guard.)
   const handleDriverReassigned = useCallback(
     (updated: CaseSummary) => {
+      if (updated.case_id !== routeCaseIdRef.current) return;
       setCaseDetail((prev) =>
         prev && prev.case_id === updated.case_id
           ? {
@@ -132,7 +142,12 @@ export default function CaseDetailPage() {
     },
     [loadCase]
   );
-  const handleDriverStale = useCallback(() => void loadCase(), [loadCase]);
+  const handleDriverStale = useCallback(
+    (staleId: string) => {
+      if (staleId === routeCaseIdRef.current) void loadCase();
+    },
+    [loadCase]
+  );
 
   // "Export / Archive to Markdown" (D2): a read-only client-side download of a
   // self-contained case record. Not a mutation — the backend retention-archiving
@@ -198,8 +213,9 @@ export default function CaseDetailPage() {
    *
    * Derived from the case's own `driver_id` (the EFFECTIVE driver on the
    * wire), never from `user_id` and never from whether this page offers a
-   * Share button, and it FAILS CLOSED: an unknown viewer or an unknown driver
-   * is not a match.
+   * Share button, and it FAILS CLOSED: an unknown viewer, or a driver sent as
+   * `null`, is not a match. An ABSENT `driver_id` key is a pre-13.2.0 core,
+   * where the creator drives (`effectiveDriverId`).
    */
   const isDriver = isCaseDriver(caseDetail, viewerId);
 

@@ -51,7 +51,8 @@ matches title and case ID via `POST /cases/search`. Renders rows via the shared
 - **Creator and Driver columns** (ADR-020 D5) on every row, by display name
   (`creator_display_name` / `driver_display_name`), falling back to a short id
   (`SHORT_ID_LENGTH`, whole id on hover) only when the name is absent, and a
-  spoken "Unknown" when a pre-13.2.0 core sent no driver. They replaced the
+  spoken "Unknown" for a driver sent as `null`. A pre-13.2.0 core sends no
+  driver key at all, and its rows name the creator as driver. They replaced the
   operator list's raw-`user_id` Owner column on the same component path.
 
 - **The creation-date range bounds `created_at` with `created_after` /
@@ -177,24 +178,42 @@ an unknown id:
 |---|---|---|
 | Is there a composer here? | `isCaseDriver` | the conversation surface (`isDriver` into `resolveCaseConversationLayout`), `CaseTabs readOnly`, `ConversationDock readOnly` |
 | Is there a Share button? | `isCaseCreator` | `canShare` (governance: share, unshare, delete — this page has no delete) |
-| Is there a "Change driver" control? | `mayReassignDriver` + more than one candidate | `CaseDriverField` |
+| Is there a "Change driver" control? | `mayReassignDriver` + a candidate other than the current driver | `CaseDriverField` |
 
 - A creator who handed the case on reads it like any teammate until they take
-  it back; a missing `driver_id` (a core older than 13.2.0) is NOT the creator
-  driving — read-only, with the server as the authority.
+  it back.
+- ‼ **Absent is not null** (`effectiveDriverId`). An ABSENT `driver_id` key is a
+  core older than 13.2.0, where the creator was the only writer, so the creator
+  drives. The Dashboard and the API deploy independently (separate image tags),
+  so the Dashboard can run ahead of its core, and reading "absent" as "nobody
+  drives" took every creator's composer away. A PRESENT `null` (which no 13.2.0
+  core sends) matches nobody, and so does any other id: read-only.
 - **The hand-off** (`CaseDriverField`, in the meta row, keyed by case): offered
   to the creator or the effective driver when `GET /cases/{id}/driver-candidates`
-  names more than one account — so never in standalone or on an unshared case —
-  and on terminal cases too (they still have driver-only writes). A reader who
+  names someone OTHER THAN THE CURRENT DRIVER — so never in standalone or on an
+  unshared case, where the creator is the only candidate and drives — and on
+  terminal cases too (they still have driver-only writes). Not "more than one
+  candidate": a driver who is no longer a candidate (a failed release, or an
+  unshare that raced a reassignment, ADR-020 D3) leaves the creator as the only
+  candidate, and handing the case back to them is the recovery. A reader who
   may not hand off never has their candidates read. It is a **disclosure of
   buttons, not a `<select>`**: a closed native select fires `change` on arrow
   keys in some browsers, and a change here takes the composer away. Escape
-  closes and returns focus to the toggle; after a hand-off focus lands on the
-  driver's name. The status line is always rendered and outside the control,
+  closes and returns focus to the toggle; a `pointerdown` outside (mouse,
+  touch, pen — not `mousedown`, which misses an iOS tap, and not `blur`, which
+  fires with nowhere to go when Safari does not focus a clicked button) closes
+  it; after a hand-off focus lands on the driver's name. One PUT at a time:
+  the candidates are disabled while one is in flight. A candidates read that a
+  newer one superseded is dropped. The status line is always rendered and outside the control,
   because the control disappears when a non-creator hands the case away.
 - **Success** applies the PUT's `driver_id` / `driver_display_name` to the page
   AT ONCE (so the dock and the read-only state follow in the same render), then
-  re-reads the case quietly. **409** `CASE_VERSION_CONFLICT`: says someone else
+  re-reads the case quietly.
+- **An answer that lands after the user moved to another case reaches
+  nothing**, by two guards: the field drops it once unmounted (it is keyed by
+  case), and the page's handlers compare the case id against the ROUTE's
+  (`routeCaseIdRef`) before applying or re-reading — a callback's own closure
+  would re-read the old case under the new URL. **409** `CASE_VERSION_CONFLICT`: says someone else
   changed it, re-reads the case and the candidates. **422**: the candidate list
   was stale — re-reads it. **403 / 404**: no longer allowed — re-reads the case.
 - **Redacted sources** (contract 13.1.0): a runbook the viewer cannot open is
