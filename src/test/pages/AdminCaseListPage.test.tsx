@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent, within } from '@testing-library/react';
 import type { CaseSummary, AdminCaseMetadata } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -339,6 +339,21 @@ describe('AdminCaseListPage', () => {
       expect(screen.queryByRole('columnheader', { name: 'Title' })).not.toBeInTheDocument();
       // The metadata that IS ambient still renders.
       expect(screen.getByText('tenant_user')).toBeInTheDocument();
+    });
+
+    it("keeps the owner's WHOLE id copyable in one click (#208)", async () => {
+      // This is the operator's real surface (cloud serves `metadata`; `full`
+      // is only the window before deployment detection lands), and operators
+      // look accounts up by the id they copy from the row — like the case and
+      // enterprise ids beside it.
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      const owner = within(cellUnderHeader('Owner')).getByText('tenant_user');
+      expect(owner).toHaveTextContent(/^tenant_user$/);
+      expect(owner).toHaveClass('select-all');
     });
 
     it('shows the Enterprise of each case, never the billing Organization', async () => {

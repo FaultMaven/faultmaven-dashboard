@@ -18,7 +18,36 @@ import { resolveCaseConversationLayout } from '../lib/cases/conversationSurface'
 import { creatorLabel, isCaseCreator, isCaseDriver } from '../lib/cases/driver';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { getCaseDetail, fetchCaseMarkdown, logoutAuth } from '../lib/api';
+import { APIError } from '../lib/knowledge/errors';
 import type { CaseDetail, CaseSummary } from '../types/cases';
+
+/**
+ * Did the server answer that this viewer cannot read the case? `GET
+ * /cases/{id}` gates on creator ∪ shared-to-my-teams and answers 404 outside
+ * it; a 403 is read the same way — either way the viewer may not read it.
+ */
+function isCaseUnreadable(err: unknown): boolean {
+  return err instanceof APIError && (err.statusCode === 404 || err.statusCode === 403);
+}
+
+/**
+ * The error view's message, which takes focus and is announced when it mounts.
+ * The view replaces the whole page, so whatever the user was standing on is
+ * gone with it: after a refused hand-off whose re-read answers 404/403 (#208),
+ * `CaseDriverField` had just put focus on the driver's name, and without this
+ * it would drop to `<body>` with nothing said.
+ */
+function CaseErrorMessage({ message }: { message: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  return (
+    <p ref={ref} tabIndex={-1} role="alert" className="text-fm-critical text-sm">
+      {message}
+    </p>
+  );
+}
 
 export default function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>();
@@ -83,12 +112,21 @@ export default function CaseDetailPage() {
         setCaseDetail(detail);
       } catch (err) {
         if (reqId !== reqIdRef.current) return;
-        // Only the initial load owns the page-level error (which swaps the whole
-        // page for an error view). A best-effort background refresh — e.g. after
-        // a team-share change — must not blow away a working page on a transient
-        // failure; the triggering action surfaces its own error.
-        if (opts.withSpinner) {
+        // The initial load owns the page-level error (which swaps the whole
+        // page for an error view) for ANY failure. A quiet re-read — after a
+        // turn, a hand-off, a refused hand-off, a team-share change — must not
+        // blow away a working page on a TRANSIENT failure (network, 5xx); the
+        // triggering action surfaces its own error.
+        //
+        // A 404 or 403 is not transient: it is the server saying this viewer
+        // can no longer read the case (unshared from their team, or deleted),
+        // which is what the initial load's error view says. Keeping the stale
+        // case on screen would offer a record, and a composer, for a case the
+        // server now refuses (#208). Every quiet caller means the same thing by
+        // the re-read, so the rule lives here rather than in each of them.
+        if (opts.withSpinner || isCaseUnreadable(err)) {
           setError(err instanceof Error ? err.message : 'Failed to load case');
+          setCaseDetail(null);
         }
       } finally {
         if (reqId === reqIdRef.current && opts.withSpinner) setLoading(false);
@@ -185,7 +223,7 @@ export default function CaseDetailPage() {
       <div className="min-h-screen bg-fm-canvas">
         <PageHeader onLogout={handleLogout} />
         <div className="max-w-7xl mx-auto px-6 py-8">
-          <p className="text-fm-critical text-sm">{error ?? 'Case not found.'}</p>
+          <CaseErrorMessage message={error ?? 'Case not found.'} />
           <Link to="/cases" className="text-fm-accent text-sm hover:underline mt-2 inline-block">
             ← Back to Cases
           </Link>

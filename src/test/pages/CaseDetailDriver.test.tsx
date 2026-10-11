@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
@@ -600,6 +600,77 @@ describe('when the hand-off is refused', () => {
       ),
     );
     expect(getCaseDetail).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * #208: the quiet re-read after a 403/404 refusal can itself be refused — the
+   * viewer lost READ access, not only the right to hand off (unshared from the
+   * team, or the case deleted). The page must then leave the case, as the
+   * initial load does, not keep a stale record (and composer) under a notice.
+   */
+  it.each([404, 403])(
+    'a 404 refusal whose re-read answers %s — the page leaves the case',
+    async (readStatus) => {
+      await renderPage();
+      await waitFor(() => expect(screen.getByTestId('conversation-dock')).toBeInTheDocument());
+      vi.mocked(reassignCaseDriver).mockRejectedValue(new APIError('refused', 404));
+      // Real latency, so the refusal's notice renders BEFORE the re-read lands.
+      vi.mocked(getCaseDetail).mockImplementationOnce(
+        () =>
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new APIError('Case not found', readStatus)), 30),
+          ),
+      );
+
+      fireEvent.click(await pick('Grace Hopper'));
+
+      await waitFor(() =>
+        expect(screen.getByTestId('case-driver-status')).toHaveTextContent(
+          /you can no longer change who drives this case/i,
+        ),
+      );
+      expect(screen.getByRole('heading', { name: CASE.title })).toBeInTheDocument();
+      // The user is standing on the driver's name the refusal focused…
+      expect(document.activeElement).toBe(screen.getByTestId('case-driver-name'));
+
+      await waitFor(() => expect(screen.getByText('Case not found')).toBeInTheDocument());
+      expect(screen.getByRole('link', { name: /back to cases/i })).toBeInTheDocument();
+      // …which the error view unmounted, so the message takes focus and is
+      // announced rather than focus dropping to <body> in silence.
+      const message = screen.getByRole('alert');
+      expect(message).toHaveTextContent('Case not found');
+      expect(document.activeElement).toBe(message);
+      expect(document.activeElement).not.toBe(document.body);
+      expect(screen.queryByRole('heading', { name: CASE.title })).toBeNull();
+      expect(screen.queryByTestId('conversation-dock')).toBeNull();
+      expect(composerShown()).toBe(false);
+      expect(getCaseDetail).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('a 404 refusal whose re-read fails TRANSIENTLY (500) — the page keeps the case', async () => {
+    await renderPage();
+    vi.mocked(reassignCaseDriver).mockRejectedValue(new APIError('refused', 404));
+    const reread = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new APIError('Server exploded', 500)), 30),
+    );
+    reread.catch(() => {});
+    vi.mocked(getCaseDetail).mockImplementationOnce(() => reread);
+
+    fireEvent.click(await pick('Grace Hopper'));
+
+    await waitFor(() => expect(getCaseDetail).toHaveBeenCalledTimes(2));
+    // Let the re-read's rejection land and the page handle it.
+    await act(async () => {
+      await reread.catch(() => {});
+    });
+
+    expect(screen.getByRole('heading', { name: CASE.title })).toBeInTheDocument();
+    expect(screen.getByTestId('case-driver-status')).toHaveTextContent(
+      /you can no longer change who drives this case/i,
+    );
+    expect(screen.queryByText('Server exploded')).toBeNull();
+    expect(screen.queryByRole('link', { name: /back to cases/i })).toBeNull();
   });
 
   it('any other failure — shows it and changes nothing', async () => {

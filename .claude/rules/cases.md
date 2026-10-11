@@ -53,7 +53,9 @@ matches title and case ID via `POST /cases/search`. Renders rows via the shared
   (`SHORT_ID_LENGTH`, whole id on hover) only when the name is absent, and a
   spoken "Unknown" for a driver sent as `null`. A pre-13.2.0 core sends no
   driver key at all, and its rows name the creator as driver. They replaced the
-  operator list's raw-`user_id` Owner column on the same component path.
+  operator list's raw-`user_id` Owner column on the same component path
+  (`view: "full"` only — the operator's copyable id is on the metadata table,
+  see AdminCaseListPage).
 
 - **The creation-date range bounds `created_at` with `created_after` /
   `created_before`** (contract 3.8.0, faultmaven#1409), and those are
@@ -216,6 +218,15 @@ an unknown id:
   would re-read the old case under the new URL. **409** `CASE_VERSION_CONFLICT`: says someone else
   changed it, re-reads the case and the candidates. **422**: the candidate list
   was stale — re-reads it. **403 / 404**: no longer allowed — re-reads the case.
+- **A quiet re-read that answers 404 or 403 leaves the case** (#208): the viewer
+  can no longer read it, so `loadCase` sets the page-level error and drops the
+  case, as the initial load does. This holds for every quiet caller (a turn, a
+  hand-off, a refused hand-off, a share change). Any other failure (network,
+  5xx) keeps the page as it was: the action that triggered the re-read reports
+  its own error. The error view replaces the whole page, unmounting whatever
+  the user stood on (after a refused hand-off, the driver's name), so its
+  message is `role="alert"` and takes focus on mount (`CaseErrorMessage`)
+  rather than letting focus drop to `<body>` unannounced.
 - **Redacted sources** (contract 13.1.0): a runbook the viewer cannot open is
   rendered by the pinned `@faultmaven/copilot-ui` as "A runbook you don't have
   access to". Sources appear only inside the panel (dock or narrow live tab);
@@ -340,7 +351,13 @@ state/source filters only.
   served policy: `view: "full"` (standalone) renders `CaseTable` with titles;
   `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids / state /
   timestamps / counts, **no title or description** (user free text is content
-  and needs the audited break-glass path, faultmaven#815). Under
+  and needs the audited break-glass path, faultmaven#815). Every id on it — case,
+  Owner (`user_id`), Enterprise — is whole and `select-all`, so one click
+  selects it: operators copy an account's id from the row to look it up
+  (#208). This table, not `CaseTable`, is the operator's real surface — cloud is
+  the only deployment that reaches the page and it serves `metadata`; `full`
+  renders only in the degraded window before deployment detection lands — so
+  an operator affordance belongs here. Under
   `TENANT_PROVIDER=multi` the metadata view spans every enterprise (contract
   9.1.0), so it carries an **Enterprise** column (the whole id, never a
   prefix). If the server cannot read across enterprises it fails closed with a
