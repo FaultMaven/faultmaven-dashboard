@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   getCaseMessages,
@@ -20,6 +20,7 @@ import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
 import { TranscriptView } from './TranscriptView';
 import { CasePanelMount } from './CasePanelMount';
+import { StaleNote } from './StaleNote';
 import type { CaseConversationLayout } from '../lib/cases/conversationSurface';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
@@ -119,6 +120,83 @@ function stanceColor(stance: string): string {
 }
 
 /**
+ * A read a tab makes for itself, made again whenever the case's REVISION moves.
+ *
+ * The docked panel changes the case while these tabs are on screen, and the
+ * page re-reads `caseDetail` when it says so (#204, #205) — but a tab that
+ * fetched on `caseId` alone never heard about it, so an Evidence or Hypotheses
+ * list stayed as it was when the tab opened (#206). The revision is
+ * `caseDetail.updated_at`: the core stamps it on every save of the case, which
+ * a turn (uploads ride turns), a reclassification and a close all are, while
+ * `current_turn` misses the last two.
+ *
+ * Only the FIRST read for a case shows the loading state. A revision read is
+ * quiet: the rows already on screen stay, and with them anything the user has
+ * expanded, until the new answer replaces them. A revision read that FAILS
+ * keeps the rows too, as `CaseDetailPage.loadCase` keeps a working page; the
+ * error is shown only when there is nothing else to show. The rows are then
+ * `stale`, and the tab says so in one line (`StaleNote`): a list that silently
+ * kept "active" hypotheses after the dock closed the case would be a claim
+ * the server no longer makes. The next successful read clears it; there is no
+ * retry button, because the next revision retries anyway.
+ *
+ * What is held is keyed by the case it was read for, so a read or an error held
+ * for one case can never stand in for another. Today that is defence, not a
+ * fix: `CaseDetailPage` shows its loading view on a case change, which unmounts
+ * these tabs, so a mounted tab never sees `caseId` move. The keying keeps the
+ * hook correct without leaning on that.
+ *
+ * It also holds the REVISION it read, so `refreshing` says when what is shown
+ * is older than the case and a newer read is on its way — the record
+ * transcript, which waits behind other tabs, catches up visibly with it.
+ *
+ * A read the next revision superseded is dropped (`cancelled`), so an older
+ * answer that lands late cannot put an older list back.
+ *
+ * `read` must be stable (module-level, or memoised): it is an effect input.
+ */
+function useCaseRead<T>(
+  caseId: string,
+  revision: string,
+  read: (caseId: string) => Promise<T>,
+  failure: string,
+): { data: T | null; loading: boolean; error: string | null; stale: boolean; refreshing: boolean } {
+  const [held, setHeld] = useState<{ caseId: string; revision: string; data: T } | null>(null);
+  const [failed, setFailed] = useState<{ caseId: string; revision: string; message: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    read(caseId).then(
+      (data) => {
+        if (cancelled) return;
+        setHeld({ caseId, revision, data });
+        setFailed(null);
+      },
+      (err: unknown) => {
+        if (!cancelled) setFailed({ caseId, revision, message: err instanceof Error ? err.message : failure });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [caseId, revision, read, failure]);
+
+  const have = held !== null && held.caseId === caseId;
+  const failedHere = failed !== null && failed.caseId === caseId;
+  const error = !have && failedHere ? failed.message : null;
+  // In flight for a newer revision, and not already refused at this one.
+  const refreshing = have && held.revision !== revision && !(failedHere && failed.revision === revision);
+  return { data: have ? held.data : null, loading: !have && error === null, error, stale: have && failedHere, refreshing };
+}
+
+const readMessages = (caseId: string): Promise<CaseMessage[]> =>
+  getCaseMessages(caseId).then((res) => res.messages);
+const readEvidence = (caseId: string): Promise<EvidenceDetails[]> =>
+  getCaseEvidenceList(caseId).then((res) => res.evidence);
+const readFiles = (caseId: string): Promise<UploadedFile[]> =>
+  getUploadedFiles(caseId).then((res) => res.files);
+const readHypotheses = (caseId: string): Promise<HypothesisSummary[]> =>
+  getCaseUI(caseId).then((ui) => ui.active_hypotheses ?? []);
+
+/**
  * The conversation as RECORD — read, not continued.
  *
  * One `GET /cases/{id}/messages`, rendered by `TranscriptView`: no panel, no
@@ -127,71 +205,48 @@ function stanceColor(stance: string): string {
  * transcript belongs in the same category as the report and the evidence —
  * something a person reads about a case.
  *
+ * It follows the revision like the other tabs, but only while it is the ACTIVE
+ * tab: `CaseTabs` keeps it mounted and hidden behind the others, and hands it
+ * the revision it last showed (`transcriptAt`) rather than the case's.
+ * `getCaseMessages` pages at 100 messages a request, one after another, so
+ * following every turn from behind Evidence would make reading Evidence cost a
+ * whole transcript download per turn. On returning to Transcript it catches up
+ * with one re-read, the old rows staying until the new ones arrive under an
+ * "Updating…" line, so a reply missing from them is not read as absent.
+ *
+ * Following matters at all because a dock collapsed mid-turn keeps its panel
+ * mounted and commits the turn behind the rail, with this record on screen. A
+ * hand-off moves `version` and not `updated_at`, so it costs no re-read.
+ *
  * The renderer is shared with the operator break-glass page (ADR-012 D9): the
  * backend serves the same message shape to both, and a second copy of this
  * markup here would let the two drift.
  */
-function RecordTranscriptTab({ caseId }: { caseId: string }) {
-  const [messages, setMessages] = useState<CaseMessage[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      // Cleared on every attempt, not only set on failure. `CaseTabs` has no
-      // `key` on the route's `:caseId`, so this instance survives a move from
-      // one case to the next — and the error guard below wins over `messages`,
-      // so without this a single failed load would keep showing its error over
-      // every later case's transcript that loaded perfectly well. The same bug,
-      // with the same cause, is already commented in `CaseDetailPage.loadCase`.
-      setError(null);
-      try {
-        const res = await getCaseMessages(caseId);
-        if (!cancelled) setMessages(res.messages);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load transcript');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
+function RecordTranscriptTab({ caseId, revision }: { caseId: string; revision: string }) {
+  const { data: messages, loading, error, stale, refreshing } = useCaseRead(caseId, revision, readMessages, 'Failed to load transcript');
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
 
   return (
     <div data-testid="transcript-record">
+      <StaleNote stale={stale} />
+      {refreshing && !stale && (
+        <p role="status" className="text-xs text-fm-text-tertiary mb-2">Updating…</p>
+      )}
       <TranscriptView messages={messages ?? []} />
     </div>
   );
 }
 
-function FileEvidenceDetails({ caseId, fileId }: { caseId: string; fileId: string }) {
-  const [details, setDetails] = useState<UploadedFileDetails | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await getUploadedFileDetails(caseId, fileId);
-        if (!cancelled) setDetails(res);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load details');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId, fileId]);
+function FileEvidenceDetails({ caseId, fileId, revision }: { caseId: string; fileId: string; revision: string }) {
+  // Keyed by case only: the parent keys this component by file, so `fileId`
+  // never changes under a mounted instance.
+  const read = useCallback(
+    (id: string): Promise<UploadedFileDetails> => getUploadedFileDetails(id, fileId),
+    [fileId],
+  );
+  const { data: details, loading, error, stale } = useCaseRead(caseId, revision, read, 'Failed to load details');
 
   if (loading) return <div className="text-fm-text-tertiary text-xs py-2 italic">Loading derived evidence...</div>;
   if (error) return <div className="text-fm-critical text-xs py-2">{error}</div>;
@@ -201,6 +256,7 @@ function FileEvidenceDetails({ caseId, fileId }: { caseId: string; fileId: strin
 
   return (
     <div className="py-2 space-y-3">
+      <StaleNote stale={stale} />
       {details.summary && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">Summary</p>
@@ -240,186 +296,168 @@ function FileEvidenceDetails({ caseId, fileId }: { caseId: string; fileId: strin
   );
 }
 
-function EvidenceListView({ caseId }: { caseId: string }) {
-  const [evidence, setEvidence] = useState<EvidenceDetails[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function EvidenceListView({ caseId, revision }: { caseId: string; revision: string }) {
+  const { data: evidence, loading, error, stale } = useCaseRead(caseId, revision, readEvidence, 'Failed to load evidence');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await getCaseEvidenceList(caseId);
-        if (!cancelled) setEvidence(res.evidence);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load evidence');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading evidence...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
   if (!evidence?.length) {
-    return <div className="text-fm-text-tertiary text-sm py-4">No evidence collected yet.</div>;
+    return (
+      <>
+        <StaleNote stale={stale} />
+        <div className="text-fm-text-tertiary text-sm py-4">No evidence collected yet.</div>
+      </>
+    );
   }
 
   return (
-    <div className="divide-y divide-fm-border">
-      {evidence.map((ev) => {
-        const isExpanded = expandedId === ev.evidence_id;
-        const hypothesisCount = ev.related_hypotheses?.length ?? 0;
-        const sourceLabel = ev.source_file
-          ? `${ev.source_file.filename} · turn ${ev.collected_at_turn}`
-          : `chat · turn ${ev.collected_at_turn}`;
-        return (
-          <div key={ev.evidence_id} className="py-2">
-            <button
-              type="button"
-              onClick={() => setExpandedId(isExpanded ? null : ev.evidence_id)}
-              className="w-full flex items-start justify-between gap-3 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
-              aria-expanded={isExpanded}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-fm-elevated text-fm-text-secondary">
-                    {evidenceCategoryLabel(ev.category)}
-                  </span>
-                  <span className="text-sm text-fm-text-primary">{ev.summary}</span>
+    <>
+      <StaleNote stale={stale} />
+      <div className="divide-y divide-fm-border">
+        {evidence.map((ev) => {
+          const isExpanded = expandedId === ev.evidence_id;
+          const hypothesisCount = ev.related_hypotheses?.length ?? 0;
+          const sourceLabel = ev.source_file
+            ? `${ev.source_file.filename} · turn ${ev.collected_at_turn}`
+            : `chat · turn ${ev.collected_at_turn}`;
+          return (
+            <div key={ev.evidence_id} className="py-2">
+              <button
+                type="button"
+                onClick={() => setExpandedId(isExpanded ? null : ev.evidence_id)}
+                className="w-full flex items-start justify-between gap-3 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
+                aria-expanded={isExpanded}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-fm-elevated text-fm-text-secondary">
+                      {evidenceCategoryLabel(ev.category)}
+                    </span>
+                    <span className="text-sm text-fm-text-primary">{ev.summary}</span>
+                  </div>
+                  <p className="text-xs text-fm-text-tertiary mt-1">
+                    {sourceLabel}
+                    {hypothesisCount > 0 && (
+                      <> · {hypothesisCount} hypothes{hypothesisCount === 1 ? 'is' : 'es'}</>
+                    )}
+                  </p>
                 </div>
-                <p className="text-xs text-fm-text-tertiary mt-1">
-                  {sourceLabel}
-                  {hypothesisCount > 0 && (
-                    <> · {hypothesisCount} hypothes{hypothesisCount === 1 ? 'is' : 'es'}</>
+                <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
+                  {isExpanded ? '▾' : '▸'}
+                </span>
+              </button>
+              {isExpanded && (
+                <div className="pl-3 mt-2 ml-1 border-l-2 border-fm-border space-y-3">
+                  {ev.extract && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
+                        Source quote
+                      </p>
+                      <pre className="text-xs bg-fm-surface-alt border border-fm-border rounded-fm-input p-2 overflow-x-auto whitespace-pre-wrap text-fm-text-primary font-mono">
+                        {ev.extract}
+                      </pre>
+                    </div>
                   )}
-                </p>
-              </div>
-              <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
-                {isExpanded ? '▾' : '▸'}
-              </span>
-            </button>
-            {isExpanded && (
-              <div className="pl-3 mt-2 ml-1 border-l-2 border-fm-border space-y-3">
-                {ev.extract && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
-                      Source quote
-                    </p>
-                    <pre className="text-xs bg-fm-surface-alt border border-fm-border rounded-fm-input p-2 overflow-x-auto whitespace-pre-wrap text-fm-text-primary font-mono">
-                      {ev.extract}
-                    </pre>
-                  </div>
-                )}
-                {ev.analysis && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
-                      Analysis
-                    </p>
-                    <p className="text-sm text-fm-text-primary">{ev.analysis}</p>
-                  </div>
-                )}
-                {ev.related_hypotheses && ev.related_hypotheses.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1.5">
-                      Related hypotheses
-                    </p>
-                    <ul className="space-y-1.5">
-                      {ev.related_hypotheses.map((rh) => (
-                        <li key={rh.hypothesis_id} className="flex items-baseline gap-2">
-                          <span className={`text-[10px] font-semibold uppercase tracking-wide ${stanceColor(rh.stance)}`}>
-                            {rh.stance}
-                          </span>
-                          <span className="text-sm text-fm-text-primary">{rh.statement}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+                  {ev.analysis && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
+                        Analysis
+                      </p>
+                      <p className="text-sm text-fm-text-primary">{ev.analysis}</p>
+                    </div>
+                  )}
+                  {ev.related_hypotheses && ev.related_hypotheses.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1.5">
+                        Related hypotheses
+                      </p>
+                      <ul className="space-y-1.5">
+                        {ev.related_hypotheses.map((rh) => (
+                          <li key={rh.hypothesis_id} className="flex items-baseline gap-2">
+                            <span className={`text-[10px] font-semibold uppercase tracking-wide ${stanceColor(rh.stance)}`}>
+                              {rh.stance}
+                            </span>
+                            <span className="text-sm text-fm-text-primary">{rh.statement}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
-function FileListView({ caseId }: { caseId: string }) {
-  const [files, setFiles] = useState<UploadedFile[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function FileListView({ caseId, revision }: { caseId: string; revision: string }) {
+  const { data: files, loading, error, stale } = useCaseRead(caseId, revision, readFiles, 'Failed to load files');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await getUploadedFiles(caseId);
-        if (!cancelled) setFiles(res.files);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load files');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading files...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
-  if (!files?.length) return <div className="text-fm-text-tertiary text-sm py-4">No files uploaded.</div>;
+  if (!files?.length) {
+    return (
+      <>
+        <StaleNote stale={stale} />
+        <div className="text-fm-text-tertiary text-sm py-4">No files uploaded.</div>
+      </>
+    );
+  }
 
   return (
-    <div className="divide-y divide-fm-border">
-      {files.map((file) => {
-        const isExpanded = expandedId === file.file_id;
-        return (
-          <div key={file.file_id} className="py-2">
-            <button
-              type="button"
-              onClick={() => setExpandedId(isExpanded ? null : file.file_id)}
-              className="w-full flex items-center justify-between gap-4 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
-              aria-expanded={isExpanded}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-fm-text-primary truncate">{file.filename}</p>
-                <p className="text-xs text-fm-text-tertiary mt-0.5 inline-flex items-center gap-1.5">
-                  <span>{file.source_type} · {file.size_display} · turn {file.uploaded_at_turn}</span>
-                  <span className="inline-flex items-center gap-1">
-                    <span aria-hidden="true" className={`inline-block w-1.5 h-1.5 rounded-full ${analysisStatusDotColor(file.analysis_status)}`} />
-                    <span>{file.analysis_status}</span>
-                  </span>
-                </p>
-              </div>
-              <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
-                {isExpanded ? '▾' : '▸'}
-              </span>
-            </button>
-            {isExpanded && (
-              <div className="pl-2 mt-1 border-l-2 border-fm-border ml-1">
-                <FileEvidenceDetails caseId={caseId} fileId={file.file_id} />
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <StaleNote stale={stale} />
+      <div className="divide-y divide-fm-border">
+        {files.map((file) => {
+          const isExpanded = expandedId === file.file_id;
+          return (
+            <div key={file.file_id} className="py-2">
+              <button
+                type="button"
+                onClick={() => setExpandedId(isExpanded ? null : file.file_id)}
+                className="w-full flex items-center justify-between gap-4 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
+                aria-expanded={isExpanded}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-fm-text-primary truncate">{file.filename}</p>
+                  <p className="text-xs text-fm-text-tertiary mt-0.5 inline-flex items-center gap-1.5">
+                    <span>{file.source_type} · {file.size_display} · turn {file.uploaded_at_turn}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span aria-hidden="true" className={`inline-block w-1.5 h-1.5 rounded-full ${analysisStatusDotColor(file.analysis_status)}`} />
+                      <span>{file.analysis_status}</span>
+                    </span>
+                  </p>
+                </div>
+                <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
+                  {isExpanded ? '▾' : '▸'}
+                </span>
+              </button>
+              {isExpanded && (
+                <div className="pl-2 mt-1 border-l-2 border-fm-border ml-1">
+                  <FileEvidenceDetails caseId={caseId} fileId={file.file_id} revision={revision} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
-function EvidenceTab({ caseId }: { caseId: string }) {
+function EvidenceTab({ caseId, revision }: { caseId: string; revision: string }) {
   const [view, setView] = useState<'evidence' | 'files'>('evidence');
 
   return (
     <div>
-      {view === 'evidence' ? <EvidenceListView caseId={caseId} /> : <FileListView caseId={caseId} />}
+      {view === 'evidence'
+        ? <EvidenceListView caseId={caseId} revision={revision} />
+        : <FileListView caseId={caseId} revision={revision} />}
       <div className="mt-4 pt-3 border-t border-fm-border">
         <button
           type="button"
@@ -455,27 +493,8 @@ function HypothesisRow({ hypothesis }: { hypothesis: HypothesisSummary }) {
   );
 }
 
-function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: CaseDetail }) {
-  const [hypotheses, setHypotheses] = useState<HypothesisSummary[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const ui = await getCaseUI(caseId);
-        if (!cancelled) setHypotheses(ui.active_hypotheses ?? []);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load hypotheses');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
+function HypothesesTab({ caseId, caseDetail, revision }: { caseId: string; caseDetail: CaseDetail; revision: string }) {
+  const { data: hypotheses, loading, error, stale } = useCaseRead(caseId, revision, readHypotheses, 'Failed to load hypotheses');
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading hypotheses...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
@@ -484,6 +503,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
     if (caseDetail.is_terminal && caseDetail.hypothesis_count > 0) {
       return (
         <div className="py-2 text-sm text-fm-text-secondary">
+          <StaleNote stale={stale} />
           {caseDetail.hypothesis_count} hypothes{caseDetail.hypothesis_count === 1 ? 'is' : 'es'} were
           tested on this case. Detailed hypothesis history is available in case storage
           but not surfaced here for terminal cases.
@@ -492,6 +512,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
     }
     return (
       <div className="py-2 text-sm text-fm-text-tertiary">
+        <StaleNote stale={stale} />
         No hypotheses yet — this case hasn&apos;t produced any.
       </div>
     );
@@ -499,6 +520,7 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
 
   return (
     <div className="py-1">
+      <StaleNote stale={stale} />
       <ul className="divide-y divide-fm-border">
         {hypotheses.map((h) => <HypothesisRow key={h.hypothesis_id} hypothesis={h} />)}
       </ul>
@@ -508,6 +530,9 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
 
 export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }: CaseTabsProps) {
   const { surface, transcriptTabShown, viewportBounded } = layout;
+  // The primitive, not the object: the page hands a new `caseDetail` on every
+  // re-read, and only a change the server stamped is worth a refetch.
+  const revision = caseDetail.updated_at;
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
@@ -573,6 +598,30 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
   // makes the fallback stick: without it the default is recomputed from the
   // dock's state on every render and the toggle moves the user.
   if (activeTab !== chosen) setChosen(activeTab);
+
+  /**
+   * The revision the hidden record transcript was last SHOWN at.
+   *
+   * The record stays mounted behind the other tabs (see below), so handing it
+   * `revision` would re-run its paged `getCaseMessages` on every turn while the
+   * user reads Evidence. It follows the case only while Transcript is the
+   * active tab, and catches up — one re-read — when it is shown again.
+   * Adjusted during render, as `chosen` is. A move to another case (defence
+   * only, as in `useCaseRead`: the page unmounts these tabs on a case change)
+   * adopts that case's revision at once: the record reads it on `caseId` anyway,
+   * so waiting would only buy a second read of it later. So does a record that
+   * is not mounted at all (the dock open, or the tab live): it reads the case
+   * as it is when it mounts, so a revision it lagged behind meanwhile would buy
+   * the same second read the first time Transcript is shown.
+   */
+  const recordMounted = transcriptTabShown && !transcriptIsLive;
+  const [transcriptAt, setTranscriptAt] = useState({ caseId, revision });
+  if (
+    transcriptAt.caseId !== caseId
+    || ((activeTab === 'transcript' || !recordMounted) && transcriptAt.revision !== revision)
+  ) {
+    setTranscriptAt({ caseId, revision });
+  }
 
   /**
    * A `?tab=` the strip cannot honour is CLEARED, not ignored.
@@ -680,15 +729,15 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
               messages a request, so a long case cost several sequential round
               trips and a "Loading transcript…" flash on every visit. The cost
               of keeping it is one rendered subtree. */}
-          {transcriptTabShown && !transcriptIsLive && (
+          {recordMounted && (
             <div className={activeTab === 'transcript' ? undefined : 'hidden'}>
-              <RecordTranscriptTab caseId={caseId} />
+              <RecordTranscriptTab caseId={caseId} revision={transcriptAt.revision} />
             </div>
           )}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
           {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
-          {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
-          {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
+          {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} revision={revision} />}
+          {activeTab === 'evidence' && <EvidenceTab caseId={caseId} revision={revision} />}
         </div>
       )}
     </div>
