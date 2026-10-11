@@ -261,6 +261,33 @@ describe('IssueTab problem statement against problem_status', () => {
     expect(getCaseUI).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps a judged statement whose refresh failed, and says it may be out of date', async () => {
+    // A FAILED read replaces nothing, but what it kept is no longer the
+    // server's latest word — the verification may have moved — so it says so,
+    // as the other tabs do. A later successful read clears the note.
+    const later = <T,>(body: T): Promise<T> => new Promise((resolve) => setTimeout(() => resolve(body), 30));
+    const judged = { problem_statement: 'Orders API times out', problem_verification: null };
+    vi.mocked(getCaseUI)
+      .mockImplementationOnce(() => later(judged as never))
+      .mockImplementationOnce(
+        () => new Promise((_, reject) => setTimeout(() => reject(new Error('offline')), 30)),
+      )
+      .mockImplementationOnce(() => later(judged as never));
+    const investigating = makeCaseDetail({ state: 'investigating', is_terminal: false, resolved_at: null });
+    const { rerender } = render(<IssueTab caseDetail={investigating} />);
+    expect(await screen.findByText('Orders API times out')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+
+    rerender(<IssueTab caseDetail={{ ...investigating, updated_at: '2024-01-01T00:05:00Z' }} />);
+    expect(await screen.findByRole('status')).toHaveTextContent(/Couldn.t refresh/);
+    expect(screen.getByText('Orders API times out')).toBeInTheDocument();
+
+    rerender(<IssueTab caseDetail={{ ...investigating, updated_at: '2024-01-01T00:10:00Z' }} />);
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.getByText('Orders API times out')).toBeInTheDocument();
+    expect(getCaseUI).toHaveBeenCalledTimes(3);
+  });
+
   it('keeps the description when the UI view cannot be read', async () => {
     vi.mocked(getCaseUI).mockRejectedValue(new Error('offline'));
     render(<IssueTab caseDetail={makeCaseDetail({ state: 'investigating', is_terminal: false })} />);

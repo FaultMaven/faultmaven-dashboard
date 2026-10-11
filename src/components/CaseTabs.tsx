@@ -20,6 +20,7 @@ import { ReportTab } from './ReportTab';
 import { IssueTab } from './IssueTab';
 import { TranscriptView } from './TranscriptView';
 import { CasePanelMount } from './CasePanelMount';
+import { StaleNote } from './StaleNote';
 import type { CaseConversationLayout } from '../lib/cases/conversationSurface';
 
 type Tab = 'transcript' | 'evidence' | 'hypotheses' | 'report' | 'issue';
@@ -139,10 +140,15 @@ function stanceColor(stance: string): string {
  * the server no longer makes. The next successful read clears it; there is no
  * retry button, because the next revision retries anyway.
  *
- * What is held is keyed by the case it was read for. `CaseTabs` has no `key` on
- * the route's `:caseId`, so a tab survives a move from one case to the next,
- * and a read or an error held for the last case must never stand in for this
- * one (a single failed load used to keep its error over every later case).
+ * What is held is keyed by the case it was read for, so a read or an error held
+ * for one case can never stand in for another. Today that is defence, not a
+ * fix: `CaseDetailPage` shows its loading view on a case change, which unmounts
+ * these tabs, so a mounted tab never sees `caseId` move. The keying keeps the
+ * hook correct without leaning on that.
+ *
+ * It also holds the REVISION it read, so `refreshing` says when what is shown
+ * is older than the case and a newer read is on its way — the record
+ * transcript, which waits behind other tabs, catches up visibly with it.
  *
  * A read the next revision superseded is dropped (`cancelled`), so an older
  * answer that lands late cannot put an older list back.
@@ -154,20 +160,20 @@ function useCaseRead<T>(
   revision: string,
   read: (caseId: string) => Promise<T>,
   failure: string,
-): { data: T | null; loading: boolean; error: string | null; stale: boolean } {
-  const [held, setHeld] = useState<{ caseId: string; data: T } | null>(null);
-  const [failed, setFailed] = useState<{ caseId: string; message: string } | null>(null);
+): { data: T | null; loading: boolean; error: string | null; stale: boolean; refreshing: boolean } {
+  const [held, setHeld] = useState<{ caseId: string; revision: string; data: T } | null>(null);
+  const [failed, setFailed] = useState<{ caseId: string; revision: string; message: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     read(caseId).then(
       (data) => {
         if (cancelled) return;
-        setHeld({ caseId, data });
+        setHeld({ caseId, revision, data });
         setFailed(null);
       },
       (err: unknown) => {
-        if (!cancelled) setFailed({ caseId, message: err instanceof Error ? err.message : failure });
+        if (!cancelled) setFailed({ caseId, revision, message: err instanceof Error ? err.message : failure });
       },
     );
     return () => { cancelled = true; };
@@ -176,16 +182,9 @@ function useCaseRead<T>(
   const have = held !== null && held.caseId === caseId;
   const failedHere = failed !== null && failed.caseId === caseId;
   const error = !have && failedHere ? failed.message : null;
-  return { data: have ? held.data : null, loading: !have && error === null, error, stale: have && failedHere };
-}
-
-/**
- * Rows held past a failed refresh say so — one quiet line above them, never in
- * place of them (see `useCaseRead`).
- */
-function StaleNote({ stale }: { stale: boolean }) {
-  if (!stale) return null;
-  return <p className="text-xs text-fm-warning mb-2">Couldn&apos;t refresh — this may be out of date.</p>;
+  // In flight for a newer revision, and not already refused at this one.
+  const refreshing = have && held.revision !== revision && !(failedHere && failed.revision === revision);
+  return { data: have ? held.data : null, loading: !have && error === null, error, stale: have && failedHere, refreshing };
 }
 
 const readMessages = (caseId: string): Promise<CaseMessage[]> =>
@@ -212,7 +211,8 @@ const readHypotheses = (caseId: string): Promise<HypothesisSummary[]> =>
  * `getCaseMessages` pages at 100 messages a request, one after another, so
  * following every turn from behind Evidence would make reading Evidence cost a
  * whole transcript download per turn. On returning to Transcript it catches up
- * with one quiet re-read, the old rows staying until the new ones arrive.
+ * with one re-read, the old rows staying until the new ones arrive under an
+ * "Updating…" line, so a reply missing from them is not read as absent.
  *
  * Following matters at all because a dock collapsed mid-turn keeps its panel
  * mounted and commits the turn behind the rail, with this record on screen. A
@@ -223,7 +223,7 @@ const readHypotheses = (caseId: string): Promise<HypothesisSummary[]> =>
  * markup here would let the two drift.
  */
 function RecordTranscriptTab({ caseId, revision }: { caseId: string; revision: string }) {
-  const { data: messages, loading, error, stale } = useCaseRead(caseId, revision, readMessages, 'Failed to load transcript');
+  const { data: messages, loading, error, stale, refreshing } = useCaseRead(caseId, revision, readMessages, 'Failed to load transcript');
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
@@ -231,6 +231,9 @@ function RecordTranscriptTab({ caseId, revision }: { caseId: string; revision: s
   return (
     <div data-testid="transcript-record">
       <StaleNote stale={stale} />
+      {refreshing && !stale && (
+        <p role="status" className="text-xs text-fm-text-tertiary mb-2">Updating…</p>
+      )}
       <TranscriptView messages={messages ?? []} />
     </div>
   );
@@ -602,9 +605,10 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
    * The record stays mounted behind the other tabs (see below), so handing it
    * `revision` would re-run its paged `getCaseMessages` on every turn while the
    * user reads Evidence. It follows the case only while Transcript is the
-   * active tab, and catches up — one quiet re-read — when it is shown again.
-   * Adjusted during render, as `chosen` is. A move to another case adopts that
-   * case's revision at once: the record reads the new case on `caseId` anyway,
+   * active tab, and catches up — one re-read — when it is shown again.
+   * Adjusted during render, as `chosen` is. A move to another case (defence
+   * only, as in `useCaseRead`: the page unmounts these tabs on a case change)
+   * adopts that case's revision at once: the record reads it on `caseId` anyway,
    * so waiting would only buy a second read of it later. So does a record that
    * is not mounted at all (the dock open, or the tab live): it reads the case
    * as it is when it mounts, so a revision it lagged behind meanwhile would buy

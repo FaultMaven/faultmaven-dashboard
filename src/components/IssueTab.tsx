@@ -4,6 +4,7 @@ import { getCaseUI } from '../lib/api';
 import { closureReasonDisplay } from '../lib/cases/closureReason';
 import { problemStatementView } from '../lib/cases/problemStatus';
 import { caseTurnCount } from '../lib/cases/turnLabel';
+import { StaleNote } from './StaleNote';
 
 interface IssueTabProps {
   caseDetail: CaseDetail;
@@ -37,16 +38,24 @@ interface JudgedStatement {
  * statement and its verification change during an investigation and the
  * docked panel commits turns while this tab is open (#206; the rationale is at
  * `useCaseRead` in CaseTabs). Quiet already: the last read stays until a newer
- * one replaces it, and a failed one replaces nothing.
+ * one replaces it, and a failed one replaces nothing — but it marks what it
+ * kept `stale`, so a verification badge the server may have since changed is
+ * not shown as current, as the other tabs mark their rows (`StaleNote`).
  *
  * A SUCCESSFUL read always replaces it, an empty statement included: a server
  * that cleared or reset `problem_statement` has withdrawn the judged statement
  * and its verification, so the tab falls back to `description` exactly as for
  * a case never judged, rather than keeping a badge nobody now asserts.
  */
-function useJudgedStatement(caseId: string, judged: boolean, revision: string): JudgedStatement | null {
+function useJudgedStatement(
+  caseId: string,
+  judged: boolean,
+  revision: string,
+): { judged: JudgedStatement | null; stale: boolean } {
   // Keyed by case, so a result read for one case is never shown on another.
-  const [read, setRead] = useState<{ caseId: string; judged: JudgedStatement | null } | null>(null);
+  const [read, setRead] = useState<
+    { caseId: string; judged: JudgedStatement | null; stale: boolean } | null
+  >(null);
   useEffect(() => {
     if (!judged) return;
     let cancelled = false;
@@ -57,21 +66,26 @@ function useJudgedStatement(caseId: string, judged: boolean, revision: string): 
         setRead({
           caseId,
           judged: statement ? { statement, verification: ui.problem_verification ?? null } : null,
+          stale: false,
         });
       })
       .catch(() => {
-        // The tab still renders the case's description; nothing to surface.
+        // Nothing held: the tab still renders the case's description, and there
+        // is nothing to surface. Something held: it stays, marked stale.
+        if (cancelled) return;
+        setRead((prev) => (prev && prev.caseId === caseId ? { ...prev, stale: true } : prev));
       });
     return () => {
       cancelled = true;
     };
   }, [caseId, judged, revision]);
-  return judged && read?.caseId === caseId ? read.judged : null;
+  const mine = judged && read?.caseId === caseId ? read : null;
+  return { judged: mine?.judged ?? null, stale: mine !== null && mine.judged !== null && mine.stale };
 }
 
 export function IssueTab({ caseDetail }: IssueTabProps) {
   // INQUIRY has no confirmed statement to judge: its proposal is in the chat.
-  const judged = useJudgedStatement(
+  const { judged, stale } = useJudgedStatement(
     caseDetail.case_id,
     caseDetail.state !== 'inquiry',
     caseDetail.updated_at,
@@ -100,6 +114,7 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
         </h3>
         {problem ? (
           <>
+            <StaleNote stale={stale} />
             <p
               className={`text-sm ${problem.struck ? 'line-through text-fm-text-tertiary' : 'text-fm-text-primary'}`}
             >

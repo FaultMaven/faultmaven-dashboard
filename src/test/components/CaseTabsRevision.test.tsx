@@ -200,7 +200,8 @@ describe('Evidence follows the case revision', () => {
     expect(getCaseEvidenceList).toHaveBeenCalledTimes(2);
     expect(screen.getByText('Disk full on replica')).toBeInTheDocument();
     expect(screen.queryByText('Failed to list case evidence')).not.toBeInTheDocument();
-    expect(screen.getByText(STALE_NOTE)).toBeInTheDocument();
+    // Announced, not only drawn: it appears on its own, after the rows.
+    expect(screen.getByRole('status')).toHaveTextContent(STALE_NOTE);
   });
 
   it('drops the out-of-date note once a later refresh succeeds', async () => {
@@ -426,8 +427,12 @@ describe('the read-only transcript follows the case revision', () => {
     expect(getCaseMessages).toHaveBeenCalledTimes(2);
     expect(screen.queryByText('Loading transcript...')).not.toBeInTheDocument();
     expect(screen.getByText(/Writes fail since 02:14/)).toBeInTheDocument();
+    // Rows from several turns ago, on show: they say a newer read is coming,
+    // so a reply missing from them is not read as absent.
+    expect(screen.getByRole('status')).toHaveTextContent('Updating…');
 
     expect(await screen.findByText(/The volume is at 100%/)).toBeInTheDocument();
+    expect(screen.queryByText('Updating…')).not.toBeInTheDocument();
     await settle(LATENCY * 2);
     expect(getCaseMessages).toHaveBeenCalledTimes(2);
   });
