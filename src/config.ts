@@ -1,8 +1,6 @@
 // src/config.ts
 
 interface InputLimitsConfig {
-  /** Smart detection threshold: text >= this many lines is treated as data upload */
-  dataModeLinesThreshold: number;
   /** Maximum character length for input */
   maxQueryLength: number;
   /** Textarea auto-sizing minimum rows */
@@ -36,7 +34,9 @@ interface Config {
  *      (NOT 127.0.0.1, which would point at the user's own machine).
  *
  * Other Environment Variables (set before build):
- * - VITE_DATA_MODE_LINES: Lines threshold for data mode (default: 100)
+ * - VITE_PASTE_TO_TEXTPAD_LINES: a paste of this many lines or more goes to the
+ *   composer's textpad (default: 3, minimum: 2). Read by the shared panel
+ *   (@faultmaven/copilot-ui, compiled by this build), not by this file.
  * - VITE_MAX_QUERY_LENGTH: Max input characters (default: 200000 = 200KB, matches backend)
  * - VITE_MAX_FILE_SIZE_MB: Max file size in MB (default: 10, matches backend MAX_UPLOAD_SIZE_MB)
  */
@@ -95,7 +95,6 @@ const config: Config = {
 
   // Input Limits Configuration
   inputLimits: {
-    dataModeLinesThreshold: parseInt(import.meta.env.VITE_DATA_MODE_LINES || '100', 10),
     // Match backend QueryRequest.query max_length=200000 (200KB)
     maxQueryLength: parseInt(import.meta.env.VITE_MAX_QUERY_LENGTH || '200000', 10),
     textareaMinRows: 2,
