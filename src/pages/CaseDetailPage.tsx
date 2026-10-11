@@ -30,6 +30,25 @@ function isCaseUnreadable(err: unknown): boolean {
   return err instanceof APIError && (err.statusCode === 404 || err.statusCode === 403);
 }
 
+/**
+ * The error view's message, which takes focus and is announced when it mounts.
+ * The view replaces the whole page, so whatever the user was standing on is
+ * gone with it: after a refused hand-off whose re-read answers 404/403 (#208),
+ * `CaseDriverField` had just put focus on the driver's name, and without this
+ * it would drop to `<body>` with nothing said.
+ */
+function CaseErrorMessage({ message }: { message: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  return (
+    <p ref={ref} tabIndex={-1} role="alert" className="text-fm-critical text-sm">
+      {message}
+    </p>
+  );
+}
+
 export default function CaseDetailPage() {
   const { caseId } = useParams<{ caseId: string }>();
   const { clearAuthState, authState } = useAuth();
@@ -204,7 +223,7 @@ export default function CaseDetailPage() {
       <div className="min-h-screen bg-fm-canvas">
         <PageHeader onLogout={handleLogout} />
         <div className="max-w-7xl mx-auto px-6 py-8">
-          <p className="text-fm-critical text-sm">{error ?? 'Case not found.'}</p>
+          <CaseErrorMessage message={error ?? 'Case not found.'} />
           <Link to="/cases" className="text-fm-accent text-sm hover:underline mt-2 inline-block">
             ← Back to Cases
           </Link>

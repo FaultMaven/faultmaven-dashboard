@@ -630,9 +630,17 @@ describe('when the hand-off is refused', () => {
         ),
       );
       expect(screen.getByRole('heading', { name: CASE.title })).toBeInTheDocument();
+      // The user is standing on the driver's name the refusal focused…
+      expect(document.activeElement).toBe(screen.getByTestId('case-driver-name'));
 
       await waitFor(() => expect(screen.getByText('Case not found')).toBeInTheDocument());
       expect(screen.getByRole('link', { name: /back to cases/i })).toBeInTheDocument();
+      // …which the error view unmounted, so the message takes focus and is
+      // announced rather than focus dropping to <body> in silence.
+      const message = screen.getByRole('alert');
+      expect(message).toHaveTextContent('Case not found');
+      expect(document.activeElement).toBe(message);
+      expect(document.activeElement).not.toBe(document.body);
       expect(screen.queryByRole('heading', { name: CASE.title })).toBeNull();
       expect(screen.queryByTestId('conversation-dock')).toBeNull();
       expect(composerShown()).toBe(false);

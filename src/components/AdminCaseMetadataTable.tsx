@@ -98,7 +98,9 @@ export function AdminCaseMetadataTable({ cases, loading, currentUserId }: AdminC
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className="font-mono text-xs text-fm-text-secondary">{c.user_id}</span>
+                  <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
+                    {c.user_id}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <span className="font-mono text-xs text-fm-text-secondary select-all break-all">

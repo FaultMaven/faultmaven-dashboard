@@ -37,15 +37,10 @@ const base: CaseSummary = {
   shared_team_ids: [],
 };
 
-function renderRows(cases: CaseSummary[], opts: { showCreatorId?: boolean } = {}) {
+function renderRows(cases: CaseSummary[]) {
   return render(
     <MemoryRouter>
-      <CaseTable
-        cases={cases}
-        loading={false}
-        dateColumn={LAST_ACTIVITY_COLUMN}
-        showCreatorId={opts.showCreatorId}
-      />
+      <CaseTable cases={cases} loading={false} dateColumn={LAST_ACTIVITY_COLUMN} />
     </MemoryRouter>,
   );
 }
@@ -114,35 +109,5 @@ describe('CaseTable — Creator and Driver', () => {
     expect(cellUnderHeader('Driver', 1)).toHaveTextContent('Grace Hopper');
     expect(cellUnderHeader('Driver', 2)).toHaveTextContent('Linus T');
     expect(screen.getAllByRole('columnheader', { name: 'Driver' })).toHaveLength(1);
-  });
-});
-
-/**
- * The operator list's opt-in (#208): the creator's WHOLE id, selectable, so an
- * operator can copy it from the row as they could from the old Owner column.
- */
-describe('CaseTable — showCreatorId (the operator list)', () => {
-  it('adds the whole creator id on a select-all line under the name', () => {
-    renderRows([base], { showCreatorId: true });
-
-    const cell = cellUnderHeader('Creator');
-    expect(within(cell).getByText('Ada Lovelace')).toBeInTheDocument();
-    expect(within(cell).getByText('u-ada-0000-1111')).toHaveClass('select-all');
-    expect(cellUnderHeader('Driver')).not.toHaveTextContent('u-grace-2222-3333');
-  });
-
-  it('shows the whole id INSTEAD of the short one when the server sent no name', () => {
-    renderRows([{ ...base, creator_display_name: null }], { showCreatorId: true });
-
-    const cell = cellUnderHeader('Creator');
-    expect(within(cell).getByText('u-ada-0000-1111')).toHaveClass('select-all');
-    expect(within(cell).queryByText('u-ada-00')).toBeNull();
-  });
-
-  it('is off by default — the per-user list shows no whole id', () => {
-    renderRows([base]);
-
-    expect(cellUnderHeader('Creator')).not.toHaveTextContent('u-ada-0000-1111');
-    expect(screen.queryByTestId('case-creator-id')).toBeNull();
   });
 });

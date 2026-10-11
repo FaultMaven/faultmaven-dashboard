@@ -188,9 +188,6 @@ export default function AdminCaseListPage() {
             // is nothing for the column to follow (#155). Saying so is what
             // makes that a decision rather than an omission.
             dateColumn={LAST_ACTIVITY_COLUMN}
-            // The creator's whole id, copyable from the row (#208) — the
-            // operator looks accounts up by it.
-            showCreatorId
             // Own cases keep the full case page; everyone else's go through the
             // audited operator read — see the component docstring above.
             caseHref={(c) =>

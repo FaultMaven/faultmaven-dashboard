@@ -119,23 +119,6 @@ describe('CaseListPage (read-only, D1)', () => {
     });
   });
 
-  it("names the creator without the operator list's whole-id line (#208)", async () => {
-    mockListCases.mockResolvedValue({
-      cases: [{ ...sampleCase, user_id: 'u-ada-0000-1111', creator_display_name: 'Ada Lovelace' }],
-      total_count: 1,
-      page: 0,
-      page_size: 20,
-      has_more: false,
-    });
-    await act(async () => {
-      renderPage();
-    });
-    await waitFor(() => expect(cellUnderHeader('Creator')).toHaveTextContent('Ada Lovelace'));
-
-    expect(cellUnderHeader('Creator')).not.toHaveTextContent('u-ada-0000-1111');
-    expect(screen.queryByTestId('case-creator-id')).toBeNull();
-  });
-
   it('renders no case-mutation controls (no Archive button, no include-archived toggle)', async () => {
     const resolvedCase = { ...sampleCase, state: 'resolved' as const, is_terminal: true };
     mockListCases.mockResolvedValue({

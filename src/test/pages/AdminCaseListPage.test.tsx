@@ -138,25 +138,7 @@ describe('AdminCaseListPage', () => {
     expect(cellUnderHeader('Creator', 2)).toHaveTextContent('Acme Slack workspace');
     expect(cellUnderHeader('Driver', 2)).toHaveTextContent('Acme Slack workspace');
     expect(screen.queryByRole('columnheader', { name: 'Owner' })).toBeNull();
-  });
-
-  it("keeps each creator's WHOLE id copyable from the row, under the name (#208)", async () => {
-    // Operators look accounts up by the id they copy from this list; the
-    // Owner column used to carry it, and a name with the id only in a hover
-    // title does not. One click selects all of it.
-    await act(async () => {
-      renderPage();
-    });
-    await waitFor(() => expect(screen.getByText('Slack Case')).toBeInTheDocument());
-
-    const first = within(cellUnderHeader('Creator', 1)).getByText('copilot_user');
-    expect(first).toHaveClass('select-all');
-    expect(cellUnderHeader('Creator', 1)).toHaveTextContent('Ada Lovelace');
-    expect(within(cellUnderHeader('Creator', 2)).getByText('slack-agent')).toHaveClass(
-      'select-all',
-    );
-    // The creator's, not the driver's: the Driver column is unchanged.
-    expect(within(cellUnderHeader('Driver', 1)).queryByText('copilot_user')).toBeNull();
+    expect(screen.queryByText('copilot_user')).toBeNull();
   });
 
   it('renders state filters only — no search control the endpoint ignores', async () => {
@@ -357,6 +339,21 @@ describe('AdminCaseListPage', () => {
       expect(screen.queryByRole('columnheader', { name: 'Title' })).not.toBeInTheDocument();
       // The metadata that IS ambient still renders.
       expect(screen.getByText('tenant_user')).toBeInTheDocument();
+    });
+
+    it("keeps the owner's WHOLE id copyable in one click (#208)", async () => {
+      // This is the operator's real surface (cloud serves `metadata`; `full`
+      // is only the window before deployment detection lands), and operators
+      // look accounts up by the id they copy from the row — like the case and
+      // enterprise ids beside it.
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      const owner = within(cellUnderHeader('Owner')).getByText('tenant_user');
+      expect(owner).toHaveTextContent(/^tenant_user$/);
+      expect(owner).toHaveClass('select-all');
     });
 
     it('shows the Enterprise of each case, never the billing Organization', async () => {

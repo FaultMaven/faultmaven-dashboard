@@ -47,21 +47,6 @@ interface CaseTableProps {
    * `LAST_ACTIVITY_COLUMN` outright.
    */
   dateColumn: CaseDateColumn;
-
-  /**
-   * Add the creator's WHOLE `user_id` under their name, selectable in one click
-   * (`select-all`) — the operator All Cases view only (#208).
-   *
-   * Operators copy the id straight from the row to look an account up; the
-   * raw-id Owner column this table had before ADR-020 D5 let them, and the
-   * name (with the id only in a hover `title`) does not. The name stays first
-   * and is rendered exactly as on the per-user list, so both lists still NAME
-   * people the same way; this adds the identifier an operator works with. A
-   * selectable line rather than a copy button: `navigator.clipboard` exists
-   * only in a secure context, and a self-hosted Dashboard is often served over
-   * plain HTTP, where a button would silently do nothing.
-   */
-  showCreatorId?: boolean;
 }
 
 /**
@@ -74,8 +59,7 @@ interface CaseTableProps {
  * write each one is its driver, not its creator. Both are shown by display
  * name (`CasePersonName`), falling back to a short id only when the server
  * sent no name. They replace the operator view's raw-`user_id` Owner column:
- * one component path, so both lists name people the same way. The operator
- * view adds the creator's whole id beneath the name (`showCreatorId`, #208).
+ * one component path, so both lists name people the same way.
  *
  * ONE date column, and `dateColumn` says which date it is — Last Activity
  * normally, Created while a creation-date filter is narrowing the list
@@ -94,7 +78,6 @@ export function CaseTable({
   teamsById,
   caseHref = (c) => `/cases/${c.case_id}`,
   dateColumn,
-  showCreatorId = false,
 }: CaseTableProps) {
   return (
     <div className="bg-fm-surface rounded-fm-card border border-fm-border overflow-hidden">
@@ -138,7 +121,7 @@ export function CaseTable({
                   )}
                 </td>
                 <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-creator">
-                  <CreatorCell row={c} showId={showCreatorId} />
+                  <CasePersonName label={creatorLabel(c)} />
                 </td>
                 <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-driver">
                   <CasePersonName label={driverLabel(c)} />
@@ -167,27 +150,5 @@ export function CaseTable({
         </table>
       )}
     </div>
-  );
-}
-
-/**
- * The creator, by name; with `showId`, their whole id on a selectable line
- * beneath. When the server sent no name the label is already a SHORT id, so
- * the whole id replaces it rather than repeating its first 8 characters.
- */
-function CreatorCell({ row, showId }: { row: CaseSummary; showId: boolean }) {
-  const label = creatorLabel(row);
-  const fullId = showId ? row.user_id : null;
-  if (!fullId) return <CasePersonName label={label} />;
-  return (
-    <>
-      {label && !label.isId && <CasePersonName label={label} />}
-      <span
-        className="block font-mono text-xs text-fm-text-tertiary select-all break-all"
-        data-testid="case-creator-id"
-      >
-        {fullId}
-      </span>
-    </>
   );
 }
