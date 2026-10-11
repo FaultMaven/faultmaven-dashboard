@@ -37,6 +37,7 @@ vi.mock('@faultmaven/copilot-ui', async () => {
     setApiTransport: vi.fn(),
     clearApiTransport: vi.fn(),
     clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+    SessionSwitchedError: class SessionSwitchedError extends Error {},
     CopilotPanel: Stub,
   };
 });

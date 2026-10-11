@@ -23,6 +23,7 @@ vi.mock('@faultmaven/copilot-ui', () => ({
   setApiTransport: vi.fn(),
   clearApiTransport: vi.fn(),
   clearPersistedSession: vi.fn().mockResolvedValue(undefined),
+  SessionSwitchedError: class SessionSwitchedError extends Error {},
   CopilotPanel: ({ initialCase }: { initialCase?: { caseId?: string; readOnly?: boolean } }) => {
     fixtures.panel.mounts += 1;
     return (

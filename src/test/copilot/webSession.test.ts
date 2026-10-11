@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { HostUser } from '@faultmaven/copilot-ui';
 
-const getAccessToken = vi.fn();
+const getAccessTokenFor = vi.fn();
 const peekAccessToken = vi.fn();
 const refreshTokens = vi.fn();
 const onAuthCleared = vi.fn();
@@ -9,7 +9,7 @@ const clearAuthState = vi.fn();
 
 vi.mock('../../lib/auth/AuthManager', () => ({
   authManager: {
-    getAccessToken: (...args: unknown[]) => getAccessToken(...args),
+    getAccessTokenFor: (...args: unknown[]) => getAccessTokenFor(...args),
     peekAccessToken: (...args: unknown[]) => peekAccessToken(...args),
     refreshTokens: (...args: unknown[]) => refreshTokens(...args),
     onAuthCleared: (...args: unknown[]) => onAuthCleared(...args),
@@ -17,6 +17,7 @@ vi.mock('../../lib/auth/AuthManager', () => ({
   },
 }));
 
+import { SessionSwitchedError } from '@faultmaven/copilot-ui';
 import { createWebSession, hostUserFromProfile } from '../../copilot/webSession';
 import type { AccountProfile } from '../../lib/auth/functions';
 
@@ -37,6 +38,9 @@ const USER: HostUser = {
   email: 'ada@example.com',
   roles: ['user'],
 };
+
+/** The session as the mount builds it: with the package's own error class. */
+const session = () => createWebSession(USER, SessionSwitchedError);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -91,8 +95,22 @@ describe('hostUserFromProfile', () => {
 
 describe('accessToken', () => {
   it('hands over the token the Dashboard would use for any other request', async () => {
-    getAccessToken.mockResolvedValue('tok-live');
-    await expect(createWebSession(USER).accessToken()).resolves.toBe('tok-live');
+    getAccessTokenFor.mockResolvedValue({ kind: 'token', token: 'tok-live' });
+    await expect(session().accessToken()).resolves.toBe('tok-live');
+  });
+
+  it("asks for THIS panel's user, by id", async () => {
+    getAccessTokenFor.mockResolvedValue({ kind: 'token', token: 'tok-live' });
+    await session().accessToken();
+    expect(getAccessTokenFor).toHaveBeenCalledExactlyOnceWith('u1');
+  });
+
+  it("throws the PACKAGE'S SessionSwitchedError when another account's session is stored (#212)", async () => {
+    // The very class `getAuthHeaders` checks with `instanceof`: the request is
+    // not sent, and the panel shows a notice that ends no one's session. Any
+    // other error lets it go out header-less.
+    getAccessTokenFor.mockResolvedValue({ kind: 'anotherUser' });
+    await expect(session().accessToken()).rejects.toBeInstanceOf(SessionSwitchedError);
   });
 
   it('THROWS when the manager cannot produce one', async () => {
@@ -100,8 +118,10 @@ describe('accessToken', () => {
     // decision about what an absent credential means, and that decision belongs
     // to whoever owns the credential — a caller that cannot get a token is
     // looking at a session that has ended, which is onUnauthorized's business.
-    getAccessToken.mockResolvedValue(null);
-    await expect(createWebSession(USER).accessToken()).rejects.toThrow(/no faultmaven session/i);
+    getAccessTokenFor.mockResolvedValue({ kind: 'none' });
+    const attempt = session().accessToken();
+    await expect(attempt).rejects.toThrow(/no faultmaven session/i);
+    await expect(attempt).rejects.not.toBeInstanceOf(SessionSwitchedError);
   });
 });
 
@@ -109,7 +129,7 @@ describe('signOut', () => {
   it('is null — the Dashboard account menu owns it', () => {
     // Not a no-op: `null` removes the affordance, so the panel renders no second
     // sign-out that would clear half the state.
-    expect(createWebSession(USER).signOut).toBeNull();
+    expect(session().signOut).toBeNull();
   });
 });
 
@@ -121,9 +141,21 @@ describe('onUnauthorized', () => {
     peekAccessToken.mockResolvedValue('tok-refused');
     refreshTokens.mockResolvedValue('tok-new');
 
-    await createWebSession(USER).onUnauthorized();
+    await session().onUnauthorized();
 
     expect(refreshTokens).toHaveBeenCalledWith('tok-refused');
+  });
+
+  it('names the bearer the refused request CARRIED, when the transport passes it', async () => {
+    // Storage may hold a newer token by the time the 401 lands (copilot#348);
+    // naming that one would spend a rotation on a credential nobody refused.
+    peekAccessToken.mockResolvedValue('tok-stored-now');
+    refreshTokens.mockResolvedValue('tok-new');
+
+    await session().onUnauthorized('tok-carried');
+
+    expect(refreshTokens).toHaveBeenCalledExactlyOnceWith('tok-carried');
+    expect(peekAccessToken).not.toHaveBeenCalled();
   });
 
   it("answers 'refreshed' when the credential was renewed", async () => {
@@ -133,14 +165,14 @@ describe('onUnauthorized', () => {
     peekAccessToken.mockResolvedValue('tok-refused');
     refreshTokens.mockResolvedValue('tok-new');
 
-    await expect(createWebSession(USER).onUnauthorized()).resolves.toBe('refreshed');
+    await expect(session().onUnauthorized()).resolves.toBe('refreshed');
   });
 
   it("answers 'ended' when the session is genuinely over", async () => {
     peekAccessToken.mockResolvedValue('tok-refused');
     refreshTokens.mockResolvedValue(null);
 
-    await expect(createWebSession(USER).onUnauthorized()).resolves.toBe('ended');
+    await expect(session().onUnauthorized()).resolves.toBe('ended');
   });
 
   it('does not clear the session itself', async () => {
@@ -151,7 +183,7 @@ describe('onUnauthorized', () => {
     peekAccessToken.mockResolvedValue('tok-refused');
     refreshTokens.mockResolvedValue(null);
 
-    await createWebSession(USER).onUnauthorized();
+    await session().onUnauthorized();
 
     expect(refreshTokens).toHaveBeenCalledTimes(1);
     expect(clearAuthState).not.toHaveBeenCalled();
@@ -174,7 +206,7 @@ describe('subscribeAuthState', () => {
     });
 
     const onChange = vi.fn();
-    createWebSession(USER).subscribeAuthState(onChange);
+    session().subscribeAuthState(onChange);
 
     expect(onAuthCleared).toHaveBeenCalledTimes(1);
     fireCleared();
@@ -186,7 +218,7 @@ describe('subscribeAuthState', () => {
     // means; that is what produced the double delivery.
     const addEventListener = vi.spyOn(window, 'addEventListener');
 
-    createWebSession(USER).subscribeAuthState(vi.fn());
+    session().subscribeAuthState(vi.fn());
 
     expect(addEventListener).not.toHaveBeenCalledWith('storage', expect.anything());
     addEventListener.mockRestore();
@@ -196,7 +228,7 @@ describe('subscribeAuthState', () => {
     const stop = vi.fn();
     onAuthCleared.mockReturnValue(stop);
 
-    createWebSession(USER).subscribeAuthState(vi.fn())();
+    session().subscribeAuthState(vi.fn())();
 
     expect(stop).toHaveBeenCalled();
   });

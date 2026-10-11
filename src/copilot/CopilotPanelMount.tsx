@@ -145,7 +145,7 @@ export default function CopilotPanelMount({
       // second mount would install equivalent values, so it does not.
       installPageSingletons(ui, capabilities);
 
-      const session = createWebSession(hostUserFromProfile(profile));
+      const session = createWebSession(hostUserFromProfile(profile), ui.SessionSwitchedError);
 
       // Held so the cleanup can tell OUR transport from a later mount's.
       const transport = {
@@ -164,7 +164,9 @@ export default function CopilotPanelMount({
         // drifted over whether `clientId` survives (it does: a fresh /sessions
         // POST presents it to resume rather than start cold).
         clearSession: () => ui.clearPersistedSession(),
-        onUnauthorized: () => session.onUnauthorized(),
+        // The bearer the refused request carried, so the refresh names THAT
+        // token as rejected rather than whatever storage holds now (copilot#348).
+        onUnauthorized: (rejectedBearer: string) => session.onUnauthorized(rejectedBearer),
       };
       ui.setApiTransport(transport);
       installedTransport = transport;

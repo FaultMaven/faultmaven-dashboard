@@ -33,11 +33,18 @@ let lastHost: WiredHost | null = null;
 let lastInitialCase: InitialCase | undefined;
 let lastOnCaseChanged: ((id: string) => void) | undefined;
 
+// Hoisted with the mock that returns it, so a test can name the class the
+// mount must hand the session — the package's own, by identity.
+const { SessionSwitchedErrorStub } = vi.hoisted(() => ({
+  SessionSwitchedErrorStub: class SessionSwitchedError extends Error {},
+}));
+
 vi.mock('@faultmaven/copilot-ui', () => ({
   setHostStore,
   setHostEndpoints,
   setApiTransport,
   clearPersistedSession,
+  SessionSwitchedError: SessionSwitchedErrorStub,
   clearApiTransport,
   getApiTransport,
   clearHostEndpoints,
@@ -63,12 +70,13 @@ vi.mock('../../lib/auth/functions', () => ({
   getAccountProfile: (...args: unknown[]) => getAccountProfile(...args),
 }));
 
-const getAccessToken = vi.fn();
+const getAccessTokenFor = vi.fn();
+const refreshTokens = vi.fn();
 vi.mock('../../lib/auth/AuthManager', () => ({
   authManager: {
-    getAccessToken: (...args: unknown[]) => getAccessToken(...args),
+    getAccessTokenFor: (...args: unknown[]) => getAccessTokenFor(...args),
     peekAccessToken: vi.fn().mockResolvedValue(null),
-    refreshTokens: vi.fn(),
+    refreshTokens: (...args: unknown[]) => refreshTokens(...args),
     onAuthCleared: vi.fn().mockReturnValue(() => {}),
   },
 }));
@@ -120,7 +128,7 @@ beforeEach(() => {
   lastInitialCase = undefined;
   lastOnCaseChanged = undefined;
   getAccountProfile.mockResolvedValue(PROFILE);
-  getAccessToken.mockResolvedValue('tok-live');
+  getAccessTokenFor.mockResolvedValue({ kind: 'token', token: 'tok-live' });
 });
 
 describe('CopilotPanelMount', () => {
@@ -168,6 +176,29 @@ describe('CopilotPanelMount', () => {
     const transport = setApiTransport.mock.calls[0][0];
     await expect(transport.baseUrl()).resolves.toBe('https://api.faultmaven.ai');
     await expect(transport.accessToken()).resolves.toBe('tok-live');
+  });
+
+  it("refuses a request for another account with the PACKAGE'S SessionSwitchedError (#212)", async () => {
+    // The mount hands the session the class from the module it loaded: the
+    // request path tells it apart with `instanceof`, so any other class sends
+    // the request header-less instead of not at all.
+    getAccessTokenFor.mockResolvedValue({ kind: 'anotherUser' });
+    mount(NEW_INVESTIGATION);
+    await screen.findByTestId('shared-copilot-ui');
+
+    const transport = setApiTransport.mock.calls[0][0];
+    await expect(transport.accessToken()).rejects.toBeInstanceOf(SessionSwitchedErrorStub);
+  });
+
+  it('hands the refresh the bearer the refused request carried', async () => {
+    // Not whatever storage holds by the time the 401 lands (copilot#348).
+    refreshTokens.mockResolvedValue('tok-new');
+    mount(NEW_INVESTIGATION);
+    await screen.findByTestId('shared-copilot-ui');
+
+    const transport = setApiTransport.mock.calls[0][0];
+    await expect(transport.onUnauthorized('tok-carried')).resolves.toBe('refreshed');
+    expect(refreshTokens).toHaveBeenCalledExactlyOnceWith('tok-carried');
   });
 
   it('reads and clears the FaultMaven session id through the host store', async () => {
