@@ -115,14 +115,16 @@ describe('OAuthAuthorizePage', () => {
   // href the page assigned — empty means it refused to navigate at all.
   function captureNavigations(): string[] {
     const hrefs: string[] = [];
-    delete (window as any).location;
-    (window as any).location = {
-      ...(originalLocation?.value ?? {}),
-      origin: 'https://app.faultmaven.ai',
-      pathname: '/auth/authorize',
-      set href(v: string) { hrefs.push(v); },
-      get href() { return 'https://app.faultmaven.ai/auth/authorize'; },
-    };
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...(originalLocation?.value ?? {}),
+        origin: 'https://app.faultmaven.ai',
+        pathname: '/auth/authorize',
+        set href(v: string) { hrefs.push(v); },
+        get href() { return 'https://app.faultmaven.ai/auth/authorize'; },
+      },
+    });
     return hrefs;
   }
 

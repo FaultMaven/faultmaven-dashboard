@@ -1,6 +1,7 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 /**
  * THE CASE HEADER FOLLOWS THE DOCKED PANEL (faultmaven-dashboard#204).
@@ -23,7 +24,11 @@ vi.mock('@faultmaven/copilot-ui', async () => {
       fixtures.panel.mounts += 1;
       return null;
     });
-    fixtures.panel.onCaseChanged = onCaseChanged;
+    // Published after commit, not during render: render must not write state
+    // that lives outside the component (react-hooks/immutability).
+    React.useEffect(() => {
+      fixtures.panel.onCaseChanged = onCaseChanged;
+    }, [onCaseChanged]);
     return <div data-testid="shared-copilot-ui" />;
   }
   return {
@@ -143,7 +148,10 @@ async function renderPage() {
 
 const nav: { go?: (p: string) => void } = {};
 function NavGrab() {
-  nav.go = useNavigate();
+  const navigate = useNavigate();
+  useEffect(() => {
+    nav.go = navigate;
+  }, [navigate]);
   return null;
 }
 const CASE2 = { ...CASE, case_id: 'case-2', title: 'Second case title', state: 'inquiry' as const, current_turn: 7 };
