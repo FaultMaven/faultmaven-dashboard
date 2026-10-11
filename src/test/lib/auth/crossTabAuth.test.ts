@@ -6,6 +6,7 @@ import { AuthManager, authManager } from '../../../lib/auth/AuthManager';
 import { AUTH_STATE_STORAGE_KEY, decodeCrossTabAuthState } from '../../../lib/auth/crossTab';
 import { createWebSession, hostUserFromProfile } from '../../../copilot/webSession';
 import { TEST_AUTH_STATE, OTHER_AUTH_STATE, TEST_PROFILE } from '../../support/authFixtures';
+import { SessionSwitchedError } from '@faultmaven/copilot-ui';
 import type { AuthState } from '../../../lib/auth/types';
 
 /**
@@ -268,14 +269,35 @@ describe('an account switch in another tab, before this tab hears it (#212)', ()
     expect(store.authState).toEqual(OTHER_AUTH_STATE);
   });
 
-  it('the Copilot panel built for this tab’s user is refused the other account’s bearer', async () => {
+  it('the Copilot panel built for this tab’s user refuses to send — the package’s notice, no bearer', async () => {
     // The end-to-end shape of #212: the panel's `POST /cases` would otherwise
     // carry B's bearer and create A's first message as a case in B's account.
+    // The package's own class, so `getAuthHeaders` does not send it at all.
     await authManager.saveAuthState(TEST_AUTH_STATE);
-    const session = createWebSession(hostUserFromProfile(TEST_PROFILE));
+    const session = createWebSession(hostUserFromProfile(TEST_PROFILE), SessionSwitchedError);
     anotherTabSignsIn(OTHER_AUTH_STATE);
 
-    await expect(session.accessToken()).rejects.toThrow();
+    await expect(session.accessToken()).rejects.toBeInstanceOf(SessionSwitchedError);
+  });
+
+  it('a credential read for a NAMED user tells another account from no session', async () => {
+    const manager = await signedInManager();
+    expect(await manager.getAccessTokenFor('u1')).toEqual({ kind: 'token', token: 'tok-live' });
+
+    anotherTabSignsIn(OTHER_AUTH_STATE);
+    expect(await manager.getAccessTokenFor('u1')).toEqual({ kind: 'anotherUser' });
+
+    delete store.authState;
+    expect(await manager.getAccessTokenFor('u1')).toEqual({ kind: 'none' });
+  });
+
+  it('a panel built for A is refused after THIS tab signs B in', async () => {
+    // The tab's identity moves with a sign-in here, so "is it this tab's?" is
+    // not the panel's question — "is it the user I was built for?" is.
+    const manager = await signedInManager();
+    await manager.saveAuthState(OTHER_AUTH_STATE);
+
+    expect(await manager.getAccessTokenFor('u1')).toEqual({ kind: 'anotherUser' });
   });
 
   it('a refresh in that window ends this tab as a sign-out FROM ANOTHER TAB', async () => {

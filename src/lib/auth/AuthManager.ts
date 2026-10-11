@@ -111,6 +111,12 @@ function signedInAs(state: AuthState): TabIdentity {
   return { kind: 'signedIn', userId: state.user?.user_id ?? null };
 }
 
+/** What `getAccessTokenFor` found for the user it was asked about. */
+export type CredentialFor =
+  | { kind: 'token'; token: string }
+  | { kind: 'none' }
+  | { kind: 'anotherUser' };
+
 /**
  * Convert the backend's `expires_in` (seconds) into an absolute `expires_at`
  * (epoch ms). Returns null when `expires_in` is missing or not a positive,
@@ -889,7 +895,33 @@ export class AuthManager {
     if (!authState) {
       return null;
     }
+    return this.usableTokenOf(authState);
+  }
 
+  /**
+   * A token for ONE named user — the read a caller makes when the request it
+   * is about to send was built for that user.
+   *
+   * `getAccessToken` already never hands out another account's session. What
+   * this adds is the reason when there is no token: `anotherUser` means storage
+   * holds a DIFFERENT account's session — another tab signed it in, or this
+   * tab did after the caller was built — which is not "signed out" and must
+   * not be answered like it. The Copilot panel refuses to send on it, ending no
+   * one's session (copilot#350, #212). A session that names no user is never
+   * `userId`'s: unknown is never the same user.
+   */
+  async getAccessTokenFor(userId: string): Promise<CredentialFor> {
+    const own = await this.readState();
+    if (own && own.user?.user_id === userId) {
+      const token = await this.usableTokenOf(own);
+      return token ? { kind: 'token', token } : { kind: 'none' };
+    }
+    const stored = own ?? (await this.readStoredState());
+    return stored?.user?.user_id ? { kind: 'anotherUser' } : { kind: 'none' };
+  }
+
+  /** `authState`'s access token, renewed first when it is at or near expiry. */
+  private async usableTokenOf(authState: AuthState): Promise<string | null> {
     // Still fresh → use directly.
     if (Date.now() < authState.expires_at - EXPIRY_SKEW_MS) {
       return authState.access_token || null;
