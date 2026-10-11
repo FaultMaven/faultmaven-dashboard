@@ -278,6 +278,44 @@ describe('an account switch in another tab, before this tab hears it (#212)', ()
     await expect(session.accessToken()).rejects.toThrow();
   });
 
+  it('a refresh in that window ends this tab as a sign-out FROM ANOTHER TAB', async () => {
+    // Not as a session that died: that path records the URL in the bar for
+    // whoever signs in next, and leaves the switch's own event nothing to do —
+    // so the deliberate-sign-out handling would never run.
+    const manager = await signedInManager();
+    sessionStorage.setItem('oauth_redirect_after_login', '/cases/case-of-user-a');
+    const cleared = vi.fn();
+    manager.onAuthCleared(cleared);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    anotherTabSignsIn(OTHER_AUTH_STATE);
+
+    expect(await manager.refreshTokens('tok-live')).toBeNull();
+
+    expect(cleared).toHaveBeenCalledTimes(1);
+    expect(manager.isSigningOut()).toBe(true);
+    expect(sessionStorage.getItem('oauth_redirect_after_login')).toBeNull();
+    expect(store.authState).toEqual(OTHER_AUTH_STATE);
+    // And B's refresh token was never spent from this tab.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('ends a tab restored from a row that names NO user, too', async () => {
+    // Such a tab holds a session with no user id. "No id" is not "signed out":
+    // the watch must still treat a named account as somebody else.
+    const legacy = { ...TEST_AUTH_STATE, user: { ...TEST_AUTH_STATE.user, user_id: undefined } };
+    store.authState = legacy;
+    const manager = new AuthManager();
+    expect(await manager.getAuthState()).toEqual(legacy);
+    const cleared = vi.fn();
+    manager.onAuthCleared(cleared);
+    manager.watchCrossTabAuthChanges();
+
+    anotherTabSignsIn(OTHER_AUTH_STATE)();
+
+    await vi.waitFor(() => expect(cleared).toHaveBeenCalledTimes(1));
+    expect(store.authState).toEqual(OTHER_AUTH_STATE);
+  });
+
   it('a sign-in IN THIS TAB still changes who the tab is', async () => {
     // The one way a tab takes on a new identity after its first read.
     const manager = await signedInManager();
@@ -285,6 +323,34 @@ describe('an account switch in another tab, before this tab hears it (#212)', ()
     await manager.saveAuthState(OTHER_AUTH_STATE);
 
     expect(await manager.getAccessToken()).toBe('tok-other');
+  });
+});
+
+describe('a first read that fails', () => {
+  it('settles nothing — the next read still restores the tab’s own session', async () => {
+    // Pinning "signed out" on one storage hiccup would refuse this tab its own
+    // session until a reload.
+    store.authState = TEST_AUTH_STATE;
+    const local = (window as unknown as { browser: { storage: { local: { get: (k: string[]) => Promise<unknown> } } } })
+      .browser.storage.local;
+    const realGet = local.get;
+    local.get = vi.fn().mockRejectedValueOnce(new Error('storage hiccup')).mockImplementation(realGet);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const manager = new AuthManager();
+
+    expect(await manager.getAuthState()).toBeNull();
+    expect(await manager.getAuthState()).toEqual(TEST_AUTH_STATE);
+  });
+});
+
+describe('a sign-out', () => {
+  it('removes a malformed bridge copy rather than keeping it as someone else’s', async () => {
+    const manager = await signedInManager();
+    local.fm_auth_state = JSON.stringify({ ...TEST_AUTH_STATE, user: { user_id: 42 } });
+
+    await manager.clearAuthState();
+
+    expect(local.fm_auth_state).toBeUndefined();
   });
 });
 

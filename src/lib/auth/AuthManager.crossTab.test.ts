@@ -394,6 +394,32 @@ describe('#48 cross-tab refresh rotation', () => {
       expect(storedState()).toEqual(theirs);
     });
 
+    it('does not write over an account signed in IN THIS TAB mid-flight', async () => {
+      // `/login` does not redirect a signed-in tab, so the user can sign in as
+      // someone else right here while a refresh is out. The tab's identity
+      // then moves with the row, so a check that only asks "is the row this
+      // tab's?" passes — and A's rotated session lands over B's.
+      seedStore();
+      const manager = new AuthManager();
+      const theirs: AuthState = {
+        ...EXPIRED_SEED,
+        access_token: 'b-access',
+        refresh_token: 'b-refresh',
+        expires_at: Date.now() + 3_600_000,
+        user: { ...EXPIRED_SEED.user, user_id: 'u2', username: 'someone-else' },
+      };
+      globalThis.fetch = vi.fn(async () => {
+        await manager.saveAuthState(theirs);
+        return {
+          ok: true,
+          json: async () => ({ access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 3600 }),
+        };
+      }) as unknown as typeof fetch;
+
+      expect(await manager.getAccessToken()).toBeNull();
+      expect(storedState()).toEqual(theirs);
+    });
+
     it('does not resurrect a session another tab signed out mid-flight', async () => {
       seedStore();
       globalThis.fetch = vi.fn(async () => {
