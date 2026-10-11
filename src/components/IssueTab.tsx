@@ -38,19 +38,26 @@ interface JudgedStatement {
  * docked panel commits turns while this tab is open (#206; the rationale is at
  * `useCaseRead` in CaseTabs). Quiet already: the last read stays until a newer
  * one replaces it, and a failed one replaces nothing.
+ *
+ * A SUCCESSFUL read always replaces it, an empty statement included: a server
+ * that cleared or reset `problem_statement` has withdrawn the judged statement
+ * and its verification, so the tab falls back to `description` exactly as for
+ * a case never judged, rather than keeping a badge nobody now asserts.
  */
 function useJudgedStatement(caseId: string, judged: boolean, revision: string): JudgedStatement | null {
   // Keyed by case, so a result read for one case is never shown on another.
-  const [read, setRead] = useState<{ caseId: string; judged: JudgedStatement } | null>(null);
+  const [read, setRead] = useState<{ caseId: string; judged: JudgedStatement | null } | null>(null);
   useEffect(() => {
     if (!judged) return;
     let cancelled = false;
     getCaseUI(caseId)
       .then((ui) => {
+        if (cancelled) return;
         const statement = ui.problem_statement?.trim();
-        if (!cancelled && statement) {
-          setRead({ caseId, judged: { statement, verification: ui.problem_verification ?? null } });
-        }
+        setRead({
+          caseId,
+          judged: statement ? { statement, verification: ui.problem_verification ?? null } : null,
+        });
       })
       .catch(() => {
         // The tab still renders the case's description; nothing to surface.

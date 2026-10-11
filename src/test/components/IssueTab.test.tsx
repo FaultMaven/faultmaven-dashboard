@@ -234,6 +234,33 @@ describe('IssueTab problem statement against problem_status', () => {
     expect(getCaseUI).toHaveBeenCalledTimes(2);
   });
 
+  it('drops a judged statement the server has since cleared, falling back to the description', async () => {
+    // A SUCCESSFUL read with no statement withdraws the last one and its
+    // verification; only a FAILED read keeps what is on screen.
+    const later = <T,>(body: T): Promise<T> => new Promise((resolve) => setTimeout(() => resolve(body), 30));
+    vi.mocked(getCaseUI)
+      .mockImplementationOnce(() =>
+        later({
+          problem_statement: 'Orders API times out',
+          problem_verification: {
+            problem_status: 'invalidated',
+            invalidation_finding: 'Health checks passed throughout the window.',
+          },
+        } as never),
+      )
+      .mockImplementationOnce(() => later({ problem_statement: '' } as never));
+    const investigating = makeCaseDetail({ state: 'investigating', is_terminal: false, resolved_at: null });
+    const { rerender } = render(<IssueTab caseDetail={investigating} />);
+    expect(await screen.findByText('Not present: Health checks passed throughout the window.')).toBeInTheDocument();
+    expect(screen.queryByText('Primary DB unresponsive')).toBeNull();
+
+    rerender(<IssueTab caseDetail={{ ...investigating, updated_at: '2024-01-01T00:05:00Z' }} />);
+    expect(await screen.findByText('Primary DB unresponsive')).toBeInTheDocument();
+    expect(screen.queryByText('Orders API times out')).toBeNull();
+    expect(screen.queryByText(/Not present/)).toBeNull();
+    expect(getCaseUI).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the description when the UI view cannot be read', async () => {
     vi.mocked(getCaseUI).mockRejectedValue(new Error('offline'));
     render(<IssueTab caseDetail={makeCaseDetail({ state: 'investigating', is_terminal: false })} />);

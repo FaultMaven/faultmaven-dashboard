@@ -114,6 +114,9 @@ const DISK_FULL = evidence('ev-1', 'Disk full on replica', 'ENOSPC: no space lef
 const WAL_STUCK = evidence('ev-2', 'WAL archiving stalled', 'archive_command failed');
 const STALE_ROW = evidence('ev-old', 'A row from an older revision', 'old');
 
+/** The one line a tab shows over rows a refresh could not replace. */
+const STALE_NOTE = /Couldn.t refresh/;
+
 function renderTabs(detail: CaseDetail, route: string, layout: CaseConversationLayout = LAYOUTS.docked) {
   // Same element types on every render, so `rerender` updates the mounted tree
   // (as the page does on a quiet re-read) rather than remounting it.
@@ -174,14 +177,17 @@ describe('Evidence follows the case revision', () => {
     expect(getCaseEvidenceList).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the list when a background re-read fails', async () => {
+  it('keeps the list when a background re-read fails, and says it may be out of date', async () => {
     // As `CaseDetailPage.loadCase` keeps a working page: a transient failure
     // of a refresh must not replace rows the user is reading with an error.
+    // But the rows are no longer the server's latest word, so one quiet line
+    // says so — silence would present them as current.
     vi.mocked(getCaseEvidenceList)
       .mockImplementationOnce(() => after(evidenceList(DISK_FULL)))
       .mockImplementationOnce(() => failAfter('Failed to list case evidence'));
     const { update } = renderTabs(caseDetail(), '/?tab=evidence');
     expect(await screen.findByText('Disk full on replica')).toBeInTheDocument();
+    expect(screen.queryByText(STALE_NOTE)).not.toBeInTheDocument();
 
     update(caseDetail({ updated_at: REV_2 }));
     await settle(LATENCY * 3);
@@ -189,6 +195,24 @@ describe('Evidence follows the case revision', () => {
     expect(getCaseEvidenceList).toHaveBeenCalledTimes(2);
     expect(screen.getByText('Disk full on replica')).toBeInTheDocument();
     expect(screen.queryByText('Failed to list case evidence')).not.toBeInTheDocument();
+    expect(screen.getByText(STALE_NOTE)).toBeInTheDocument();
+  });
+
+  it('drops the out-of-date note once a later refresh succeeds', async () => {
+    vi.mocked(getCaseEvidenceList)
+      .mockImplementationOnce(() => after(evidenceList(DISK_FULL)))
+      .mockImplementationOnce(() => failAfter('Failed to list case evidence'))
+      .mockImplementationOnce(() => after(evidenceList(DISK_FULL, WAL_STUCK)));
+    const { update } = renderTabs(caseDetail(), '/?tab=evidence');
+    expect(await screen.findByText('Disk full on replica')).toBeInTheDocument();
+
+    update(caseDetail({ updated_at: REV_2 }));
+    expect(await screen.findByText(STALE_NOTE)).toBeInTheDocument();
+
+    update(caseDetail({ updated_at: REV_3 }));
+    expect(await screen.findByText('WAL archiving stalled')).toBeInTheDocument();
+    expect(screen.queryByText(STALE_NOTE)).not.toBeInTheDocument();
+    expect(getCaseEvidenceList).toHaveBeenCalledTimes(3);
   });
 
   it('never lets an older answer that lands late replace a newer one', async () => {
@@ -368,5 +392,59 @@ describe('the read-only transcript follows the case revision', () => {
 
     expect(await screen.findByText(/The volume is at 100%/)).toBeInTheDocument();
     expect(getCaseMessages).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits behind another tab, and catches up quietly once Transcript is shown again', async () => {
+    // The record stays MOUNTED behind Evidence (hidden, so a glance away and
+    // back costs nothing), and `getCaseMessages` pages 100 messages a request.
+    // Following every turn from back there would make reading Evidence cost a
+    // whole transcript download per turn.
+    vi.mocked(getCaseEvidenceList).mockImplementation(() => after(evidenceList(DISK_FULL)));
+    vi.mocked(getCaseMessages)
+      .mockImplementationOnce(() => after(messages(message('m1', 1, 'Writes fail since 02:14.'))))
+      .mockImplementationOnce(() =>
+        after(messages(message('m1', 1, 'Writes fail since 02:14.'), message('m2', 2, 'The volume is at 100%.'))),
+      );
+    const { update } = renderTabs(caseDetail(), '/?tab=evidence', LAYOUTS.dockCollapsed);
+    expect(await screen.findByText('Disk full on replica')).toBeInTheDocument();
+    expect(await screen.findByText(/Writes fail since 02:14/)).toBeInTheDocument();
+    expect(getCaseMessages).toHaveBeenCalledTimes(1);
+
+    update(caseDetail({ updated_at: REV_2, current_turn: 4 }));
+    update(caseDetail({ updated_at: REV_3, current_turn: 5 }));
+    await settle(LATENCY * 3);
+    expect(getCaseMessages).toHaveBeenCalledTimes(1);
+    expect(getCaseEvidenceList).toHaveBeenCalledTimes(3);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transcript' }));
+    await settle(LATENCY / 3);
+    expect(getCaseMessages).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Loading transcript...')).not.toBeInTheDocument();
+    expect(screen.getByText(/Writes fail since 02:14/)).toBeInTheDocument();
+
+    expect(await screen.findByText(/The volume is at 100%/)).toBeInTheDocument();
+    await settle(LATENCY * 2);
+    expect(getCaseMessages).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads another case once, behind another tab, and not again when Transcript is shown', async () => {
+    // A move to another case reads the record afresh on `caseId` anyway; the
+    // revision it is held at follows, so showing Transcript buys no second read.
+    vi.mocked(getCaseEvidenceList).mockImplementation(() => after(evidenceList(DISK_FULL)));
+    vi.mocked(getCaseMessages)
+      .mockImplementationOnce(() => after(messages(message('m1', 1, 'Writes fail since 02:14.'))))
+      .mockImplementationOnce(() => after(messages(message('m9', 1, 'Checkout returns 502.'))));
+    const { update } = renderTabs(caseDetail(), '/?tab=evidence', LAYOUTS.dockCollapsed);
+    expect(await screen.findByText(/Writes fail since 02:14/)).toBeInTheDocument();
+
+    update(caseDetail({ case_id: 'case-2', updated_at: REV_2 }));
+    expect(await screen.findByText(/Checkout returns 502/)).toBeInTheDocument();
+    expect(getCaseMessages).toHaveBeenCalledTimes(2);
+    expect(getCaseMessages).toHaveBeenLastCalledWith('case-2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transcript' }));
+    await settle(LATENCY * 3);
+    expect(getCaseMessages).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/Checkout returns 502/)).toBeInTheDocument();
   });
 });

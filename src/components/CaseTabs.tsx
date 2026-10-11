@@ -133,7 +133,11 @@ function stanceColor(stance: string): string {
  * quiet: the rows already on screen stay, and with them anything the user has
  * expanded, until the new answer replaces them. A revision read that FAILS
  * keeps the rows too, as `CaseDetailPage.loadCase` keeps a working page; the
- * error is shown only when there is nothing else to show.
+ * error is shown only when there is nothing else to show. The rows are then
+ * `stale`, and the tab says so in one line (`StaleNote`): a list that silently
+ * kept "active" hypotheses after the dock closed the case would be a claim
+ * the server no longer makes. The next successful read clears it; there is no
+ * retry button, because the next revision retries anyway.
  *
  * What is held is keyed by the case it was read for. `CaseTabs` has no `key` on
  * the route's `:caseId`, so a tab survives a move from one case to the next,
@@ -150,7 +154,7 @@ function useCaseRead<T>(
   revision: string,
   read: (caseId: string) => Promise<T>,
   failure: string,
-): { data: T | null; loading: boolean; error: string | null } {
+): { data: T | null; loading: boolean; error: string | null; stale: boolean } {
   const [held, setHeld] = useState<{ caseId: string; data: T } | null>(null);
   const [failed, setFailed] = useState<{ caseId: string; message: string } | null>(null);
 
@@ -170,8 +174,18 @@ function useCaseRead<T>(
   }, [caseId, revision, read, failure]);
 
   const have = held !== null && held.caseId === caseId;
-  const error = !have && failed !== null && failed.caseId === caseId ? failed.message : null;
-  return { data: have ? held.data : null, loading: !have && error === null, error };
+  const failedHere = failed !== null && failed.caseId === caseId;
+  const error = !have && failedHere ? failed.message : null;
+  return { data: have ? held.data : null, loading: !have && error === null, error, stale: have && failedHere };
+}
+
+/**
+ * Rows held past a failed refresh say so — one quiet line above them, never in
+ * place of them (see `useCaseRead`).
+ */
+function StaleNote({ stale }: { stale: boolean }) {
+  if (!stale) return null;
+  return <p className="text-xs text-fm-warning mb-2">Couldn&apos;t refresh — this may be out of date.</p>;
 }
 
 const readMessages = (caseId: string): Promise<CaseMessage[]> =>
@@ -192,24 +206,31 @@ const readHypotheses = (caseId: string): Promise<HypothesisSummary[]> =>
  * transcript belongs in the same category as the report and the evidence —
  * something a person reads about a case.
  *
- * It follows the revision like the other tabs. It is never rendered beside an
- * OPEN dock, but a dock collapsed mid-turn keeps its panel mounted and commits
- * the turn behind the rail, with this record on screen. The cost is one paged
- * re-read per change the page hears about, and none on a hand-off, which moves
- * `version` and not `updated_at`.
+ * It follows the revision like the other tabs, but only while it is the ACTIVE
+ * tab: `CaseTabs` keeps it mounted and hidden behind the others, and hands it
+ * the revision it last showed (`transcriptRevision`) rather than the case's.
+ * `getCaseMessages` pages at 100 messages a request, one after another, so
+ * following every turn from behind Evidence would make reading Evidence cost a
+ * whole transcript download per turn. On returning to Transcript it catches up
+ * with one quiet re-read, the old rows staying until the new ones arrive.
+ *
+ * Following matters at all because a dock collapsed mid-turn keeps its panel
+ * mounted and commits the turn behind the rail, with this record on screen. A
+ * hand-off moves `version` and not `updated_at`, so it costs no re-read.
  *
  * The renderer is shared with the operator break-glass page (ADR-012 D9): the
  * backend serves the same message shape to both, and a second copy of this
  * markup here would let the two drift.
  */
 function RecordTranscriptTab({ caseId, revision }: { caseId: string; revision: string }) {
-  const { data: messages, loading, error } = useCaseRead(caseId, revision, readMessages, 'Failed to load transcript');
+  const { data: messages, loading, error, stale } = useCaseRead(caseId, revision, readMessages, 'Failed to load transcript');
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
 
   return (
     <div data-testid="transcript-record">
+      <StaleNote stale={stale} />
       <TranscriptView messages={messages ?? []} />
     </div>
   );
@@ -222,7 +243,7 @@ function FileEvidenceDetails({ caseId, fileId, revision }: { caseId: string; fil
     (id: string): Promise<UploadedFileDetails> => getUploadedFileDetails(id, fileId),
     [fileId],
   );
-  const { data: details, loading, error } = useCaseRead(caseId, revision, read, 'Failed to load details');
+  const { data: details, loading, error, stale } = useCaseRead(caseId, revision, read, 'Failed to load details');
 
   if (loading) return <div className="text-fm-text-tertiary text-xs py-2 italic">Loading derived evidence...</div>;
   if (error) return <div className="text-fm-critical text-xs py-2">{error}</div>;
@@ -232,6 +253,7 @@ function FileEvidenceDetails({ caseId, fileId, revision }: { caseId: string; fil
 
   return (
     <div className="py-2 space-y-3">
+      <StaleNote stale={stale} />
       {details.summary && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">Summary</p>
@@ -272,138 +294,156 @@ function FileEvidenceDetails({ caseId, fileId, revision }: { caseId: string; fil
 }
 
 function EvidenceListView({ caseId, revision }: { caseId: string; revision: string }) {
-  const { data: evidence, loading, error } = useCaseRead(caseId, revision, readEvidence, 'Failed to load evidence');
+  const { data: evidence, loading, error, stale } = useCaseRead(caseId, revision, readEvidence, 'Failed to load evidence');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading evidence...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
   if (!evidence?.length) {
-    return <div className="text-fm-text-tertiary text-sm py-4">No evidence collected yet.</div>;
+    return (
+      <>
+        <StaleNote stale={stale} />
+        <div className="text-fm-text-tertiary text-sm py-4">No evidence collected yet.</div>
+      </>
+    );
   }
 
   return (
-    <div className="divide-y divide-fm-border">
-      {evidence.map((ev) => {
-        const isExpanded = expandedId === ev.evidence_id;
-        const hypothesisCount = ev.related_hypotheses?.length ?? 0;
-        const sourceLabel = ev.source_file
-          ? `${ev.source_file.filename} · turn ${ev.collected_at_turn}`
-          : `chat · turn ${ev.collected_at_turn}`;
-        return (
-          <div key={ev.evidence_id} className="py-2">
-            <button
-              type="button"
-              onClick={() => setExpandedId(isExpanded ? null : ev.evidence_id)}
-              className="w-full flex items-start justify-between gap-3 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
-              aria-expanded={isExpanded}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-fm-elevated text-fm-text-secondary">
-                    {evidenceCategoryLabel(ev.category)}
-                  </span>
-                  <span className="text-sm text-fm-text-primary">{ev.summary}</span>
+    <>
+      <StaleNote stale={stale} />
+      <div className="divide-y divide-fm-border">
+        {evidence.map((ev) => {
+          const isExpanded = expandedId === ev.evidence_id;
+          const hypothesisCount = ev.related_hypotheses?.length ?? 0;
+          const sourceLabel = ev.source_file
+            ? `${ev.source_file.filename} · turn ${ev.collected_at_turn}`
+            : `chat · turn ${ev.collected_at_turn}`;
+          return (
+            <div key={ev.evidence_id} className="py-2">
+              <button
+                type="button"
+                onClick={() => setExpandedId(isExpanded ? null : ev.evidence_id)}
+                className="w-full flex items-start justify-between gap-3 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
+                aria-expanded={isExpanded}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-fm-elevated text-fm-text-secondary">
+                      {evidenceCategoryLabel(ev.category)}
+                    </span>
+                    <span className="text-sm text-fm-text-primary">{ev.summary}</span>
+                  </div>
+                  <p className="text-xs text-fm-text-tertiary mt-1">
+                    {sourceLabel}
+                    {hypothesisCount > 0 && (
+                      <> · {hypothesisCount} hypothes{hypothesisCount === 1 ? 'is' : 'es'}</>
+                    )}
+                  </p>
                 </div>
-                <p className="text-xs text-fm-text-tertiary mt-1">
-                  {sourceLabel}
-                  {hypothesisCount > 0 && (
-                    <> · {hypothesisCount} hypothes{hypothesisCount === 1 ? 'is' : 'es'}</>
+                <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
+                  {isExpanded ? '▾' : '▸'}
+                </span>
+              </button>
+              {isExpanded && (
+                <div className="pl-3 mt-2 ml-1 border-l-2 border-fm-border space-y-3">
+                  {ev.extract && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
+                        Source quote
+                      </p>
+                      <pre className="text-xs bg-fm-surface-alt border border-fm-border rounded-fm-input p-2 overflow-x-auto whitespace-pre-wrap text-fm-text-primary font-mono">
+                        {ev.extract}
+                      </pre>
+                    </div>
                   )}
-                </p>
-              </div>
-              <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
-                {isExpanded ? '▾' : '▸'}
-              </span>
-            </button>
-            {isExpanded && (
-              <div className="pl-3 mt-2 ml-1 border-l-2 border-fm-border space-y-3">
-                {ev.extract && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
-                      Source quote
-                    </p>
-                    <pre className="text-xs bg-fm-surface-alt border border-fm-border rounded-fm-input p-2 overflow-x-auto whitespace-pre-wrap text-fm-text-primary font-mono">
-                      {ev.extract}
-                    </pre>
-                  </div>
-                )}
-                {ev.analysis && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
-                      Analysis
-                    </p>
-                    <p className="text-sm text-fm-text-primary">{ev.analysis}</p>
-                  </div>
-                )}
-                {ev.related_hypotheses && ev.related_hypotheses.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1.5">
-                      Related hypotheses
-                    </p>
-                    <ul className="space-y-1.5">
-                      {ev.related_hypotheses.map((rh) => (
-                        <li key={rh.hypothesis_id} className="flex items-baseline gap-2">
-                          <span className={`text-[10px] font-semibold uppercase tracking-wide ${stanceColor(rh.stance)}`}>
-                            {rh.stance}
-                          </span>
-                          <span className="text-sm text-fm-text-primary">{rh.statement}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+                  {ev.analysis && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1">
+                        Analysis
+                      </p>
+                      <p className="text-sm text-fm-text-primary">{ev.analysis}</p>
+                    </div>
+                  )}
+                  {ev.related_hypotheses && ev.related_hypotheses.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-fm-text-tertiary mb-1.5">
+                        Related hypotheses
+                      </p>
+                      <ul className="space-y-1.5">
+                        {ev.related_hypotheses.map((rh) => (
+                          <li key={rh.hypothesis_id} className="flex items-baseline gap-2">
+                            <span className={`text-[10px] font-semibold uppercase tracking-wide ${stanceColor(rh.stance)}`}>
+                              {rh.stance}
+                            </span>
+                            <span className="text-sm text-fm-text-primary">{rh.statement}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
 function FileListView({ caseId, revision }: { caseId: string; revision: string }) {
-  const { data: files, loading, error } = useCaseRead(caseId, revision, readFiles, 'Failed to load files');
+  const { data: files, loading, error, stale } = useCaseRead(caseId, revision, readFiles, 'Failed to load files');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading files...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
-  if (!files?.length) return <div className="text-fm-text-tertiary text-sm py-4">No files uploaded.</div>;
+  if (!files?.length) {
+    return (
+      <>
+        <StaleNote stale={stale} />
+        <div className="text-fm-text-tertiary text-sm py-4">No files uploaded.</div>
+      </>
+    );
+  }
 
   return (
-    <div className="divide-y divide-fm-border">
-      {files.map((file) => {
-        const isExpanded = expandedId === file.file_id;
-        return (
-          <div key={file.file_id} className="py-2">
-            <button
-              type="button"
-              onClick={() => setExpandedId(isExpanded ? null : file.file_id)}
-              className="w-full flex items-center justify-between gap-4 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
-              aria-expanded={isExpanded}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-fm-text-primary truncate">{file.filename}</p>
-                <p className="text-xs text-fm-text-tertiary mt-0.5 inline-flex items-center gap-1.5">
-                  <span>{file.source_type} · {file.size_display} · turn {file.uploaded_at_turn}</span>
-                  <span className="inline-flex items-center gap-1">
-                    <span aria-hidden="true" className={`inline-block w-1.5 h-1.5 rounded-full ${analysisStatusDotColor(file.analysis_status)}`} />
-                    <span>{file.analysis_status}</span>
-                  </span>
-                </p>
-              </div>
-              <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
-                {isExpanded ? '▾' : '▸'}
-              </span>
-            </button>
-            {isExpanded && (
-              <div className="pl-2 mt-1 border-l-2 border-fm-border ml-1">
-                <FileEvidenceDetails caseId={caseId} fileId={file.file_id} revision={revision} />
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <StaleNote stale={stale} />
+      <div className="divide-y divide-fm-border">
+        {files.map((file) => {
+          const isExpanded = expandedId === file.file_id;
+          return (
+            <div key={file.file_id} className="py-2">
+              <button
+                type="button"
+                onClick={() => setExpandedId(isExpanded ? null : file.file_id)}
+                className="w-full flex items-center justify-between gap-4 text-left hover:bg-fm-elevated/40 -mx-2 px-2 py-1 rounded transition-colors"
+                aria-expanded={isExpanded}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-fm-text-primary truncate">{file.filename}</p>
+                  <p className="text-xs text-fm-text-tertiary mt-0.5 inline-flex items-center gap-1.5">
+                    <span>{file.source_type} · {file.size_display} · turn {file.uploaded_at_turn}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span aria-hidden="true" className={`inline-block w-1.5 h-1.5 rounded-full ${analysisStatusDotColor(file.analysis_status)}`} />
+                      <span>{file.analysis_status}</span>
+                    </span>
+                  </p>
+                </div>
+                <span className="text-fm-text-secondary text-xs flex-shrink-0 ml-2" aria-hidden="true">
+                  {isExpanded ? '▾' : '▸'}
+                </span>
+              </button>
+              {isExpanded && (
+                <div className="pl-2 mt-1 border-l-2 border-fm-border ml-1">
+                  <FileEvidenceDetails caseId={caseId} fileId={file.file_id} revision={revision} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -451,7 +491,7 @@ function HypothesisRow({ hypothesis }: { hypothesis: HypothesisSummary }) {
 }
 
 function HypothesesTab({ caseId, caseDetail, revision }: { caseId: string; caseDetail: CaseDetail; revision: string }) {
-  const { data: hypotheses, loading, error } = useCaseRead(caseId, revision, readHypotheses, 'Failed to load hypotheses');
+  const { data: hypotheses, loading, error, stale } = useCaseRead(caseId, revision, readHypotheses, 'Failed to load hypotheses');
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading hypotheses...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
@@ -460,6 +500,7 @@ function HypothesesTab({ caseId, caseDetail, revision }: { caseId: string; caseD
     if (caseDetail.is_terminal && caseDetail.hypothesis_count > 0) {
       return (
         <div className="py-2 text-sm text-fm-text-secondary">
+          <StaleNote stale={stale} />
           {caseDetail.hypothesis_count} hypothes{caseDetail.hypothesis_count === 1 ? 'is' : 'es'} were
           tested on this case. Detailed hypothesis history is available in case storage
           but not surfaced here for terminal cases.
@@ -468,6 +509,7 @@ function HypothesesTab({ caseId, caseDetail, revision }: { caseId: string; caseD
     }
     return (
       <div className="py-2 text-sm text-fm-text-tertiary">
+        <StaleNote stale={stale} />
         No hypotheses yet — this case hasn&apos;t produced any.
       </div>
     );
@@ -475,6 +517,7 @@ function HypothesesTab({ caseId, caseDetail, revision }: { caseId: string; caseD
 
   return (
     <div className="py-1">
+      <StaleNote stale={stale} />
       <ul className="divide-y divide-fm-border">
         {hypotheses.map((h) => <HypothesisRow key={h.hypothesis_id} hypothesis={h} />)}
       </ul>
@@ -552,6 +595,25 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
   // makes the fallback stick: without it the default is recomputed from the
   // dock's state on every render and the toggle moves the user.
   if (activeTab !== chosen) setChosen(activeTab);
+
+  /**
+   * The revision the hidden record transcript was last SHOWN at.
+   *
+   * The record stays mounted behind the other tabs (see below), so handing it
+   * `revision` would re-run its paged `getCaseMessages` on every turn while the
+   * user reads Evidence. It follows the case only while Transcript is the
+   * active tab, and catches up — one quiet re-read — when it is shown again.
+   * Adjusted during render, as `chosen` is. A move to another case adopts that
+   * case's revision at once: the record reads the new case on `caseId` anyway,
+   * so waiting would only buy a second read of it later.
+   */
+  const [transcriptAt, setTranscriptAt] = useState({ caseId, revision });
+  if (
+    transcriptAt.caseId !== caseId
+    || (activeTab === 'transcript' && transcriptAt.revision !== revision)
+  ) {
+    setTranscriptAt({ caseId, revision });
+  }
 
   /**
    * A `?tab=` the strip cannot honour is CLEARED, not ignored.
@@ -661,7 +723,7 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
               of keeping it is one rendered subtree. */}
           {transcriptTabShown && !transcriptIsLive && (
             <div className={activeTab === 'transcript' ? undefined : 'hidden'}>
-              <RecordTranscriptTab caseId={caseId} revision={revision} />
+              <RecordTranscriptTab caseId={caseId} revision={transcriptAt.revision} />
             </div>
           )}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
