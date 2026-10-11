@@ -208,7 +208,7 @@ const readHypotheses = (caseId: string): Promise<HypothesisSummary[]> =>
  *
  * It follows the revision like the other tabs, but only while it is the ACTIVE
  * tab: `CaseTabs` keeps it mounted and hidden behind the others, and hands it
- * the revision it last showed (`transcriptRevision`) rather than the case's.
+ * the revision it last showed (`transcriptAt`) rather than the case's.
  * `getCaseMessages` pages at 100 messages a request, one after another, so
  * following every turn from behind Evidence would make reading Evidence cost a
  * whole transcript download per turn. On returning to Transcript it catches up
