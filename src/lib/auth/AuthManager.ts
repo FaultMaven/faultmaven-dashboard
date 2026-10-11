@@ -80,12 +80,9 @@ function refreshAbortSignal(): AbortSignal | undefined {
  * Phrased as "different" rather than "same" so that an unknown identity fails
  * closed: see the body.
  *
- * Scope, deliberately stated: this does NOT make the manager identity-pinned.
- * The adopt path in `refreshIfStillStale` still takes whatever session storage
- * holds, so a tab whose user was replaced BEFORE it acquired the lock adopts
- * the new user's token. That is pre-existing, applies equally to every other
- * read of shared storage, and closing it means pinning an identity per tab —
- * out of scope here.
+ * Its caller hands it the RAW row on purpose. `readState` refuses another
+ * user's row, so through it a replaced session and an absent one look alike —
+ * and only the absent one is this tab's to clear.
  */
 function isDifferentIdentity(a: AuthState | null, b: AuthState | null): boolean {
   const left = a?.user?.user_id;
@@ -97,6 +94,20 @@ function isDifferentIdentity(a: AuthState | null, b: AuthState | null): boolean 
   // fail closed — fall through and let the token comparison decide.
   if (!left || !right) return false;
   return left !== right;
+}
+
+/**
+ * The extension-bridge copy (`fm_auth_state`), which is plain JSON rather than
+ * the storage adapter's encoding. Null when absent or unreadable.
+ */
+function decodeBridgeAuthState(raw: string | null): AuthState | null {
+  if (raw === null) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value && typeof value === 'object' ? (value as AuthState) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -173,14 +184,32 @@ export class AuthManager {
   private authClearedListeners = new Set<() => void>();
 
   /**
-   * The user id this TAB believes it is signed in as.
+   * The user id this TAB is signed in as, or null when it is signed out.
    *
    * Storage is shared, so "who is signed in" cannot be read from it to decide
    * whether another tab changed the account — by the time the event arrives,
    * storage already holds the new identity. This is the only record of what
    * this tab thought before that write landed.
+   *
+   * ‼ It changes ONLY through a sign-in (`saveAuthState`), a sign-out
+   * (`clearAuthState`) or this tab's first read (`identitySettled`) — never
+   * through a later read. A read used to adopt whatever user it found, and in a
+   * real browser a tab can read another tab's write before that tab's `storage`
+   * event reaches it (measured: 20 of 20 runs in Chromium). Any read in that
+   * window made this tab user B, the watcher then compared B with B, and the
+   * tab went on showing A while every request carried B's bearer (#212).
    */
   private tabUserId: string | null = null;
+
+  /**
+   * Whether `tabUserId` has been established yet.
+   *
+   * A tab restored with a session never signs in — the session was already in
+   * storage when the page loaded — so its FIRST read is what tells it who it
+   * is. That read settles the identity, whatever it finds; nothing read later
+   * may replace it.
+   */
+  private identitySettled = false;
 
   /**
    * Whether the sign-out this tab is in the middle of came from ANOTHER tab.
@@ -203,12 +232,21 @@ export class AuthManager {
   }
 
   /**
-   * Save authentication state to browser storage
+   * Store a SIGN-IN: the session, and that this tab is now its user.
+   *
+   * The one way a tab takes on an identity after its first read. Rotation does
+   * not come through here (`writeState`): renewing a credential is not a
+   * decision about who the tab is.
    */
   async saveAuthState(authState: AuthState): Promise<void> {
     // This tab's identity, and the end of any sign-out it was in.
     this.tabUserId = authState.user?.user_id ?? null;
+    this.identitySettled = true;
     this.signingOut = false;
+    await this.writeState(authState);
+  }
+
+  private async writeState(authState: AuthState): Promise<void> {
     const browser = getBrowserStorage();
     if (browser?.storage) {
       await browser.storage.local.set({ authState });
@@ -216,6 +254,31 @@ export class AuthManager {
     // Keep the extension-bridge copy current on every save — including token
     // rotation (#109).
     this.syncBridgeAuthState(authState);
+  }
+
+  /**
+   * Whether a stored row is THIS tab's session.
+   *
+   * A row that names no user matches only a tab that restored one — a legacy
+   * session keeps working, and a revoked one is still found and cleared. No
+   * writer here stores such a row (every sign-in carries the profile), and
+   * once the tab holds a named user, an unnamed row is not theirs.
+   */
+  private isThisTabs(state: AuthState | null): state is AuthState {
+    return state !== null && (state.user?.user_id ?? null) === this.tabUserId;
+  }
+
+  /**
+   * Whether a stored row names a user OTHER than this tab's — the one row a
+   * sign-out here must leave alone.
+   *
+   * Not `!isThisTabs`: a row that names nobody is no one else's either, and a
+   * tab that has not read yet has no identity to compare (whatever is stored
+   * would have been its restored session).
+   */
+  private belongsToAnotherUser(state: AuthState | null): boolean {
+    const owner = state?.user?.user_id;
+    return this.identitySettled && !!owner && owner !== this.tabUserId;
   }
 
   /**
@@ -449,18 +512,32 @@ export class AuthManager {
   }
 
   /**
-   * Read the raw stored auth state without any expiry handling.
+   * THIS tab's stored session, without any expiry handling — or null when
+   * storage holds none, or holds another user's.
    * Internal: callers that need a *valid* token use getAuthState/getAccessToken.
+   *
+   * Every credential this class hands out, renews, peeks at or ends is read
+   * through here, so another account's row never reaches any of them: not the
+   * Copilot panel's `accessToken()`, not a Dashboard request, and not the
+   * bearer `logoutAuth` would send to revoke "this" account's sessions.
    */
   private async readState(): Promise<AuthState | null> {
+    const stored = await this.readStoredState();
+    if (!this.identitySettled) {
+      // A tab restored with a session: its first read tells it who it is. See
+      // `identitySettled` — this is the only read that may.
+      this.tabUserId = stored?.user?.user_id ?? null;
+      this.identitySettled = true;
+    }
+    return this.isThisTabs(stored) ? stored : null;
+  }
+
+  /** The stored row, whoever it belongs to. */
+  private async readStoredState(): Promise<AuthState | null> {
     const browser = getBrowserStorage();
     try {
       if (browser?.storage) {
         const result = (await browser.storage.local.get(['authState'])) as { authState?: AuthState };
-        // Keep this tab's notion of who it is current with what it actually
-        // reads, so the cross-tab comparison has something to compare against
-        // on a tab that was restored rather than signed in.
-        if (result.authState?.user?.user_id) this.tabUserId = result.authState.user.user_id;
         return result.authState ?? null;
       }
     } catch (error: unknown) {
@@ -672,7 +749,18 @@ export class AuthManager {
         refresh_token: body.refresh_token ?? authState.refresh_token,
         expires_at: expiresAt,
       };
-      await this.saveAuthState(next);
+      // Only onto this tab's own session. The request was a network round trip
+      // long, and in that time another tab may have signed a different account
+      // in or signed this one out; writing then would put this session back
+      // over theirs — signing B out from a tab B never opened, or resurrecting
+      // a sign-out. The rotated token is orphaned server-side, which is the
+      // lesser cost. Read-then-write here is one turn of the event loop: the
+      // adapter is synchronous `localStorage` underneath, and another tab's
+      // write reaches this one as a task, not between two microtasks.
+      if (!this.isThisTabs(await this.readStoredState())) {
+        return null;
+      }
+      await this.writeState(next);
       return next.access_token;
     } catch (error: unknown) {
       // Network error — do NOT clear state (the session may still be valid once
@@ -701,17 +789,18 @@ export class AuthManager {
     presented: string,
     sentWith: AuthState,
   ): Promise<string | null> {
-    const current = await this.readState();
+    const current = await this.readStoredState();
 
     // Storage no longer holds the session we were refreshing for — a different
     // user signed in on another tab while our request was in flight. Do not
     // adopt their token (that would hand this tab someone else's credential)
-    // and do not clear (that session is not ours to destroy). Just fail here.
+    // and do not clear (that session is not ours to destroy). Just fail here;
+    // the cross-tab watch ends this tab when that write's event arrives.
     if (isDifferentIdentity(current, sentWith)) {
       return null;
     }
 
-    if (current?.refresh_token && current.refresh_token !== presented) {
+    if (this.isThisTabs(current) && current.refresh_token && current.refresh_token !== presented) {
       // Superseded, not revoked. Hand back the winner's access token; a caller
       // that gets null here would route to login on a perfectly good session.
       return current.access_token || null;
@@ -722,22 +811,35 @@ export class AuthManager {
   }
 
   /**
-   * Clear authentication state from browser storage
+   * Sign this tab out: drop its session from storage and tell the listeners.
+   *
+   * ‼ Its OWN session. Storage is shared, so when another tab has since signed
+   * a different account in, the row there is that account's, and removing it
+   * signs them out too — the removal reaches their tab as a `storage` event
+   * with no value. That is what a cross-tab account switch used to do: this
+   * tab's watch saw B, ended this tab, and took B's session with it (#212).
+   * The listeners are told either way, because THIS tab's session is over.
    */
   async clearAuthState(): Promise<void> {
     const browser = getBrowserStorage();
-    if (browser?.storage) {
+    if (browser?.storage && !this.belongsToAnotherUser(await this.readStoredState())) {
       await browser.storage.local.remove(['authState']);
     }
     // Also drop the bridge copy so a dashboard logout / definitive refresh
     // rejection can't leave a revoked token for the bridge to re-forward (#109).
+    // The same rule: a copy that is another account's is theirs.
     try {
-      if (typeof localStorage !== 'undefined') {
+      if (
+        typeof localStorage !== 'undefined' &&
+        !this.belongsToAnotherUser(decodeBridgeAuthState(localStorage.getItem('fm_auth_state')))
+      ) {
         localStorage.removeItem('fm_auth_state');
       }
     } catch {
       // localStorage unavailable/blocked — non-fatal.
     }
+    this.tabUserId = null;
+    this.identitySettled = true;
     // Notify subscribers (React context, per-user caches) AFTER storage is wiped
     // so they observe a clean, logged-out world.
     this.notifyAuthCleared();
