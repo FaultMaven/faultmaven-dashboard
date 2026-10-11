@@ -126,7 +126,12 @@ function renderTabs(detail: CaseDetail, route: string, layout: CaseConversationL
     </MemoryRouter>
   );
   const utils = render(view(detail));
-  return { update: (d: CaseDetail) => utils.rerender(view(d)) };
+  return {
+    update: (d: CaseDetail, nextLayout?: CaseConversationLayout) => {
+      if (nextLayout) layout = nextLayout;
+      utils.rerender(view(d));
+    },
+  };
 }
 
 beforeEach(() => {
@@ -425,6 +430,31 @@ describe('the read-only transcript follows the case revision', () => {
     expect(await screen.findByText(/The volume is at 100%/)).toBeInTheDocument();
     await settle(LATENCY * 2);
     expect(getCaseMessages).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads once when the dock collapses behind another tab, and not again when Transcript is shown', async () => {
+    // With the dock open the record is not mounted, so turns committed there
+    // cost it nothing — but the revision it is held at must still follow them.
+    // Otherwise the record mounted by the collapse reads the case as it is now,
+    // and showing Transcript would read it a second time to "catch up".
+    vi.mocked(getCaseEvidenceList).mockImplementation(() => after(evidenceList(DISK_FULL)));
+    vi.mocked(getCaseMessages).mockImplementation(() =>
+      after(messages(message('m1', 1, 'Writes fail since 02:14.'), message('m2', 2, 'The volume is at 100%.'))),
+    );
+    const { update } = renderTabs(caseDetail(), '/?tab=evidence', LAYOUTS.docked);
+    expect(await screen.findByText('Disk full on replica')).toBeInTheDocument();
+
+    update(caseDetail({ updated_at: REV_2, current_turn: 4 }));
+    await settle(LATENCY * 2);
+    expect(getCaseMessages).not.toHaveBeenCalled();
+
+    update(caseDetail({ updated_at: REV_2, current_turn: 4 }), LAYOUTS.dockCollapsed);
+    expect(await screen.findByText(/The volume is at 100%/)).toBeInTheDocument();
+    expect(getCaseMessages).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transcript' }));
+    await settle(LATENCY * 3);
+    expect(getCaseMessages).toHaveBeenCalledTimes(1);
   });
 
   it('reads another case once, behind another tab, and not again when Transcript is shown', async () => {

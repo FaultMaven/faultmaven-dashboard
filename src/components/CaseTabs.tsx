@@ -605,12 +605,16 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
    * active tab, and catches up — one quiet re-read — when it is shown again.
    * Adjusted during render, as `chosen` is. A move to another case adopts that
    * case's revision at once: the record reads the new case on `caseId` anyway,
-   * so waiting would only buy a second read of it later.
+   * so waiting would only buy a second read of it later. So does a record that
+   * is not mounted at all (the dock open, or the tab live): it reads the case
+   * as it is when it mounts, so a revision it lagged behind meanwhile would buy
+   * the same second read the first time Transcript is shown.
    */
+  const recordMounted = transcriptTabShown && !transcriptIsLive;
   const [transcriptAt, setTranscriptAt] = useState({ caseId, revision });
   if (
     transcriptAt.caseId !== caseId
-    || (activeTab === 'transcript' && transcriptAt.revision !== revision)
+    || ((activeTab === 'transcript' || !recordMounted) && transcriptAt.revision !== revision)
   ) {
     setTranscriptAt({ caseId, revision });
   }
@@ -721,7 +725,7 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
               messages a request, so a long case cost several sequential round
               trips and a "Loading transcript…" flash on every visit. The cost
               of keeping it is one rendered subtree. */}
-          {transcriptTabShown && !transcriptIsLive && (
+          {recordMounted && (
             <div className={activeTab === 'transcript' ? undefined : 'hidden'}>
               <RecordTranscriptTab caseId={caseId} revision={transcriptAt.revision} />
             </div>
