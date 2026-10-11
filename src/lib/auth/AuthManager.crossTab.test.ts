@@ -367,6 +367,72 @@ describe('#48 cross-tab refresh rotation', () => {
       expect(storedState()).toBeDefined();
       expect(storedState()?.access_token).toBe('other-users-access');
     });
+
+    it('does not write a SUCCESSFUL rotation over their session (#212)', async () => {
+      // The 200 is about this tab's account, and it lands a round trip after
+      // the other account's sign-in. Writing it would put this session back
+      // over theirs, and their tab would read that as a switch and sign out.
+      seedStore();
+      const theirs: AuthState = {
+        ...EXPIRED_SEED,
+        access_token: 'other-users-access',
+        refresh_token: 'other-users-refresh',
+        expires_at: Date.now() + 3_600_000,
+        user: { ...EXPIRED_SEED.user, user_id: 'u2', username: 'someone-else' },
+      };
+      globalThis.fetch = vi.fn(async () => {
+        await sharedStorage.set({ authState: theirs });
+        return {
+          ok: true,
+          json: async () => ({ access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 3600 }),
+        };
+      }) as unknown as typeof fetch;
+
+      const token = await new AuthManager().getAccessToken();
+
+      expect(token).toBeNull();
+      expect(storedState()).toEqual(theirs);
+    });
+
+    it('does not write over an account signed in IN THIS TAB mid-flight', async () => {
+      // `/login` does not redirect a signed-in tab, so the user can sign in as
+      // someone else right here while a refresh is out. The tab's identity
+      // then moves with the row, so a check that only asks "is the row this
+      // tab's?" passes — and A's rotated session lands over B's.
+      seedStore();
+      const manager = new AuthManager();
+      const theirs: AuthState = {
+        ...EXPIRED_SEED,
+        access_token: 'b-access',
+        refresh_token: 'b-refresh',
+        expires_at: Date.now() + 3_600_000,
+        user: { ...EXPIRED_SEED.user, user_id: 'u2', username: 'someone-else' },
+      };
+      globalThis.fetch = vi.fn(async () => {
+        await manager.saveAuthState(theirs);
+        return {
+          ok: true,
+          json: async () => ({ access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 3600 }),
+        };
+      }) as unknown as typeof fetch;
+
+      expect(await manager.getAccessToken()).toBeNull();
+      expect(storedState()).toEqual(theirs);
+    });
+
+    it('does not resurrect a session another tab signed out mid-flight', async () => {
+      seedStore();
+      globalThis.fetch = vi.fn(async () => {
+        await sharedStorage.remove(['authState']);
+        return {
+          ok: true,
+          json: async () => ({ access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 3600 }),
+        };
+      }) as unknown as typeof fetch;
+
+      expect(await new AuthManager().getAccessToken()).toBeNull();
+      expect(storedState()).toBeUndefined();
+    });
   });
 
   describe('refresh request is bounded so it cannot pin the cross-tab lock', () => {

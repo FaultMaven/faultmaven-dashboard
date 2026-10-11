@@ -254,11 +254,18 @@ export default function OAuthAuthorizePage() {
       // and folding them into the mismatch branch below told the user their
       // ACCOUNT had changed and to reload — on a screen whose only control is an
       // inert window.close(). Send them to sign in, and back here afterwards.
+      //
+      // A different account signing in on another tab lands here too: this
+      // tab's session is over, and AuthManager hands no tab another account's
+      // session (#212). Its cross-tab watch is about to end this tab and route
+      // it to sign-in anyway; this only gets there first.
       if (!current?.user) {
         goSignIn();
         return;
       }
 
+      // The backstop: this tab's own session is not the account the consent
+      // was loaded for. Never mint a code under a screen naming someone else.
       if (current.user.user_id !== consent.user_id) {
         setError('Your signed-in account changed. Reload this page to continue.');
         setSubmitting(false);
