@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent, within } from '@testing-library/react';
 import type { CaseSummary, AdminCaseMetadata } from '../../types/cases';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -138,7 +138,25 @@ describe('AdminCaseListPage', () => {
     expect(cellUnderHeader('Creator', 2)).toHaveTextContent('Acme Slack workspace');
     expect(cellUnderHeader('Driver', 2)).toHaveTextContent('Acme Slack workspace');
     expect(screen.queryByRole('columnheader', { name: 'Owner' })).toBeNull();
-    expect(screen.queryByText('copilot_user')).toBeNull();
+  });
+
+  it("keeps each creator's WHOLE id copyable from the row, under the name (#208)", async () => {
+    // Operators look accounts up by the id they copy from this list; the
+    // Owner column used to carry it, and a name with the id only in a hover
+    // title does not. One click selects all of it.
+    await act(async () => {
+      renderPage();
+    });
+    await waitFor(() => expect(screen.getByText('Slack Case')).toBeInTheDocument());
+
+    const first = within(cellUnderHeader('Creator', 1)).getByText('copilot_user');
+    expect(first).toHaveClass('select-all');
+    expect(cellUnderHeader('Creator', 1)).toHaveTextContent('Ada Lovelace');
+    expect(within(cellUnderHeader('Creator', 2)).getByText('slack-agent')).toHaveClass(
+      'select-all',
+    );
+    // The creator's, not the driver's: the Driver column is unchanged.
+    expect(within(cellUnderHeader('Driver', 1)).queryByText('copilot_user')).toBeNull();
   });
 
   it('renders state filters only — no search control the endpoint ignores', async () => {

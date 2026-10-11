@@ -53,7 +53,11 @@ matches title and case ID via `POST /cases/search`. Renders rows via the shared
   (`SHORT_ID_LENGTH`, whole id on hover) only when the name is absent, and a
   spoken "Unknown" for a driver sent as `null`. A pre-13.2.0 core sends no
   driver key at all, and its rows name the creator as driver. They replaced the
-  operator list's raw-`user_id` Owner column on the same component path.
+  operator list's raw-`user_id` Owner column on the same component path; the
+  operator list (`AdminCaseListPage`, `view: "full"`) opts in to
+  `showCreatorId`, which adds the creator's whole id on a `select-all` line
+  under the name so it can be copied from the row (#208). The per-user list
+  does not.
 
 - **The creation-date range bounds `created_at` with `created_after` /
   `created_before`** (contract 3.8.0, faultmaven#1409), and those are
@@ -216,6 +220,12 @@ an unknown id:
   would re-read the old case under the new URL. **409** `CASE_VERSION_CONFLICT`: says someone else
   changed it, re-reads the case and the candidates. **422**: the candidate list
   was stale — re-reads it. **403 / 404**: no longer allowed — re-reads the case.
+- **A quiet re-read that answers 404 or 403 leaves the case** (#208): the viewer
+  can no longer read it, so `loadCase` sets the page-level error and drops the
+  case, as the initial load does. This holds for every quiet caller (a turn, a
+  hand-off, a refused hand-off, a share change). Any other failure (network,
+  5xx) keeps the page as it was: the action that triggered the re-read reports
+  its own error.
 - **Redacted sources** (contract 13.1.0): a runbook the viewer cannot open is
   rendered by the pinned `@faultmaven/copilot-ui` as "A runbook you don't have
   access to". Sources appear only inside the panel (dock or narrow live tab);
