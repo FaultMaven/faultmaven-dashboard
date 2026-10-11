@@ -197,6 +197,43 @@ describe('IssueTab problem statement against problem_status', () => {
     expect(getCaseUI).not.toHaveBeenCalled();
   });
 
+  it('re-reads the verification when the case revision moves, keeping the last one meanwhile', async () => {
+    // #206: the docked panel commits turns while this tab is open, and the
+    // verification moves with them. Real latency, so a statement cleared
+    // during the re-read would be visible.
+    const later = <T,>(body: T): Promise<T> => new Promise((resolve) => setTimeout(() => resolve(body), 30));
+    vi.mocked(getCaseUI)
+      .mockImplementationOnce(() =>
+        later({
+          problem_statement: 'Orders API times out',
+          problem_verification: { problem_status: 'unverified' },
+        } as never),
+      )
+      .mockImplementationOnce(() =>
+        later({
+          problem_statement: 'Orders API times out',
+          problem_verification: {
+            problem_status: 'invalidated',
+            invalidation_finding: 'Health checks passed throughout the window.',
+          },
+        } as never),
+      );
+    const investigating = makeCaseDetail({ state: 'investigating', is_terminal: false, resolved_at: null });
+    const { rerender } = render(<IssueTab caseDetail={investigating} />);
+    expect(await screen.findByText('Orders API times out')).toBeInTheDocument();
+
+    // A new object at the same revision is not a change.
+    rerender(<IssueTab caseDetail={{ ...investigating }} />);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(getCaseUI).toHaveBeenCalledTimes(1);
+
+    rerender(<IssueTab caseDetail={{ ...investigating, updated_at: '2024-01-01T00:05:00Z' }} />);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(screen.getByText('Orders API times out')).toBeInTheDocument();
+    expect(await screen.findByText('Not present: Health checks passed throughout the window.')).toBeInTheDocument();
+    expect(getCaseUI).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the description when the UI view cannot be read', async () => {
     vi.mocked(getCaseUI).mockRejectedValue(new Error('offline'));
     render(<IssueTab caseDetail={makeCaseDetail({ state: 'investigating', is_terminal: false })} />);

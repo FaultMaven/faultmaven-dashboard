@@ -32,8 +32,14 @@ interface JudgedStatement {
  * verification since contract 11.3.0, so a closed false alarm stays struck
  * through. A failed read, or a terminal response from an older server, leaves
  * the tab on `description` or an unjudged statement, as before.
+ *
+ * Read again whenever `revision` (`caseDetail.updated_at`) moves, because the
+ * statement and its verification change during an investigation and the
+ * docked panel commits turns while this tab is open (#206; the rationale is at
+ * `useCaseRead` in CaseTabs). Quiet already: the last read stays until a newer
+ * one replaces it, and a failed one replaces nothing.
  */
-function useJudgedStatement(caseId: string, judged: boolean): JudgedStatement | null {
+function useJudgedStatement(caseId: string, judged: boolean, revision: string): JudgedStatement | null {
   // Keyed by case, so a result read for one case is never shown on another.
   const [read, setRead] = useState<{ caseId: string; judged: JudgedStatement } | null>(null);
   useEffect(() => {
@@ -52,13 +58,17 @@ function useJudgedStatement(caseId: string, judged: boolean): JudgedStatement | 
     return () => {
       cancelled = true;
     };
-  }, [caseId, judged]);
+  }, [caseId, judged, revision]);
   return judged && read?.caseId === caseId ? read.judged : null;
 }
 
 export function IssueTab({ caseDetail }: IssueTabProps) {
   // INQUIRY has no confirmed statement to judge: its proposal is in the chat.
-  const judged = useJudgedStatement(caseDetail.case_id, caseDetail.state !== 'inquiry');
+  const judged = useJudgedStatement(
+    caseDetail.case_id,
+    caseDetail.state !== 'inquiry',
+    caseDetail.updated_at,
+  );
   // The verification judges the statement in the same response; the case's
   // description is shown without one.
   const problem = judged

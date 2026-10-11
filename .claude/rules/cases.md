@@ -166,6 +166,18 @@ state change on the server.
   dock is showing the conversation. The active tab falls back to the FIRST
   VISIBLE tab, not the literal `transcript`. All markdown is rendered via
   react-markdown with external links opening in new tabs.
+- **Tabs that read for themselves follow the case's revision** (#206):
+  Evidence, the file view and an expanded file's detail, Hypotheses, the
+  read-only Transcript (`useCaseRead` in `CaseTabs.tsx`) and the Issue tab's
+  judged statement re-read when `caseDetail.updated_at` moves — which the page's
+  quiet re-read after a docked turn delivers. `updated_at`, not `current_turn`:
+  the core stamps it on EVERY save of the case (a turn, uploads included, but
+  also a close or a reclassification, which advance no turn); a hand-off moves
+  only `version`, so it costs no re-read. Keyed on the primitive, never the
+  object. Only a case's FIRST read shows "Loading…"; a revision read is quiet
+  (rows and expansions stay), a failed one keeps the rows, a superseded one is
+  dropped, and what is held is keyed by case so nothing read for one case shows
+  under another. Bound by `src/test/components/CaseTabsRevision.test.tsx`.
 
 ### Creator and driver (ADR-020)
 

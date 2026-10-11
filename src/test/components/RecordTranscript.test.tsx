@@ -11,8 +11,10 @@ import type { CaseDetail } from '../../types/cases';
  * it; `CaseDetailConversation.test.tsx` renders the whole page and cannot move
  * the route from one case to the next without a real router history.
  *
- * WHAT IT EXISTS FOR. The stale-error fix in `RecordTranscriptTab` — clearing
- * `error` at the top of every attempt — is bound HERE and nowhere else.
+ * WHAT IT EXISTS FOR. The stale-error fix in `RecordTranscriptTab` — a failed
+ * load never stands over a later case's transcript — is bound HERE. (That a
+ * held error is shown only for its own case, even while the next case loads,
+ * is bound for every self-reading tab in `CaseTabsRevision.test.tsx`.)
  * `CaseTabs` carries no `key` on the route's `:caseId`, so its instance
  * survives a move between cases and the error guard wins over loaded messages:
  * without the fix, one failed load shows its error over every later case's
@@ -147,8 +149,9 @@ describe('the read-only transcript', () => {
 
   it('does NOT poison the next case with the last one’s error', async () => {
     // `CaseTabs` has no `key` on `:caseId`, so this instance survives the move
-    // and the error guard wins over loaded messages. Deleting the `setError(null)`
-    // that opens each attempt makes this test — and only this test — fail.
+    // and an error that outlived the next case's answer would stand over it.
+    // `useCaseRead` clears it on success and never shows it over loaded rows;
+    // undoing both makes this test fail.
     vi.mocked(getCaseMessages)
       .mockRejectedValueOnce(new Error('Failed to get case messages'))
       .mockResolvedValue({ messages: [MESSAGE], total_count: 1 } as never);

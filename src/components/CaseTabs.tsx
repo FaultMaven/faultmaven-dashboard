@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   getCaseMessages,
@@ -119,6 +119,71 @@ function stanceColor(stance: string): string {
 }
 
 /**
+ * A read a tab makes for itself, made again whenever the case's REVISION moves.
+ *
+ * The docked panel changes the case while these tabs are on screen, and the
+ * page re-reads `caseDetail` when it says so (#204, #205) — but a tab that
+ * fetched on `caseId` alone never heard about it, so an Evidence or Hypotheses
+ * list stayed as it was when the tab opened (#206). The revision is
+ * `caseDetail.updated_at`: the core stamps it on every save of the case, which
+ * a turn (uploads ride turns), a reclassification and a close all are, while
+ * `current_turn` misses the last two.
+ *
+ * Only the FIRST read for a case shows the loading state. A revision read is
+ * quiet: the rows already on screen stay, and with them anything the user has
+ * expanded, until the new answer replaces them. A revision read that FAILS
+ * keeps the rows too, as `CaseDetailPage.loadCase` keeps a working page; the
+ * error is shown only when there is nothing else to show.
+ *
+ * What is held is keyed by the case it was read for. `CaseTabs` has no `key` on
+ * the route's `:caseId`, so a tab survives a move from one case to the next,
+ * and a read or an error held for the last case must never stand in for this
+ * one (a single failed load used to keep its error over every later case).
+ *
+ * A read the next revision superseded is dropped (`cancelled`), so an older
+ * answer that lands late cannot put an older list back.
+ *
+ * `read` must be stable (module-level, or memoised): it is an effect input.
+ */
+function useCaseRead<T>(
+  caseId: string,
+  revision: string,
+  read: (caseId: string) => Promise<T>,
+  failure: string,
+): { data: T | null; loading: boolean; error: string | null } {
+  const [held, setHeld] = useState<{ caseId: string; data: T } | null>(null);
+  const [failed, setFailed] = useState<{ caseId: string; message: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    read(caseId).then(
+      (data) => {
+        if (cancelled) return;
+        setHeld({ caseId, data });
+        setFailed(null);
+      },
+      (err: unknown) => {
+        if (!cancelled) setFailed({ caseId, message: err instanceof Error ? err.message : failure });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [caseId, revision, read, failure]);
+
+  const have = held !== null && held.caseId === caseId;
+  const error = !have && failed !== null && failed.caseId === caseId ? failed.message : null;
+  return { data: have ? held.data : null, loading: !have && error === null, error };
+}
+
+const readMessages = (caseId: string): Promise<CaseMessage[]> =>
+  getCaseMessages(caseId).then((res) => res.messages);
+const readEvidence = (caseId: string): Promise<EvidenceDetails[]> =>
+  getCaseEvidenceList(caseId).then((res) => res.evidence);
+const readFiles = (caseId: string): Promise<UploadedFile[]> =>
+  getUploadedFiles(caseId).then((res) => res.files);
+const readHypotheses = (caseId: string): Promise<HypothesisSummary[]> =>
+  getCaseUI(caseId).then((ui) => ui.active_hypotheses ?? []);
+
+/**
  * The conversation as RECORD — read, not continued.
  *
  * One `GET /cases/{id}/messages`, rendered by `TranscriptView`: no panel, no
@@ -127,38 +192,18 @@ function stanceColor(stance: string): string {
  * transcript belongs in the same category as the report and the evidence —
  * something a person reads about a case.
  *
+ * It follows the revision like the other tabs. It is never rendered beside an
+ * OPEN dock, but a dock collapsed mid-turn keeps its panel mounted and commits
+ * the turn behind the rail, with this record on screen. The cost is one paged
+ * re-read per change the page hears about, and none on a hand-off, which moves
+ * `version` and not `updated_at`.
+ *
  * The renderer is shared with the operator break-glass page (ADR-012 D9): the
  * backend serves the same message shape to both, and a second copy of this
  * markup here would let the two drift.
  */
-function RecordTranscriptTab({ caseId }: { caseId: string }) {
-  const [messages, setMessages] = useState<CaseMessage[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      // Cleared on every attempt, not only set on failure. `CaseTabs` has no
-      // `key` on the route's `:caseId`, so this instance survives a move from
-      // one case to the next — and the error guard below wins over `messages`,
-      // so without this a single failed load would keep showing its error over
-      // every later case's transcript that loaded perfectly well. The same bug,
-      // with the same cause, is already commented in `CaseDetailPage.loadCase`.
-      setError(null);
-      try {
-        const res = await getCaseMessages(caseId);
-        if (!cancelled) setMessages(res.messages);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load transcript');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
+function RecordTranscriptTab({ caseId, revision }: { caseId: string; revision: string }) {
+  const { data: messages, loading, error } = useCaseRead(caseId, revision, readMessages, 'Failed to load transcript');
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading transcript...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
@@ -170,28 +215,14 @@ function RecordTranscriptTab({ caseId }: { caseId: string }) {
   );
 }
 
-function FileEvidenceDetails({ caseId, fileId }: { caseId: string; fileId: string }) {
-  const [details, setDetails] = useState<UploadedFileDetails | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await getUploadedFileDetails(caseId, fileId);
-        if (!cancelled) setDetails(res);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load details');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId, fileId]);
+function FileEvidenceDetails({ caseId, fileId, revision }: { caseId: string; fileId: string; revision: string }) {
+  // Keyed by case only: the parent keys this component by file, so `fileId`
+  // never changes under a mounted instance.
+  const read = useCallback(
+    (id: string): Promise<UploadedFileDetails> => getUploadedFileDetails(id, fileId),
+    [fileId],
+  );
+  const { data: details, loading, error } = useCaseRead(caseId, revision, read, 'Failed to load details');
 
   if (loading) return <div className="text-fm-text-tertiary text-xs py-2 italic">Loading derived evidence...</div>;
   if (error) return <div className="text-fm-critical text-xs py-2">{error}</div>;
@@ -240,28 +271,9 @@ function FileEvidenceDetails({ caseId, fileId }: { caseId: string; fileId: strin
   );
 }
 
-function EvidenceListView({ caseId }: { caseId: string }) {
-  const [evidence, setEvidence] = useState<EvidenceDetails[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function EvidenceListView({ caseId, revision }: { caseId: string; revision: string }) {
+  const { data: evidence, loading, error } = useCaseRead(caseId, revision, readEvidence, 'Failed to load evidence');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await getCaseEvidenceList(caseId);
-        if (!cancelled) setEvidence(res.evidence);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load evidence');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading evidence...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
@@ -349,28 +361,9 @@ function EvidenceListView({ caseId }: { caseId: string }) {
   );
 }
 
-function FileListView({ caseId }: { caseId: string }) {
-  const [files, setFiles] = useState<UploadedFile[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function FileListView({ caseId, revision }: { caseId: string; revision: string }) {
+  const { data: files, loading, error } = useCaseRead(caseId, revision, readFiles, 'Failed to load files');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await getUploadedFiles(caseId);
-        if (!cancelled) setFiles(res.files);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load files');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading files...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
@@ -404,7 +397,7 @@ function FileListView({ caseId }: { caseId: string }) {
             </button>
             {isExpanded && (
               <div className="pl-2 mt-1 border-l-2 border-fm-border ml-1">
-                <FileEvidenceDetails caseId={caseId} fileId={file.file_id} />
+                <FileEvidenceDetails caseId={caseId} fileId={file.file_id} revision={revision} />
               </div>
             )}
           </div>
@@ -414,12 +407,14 @@ function FileListView({ caseId }: { caseId: string }) {
   );
 }
 
-function EvidenceTab({ caseId }: { caseId: string }) {
+function EvidenceTab({ caseId, revision }: { caseId: string; revision: string }) {
   const [view, setView] = useState<'evidence' | 'files'>('evidence');
 
   return (
     <div>
-      {view === 'evidence' ? <EvidenceListView caseId={caseId} /> : <FileListView caseId={caseId} />}
+      {view === 'evidence'
+        ? <EvidenceListView caseId={caseId} revision={revision} />
+        : <FileListView caseId={caseId} revision={revision} />}
       <div className="mt-4 pt-3 border-t border-fm-border">
         <button
           type="button"
@@ -455,27 +450,8 @@ function HypothesisRow({ hypothesis }: { hypothesis: HypothesisSummary }) {
   );
 }
 
-function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: CaseDetail }) {
-  const [hypotheses, setHypotheses] = useState<HypothesisSummary[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const ui = await getCaseUI(caseId);
-        if (!cancelled) setHypotheses(ui.active_hypotheses ?? []);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load hypotheses');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [caseId]);
+function HypothesesTab({ caseId, caseDetail, revision }: { caseId: string; caseDetail: CaseDetail; revision: string }) {
+  const { data: hypotheses, loading, error } = useCaseRead(caseId, revision, readHypotheses, 'Failed to load hypotheses');
 
   if (loading) return <div className="text-fm-text-tertiary text-sm py-4">Loading hypotheses...</div>;
   if (error) return <div className="text-fm-critical text-sm py-4">{error}</div>;
@@ -508,6 +484,9 @@ function HypothesesTab({ caseId, caseDetail }: { caseId: string; caseDetail: Cas
 
 export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }: CaseTabsProps) {
   const { surface, transcriptTabShown, viewportBounded } = layout;
+  // The primitive, not the object: the page hands a new `caseDetail` on every
+  // re-read, and only a change the server stamped is worth a refetch.
+  const revision = caseDetail.updated_at;
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Hypotheses are only formed when the root cause isn't immediately obvious,
@@ -682,13 +661,13 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
               of keeping it is one rendered subtree. */}
           {transcriptTabShown && !transcriptIsLive && (
             <div className={activeTab === 'transcript' ? undefined : 'hidden'}>
-              <RecordTranscriptTab caseId={caseId} />
+              <RecordTranscriptTab caseId={caseId} revision={revision} />
             </div>
           )}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
           {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
-          {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} />}
-          {activeTab === 'evidence' && <EvidenceTab caseId={caseId} />}
+          {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} revision={revision} />}
+          {activeTab === 'evidence' && <EvidenceTab caseId={caseId} revision={revision} />}
         </div>
       )}
     </div>
