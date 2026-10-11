@@ -81,9 +81,15 @@ export function createWebSession(
      * carries, refreshed transparently near expiry. It THROWS rather than
      * returning null on purpose: a null would hand the shared UI a decision
      * about what an absent credential means, and that decision belongs to
-     * whoever owns it. A caller that cannot get a token is looking at a session
-     * that has ended — `onUnauthorized`'s business, not a value to branch on at
-     * a request site.
+     * whoever owns it.
+     *
+     * The plain `Error` for "no token" is deliberate, and so is NOT throwing the
+     * package's `AuthenticationError` there. No token is not a verdict: a
+     * refresh that failed transiently (5xx, offline) keeps the session, and the
+     * contract's "anything else" sends the request header-less so its 401 takes
+     * the recoverable path rather than ending a session the next request could
+     * use. A session that HAS ended reaches the panel through
+     * `subscribeAuthState`, below.
      */
     async accessToken() {
       const credential = await authManager.getAccessTokenFor(user.id);
