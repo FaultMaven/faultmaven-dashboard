@@ -139,8 +139,12 @@ export function CaseDriverField({
 
   // The current-driver line reads the SAME label the list and notice use when
   // the candidates are in hand; otherwise the creator/driver pair's own.
-  const currentDriverLabel =
-    (driverId ? labels.get(driverId) : undefined) ?? partyLabels(parties).driver;
+  // When the driver IS the creator, the header names that person by the
+  // creator label, so the line uses it too: one person never reads as two.
+  const sameAccount = !!driverId && driverId === parties.user_id;
+  const currentDriverLabel = sameAccount
+    ? partyLabels(parties).creator
+    : ((driverId ? labels.get(driverId) : undefined) ?? partyLabels(parties).driver);
 
   const handOff = useCallback(
     async (target: CaseDriverCandidate) => {

@@ -205,4 +205,29 @@ describe('the current-driver line reads the label the list and notice use (#219)
 
     expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Member 3f9a (u-grace)');
   });
+
+  it('names a creator who drives by the creator label even when a third candidate shares it', async () => {
+    vi.mocked(getDriverCandidates).mockResolvedValue([
+      { user_id: 'u-ada', display_name: 'Member X' },
+      { user_id: 'u-bob', display_name: 'Member X' },
+    ]);
+    render(
+      field({
+        parties: {
+          user_id: 'u-ada',
+          driver_id: 'u-ada',
+          creator_display_name: 'Member X',
+          driver_display_name: 'Member X',
+        },
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent(/^Member X$/);
+    expect(
+      within(screen.getByRole('list', { name: /hand this case to/i })).getByRole('button', {
+        name: /Member X \(u-ada\)/,
+      }),
+    ).toBeInTheDocument();
+  });
 });
