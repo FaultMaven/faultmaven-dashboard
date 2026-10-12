@@ -138,3 +138,29 @@ describe('the candidate list in hand is the NEWEST read', () => {
     expect(screen.getByRole('button', { name: /change driver/i })).toBeInTheDocument();
   });
 });
+
+describe('identical candidate names are told apart', () => {
+  const M1 = { user_id: '3f9a12bc-0000-4000-8000-000000000001', display_name: 'Member 3f9a' };
+  const M2 = { user_id: '3f9aeeee-0000-4000-8000-000000000002', display_name: 'Member 3f9a' };
+
+  it('renders distinct rows, and the notice names the row that was clicked', async () => {
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, M1, M2]);
+    vi.mocked(reassignCaseDriver).mockResolvedValue({ case_id: 'case-1', driver_id: M2.user_id } as never);
+    render(field());
+
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    const list = screen.getByRole('list', { name: /hand this case to/i });
+    const texts = within(list)
+      .getAllByRole('button')
+      .map((b) => b.textContent);
+    expect(new Set(texts).size).toBe(texts.length);
+    fireEvent.click(within(list).getByRole('button', { name: /Member 3f9a \(3f9aeeee\)/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('case-driver-status').textContent).toBe(
+        'Member 3f9a (3f9aeeee) now drives this case.',
+      ),
+    );
+    expect(reassignCaseDriver).toHaveBeenCalledWith('case-1', M2.user_id);
+  });
+});

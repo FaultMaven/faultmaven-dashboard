@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type FocusEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type FocusEvent } from 'react';
 import { CasePersonName } from './CasePersonName';
 import { getDriverCandidates, reassignCaseDriver } from '../lib/api';
 import {
   driverLabel,
   effectiveDriverId,
   mayReassignDriver,
-  personLabel,
+  disambiguatedLabels,
   type CaseParties,
 } from '../lib/cases/driver';
 import { APIError } from '../lib/knowledge/errors';
@@ -133,6 +133,10 @@ export function CaseDriverField({
   // A list left open must not outlive the control it belongs to.
   if (!offered && open) setOpen(false);
 
+  // One label per candidate, identical names told apart; the list and the
+  // confirmation notice read the same map.
+  const labels = useMemo(() => disambiguatedLabels(candidates ?? []), [candidates]);
+
   const handOff = useCallback(
     async (target: CaseDriverCandidate) => {
       setBusy(true);
@@ -140,7 +144,7 @@ export function CaseDriverField({
       try {
         const updated = await reassignCaseDriver(caseId, target.user_id);
         if (!liveRef.current) return;
-        const name = personLabel(target.display_name, target.user_id)?.text ?? target.user_id;
+        const name = labels.get(target.user_id)?.text ?? target.user_id;
         setOpen(false);
         setNotice({ text: `${name} now drives this case.`, tone: 'info' });
         onReassigned(updated);
@@ -178,7 +182,7 @@ export function CaseDriverField({
         if (liveRef.current) setBusy(false);
       }
     },
-    [caseId, onReassigned, onCaseStale],
+    [caseId, onReassigned, onCaseStale, labels],
   );
 
   // A press anywhere outside the control closes the list. A document listener,
@@ -246,7 +250,7 @@ export function CaseDriverField({
           >
             {(candidates ?? []).map((c) => {
               const isCurrent = c.user_id === driverId;
-              const label = personLabel(c.display_name, c.user_id);
+              const label = labels.get(c.user_id) ?? null;
               const notes = [
                 c.user_id === parties.user_id ? 'creator' : null,
                 c.user_id === viewerId ? 'you' : null,

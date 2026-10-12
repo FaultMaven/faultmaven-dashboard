@@ -8,6 +8,7 @@ import {
   driverLabel,
   effectiveDriverId,
   SHORT_ID_LENGTH,
+  disambiguatedLabels,
 } from '../../../lib/cases/driver';
 
 /**
@@ -116,5 +117,32 @@ describe('personLabel — a name, else a short id', () => {
   it('names the CREATOR as driver on a pre-13.2.0 core (no driver_id key), nobody on a null', () => {
     expect(driverLabel({ user_id: 'u-ada', creator_display_name: 'Ada' })?.text).toBe('Ada');
     expect(driverLabel({ user_id: 'u-ada', creator_display_name: 'Ada', driver_id: null })).toBeNull();
+  });
+});
+
+describe('disambiguatedLabels — no two candidates read the same', () => {
+  const A = { user_id: '3f9a12bc-0000-4000-8000-000000000001', display_name: 'Member 3f9a' };
+  const B = { user_id: '3f9aeeee-0000-4000-8000-000000000002', display_name: 'Member 3f9a' };
+  const ADA = { user_id: 'u-ada', display_name: 'Ada Lovelace' };
+
+  it('appends the id prefix to each of two identical "Member xxxx" labels, keeping the whole id on hover', () => {
+    const out = disambiguatedLabels([A, B, ADA]);
+    expect(out.get(A.user_id)?.text).toBe('Member 3f9a (3f9a12bc)');
+    expect(out.get(B.user_id)?.text).toBe('Member 3f9a (3f9aeeee)');
+    expect(out.get(A.user_id)?.title).toBe(A.user_id);
+  });
+
+  it('tells apart a real name that collides with another real name', () => {
+    const x = { user_id: 'aaaaaaaa-1', display_name: 'Sam Lee' };
+    const y = { user_id: 'bbbbbbbb-2', display_name: ' Sam Lee ' };
+    const out = disambiguatedLabels([x, y]);
+    expect(out.get(x.user_id)?.text).toBe('Sam Lee (aaaaaaaa)');
+    expect(out.get(y.user_id)?.text).toBe('Sam Lee (bbbbbbbb)');
+  });
+
+  it('leaves unique labels unchanged, and compares case-sensitively', () => {
+    const out = disambiguatedLabels([ADA, { user_id: 'u-ada2', display_name: 'ada lovelace' }]);
+    expect(out.get('u-ada')?.text).toBe('Ada Lovelace');
+    expect(out.get('u-ada2')?.text).toBe('ada lovelace');
   });
 });
