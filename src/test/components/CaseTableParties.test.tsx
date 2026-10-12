@@ -111,3 +111,31 @@ describe('CaseTable — Creator and Driver', () => {
     expect(screen.getAllByRole('columnheader', { name: 'Driver' })).toHaveLength(1);
   });
 });
+
+describe('CaseTable — one label, one person (#219)', () => {
+  const twin = {
+    creator_display_name: 'Member 3f9a',
+    driver_display_name: 'Member 3f9a',
+  };
+
+  it('tells two different accounts with the same label apart in both columns', () => {
+    renderRows([{ ...base, ...twin }]);
+
+    expect(cellUnderHeader('Creator')).toHaveTextContent('Member 3f9a (u-ada-00)');
+    expect(cellUnderHeader('Driver')).toHaveTextContent('Member 3f9a (u-grace-)');
+  });
+
+  it('leaves one account that drives its own case unchanged', () => {
+    renderRows([{ ...base, ...twin, driver_id: base.user_id }]);
+
+    expect(cellUnderHeader('Creator')).toHaveTextContent(/^Member 3f9a$/);
+    expect(cellUnderHeader('Driver')).toHaveTextContent(/^Member 3f9a$/);
+  });
+
+  it('leaves different names unchanged', () => {
+    renderRows([base]);
+
+    expect(cellUnderHeader('Creator')).toHaveTextContent(/^Ada Lovelace$/);
+    expect(cellUnderHeader('Driver')).toHaveTextContent(/^Grace Hopper$/);
+  });
+});
