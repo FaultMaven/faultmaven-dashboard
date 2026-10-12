@@ -145,4 +145,42 @@ describe('disambiguatedLabels — no two candidates read the same', () => {
     expect(out.get('u-ada')?.text).toBe('Ada Lovelace');
     expect(out.get('u-ada2')?.text).toBe('ada lovelace');
   });
+
+  it.each([
+    ['inner whitespace run', 'Sam  Lee'],
+    ['non-breaking space', 'Sam\u00A0Lee'],
+    ['zero-width character', 'Sam Le\u200Be'],
+  ])('counts a %s variant as the same label', (_n, variant) => {
+    const x = { user_id: 'aaaaaaaa-1', display_name: 'Sam Lee' };
+    const y = { user_id: 'bbbbbbbb-2', display_name: variant };
+    const out = disambiguatedLabels([x, y]);
+    expect(out.get(x.user_id)?.text).toBe('Sam Lee (aaaaaaaa)');
+    expect(out.get(y.user_id)?.text.endsWith('(bbbbbbbb)')).toBe(true);
+  });
+
+  it('counts NFC and NFD spellings of one name as the same label', () => {
+    const x = { user_id: 'aaaaaaaa-1', display_name: 'Jos\u00E9' };
+    const y = { user_id: 'bbbbbbbb-2', display_name: 'Jose\u0301' };
+    const out = disambiguatedLabels([x, y]);
+    expect(out.get(x.user_id)?.text).toMatch(/\(aaaaaaaa\)$/);
+    expect(out.get(y.user_id)?.text).toMatch(/\(bbbbbbbb\)$/);
+  });
+
+  it('a real name equal to another candidate\'s id fallback renders distinct labels', () => {
+    const named = { user_id: 'zzzzzzzz-9', display_name: '3f9a12bc' };
+    const unnamed = { user_id: '3f9a12bc-0000-4000-8000-000000000001', display_name: null };
+    const out = disambiguatedLabels([named, unnamed]);
+    const a = out.get(named.user_id)?.text;
+    const b = out.get(unnamed.user_id)?.text;
+    expect(a).not.toBe(b);
+    expect(a).toBe('3f9a12bc (zzzzzzzz)');
+  });
+
+  it('never suffixes an id stand-in label, even when it collides', () => {
+    const named = { user_id: 'zzzzzzzz-9', display_name: '3f9a12bc' };
+    const unnamed = { user_id: '3f9a12bc-0000-4000-8000-000000000001', display_name: null };
+    const out = disambiguatedLabels([named, unnamed]);
+    expect(out.get(unnamed.user_id)?.text).toBe('3f9a12bc');
+    expect(out.get(unnamed.user_id)?.isId).toBe(true);
+  });
 });
