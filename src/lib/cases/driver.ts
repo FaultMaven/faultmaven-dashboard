@@ -97,6 +97,51 @@ export function personLabel(
   return null;
 }
 
+/**
+ * Labels for a list of candidates, with identical visible text told apart.
+ *
+ * Two candidates whose `personLabel(...).text` is the same (compared on `labelKey`:
+ * normalised, case-sensitive) each get the 8-character id prefix appended,
+ * "Member 3f9a (3f9a12bc)". Unique labels are returned unchanged. A label that
+ * is already an id stand-in is never suffixed (it would repeat itself). Keyed
+ * by `user_id`; the whole id stays in `title`.
+ */
+/**
+ * The key two labels are compared on. Labels that LOOK the same to a person
+ * must collide: NFC-vs-NFD accents, zero-width characters, and runs or kinds of
+ * whitespace render identically. Case stays significant (a case-only difference
+ * is visible).
+ */
+function labelKey(text: string): string {
+  return text
+    .normalize('NFC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function disambiguatedLabels(
+  candidates: ReadonlyArray<{ user_id: string; display_name?: string | null }>,
+): Map<string, PersonLabel | null> {
+  const labels = candidates.map((c) => ({
+    id: c.user_id,
+    label: personLabel(c.display_name, c.user_id),
+  }));
+  const counts = new Map<string, number>();
+  for (const { label } of labels) {
+    if (label) counts.set(labelKey(label.text), (counts.get(labelKey(label.text)) ?? 0) + 1);
+  }
+  const out = new Map<string, PersonLabel | null>();
+  for (const { id, label } of labels) {
+    if (label && !label.isId && (counts.get(labelKey(label.text)) ?? 0) > 1) {
+      out.set(id, { ...label, text: `${label.text} (${id.slice(0, SHORT_ID_LENGTH)})` });
+    } else {
+      out.set(id, label);
+    }
+  }
+  return out;
+}
+
 export function creatorLabel(row: CaseParties): PersonLabel | null {
   return personLabel(row.creator_display_name, row.user_id);
 }
