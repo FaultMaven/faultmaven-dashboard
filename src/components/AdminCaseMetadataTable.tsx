@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
 import { CaseStageCell } from './CaseStageCell';
 import { SourceBadge } from './SourceBadge';
+import { CasePersonName } from './CasePersonName';
 import type { AdminCaseMetadata } from '../lib/api';
 
 interface AdminCaseMetadataTableProps {
@@ -14,7 +15,7 @@ interface AdminCaseMetadataTableProps {
 /**
  * The cloud operator's All Cases table — ambient metadata only (ADR-012 D9).
  *
- * Columns: Case ID / Owner / Enterprise / State / Stage / Last Activity. There is no
+ * Columns: Case ID / Owner / Driver / Enterprise / State / Stage / Last Activity. There is no
  * Title and no description line, because in cloud the backend does not send
  * them: user free text is content, reachable only through the audited
  * break-glass grant (faultmaven#815).
@@ -27,6 +28,23 @@ interface AdminCaseMetadataTableProps {
  * `00000000-…-000000000002`), so a shortened id could make two tenants look
  * like one, and a hover-only full id is out of reach for keyboard, touch and
  * screen-reader users.
+ *
+ * The DRIVER (`driver_id`, contract 13.4.0) is the EFFECTIVE driver (ADR-020
+ * D5): the creator unless the case was handed on. Like Owner it is an id,
+ * never a name — ADR-012 D9 classes display names with titles, as text a user
+ * typed, so the operator row carries none — and it is shown whole and
+ * selectable, because an operator copies it to look the account up in
+ * `/admin/users`. Its two non-id values are told apart:
+ *
+ * - `null` — the server answered and knows nobody: neither the creator nor any
+ *   driver account exists any more. A muted dash, spoken "Unknown".
+ * - key ABSENT — a core older than 13.4.0, which does not send the field on
+ *   this row: "not reported". This deliberately does NOT go through
+ *   `effectiveDriverId` / `driverLabel`, whose absent-means-creator rule is
+ *   right for `CaseSummary` (absent there means a core older than 13.2.0, when
+ *   only the creator wrote) and wrong here: a 13.2/13.3 core already hands
+ *   cases on but omits the driver from this row, so reading absent as the
+ *   creator would name the wrong account for every handed-on case.
  *
  * The billing `organization_id` gets no column at all, and for a different
  * reason: it is nullable and is null for every account nobody pays for
@@ -77,6 +95,7 @@ export function AdminCaseMetadataTable({ cases, loading, currentUserId }: AdminC
             <tr>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Case ID</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
+              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Driver</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Enterprise</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
@@ -101,6 +120,9 @@ export function AdminCaseMetadataTable({ cases, loading, currentUserId }: AdminC
                   <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
                     {c.user_id}
                   </span>
+                </td>
+                <td className="px-4 py-3">
+                  <DriverIdCell driverId={c.driver_id} />
                 </td>
                 <td className="px-4 py-3">
                   <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
@@ -143,5 +165,24 @@ export function AdminCaseMetadataTable({ cases, loading, currentUserId }: AdminC
         </table>
       )}
     </div>
+  );
+}
+
+/**
+ * The Driver cell: the whole id, `null` as Unknown, an absent key as "not
+ * reported" (a core older than contract 13.4.0). See the table's docstring for
+ * why absent is not read as the creator here.
+ */
+function DriverIdCell({ driverId }: { driverId: string | null | undefined }) {
+  if (driverId === undefined) {
+    return <span className="text-fm-text-tertiary">not reported</span>;
+  }
+  if (driverId === null) {
+    return <CasePersonName label={null} />;
+  }
+  return (
+    <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
+      {driverId}
+    </span>
   );
 }

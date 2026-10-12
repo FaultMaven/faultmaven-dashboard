@@ -83,7 +83,10 @@ function renderPage() {
   );
 }
 
-/** The cloud (ADR-012 D9) row: no `title`/`description` keys at all. */
+/**
+ * The cloud (ADR-012 D9) row: no `title`/`description` keys at all. Its case
+ * was handed on, so the driver (contract 13.4.0) is not the creator.
+ */
 const metadataCase: AdminCaseMetadata = {
   case_id: 'case-cloud-1',
   state: 'investigating' as const,
@@ -94,6 +97,7 @@ const metadataCase: AdminCaseMetadata = {
   closed_at: null,
   closure_reason: null,
   user_id: 'tenant_user',
+  driver_id: 'handed_on_user',
   enterprise_id: 'ent-acme',
   current_turn: 3,
   stage: 'diagnosis',
@@ -354,6 +358,62 @@ describe('AdminCaseListPage', () => {
       const owner = within(cellUnderHeader('Owner')).getByText('tenant_user');
       expect(owner).toHaveTextContent(/^tenant_user$/);
       expect(owner).toHaveClass('select-all');
+    });
+
+    it("shows the driver's WHOLE id, copyable in one click like the owner's", async () => {
+      // 13.4.0 put the effective driver on the operator row — an id, never a
+      // name (ADR-012 D9 classes display names as content). Operators look it
+      // up in /admin/users exactly as they do the owner.
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      const driver = within(cellUnderHeader('Driver')).getByText('handed_on_user');
+      expect(driver).toHaveTextContent(/^handed_on_user$/);
+      expect(driver).toHaveClass('font-mono', 'text-xs', 'select-all', 'break-all');
+      // The handed-on case names its driver, not its creator, in that column.
+      expect(cellUnderHeader('Driver')).not.toHaveTextContent('tenant_user');
+    });
+
+    it('tells a driver nobody holds (null) apart from one the core never reported (absent)', async () => {
+      // `null`: a 13.4.0+ core answered and knows nobody — neither account
+      // exists any more. ABSENT: a core older than 13.4.0, which does not put
+      // the field on this row. A 13.2/13.3 core already hands cases on, so
+      // reading absent as the creator (the `CaseSummary` rule in
+      // `effectiveDriverId`) would name the wrong account for a handed-on case.
+      const withoutDriverKey: AdminCaseMetadata = { ...metadataCase };
+      delete withoutDriverKey.driver_id;
+      expect('driver_id' in withoutDriverKey).toBe(false);
+      mockGetAdminCases.mockResolvedValue({
+        view: 'metadata',
+        cases: [
+          metadataCase,
+          { ...metadataCase, case_id: 'case-cloud-null', driver_id: null },
+          { ...withoutDriverKey, case_id: 'case-cloud-absent' },
+        ],
+        total_count: 3,
+        has_more: false,
+      });
+
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-absent'));
+
+      expect(cellUnderHeader('Driver', 1)).toHaveTextContent(/^handed_on_user$/);
+
+      const nobody = cellUnderHeader('Driver', 2);
+      expect(nobody).toHaveTextContent(/^—Unknown$/);
+      expect(within(nobody).getByText('Unknown')).toHaveClass('sr-only');
+      expect(nobody).not.toHaveTextContent('not reported');
+
+      const unreported = cellUnderHeader('Driver', 3);
+      expect(unreported).toHaveTextContent(/^not reported$/);
+      // Never the creator, who sits one column over on the same row.
+      expect(cellUnderHeader('Owner', 3)).toHaveTextContent('tenant_user');
+      expect(unreported).not.toHaveTextContent('tenant_user');
     });
 
     it('shows the Enterprise of each case, never the billing Organization', async () => {

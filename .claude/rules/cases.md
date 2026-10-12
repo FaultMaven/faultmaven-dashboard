@@ -214,7 +214,10 @@ an unknown id:
   drives. The Dashboard and the API deploy independently (separate image tags),
   so the Dashboard can run ahead of its core, and reading "absent" as "nobody
   drives" took every creator's composer away. A PRESENT `null` (which no 13.2.0
-  core sends) matches nobody, and so does any other id: read-only.
+  core sends) matches nobody, and so does any other id: read-only. The rule is
+  for `CaseSummary` / `CaseDetail` only: on the operator's `AdminCaseMetadata`
+  row the field arrived later (13.4.0), so absent there is "not reported", never
+  the creator (see AdminCaseListPage).
 - **The hand-off** (`CaseDriverField`, in the meta row, keyed by case): offered
   to the creator or the effective driver when `GET /cases/{id}/driver-candidates`
   names someone OTHER THAN THE CURRENT DRIVER — so never in standalone or on an
@@ -377,9 +380,16 @@ state/source filters only.
   `view: "metadata"` (cloud) renders `AdminCaseMetadataTable` — ids / state /
   timestamps / counts, **no title or description** (user free text is content
   and needs the audited break-glass path, faultmaven#815). Every id on it — case,
-  Owner (`user_id`), Enterprise — is whole and `select-all`, so one click
-  selects it: operators copy an account's id from the row to look it up
-  (#208). This table, not `CaseTable`, is the operator's real surface — cloud is
+  Owner (`user_id`), Driver (`driver_id`), Enterprise — is whole and
+  `select-all`, so one click selects it: operators copy an account's id from
+  the row to look it up (#208). The **Driver** is the effective driver
+  (contract 13.4.0), an id and never a name (ADR-012 D9 classes display names
+  as content). `null` renders the muted "—" spoken "Unknown" (neither account
+  exists any more); an ABSENT key renders "not reported" — a core older than
+  13.4.0. ⛔ Do not resolve it through `effectiveDriverId` / `driverLabel`:
+  their absent-means-creator rule (absent on `CaseSummary` = pre-13.2.0, when
+  only the creator wrote) mislabels every handed-on case on a 13.2/13.3 core,
+  which drives but omits the field from this row. This table, not `CaseTable`, is the operator's real surface — cloud is
   the only deployment that reaches the page and it serves `metadata`; `full`
   renders only in the degraded window before deployment detection lands — so
   an operator affordance belongs here. Under
