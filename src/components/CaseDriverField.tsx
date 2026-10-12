@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Keyboard
 import { CasePersonName } from './CasePersonName';
 import { getDriverCandidates, reassignCaseDriver } from '../lib/api';
 import {
-  driverLabel,
+  partyLabels,
   effectiveDriverId,
   mayReassignDriver,
   disambiguatedLabels,
@@ -137,6 +137,15 @@ export function CaseDriverField({
   // confirmation notice read the same map.
   const labels = useMemo(() => disambiguatedLabels(candidates ?? []), [candidates]);
 
+  // The current-driver line reads the SAME label the list and notice use when
+  // the candidates are in hand; otherwise the creator/driver pair's own.
+  // When the driver IS the creator, the header names that person by the
+  // creator label, so the line uses it too: one person never reads as two.
+  const sameAccount = !!driverId && driverId === parties.user_id;
+  const currentDriverLabel = sameAccount
+    ? partyLabels(parties).creator
+    : ((driverId ? labels.get(driverId) : undefined) ?? partyLabels(parties).driver);
+
   const handOff = useCallback(
     async (target: CaseDriverCandidate) => {
       setBusy(true);
@@ -225,7 +234,7 @@ export function CaseDriverField({
           className="text-fm-text-secondary outline-none"
           data-testid="case-driver-name"
         >
-          <CasePersonName label={driverLabel(parties)} />
+          <CasePersonName label={currentDriverLabel} />
         </span>
       </span>
 

@@ -5,7 +5,7 @@ import { CaseStageCell } from './CaseStageCell';
 import { SourceBadge } from './SourceBadge';
 import { TeamShareBadge } from './TeamShareBadge';
 import { CasePersonName } from './CasePersonName';
-import { creatorLabel, driverLabel } from '../lib/cases/driver';
+import { partyLabels } from '../lib/cases/driver';
 import type { CaseSummary } from '../lib/api';
 import type { CaseDateColumn } from '../lib/cases/dateColumn';
 
@@ -103,7 +103,9 @@ export function CaseTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-fm-border">
-            {cases.map((c) => (
+            {cases.map((c) => {
+              const parties = partyLabels(c);
+              return (
               <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -121,10 +123,10 @@ export function CaseTable({
                   )}
                 </td>
                 <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-creator">
-                  <CasePersonName label={creatorLabel(c)} />
+                  <CasePersonName label={parties.creator} />
                 </td>
                 <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-driver">
-                  <CasePersonName label={driverLabel(c)} />
+                  <CasePersonName label={parties.driver} />
                 </td>
                 <td className="px-4 py-3">
                   <CaseStateBadge state={c.state} />
@@ -145,7 +147,8 @@ export function CaseTable({
                 </td>
                 {renderActions && <td className="px-4 py-3 text-right">{renderActions(c)}</td>}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}

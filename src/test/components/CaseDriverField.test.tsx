@@ -164,3 +164,70 @@ describe('identical candidate names are told apart', () => {
     expect(reassignCaseDriver).toHaveBeenCalledWith('case-1', M2.user_id);
   });
 });
+
+describe('the current-driver line reads the label the list and notice use (#219)', () => {
+  it('shows the disambiguated label for a driver who shares a name with the creator', async () => {
+    const twinAda = { user_id: 'u-ada', display_name: 'Member 3f9a' };
+    const twinGrace = { user_id: 'u-grace', display_name: 'Member 3f9a' };
+    vi.mocked(getDriverCandidates).mockResolvedValue([twinAda, twinGrace]);
+    render(
+      field({
+        parties: {
+          user_id: 'u-ada',
+          driver_id: 'u-grace',
+          creator_display_name: 'Member 3f9a',
+          driver_display_name: 'Member 3f9a',
+        },
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Member 3f9a (u-grace)');
+    expect(
+      within(screen.getByRole('list', { name: /hand this case to/i })).getByRole('button', {
+        name: /Member 3f9a \(u-grace\)/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows it before any candidate list is read (a viewer who may not hand off)', () => {
+    render(
+      field({
+        viewerId: 'u-linus',
+        parties: {
+          user_id: 'u-ada',
+          driver_id: 'u-grace',
+          creator_display_name: 'Member 3f9a',
+          driver_display_name: 'Member 3f9a',
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Member 3f9a (u-grace)');
+  });
+
+  it('names a creator who drives by the creator label even when a third candidate shares it', async () => {
+    vi.mocked(getDriverCandidates).mockResolvedValue([
+      { user_id: 'u-ada', display_name: 'Member X' },
+      { user_id: 'u-bob', display_name: 'Member X' },
+    ]);
+    render(
+      field({
+        parties: {
+          user_id: 'u-ada',
+          driver_id: 'u-ada',
+          creator_display_name: 'Member X',
+          driver_display_name: 'Member X',
+        },
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent(/^Member X$/);
+    expect(
+      within(screen.getByRole('list', { name: /hand this case to/i })).getByRole('button', {
+        name: /Member X \(u-ada\)/,
+      }),
+    ).toBeInTheDocument();
+  });
+});

@@ -15,7 +15,7 @@ import { useTeamSharing } from '../hooks/useTeamSharing';
 import { useDockFits } from '../hooks/useDockFits';
 import { readDockCollapsed, writeDockCollapsed } from '../lib/cases/dockPreference';
 import { resolveCaseConversationLayout } from '../lib/cases/conversationSurface';
-import { creatorLabel, isCaseCreator, isCaseDriver } from '../lib/cases/driver';
+import { partyLabels, isCaseCreator, isCaseDriver } from '../lib/cases/driver';
 import { usePrefersExtensionForChat } from '../hooks/useChatSurface';
 import { getCaseDetail, fetchCaseMarkdown, logoutAuth } from '../lib/api';
 import { APIError } from '../lib/knowledge/errors';
@@ -384,7 +384,7 @@ export default function CaseDetailPage() {
             <span data-testid="case-creator">
               Creator{' '}
               <span className="text-fm-text-secondary">
-                <CasePersonName label={creatorLabel(caseDetail)} />
+                <CasePersonName label={partyLabels(caseDetail).creator} />
               </span>
             </span>
             <span>&middot;</span>

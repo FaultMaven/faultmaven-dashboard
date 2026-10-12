@@ -152,3 +152,29 @@ export function driverLabel(row: CaseParties): PersonLabel | null {
     ? creatorLabel(row)
     : personLabel(row.driver_display_name, row.driver_id);
 }
+
+/**
+ * Creator and driver of ONE case, shown side by side, with two different
+ * accounts that share a visible label told apart (#219).
+ *
+ * Same person (ids equal, or the driver key absent so the creator drives)
+ * → the plain labels. Different ids whose labels collide on `labelKey` → both
+ * carry the id suffix, via `disambiguatedLabels` (the one place that rule lives).
+ */
+export function partyLabels(row: CaseParties): {
+  creator: PersonLabel | null;
+  driver: PersonLabel | null;
+} {
+  const creator = creatorLabel(row);
+  const driver = driverLabel(row);
+  const driverId = effectiveDriverId(row);
+  if (!row.user_id || !driverId || row.user_id === driverId) return { creator, driver };
+  const labels = disambiguatedLabels([
+    { user_id: row.user_id, display_name: row.creator_display_name },
+    { user_id: driverId, display_name: row.driver_display_name },
+  ]);
+  return {
+    creator: labels.get(row.user_id) ?? creator,
+    driver: labels.get(driverId) ?? driver,
+  };
+}

@@ -209,6 +209,31 @@ describe('the meta row names the creator and the driver', () => {
   });
 });
 
+describe('two different accounts never share a visible label (#219)', () => {
+  const twins = {
+    creator_display_name: 'Member 3f9a',
+    driver_display_name: 'Member 3f9a',
+  };
+
+  it('suffixes both when creator and driver are different accounts', async () => {
+    viewer.id = 'u-linus';
+    vi.mocked(getDriverCandidates).mockResolvedValue([]);
+    await renderPage({ ...CASE, ...twins, driver_id: 'u-grace-0123' });
+
+    expect(screen.getByTestId('case-creator')).toHaveTextContent('Creator Member 3f9a (u-ada)');
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Member 3f9a (u-grace-)');
+  });
+
+  it('leaves one account that drives its own case unchanged', async () => {
+    viewer.id = 'u-linus';
+    vi.mocked(getDriverCandidates).mockResolvedValue([]);
+    await renderPage({ ...CASE, ...twins });
+
+    expect(screen.getByTestId('case-creator')).toHaveTextContent(/^Creator Member 3f9a$/);
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent(/^Member 3f9a$/);
+  });
+});
+
 describe('a composer is the DRIVER\'s (isDriver gates dock, tabs and layout)', () => {
   it('viewer drives (and created) the case — the dock carries a live panel', async () => {
     await renderPage();
