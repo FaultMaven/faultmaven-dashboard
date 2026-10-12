@@ -416,6 +416,22 @@ describe('AdminCaseListPage', () => {
       expect(unreported).not.toHaveTextContent('tenant_user');
     });
 
+    it('scrolls the table sideways rather than clipping the Open link', async () => {
+      // Whole ids make the row wide. In a card that only clips, the right-hand
+      // "Open content" link (the operator's break-glass entry) was cut off
+      // below roughly a 1000px window and could not be reached. jsdom does no
+      // layout, so this pins the class that makes the overflow scroll; the
+      // width it takes was measured in Chromium (faultmaven-dashboard#220).
+      await act(async () => {
+        renderPage();
+      });
+
+      await waitFor(() => screen.getByText('case-cloud-1'));
+      const scroller = screen.getByRole('table').parentElement;
+      expect(scroller).toHaveClass('overflow-x-auto');
+      expect(scroller).toContainElement(screen.getByRole('link', { name: /Open content/i }));
+    });
+
     it('shows the Enterprise of each case, never the billing Organization', async () => {
       // Under TENANT_PROVIDER=multi this list spans every enterprise, so the
       // tenant a case belongs to is the first thing an operator reads off a

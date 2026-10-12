@@ -389,10 +389,14 @@ state/source filters only.
   13.4.0. ⛔ Do not resolve it through `effectiveDriverId` / `driverLabel`:
   their absent-means-creator rule (absent on `CaseSummary` = pre-13.2.0, when
   only the creator wrote) mislabels every handed-on case on a 13.2/13.3 core,
-  which drives but omits the field from this row. This table, not `CaseTable`, is the operator's real surface — cloud is
-  the only deployment that reaches the page and it serves `metadata`; `full`
-  renders only in the degraded window before deployment detection lands — so
-  an operator affordance belongs here. Under
+  which drives but omits the field from this row. Whole ids make the row wide,
+  so the table scrolls sideways inside its card (`overflow-x-auto`; the card
+  keeps `overflow-hidden` for its rounded corners) — clipped, the right-hand
+  "Open content" link was unreachable below ~1000px. This table, not
+  `CaseTable`, is the operator's real surface — cloud is the only deployment
+  that reaches the page and it serves `metadata`; `full` renders only in the
+  degraded window before deployment detection lands — so an operator
+  affordance belongs here. Under
   `TENANT_PROVIDER=multi` the metadata view spans every enterprise (contract
   9.1.0), so it carries an **Enterprise** column (the whole id, never a
   prefix). If the server cannot read across enterprises it fails closed with a

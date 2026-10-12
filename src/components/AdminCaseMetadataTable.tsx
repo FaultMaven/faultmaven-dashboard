@@ -90,79 +90,85 @@ export function AdminCaseMetadataTable({ cases, loading, currentUserId }: AdminC
           <p className="text-fm-text-tertiary text-sm">No cases found.</p>
         </div>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="bg-fm-elevated border-b border-fm-border">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Case ID</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Driver</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Enterprise</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
-                Last Activity
-              </th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-fm-border">
-            {cases.map((c) => (
-              <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-medium text-fm-text-primary select-all">
-                      {c.case_id}
-                    </span>
-                    <SourceBadge source={c.source} />
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
-                    {c.user_id}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <DriverIdCell driverId={c.driver_id} />
-                </td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
-                    {c.enterprise_id}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <CaseStateBadge state={c.state} />
-                </td>
-                <td className="px-4 py-3">
-                  <CaseStageCell
-                    state={c.state}
-                    stage={c.stage}
-                    turnsWithoutProgress={c.turns_without_progress}
-                  />
-                </td>
-                <td className="px-4 py-3 text-fm-text-tertiary">
-                  {new Date(c.last_activity_at).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {currentUserId && c.user_id === currentUserId ? (
-                    <Link
-                      to={`/cases/${c.case_id}`}
-                      className="text-fm-accent hover:underline whitespace-nowrap"
-                    >
-                      Open
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/admin/cases/${c.case_id}?enterprise=${encodeURIComponent(c.enterprise_id)}`}
-                      className="text-fm-accent hover:underline whitespace-nowrap"
-                    >
-                      Open content
-                    </Link>
-                  )}
-                </td>
+        // The ids are whole, so the row is wide: it scrolls inside the card
+        // rather than clipping, or the right-hand Open link (the break-glass
+        // entry) is cut off on a narrow window. The card keeps
+        // `overflow-hidden` so the header band stays inside its rounded corners.
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-fm-elevated border-b border-fm-border">
+              <tr>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Case ID</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Owner</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Driver</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Enterprise</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
+                  Last Activity
+                </th>
+                <th className="px-4 py-3"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-fm-border">
+              {cases.map((c) => (
+                <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-medium text-fm-text-primary select-all">
+                        {c.case_id}
+                      </span>
+                      <SourceBadge source={c.source} />
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
+                      {c.user_id}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <DriverIdCell driverId={c.driver_id} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs text-fm-text-secondary select-all break-all">
+                      {c.enterprise_id}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <CaseStateBadge state={c.state} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <CaseStageCell
+                      state={c.state}
+                      stage={c.stage}
+                      turnsWithoutProgress={c.turns_without_progress}
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-fm-text-tertiary">
+                    {new Date(c.last_activity_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {currentUserId && c.user_id === currentUserId ? (
+                      <Link
+                        to={`/cases/${c.case_id}`}
+                        className="text-fm-accent hover:underline whitespace-nowrap"
+                      >
+                        Open
+                      </Link>
+                    ) : (
+                      <Link
+                        to={`/admin/cases/${c.case_id}?enterprise=${encodeURIComponent(c.enterprise_id)}`}
+                        className="text-fm-accent hover:underline whitespace-nowrap"
+                      >
+                        Open content
+                      </Link>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
