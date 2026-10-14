@@ -137,3 +137,76 @@ describe('CaseTable — the one date column', () => {
     expect(screen.queryByRole('columnheader', { name: other.label })).toBeNull();
   });
 });
+
+describe('CaseTable — a narrow window', () => {
+  /**
+   * The row is wide, and a card that only clips cuts off the right-hand
+   * columns and any row action there with no way to scroll to them
+   * (faultmaven-dashboard#222; the operator metadata table had the same defect,
+   * #220). jsdom/happy-dom do no layout, so this pins the structure that makes
+   * the overflow scroll; the width it takes was measured in Chromium.
+   *
+   * The invariant: every column and row action is INSIDE the scroller, and the
+   * card around the scroller keeps `overflow-hidden` so the header band stays
+   * inside its rounded corners.
+   */
+  it('scrolls the table sideways rather than clipping its right-hand columns', () => {
+    render(
+      <MemoryRouter>
+        <CaseTable
+          cases={[sampleCase]}
+          loading={false}
+          dateColumn={LAST_ACTIVITY_COLUMN}
+          renderActions={() => <button type="button">Archive</button>}
+        />
+      </MemoryRouter>,
+    );
+
+    const scroller = screen.getByRole('table').parentElement;
+    expect(scroller).toHaveClass('overflow-x-auto');
+
+    // The right-most header cell is the (unlabelled) action column; the date
+    // column sits just before it. Both, and the row action itself, must live
+    // inside the scroller.
+    const headers = screen.getAllByRole('columnheader');
+    expect(headers).toHaveLength(7);
+    expect(scroller).toContainElement(headers[headers.length - 1]);
+    expect(scroller).toContainElement(screen.getByRole('columnheader', { name: 'Last Activity' }));
+    expect(scroller).toContainElement(screen.getByRole('button', { name: 'Archive' }));
+
+    // The card keeps `overflow-hidden` (rounded corners) and its own shape.
+    const card = scroller?.parentElement;
+    expect(card).toHaveClass('overflow-hidden', 'rounded-fm-card');
+  });
+
+  it('scrolls without the action column too — the date column is then the last one', () => {
+    renderTable(LAST_ACTIVITY_COLUMN);
+
+    const scroller = screen.getByRole('table').parentElement;
+    expect(scroller).toHaveClass('overflow-x-auto');
+    const headers = screen.getAllByRole('columnheader');
+    expect(scroller).toContainElement(headers[headers.length - 1]);
+    expect(headers[headers.length - 1]).toHaveTextContent('Last Activity');
+    expect(scroller?.parentElement).toHaveClass('overflow-hidden');
+  });
+
+  it('keeps the loading and empty states outside the scroller', () => {
+    // They are not tables; a scroll container around them would only add a
+    // second scroll surface to a one-line message.
+    const { container, rerender } = render(
+      <MemoryRouter>
+        <CaseTable cases={[]} loading={true} dateColumn={LAST_ACTIVITY_COLUMN} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Loading cases...')).toBeInTheDocument();
+    expect(container.querySelector('.overflow-x-auto')).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <CaseTable cases={[]} loading={false} dateColumn={LAST_ACTIVITY_COLUMN} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('No cases found.')).toBeInTheDocument();
+    expect(container.querySelector('.overflow-x-auto')).toBeNull();
+  });
+});

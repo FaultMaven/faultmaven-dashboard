@@ -392,7 +392,12 @@ state/source filters only.
   which drives but omits the field from this row. Whole ids make the row wide,
   so the table scrolls sideways inside its card (`overflow-x-auto`; the card
   keeps `overflow-hidden` for its rounded corners) — clipped, the right-hand
-  "Open content" link was unreachable below ~1000px. This table, not
+  "Open content" link was unreachable below ~1000px. `CaseTable` follows the
+  same rule (#222): only its `<table>` sits in the `overflow-x-auto` div, the
+  loading and empty states stay outside it, and the card keeps `overflow-hidden`,
+  so every column and row action is reachable at any window width on
+  `CaseListPage` and on this page's `full` arm (pinned in
+  `src/test/components/CaseTable.test.tsx`). This table, not
   `CaseTable`, is the operator's real surface — cloud is the only deployment
   that reaches the page and it serves `metadata`; `full` renders only in the
   degraded window before deployment detection lands — so an operator
