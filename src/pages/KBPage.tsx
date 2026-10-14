@@ -17,6 +17,7 @@ import {
   ConversionAPIError,
 } from '../lib/knowledge/conversion';
 import type {
+  ScanResult,
   ConversionResponse,
   ConversionDraft,
   ConversionErrorInfo,
@@ -431,6 +432,39 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
 // Drafts Tab Content
 // =============================================================================
 
+/** What the scan banner shows: the server's answer, styled by what it was. */
+interface ScanOutcome {
+  tone: 'success' | 'warning' | 'error';
+  text: string;
+}
+
+const SCAN_TONE_CLASSES: Record<ScanOutcome['tone'], string> = {
+  success: 'text-fm-success bg-fm-success-bg border-fm-success-border',
+  warning: 'text-fm-warning bg-fm-warning-bg border-fm-warning-border',
+  error: 'text-fm-critical bg-fm-critical-bg border-fm-critical-border',
+};
+
+/** The banner for a scan that answered: what was imported, left alone, or refused. */
+function describeScan(result: ScanResult): ScanOutcome {
+  const plural = (n: number, noun: string) => `${n} ${noun}${n !== 1 ? 's' : ''}`;
+  const parts: string[] = [];
+  if (result.discovered > 0) {
+    parts.push(`Imported ${plural(result.discovered, 'runbook file')} as ${result.discovered === 1 ? 'a draft' : 'drafts'}`);
+  }
+  if (result.skipped > 0) {
+    parts.push(`${result.skipped} skipped (already tracked or not permitted)`);
+  }
+  if (result.errors.length > 0) {
+    // Each entry is the server's own sentence about one file ("name: too short …").
+    const [first, ...rest] = result.errors;
+    parts.push(
+      `${plural(result.errors.length, 'file')} could not be imported (${first}${rest.length > 0 ? `; and ${rest.length} more` : ''})`,
+    );
+  }
+  if (parts.length === 0) return { tone: 'success', text: 'No new runbook files found.' };
+  return { tone: result.errors.length > 0 ? 'warning' : 'success', text: parts.join('. ') + '.' };
+}
+
 interface DraftsTabProps {
   drafts: DraftSummary[];
   /** Active case-id filter (e.g. from deep-link), or null. */
@@ -440,10 +474,12 @@ interface DraftsTabProps {
   loading: boolean;
   onOpen: (conversionId: string) => void;
   onRefresh: () => void;
+  /** Whether this deployment can import a runbook directory (standalone only). */
+  scanAvailable: boolean;
   onScan: () => Promise<void>;
   onDismissScan: () => void;
   scanning: boolean;
-  scanResult: string | null;
+  scanResult: ScanOutcome | null;
   selectedDrafts: Array<{ conversion_id: string; draft_id: string }>;
   onSelectionChange: (selected: Array<{ conversion_id: string; draft_id: string }>) => void;
   onBatchVerify: () => void;
@@ -451,7 +487,7 @@ interface DraftsTabProps {
   batchActionInProgress: boolean;
 }
 
-function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
+function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, scanAvailable, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
 
   const gradeColor: Record<string, string> = {
@@ -573,23 +609,28 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, onS
             </>
           )}
         </div>
-        <button
-          onClick={onScan}
-          disabled={scanning}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors disabled:opacity-50"
-          title="Scan data/knowledge/ for runbook files not yet tracked"
-        >
-          <svg className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          {scanning ? 'Scanning...' : 'Scan for runbooks'}
-        </button>
+        {scanAvailable && (
+          <button
+            onClick={onScan}
+            disabled={scanning}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors disabled:opacity-50"
+            title="Import runbook files placed in data/knowledge/ as drafts. A draft that already exists is never changed."
+          >
+            <svg className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {scanning ? 'Scanning...' : 'Scan for runbooks'}
+          </button>
+        )}
       </div>
 
       {scanResult && (
-        <div className="mb-4 text-sm text-fm-success bg-fm-success-bg border border-fm-success-border rounded-fm-btn p-3 flex items-center justify-between">
-          <span>{scanResult}</span>
-          <button onClick={() => onDismissScan()} className="text-fm-success hover:brightness-75 ml-3" aria-label="Dismiss">
+        <div
+          role={scanResult.tone === 'error' ? 'alert' : 'status'}
+          className={`mb-4 text-sm rounded-fm-btn p-3 flex items-center justify-between border ${SCAN_TONE_CLASSES[scanResult.tone]}`}
+        >
+          <span>{scanResult.text}</span>
+          <button onClick={() => onDismissScan()} className="hover:brightness-75 ml-3" aria-label="Dismiss">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -640,7 +681,13 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, onS
         <div className="py-10 text-center">
           <p className="text-fm-text-secondary mb-1">No draft runbooks yet.</p>
           <p className="text-sm text-fm-text-tertiary">
-            Use <strong>+ New</strong> to create runbooks, or <strong>Scan for runbooks</strong> to discover files in data/knowledge/.
+            Use <strong>+ New</strong> to create runbooks
+            {scanAvailable && (
+              <>
+                , or <strong>Scan for runbooks</strong> to import files you placed in data/knowledge/ as drafts
+              </>
+            )}
+            .
           </p>
         </div>
       ) : pendingDrafts.length === 0 ? (
@@ -871,7 +918,17 @@ export default function KBPage() {
   // Authoring itself is NOT on the operator axis — every authenticated user can
   // create personal-scope runbooks. Global scope is gated by `canModifyDocument`
   // below and, authoritatively, by the backend.
-  const { isAdmin, authState, clearAuthState } = useAuth();
+  const { isAdmin, authState, clearAuthState, deployment } = useAuth();
+
+  // The scan imports runbook files placed by hand in the API's `data/knowledge/`
+  // directory, which only a standalone deployment has: on a multi-tenant one
+  // the replicas share no disk and core answers 422. No endpoint advertises
+  // tenancy, and `writePolicy.ts` rightly refuses to infer it from
+  // `deployment` — but this is not that question. It is "does this deployment
+  // have a hand-placed runbook directory worth scanning?", and standalone is
+  // exactly that (core guarantees standalone => single-tenant). `null` (not yet
+  // confirmed) offers nothing; the control appears once the deployment is known.
+  const scanAvailable = deployment === 'standalone';
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link
   // here. The ReportTab in case-detail links to ``/kb?tab=drafts&case=<id>``
@@ -939,7 +996,7 @@ export default function KBPage() {
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<ScanOutcome | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   // Multi-select state
@@ -970,13 +1027,11 @@ export default function KBPage() {
     try {
       const result = await scanForRunbooks();
       loadDrafts();
-      const parts: string[] = [];
-      if (result.discovered > 0) {
-        parts.push(`Discovered ${result.discovered} new runbook${result.discovered !== 1 ? 's' : ''}`);
-      }
-      setScanResult(parts.length > 0 ? parts.join('. ') + '.' : 'No new runbook files found.');
-    } catch {
-      setScanResult('Scan failed. Check that data/knowledge/ exists.');
+      setScanResult(describeScan(result));
+    } catch (err: unknown) {
+      // The server's own sentence (the 422 refusal, a 500's generic text), never a
+      // guess at the cause; the fallback is for a failure that carries no message.
+      setScanResult({ tone: 'error', text: err instanceof Error && err.message ? err.message : 'Scan failed.' });
     } finally {
       setScanning(false);
     }
@@ -1001,7 +1056,7 @@ export default function KBPage() {
   // owned by the server-side startup bootstrap (faultmaven/bootstrap/kb_init.py).
   // The page-mount scan used to mutate data (downgrade verified→draft on every
   // visit), which corrupted live KB state. Users who want to re-scan
-  // manually can use the explicit "Scan for runbooks" button.
+  // manually can use the explicit "Scan for runbooks" button (standalone only).
   useEffect(() => {
     setInitialLoadDone(true);
     loadDrafts();
@@ -1436,6 +1491,7 @@ export default function KBPage() {
                   loading={draftsLoading}
                   onOpen={handleOpenDraft}
                   onRefresh={loadDrafts}
+                  scanAvailable={scanAvailable}
                   onScan={handleScan}
                   onDismissScan={() => setScanResult(null)}
                   scanning={scanning}

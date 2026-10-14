@@ -348,7 +348,10 @@ export interface ScanResult {
 }
 
 /**
- * Scan data/knowledge/ for runbook files not tracked in the database.
+ * Import runbook files placed by hand in `data/knowledge/` as drafts. The scan
+ * is STANDALONE-ONLY (faultmaven#1950): a multi-tenant deployment answers 422
+ * "This deployment has no runbook directory; upload or convert instead", which
+ * arrives as the `APIError` message. It never changes an existing draft.
  */
 export async function scanForRunbooks(): Promise<ScanResult> {
   const response = await makeAuthenticatedRequest(`${CONVERT_BASE}/scan`, {
