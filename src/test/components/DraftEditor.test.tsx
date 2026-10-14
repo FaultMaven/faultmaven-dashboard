@@ -7,7 +7,7 @@ import {
   countDraftCharacters,
   type ConversionDraft,
 } from '../../lib/knowledge/conversion';
-import { makeDraft } from '../support/kbDrafts';
+import { RUNBOOK_TEXT, makeDraft } from '../support/kbDrafts';
 
 function renderEditor(draft: ConversionDraft = makeDraft()) {
   const onSave = vi.fn().mockResolvedValue(null);
@@ -130,5 +130,70 @@ describe('DraftEditor — a draft that is not a draft cannot be saved', () => {
     expect(saveButton()).toBeDisabled();
     await type(`${textarea().value} and a change`);
     expect(saveButton()).toBeEnabled();
+  });
+});
+
+describe('DraftEditor — Save and Activate follow the text that was sent', () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  const sentText = `${RUNBOOK_TEXT}\nWhat the save carried to the server, in full and well over the floor.`;
+
+  it('stays dirty when the user types while a save is in flight', async () => {
+    const pending = deferred<ConversionDraft | null>();
+    const onSave = vi.fn().mockReturnValue(pending.promise);
+    render(<DraftEditor draft={makeDraft()} onSave={onSave} onVerify={vi.fn()} onCancel={vi.fn()} saving={false} />);
+    await type(sentText);
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    expect(onSave).toHaveBeenCalledWith(sentText);
+
+    // Typed after the PUT left, so the server never sees it.
+    const later = `${sentText} and a line typed during the save`;
+    await type(later);
+    await act(async () => {
+      pending.resolve(makeDraft({ content: sentText }));
+    });
+
+    // The editor holds text the server does not: Save is on, Activate is off.
+    expect(textarea()).toHaveValue(later);
+    expect(saveButton()).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Activate' })).toBeDisabled();
+  });
+
+  it('is clean again when the text is what was sent', async () => {
+    const pending = deferred<ConversionDraft | null>();
+    const onSave = vi.fn().mockReturnValue(pending.promise);
+    render(<DraftEditor draft={makeDraft()} onSave={onSave} onVerify={vi.fn()} onCancel={vi.fn()} saving={false} />);
+    await type(sentText);
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    await act(async () => {
+      pending.resolve(makeDraft({ content: sentText }));
+    });
+
+    expect(saveButton()).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Activate' })).toBeEnabled();
+  });
+
+  it('stays dirty when the save is refused', async () => {
+    const onSave = vi.fn().mockResolvedValue(null);
+    render(<DraftEditor draft={makeDraft()} onSave={onSave} onVerify={vi.fn()} onCancel={vi.fn()} saving={false} />);
+    await type(sentText);
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    expect(saveButton()).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Activate' })).toBeDisabled();
   });
 });

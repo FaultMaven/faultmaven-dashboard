@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import KBPage from '../../pages/KBPage';
 import * as conversion from '../../lib/knowledge/conversion';
-import { APIError } from '../../lib/knowledge/errors';
+import { APIError, NetworkError } from '../../lib/knowledge/errors';
 import { makeDraftSummary } from '../support/kbDrafts';
 
 vi.mock('../../lib/api', () => ({
@@ -136,6 +136,40 @@ describe('KBPage Drafts tab — the scan banner shows what the server said', () 
     await clickScan();
 
     expect(screen.getByRole('alert')).toHaveTextContent('Internal server error');
+  });
+
+  it('shows the network\'s sentence when the API cannot be reached', async () => {
+    const unreachable = 'Could not reach the FaultMaven API at http://localhost:8090. It may be offline.';
+    scanForRunbooks.mockRejectedValue(new NetworkError(unreachable));
+    await renderDraftsTab('standalone');
+
+    await clickScan();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(unreachable);
+  });
+
+  it('does not show the page\'s own error text for a 2xx whose body is not JSON', async () => {
+    // `response.json()` on an HTML body: not the server\'s answer, and nothing a user can act on.
+    scanForRunbooks.mockRejectedValue(new SyntaxError("Unexpected token '<', \"<!doctype \"... is not valid JSON"));
+    await renderDraftsTab('standalone');
+
+    await clickScan();
+
+    const banner = screen.getByRole('alert');
+    expect(banner).toHaveTextContent('Scan failed.');
+    expect(banner).not.toHaveTextContent('Unexpected token');
+  });
+
+  it('describes a 2xx body that leaves out fields without throwing', async () => {
+    // The wire is not validated: this is a body with `discovered` and `drafts` only.
+    scanForRunbooks.mockResolvedValue(JSON.parse('{"discovered": 1, "drafts": []}'));
+    await renderDraftsTab('standalone');
+
+    await clickScan();
+
+    const banner = screen.getByRole('status');
+    expect(banner).toHaveTextContent('Imported 1 runbook file as a draft.');
+    expect(banner).toHaveClass('text-fm-success');
   });
 
   it('falls back to a plain failure line for a rejection that is not an Error', async () => {

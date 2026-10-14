@@ -28,7 +28,12 @@ export function DraftEditor({ draft, onSave, onVerify, onCancel, saving }: Draft
   const [content, setContent] = useState(draft.content);
   const [validation, setValidation] = useState<ValidationResult>(draft.validation);
   const [quality, setQuality] = useState<QualityScore>(draft.quality_score);
-  const [dirty, setDirty] = useState(false);
+  // The text the server holds as of the last successful save (or the seed).
+  // "Dirty" is the textarea differing from it, not a flag set by a keystroke
+  // and cleared by a save: typing while a save is in flight must stay dirty, or
+  // Activate would be offered over text that was never sent.
+  const [savedContent, setSavedContent] = useState(draft.content);
+  const dirty = content !== savedContent;
   const [saveError, setSaveError] = useState<string | null>(null);
   const counterId = useId();
 
@@ -48,17 +53,17 @@ export function DraftEditor({ draft, onSave, onVerify, onCancel, saving }: Draft
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
-    setDirty(true);
   };
 
   const handleSave = async () => {
     setSaveError(null);
+    const sent = content;
     try {
-      const updated = await onSave(content);
+      const updated = await onSave(sent);
       if (updated) {
         setValidation(updated.validation);
         setQuality(updated.quality_score);
-        setDirty(false);
+        setSavedContent(sent);
       }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');

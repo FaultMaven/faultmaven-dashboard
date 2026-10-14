@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { logoutAuth, uploadDocument } from '../lib/api';
@@ -40,7 +40,7 @@ import { RUNBOOK_SEVERITIES } from '../lib/knowledge/runbookVocabulary';
 import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
-import { APIError } from '../lib/knowledge/errors';
+import { APIError, NetworkError } from '../lib/knowledge/errors';
 
 const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -448,22 +448,27 @@ const SCAN_TONE_CLASSES: Record<ScanOutcome['tone'], string> = {
 /** The banner for a scan that answered: what was imported, left alone, or refused. */
 function describeScan(result: ScanResult): ScanOutcome {
   const plural = (n: number, noun: string) => `${n} ${noun}${n !== 1 ? 's' : ''}`;
+  // The body is read off the wire, not validated: a 2xx that leaves out a field
+  // (a proxy's own answer, a core that changes the shape) must not throw here.
+  const discovered = result.discovered ?? 0;
+  const skipped = result.skipped ?? 0;
+  const errors = Array.isArray(result.errors) ? result.errors : [];
   const parts: string[] = [];
-  if (result.discovered > 0) {
-    parts.push(`Imported ${plural(result.discovered, 'runbook file')} as ${result.discovered === 1 ? 'a draft' : 'drafts'}`);
+  if (discovered > 0) {
+    parts.push(`Imported ${plural(discovered, 'runbook file')} as ${discovered === 1 ? 'a draft' : 'drafts'}`);
   }
-  if (result.skipped > 0) {
-    parts.push(`${result.skipped} skipped (already tracked or not permitted)`);
+  if (skipped > 0) {
+    parts.push(`${skipped} skipped (already tracked or not permitted)`);
   }
-  if (result.errors.length > 0) {
+  if (errors.length > 0) {
     // Each entry is the server's own sentence about one file ("name: too short …").
-    const [first, ...rest] = result.errors;
+    const [first, ...rest] = errors;
     parts.push(
-      `${plural(result.errors.length, 'file')} could not be imported (${first}${rest.length > 0 ? `; and ${rest.length} more` : ''})`,
+      `${plural(errors.length, 'file')} could not be imported (${first}${rest.length > 0 ? `; and ${rest.length} more` : ''})`,
     );
   }
   if (parts.length === 0) return { tone: 'success', text: 'No new runbook files found.' };
-  return { tone: result.errors.length > 0 ? 'warning' : 'success', text: parts.join('. ') + '.' };
+  return { tone: errors.length > 0 ? 'warning' : 'success', text: parts.join('. ') + '.' };
 }
 
 interface DraftsTabProps {
@@ -918,6 +923,28 @@ function OverlayPanel(props: OverlayPanelProps) {
 // KBPage
 // =============================================================================
 
+/**
+ * A refusal that means the server's draft is not the one on screen.
+ *
+ * The wire shapes, read from core's conversion service:
+ * - SAVE: 409 `already_verified` when the draft was verified; **404 "Draft not
+ *   found"** when it was discarded before or during the save (or its job is
+ *   gone). A save never answers 409 `discarded` or `unexpected_state`.
+ * - VERIFY: 409 `already_verified`, `changed_during_verification` or
+ *   `discarded` (`unexpected_state` exists but no draft status reaches it), and
+ *   404 for a draft or job that is not there.
+ * Every one of them is answered the same way: reload, and show the server's.
+ */
+function isDraftRefusal(err: unknown): err is APIError {
+  return err instanceof APIError && (err.statusCode === 409 || err.statusCode === 404);
+}
+
+/** The slug core puts in a 409 body's `conflict_reason`, when it is a string. */
+function conflictReason(err: APIError): string | null {
+  const reason = err.details?.conflict_reason;
+  return typeof reason === 'string' ? reason : null;
+}
+
 export default function KBPage() {
   // `isAdmin` comes from the context (the `platform_admin` role) rather than
   // from `role === 'platform_admin'`: `deriveRole` collapses every standalone
@@ -1039,9 +1066,12 @@ export default function KBPage() {
       loadDrafts();
       setScanResult(describeScan(result));
     } catch (err: unknown) {
-      // The server's own sentence (the 422 refusal, a 500's generic text), never a
-      // guess at the cause; the fallback is for a failure that carries no message.
-      setScanResult({ tone: 'error', text: err instanceof Error && err.message ? err.message : 'Scan failed.' });
+      // The server's own sentence (the 422 refusal, a 500's generic text) or the
+      // network's ("Could not reach the FaultMaven API at …"), never a guess at
+      // the cause. Any other Error is the page's own — a body that is not JSON
+      // ("Unexpected token '<' …") or a bug — and says nothing a user can act on.
+      const said = err instanceof APIError || err instanceof NetworkError ? err.message : '';
+      setScanResult({ tone: 'error', text: said || 'Scan failed.' });
     } finally {
       setScanning(false);
     }
@@ -1191,27 +1221,47 @@ export default function KBPage() {
 
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // The draft the editor is open on, as of the last commit. The batch handlers
+  // run for seconds across awaits, so a closure over `editingDraft` would be the
+  // one from the render that started them; the editor can be opened meanwhile.
+  const openDraftRef = useRef<{ conversionId: string; draftId: string } | null>(null);
+  useEffect(() => {
+    openDraftRef.current =
+      overlayMode === 'editor' && conversion && editingDraft
+        ? { conversionId: conversion.conversion_id, draftId: editingDraft.draft_id }
+        : null;
+  });
+
   /**
    * Replace what the page holds of a conversion with the server's copy, and the
    * open editor's draft with it.
    *
    * A verify rewrites the draft's text server-side (frontmatter `status:
-   * verified`, `verified_by`), and a 409 means the draft is not what this page
-   * last saw, so after either the copy in hand is stale in more than its
+   * verified`, `verified_by`), and a refusal means the draft is not what this
+   * page last saw, so after either the copy in hand is stale in more than its
    * status. Patching a field locally would leave the rest of it wrong.
    *
    * `gone`: the server no longer serves the draft (a discarded draft is not
-   * listed), so there is nothing to edit; the editor is closed. `unavailable`:
-   * the refetch itself failed, and the page still holds the old copy.
+   * listed) or the conversion (404), so there is nothing to edit; the editor is
+   * closed. `unavailable`: the refetch itself failed, and the page still holds
+   * the old copy.
    */
   const adoptServerConversion = async (
     conversionId: string,
     draftId: string,
   ): Promise<'adopted' | 'gone' | 'unavailable'> => {
+    const editorIsOnIt = () => openDraftRef.current?.draftId === draftId;
     let fresh: ConversionResponse;
     try {
       fresh = await getConversion(conversionId);
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof APIError && err.statusCode === 404) {
+        if (editorIsOnIt()) {
+          setEditingDraft(null);
+          closeOverlay();
+        }
+        return 'gone';
+      }
       return 'unavailable';
     }
     setConversion(fresh);
@@ -1221,7 +1271,7 @@ export default function KBPage() {
       setEditorSync((n) => n + 1);
       return 'adopted';
     }
-    if (editingDraft?.draft_id === draftId) {
+    if (editorIsOnIt()) {
       setEditingDraft(null);
       if (fresh.drafts.length > 0) setOverlayMode('results');
       else closeOverlay();
@@ -1230,19 +1280,44 @@ export default function KBPage() {
   };
 
   /**
-   * ANY 409 from a draft save or verify (`already_verified`,
-   * `changed_during_verification`, `discarded`, `unexpected_state`) means the
+   * The server verified this draft and the page could not reload it: mark it
+   * activated by hand so nothing offers to save or activate it again. Its text
+   * stays the last one the page saw, which the notice beside it says.
+   */
+  const markDraftVerified = (draftId: string) => {
+    const mark = (d: ConversionDraft): ConversionDraft =>
+      d.draft_id === draftId ? { ...d, status: 'verified' } : d;
+    setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map(mark) } : prev);
+    setEditingDraft((open) => (open ? mark(open) : open));
+  };
+
+  /**
+   * A 409 or 404 from a draft save or verify (see `isDraftRefusal`) means the
    * server's draft is not the one on screen. Show the server's draft, and keep
    * the server's sentence on screen with it.
    */
-  const handleDraftConflict = async (err: APIError, conversionId: string, draftId: string) => {
+  const handleDraftRefusal = async (err: APIError, conversionId: string, draftId: string) => {
     const outcome = await adoptServerConversion(conversionId, draftId);
+    if (outcome === 'unavailable' && conflictReason(err) === 'already_verified') {
+      markDraftVerified(draftId);
+    }
     loadDrafts();
     setActionError(
       outcome === 'unavailable'
         ? `${err.message} (The latest version could not be loaded; reopen the draft to see it.)`
         : err.message,
     );
+  };
+
+  /**
+   * A batch just verified or discarded drafts the page may have open. The
+   * editor learns about it the way it learns about a refusal: by reloading.
+   */
+  const resyncOpenDraft = async (refs: Array<{ conversion_id: string; draft_id: string }>) => {
+    const open = openDraftRef.current;
+    if (!open) return;
+    if (!refs.some((r) => r.conversion_id === open.conversionId && r.draft_id === open.draftId)) return;
+    await adoptServerConversion(open.conversionId, open.draftId);
   };
 
   const handleSaveDraft = async (content: string): Promise<ConversionDraft | null> => {
@@ -1257,8 +1332,8 @@ export default function KBPage() {
       setEditingDraft(updated);
       return updated;
     } catch (err: unknown) {
-      if (err instanceof APIError && err.statusCode === 409) {
-        await handleDraftConflict(err, conversionId, draftId);
+      if (isDraftRefusal(err)) {
+        await handleDraftRefusal(err, conversionId, draftId);
         return null;
       }
       // Anything else (a 422 on length, a network failure) is the editor's own
@@ -1278,19 +1353,15 @@ export default function KBPage() {
       await verifyDraft(conversionId, draftId);
       const outcome = await adoptServerConversion(conversionId, draftId);
       if (outcome === 'unavailable') {
-        // The verify itself succeeded. Mark the draft activated by hand so
-        // nothing offers to save or activate it again, and say what is stale.
-        const markVerified = (d: ConversionDraft): ConversionDraft =>
-          d.draft_id === draftId ? { ...d, status: 'verified' } : d;
-        setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map(markVerified) } : prev);
-        setEditingDraft((open) => (open ? markVerified(open) : open));
+        // The verify itself succeeded.
+        markDraftVerified(draftId);
         setActionError('Activated, but the latest version of the runbook could not be loaded; reopen it to see its final text.');
       }
       loadDrafts();
       setDocsRefreshKey((k) => k + 1);
     } catch (err: unknown) {
-      if (err instanceof APIError && err.statusCode === 409) {
-        await handleDraftConflict(err, conversionId, draftId);
+      if (isDraftRefusal(err)) {
+        await handleDraftRefusal(err, conversionId, draftId);
       } else {
         setActionError(err instanceof Error ? err.message : 'Verification failed');
       }
@@ -1350,6 +1421,7 @@ export default function KBPage() {
     setSelectedDrafts([]);
     loadDrafts();
     setDocsRefreshKey((k) => k + 1);
+    await resyncOpenDraft(selectedDrafts);
     setBatchActionInProgress(false);
   };
 
@@ -1363,6 +1435,7 @@ export default function KBPage() {
       }
       setSelectedDrafts([]);
       loadDrafts();
+      await resyncOpenDraft(selectedDrafts);
     } finally {
       setBatchActionInProgress(false);
     }
@@ -1408,6 +1481,9 @@ export default function KBPage() {
     loadDrafts();
     setDocsRefreshKey((k) => k + 1);
     setActiveTab('documents');
+    // The draft open in the editor may have been one of them (the banner stays
+    // up under an open editor, and an editor can be opened mid-batch).
+    await resyncOpenDraft(refs);
     setBatchActionInProgress(false);
   };
 
