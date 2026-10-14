@@ -37,14 +37,12 @@ function makeUser(overrides: Partial<UserProfile> = {}): UserProfile {
 function renderTable(users: UserProfile[], currentUserId?: string | null) {
   const onChangeRole = vi.fn();
   render(
-    <table>
-      <UserTable
-        users={users}
-        onChangeRole={onChangeRole}
-        onDeactivate={vi.fn()}
-        currentUserId={currentUserId}
-      />
-    </table>,
+    <UserTable
+      users={users}
+      onChangeRole={onChangeRole}
+      onDeactivate={vi.fn()}
+      currentUserId={currentUserId}
+    />,
   );
   return { onChangeRole };
 }
@@ -230,11 +228,7 @@ describe('UserTable deactivate offer', () => {
   it('hands the whole row to the caller, so the confirmation can describe it', () => {
     const onDeactivate = vi.fn();
     const row = makeUser({ account_kind: 'service', service_channel: 'slack' });
-    render(
-      <table>
-        <UserTable users={[row]} onChangeRole={vi.fn()} onDeactivate={onDeactivate} />
-      </table>,
-    );
+    render(<UserTable users={[row]} onChangeRole={vi.fn()} onDeactivate={onDeactivate} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
     expect(onDeactivate).toHaveBeenCalledWith(row);
@@ -275,5 +269,35 @@ describe('UserTable service accounts', () => {
 
     expect(screen.getByText('Person')).toBeTruthy();
     expect(screen.queryByText('Service account')).toBeNull();
+  });
+});
+
+/**
+ * The row is wide — whole enterprise ids, the role control, the Deactivate
+ * action — and a card that only clips cuts off the right-hand columns and the
+ * Deactivate action with no way to scroll to them (faultmaven-dashboard#228;
+ * `CaseTable` and the operator metadata table had the same defect, #222 and
+ * #220). happy-dom does no layout, so this pins the structure that makes the
+ * overflow scroll; the card around it (`overflow-hidden`, rounded corners) is
+ * pinned from the page in `UserManagementPage.test.tsx`.
+ */
+describe('UserTable — a narrow window', () => {
+  it('scrolls the table sideways, with the Deactivate action inside the scroller', () => {
+    renderTable([makeUser()]);
+
+    const scroller = screen.getByRole('table').parentElement;
+    expect(scroller).toHaveClass('overflow-x-auto');
+    expect(scroller).toContainElement(screen.getByRole('button', { name: 'Deactivate' }));
+  });
+
+  it('leaves the empty state outside any scroller', () => {
+    // It is a one-line message, not a table; a scroll container around it would
+    // only add a second scroll surface.
+    const { container } = render(
+      <UserTable users={[]} onChangeRole={vi.fn()} onDeactivate={vi.fn()} />,
+    );
+
+    expect(screen.getByText('No users found.')).toBeInTheDocument();
+    expect(container.querySelector('.overflow-x-auto')).toBeNull();
   });
 });

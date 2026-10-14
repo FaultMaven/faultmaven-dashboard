@@ -44,6 +44,18 @@ Paginated case table with state / team / creation-date / search filters. Search
 matches title and case ID via `POST /cases/search`. Renders rows via the shared
 `CaseTable` component.
 
+- **Table cards scroll sideways, they never clip** (#220, #222, #228). Every
+  `<table>` under `src/` is `CaseTable`, `AdminCaseMetadataTable` or
+  `UserTable`, and each one's card keeps `overflow-hidden` (the header band
+  stays inside its rounded corners) with ONLY the `<table>` inside an inner
+  `overflow-x-auto` div; the loading and empty states are not tables and stay
+  outside it. A card that only clips cuts off the right-hand columns and row
+  actions (Open content, Deactivate) with no way to reach them, and the page's
+  max-width container clips a wide table even on a wide window. A new table
+  follows the same shape. Bound by `src/test/components/CaseTable.test.tsx`,
+  `src/test/pages/AdminCaseListPage.test.tsx`,
+  `src/test/components/UserTable.test.tsx` and, for `UserTable`'s card (which
+  lives on the page), `src/test/pages/UserManagementPage.test.tsx`.
 - **Every case the user can READ** (ADR-020 D8): their own and those shared
   with their teams. `listCases` sends no `access` (the server's default is
   `read`) and `searchCases` writes `access: 'read'` out. `access=write` — the
@@ -390,18 +402,12 @@ state/source filters only.
   their absent-means-creator rule (absent on `CaseSummary` = pre-13.2.0, when
   only the creator wrote) mislabels every handed-on case on a 13.2/13.3 core,
   which drives but omits the field from this row. Whole ids make the row wide,
-  so the table scrolls sideways inside its card (`overflow-x-auto`; the card
-  keeps `overflow-hidden` for its rounded corners) — clipped, the right-hand
-  "Open content" link was unreachable below ~1000px. `CaseTable` follows the
-  same rule (#222): only its `<table>` sits in the `overflow-x-auto` div, the
-  loading and empty states stay outside it, and the card keeps `overflow-hidden`,
-  so every column and row action is reachable at any window width on
-  `CaseListPage` and on this page's `full` arm (pinned in
-  `src/test/components/CaseTable.test.tsx`). This table, not
-  `CaseTable`, is the operator's real surface — cloud is the only deployment
-  that reaches the page and it serves `metadata`; `full` renders only in the
-  degraded window before deployment detection lands — so an operator
-  affordance belongs here. Under
+  so `AdminCaseMetadataTable` scrolls sideways per the table-card rule above —
+  clipped, the right-hand "Open content" link was unreachable below ~1000px.
+  `AdminCaseMetadataTable`, not `CaseTable`, is the operator's real surface —
+  cloud is the only deployment that reaches the page and it serves `metadata`;
+  `full` renders only in the degraded window before deployment detection
+  lands — so an operator affordance belongs here. Under
   `TENANT_PROVIDER=multi` the metadata view spans every enterprise (contract
   9.1.0), so it carries an **Enterprise** column (the whole id, never a
   prefix). If the server cannot read across enterprises it fails closed with a

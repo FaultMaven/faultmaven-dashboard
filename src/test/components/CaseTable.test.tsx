@@ -146,9 +146,9 @@ describe('CaseTable — a narrow window', () => {
    * #220). jsdom/happy-dom do no layout, so this pins the structure that makes
    * the overflow scroll; the width it takes was measured in Chromium.
    *
-   * The invariant: every column and row action is INSIDE the scroller, and the
-   * card around the scroller keeps `overflow-hidden` so the header band stays
-   * inside its rounded corners.
+   * What holds the invariant (every column and row action reachable): the
+   * table's parent scrolls, and the card around that scroller keeps
+   * `overflow-hidden` so the header band stays inside its rounded corners.
    */
   it('scrolls the table sideways rather than clipping its right-hand columns', () => {
     render(
@@ -165,13 +165,7 @@ describe('CaseTable — a narrow window', () => {
     const scroller = screen.getByRole('table').parentElement;
     expect(scroller).toHaveClass('overflow-x-auto');
 
-    // The right-most header cell is the (unlabelled) action column; the date
-    // column sits just before it. Both, and the row action itself, must live
-    // inside the scroller.
-    const headers = screen.getAllByRole('columnheader');
-    expect(headers).toHaveLength(7);
-    expect(scroller).toContainElement(headers[headers.length - 1]);
-    expect(scroller).toContainElement(screen.getByRole('columnheader', { name: 'Last Activity' }));
+    // The row action, the right-most thing in the row, is inside the scroller.
     expect(scroller).toContainElement(screen.getByRole('button', { name: 'Archive' }));
 
     // The card keeps `overflow-hidden` (rounded corners) and its own shape.
@@ -179,14 +173,11 @@ describe('CaseTable — a narrow window', () => {
     expect(card).toHaveClass('overflow-hidden', 'rounded-fm-card');
   });
 
-  it('scrolls without the action column too — the date column is then the last one', () => {
+  it('scrolls without the action column too', () => {
     renderTable(LAST_ACTIVITY_COLUMN);
 
     const scroller = screen.getByRole('table').parentElement;
     expect(scroller).toHaveClass('overflow-x-auto');
-    const headers = screen.getAllByRole('columnheader');
-    expect(scroller).toContainElement(headers[headers.length - 1]);
-    expect(headers[headers.length - 1]).toHaveTextContent('Last Activity');
     expect(scroller?.parentElement).toHaveClass('overflow-hidden');
   });
 
