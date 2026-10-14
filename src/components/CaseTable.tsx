@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CaseStateBadge } from './CaseStateBadge';
 import { CaseStageCell } from './CaseStageCell';
@@ -12,8 +11,6 @@ import type { CaseDateColumn } from '../lib/cases/dateColumn';
 interface CaseTableProps {
   cases: CaseSummary[];
   loading: boolean;
-  /** Optional trailing action cell per row (e.g. the Archive control). */
-  renderActions?: (c: CaseSummary) => ReactNode;
   /** team_id → name for the team-share badge (ADR-013 §D4). Omit where team
    *  sharing is off; the badge then renders nothing (cases carry no team ids). */
   teamsById?: Map<string, string>;
@@ -50,8 +47,8 @@ interface CaseTableProps {
 }
 
 /**
- * Shared case list table (Title / Creator / Driver / State / Stage / date /
- * [actions]). Used by both the per-user `CaseListPage` and the cross-tenant
+ * Shared case list table (Title / Creator / Driver / State / Stage / date).
+ * Used by both the per-user `CaseListPage` and the cross-tenant
  * `AdminCaseListPage` so the two never drift.
  *
  * CREATOR AND DRIVER ON EVERY ROW (ADR-020 D5). The list holds every case the
@@ -74,7 +71,6 @@ interface CaseTableProps {
 export function CaseTable({
   cases,
   loading,
-  renderActions,
   teamsById,
   caseHref = (c) => `/cases/${c.case_id}`,
   dateColumn,
@@ -99,7 +95,6 @@ export function CaseTable({
               <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
                 {dateColumn.label}
               </th>
-              {renderActions && <th className="px-4 py-3"></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-fm-border">
@@ -145,7 +140,6 @@ export function CaseTable({
                 <td className="px-4 py-3 text-fm-text-tertiary">
                   {new Date(c[dateColumn.field]).toLocaleDateString()}
                 </td>
-                {renderActions && <td className="px-4 py-3 text-right">{renderActions(c)}</td>}
               </tr>
               );
             })}
