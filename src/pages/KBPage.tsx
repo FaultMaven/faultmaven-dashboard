@@ -40,6 +40,7 @@ import { RUNBOOK_SEVERITIES } from '../lib/knowledge/runbookVocabulary';
 import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
+import { APIError } from '../lib/knowledge/errors';
 
 const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -728,6 +729,8 @@ interface OverlayPanelProps {
   onManualCreate: (data: RunbookCreateInput) => Promise<void>;
   // Results/Editor
   editingDraft: ConversionDraft | null;
+  /** Bumped whenever the page replaces the open draft with the server's copy. */
+  editorSync: number;
   saving: boolean;
   onEdit: (draft: ConversionDraft) => void;
   onSave: (content: string) => Promise<ConversionDraft | null>;
@@ -892,6 +895,12 @@ function OverlayPanel(props: OverlayPanelProps) {
     return (
       <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
         <DraftEditor
+          // The editor seeds its text from `draft` once. A new key remounts it
+          // on a new server state: another draft, a new status (activated), or
+          // `editorSync` (the page took the server's copy after a verify or a
+          // 409). A save the editor made itself changes none of these, so its
+          // caret and scroll survive it.
+          key={`${props.editingDraft.draft_id}:${props.editingDraft.status}:${props.editorSync}`}
           draft={props.editingDraft}
           onSave={props.onSave}
           onVerify={() => props.onVerify(props.editingDraft!)}
@@ -977,6 +986,7 @@ export default function KBPage() {
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
   const [conversion, setConversion] = useState<ConversionResponse | null>(null);
   const [editingDraft, setEditingDraft] = useState<ConversionDraft | null>(null);
+  const [editorSync, setEditorSync] = useState(0);
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState<ConversionErrorInfo | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1179,31 +1189,111 @@ export default function KBPage() {
     setOverlayMode('editor');
   };
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  /**
+   * Replace what the page holds of a conversion with the server's copy, and the
+   * open editor's draft with it.
+   *
+   * A verify rewrites the draft's text server-side (frontmatter `status:
+   * verified`, `verified_by`), and a 409 means the draft is not what this page
+   * last saw, so after either the copy in hand is stale in more than its
+   * status. Patching a field locally would leave the rest of it wrong.
+   *
+   * `gone`: the server no longer serves the draft (a discarded draft is not
+   * listed), so there is nothing to edit; the editor is closed. `unavailable`:
+   * the refetch itself failed, and the page still holds the old copy.
+   */
+  const adoptServerConversion = async (
+    conversionId: string,
+    draftId: string,
+  ): Promise<'adopted' | 'gone' | 'unavailable'> => {
+    let fresh: ConversionResponse;
+    try {
+      fresh = await getConversion(conversionId);
+    } catch {
+      return 'unavailable';
+    }
+    setConversion(fresh);
+    const serverDraft = fresh.drafts.find((d) => d.draft_id === draftId);
+    if (serverDraft) {
+      setEditingDraft((open) => (open && open.draft_id === draftId ? serverDraft : open));
+      setEditorSync((n) => n + 1);
+      return 'adopted';
+    }
+    if (editingDraft?.draft_id === draftId) {
+      setEditingDraft(null);
+      if (fresh.drafts.length > 0) setOverlayMode('results');
+      else closeOverlay();
+    }
+    return 'gone';
+  };
+
+  /**
+   * ANY 409 from a draft save or verify (`already_verified`,
+   * `changed_during_verification`, `discarded`, `unexpected_state`) means the
+   * server's draft is not the one on screen. Show the server's draft, and keep
+   * the server's sentence on screen with it.
+   */
+  const handleDraftConflict = async (err: APIError, conversionId: string, draftId: string) => {
+    const outcome = await adoptServerConversion(conversionId, draftId);
+    loadDrafts();
+    setActionError(
+      outcome === 'unavailable'
+        ? `${err.message} (The latest version could not be loaded; reopen the draft to see it.)`
+        : err.message,
+    );
+  };
+
   const handleSaveDraft = async (content: string): Promise<ConversionDraft | null> => {
     if (!conversion || !editingDraft) return null;
+    const conversionId = conversion.conversion_id;
+    const draftId = editingDraft.draft_id;
+    setActionError(null);
     setSaving(true);
     try {
-      const updated = await updateDraft(conversion.conversion_id, editingDraft.draft_id, content);
+      const updated = await updateDraft(conversionId, draftId, content);
       setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map((d) => d.draft_id === updated.draft_id ? updated : d) } : prev);
       setEditingDraft(updated);
       return updated;
+    } catch (err: unknown) {
+      if (err instanceof APIError && err.statusCode === 409) {
+        await handleDraftConflict(err, conversionId, draftId);
+        return null;
+      }
+      // Anything else (a 422 on length, a network failure) is the editor's own
+      // inline save error; the draft on screen is still the server's.
+      throw err;
     } finally {
       setSaving(false);
     }
   };
 
-  const [actionError, setActionError] = useState<string | null>(null);
-
   const handleVerifyConfirmed = async () => {
     if (!conversion || !confirmVerify) return;
+    const conversionId = conversion.conversion_id;
+    const draftId = confirmVerify.draft_id;
     setActionError(null);
     try {
-      await verifyDraft(conversion.conversion_id, confirmVerify.draft_id);
-      setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map((d) => d.draft_id === confirmVerify.draft_id ? { ...d, status: 'verified' as const } : d) } : prev);
+      await verifyDraft(conversionId, draftId);
+      const outcome = await adoptServerConversion(conversionId, draftId);
+      if (outcome === 'unavailable') {
+        // The verify itself succeeded. Mark the draft activated by hand so
+        // nothing offers to save or activate it again, and say what is stale.
+        const markVerified = (d: ConversionDraft): ConversionDraft =>
+          d.draft_id === draftId ? { ...d, status: 'verified' } : d;
+        setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map(markVerified) } : prev);
+        setEditingDraft((open) => (open ? markVerified(open) : open));
+        setActionError('Activated, but the latest version of the runbook could not be loaded; reopen it to see its final text.');
+      }
       loadDrafts();
       setDocsRefreshKey((k) => k + 1);
     } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Verification failed');
+      if (err instanceof APIError && err.statusCode === 409) {
+        await handleDraftConflict(err, conversionId, draftId);
+      } else {
+        setActionError(err instanceof Error ? err.message : 'Verification failed');
+      }
     } finally {
       setConfirmVerify(null);
     }
@@ -1429,6 +1519,7 @@ export default function KBPage() {
           manualError={manualError}
           onManualCreate={handleManualCreate}
           editingDraft={editingDraft}
+          editorSync={editorSync}
           saving={saving}
           onEdit={handleEdit}
           onSave={handleSaveDraft}
