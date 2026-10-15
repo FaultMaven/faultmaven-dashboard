@@ -69,8 +69,44 @@ export interface ConversionDraft {
   validation: ValidationResult;
   quality_score: QualityScore;
   content_preview: string;
-  content: string | null;
+  /**
+   * The draft's full text. Always a string: since core 14.1.0 the text is the
+   * draft row's own column (faultmaven#1950), the same on every replica, so no
+   * response carries `null`.
+   */
+  content: string;
   quality_warning: string | null;
+}
+
+/**
+ * The bounds core enforces on a draft's text: `DraftUpdateRequest.content`
+ * (`min_length=100`, `max_length=DRAFT_CONTENT_MAX_CHARS` = 100,000) in
+ * faultmaven `modules/knowledge/domain/models/conversion.py` and
+ * `modules/knowledge/draft_content.py`. The generated types carry no numeric
+ * constraints, so the pair is stated here, once, and the editor reads it from
+ * here. A save outside the bounds is a 422 whose message names neither the
+ * field nor the limit, which is why the editor states them before the user
+ * hits them.
+ */
+export const DRAFT_CONTENT_MIN_CHARS = 100;
+export const DRAFT_CONTENT_MAX_CHARS = 100_000;
+
+/**
+ * A text's length the way core counts it: Python `len`, i.e. Unicode code
+ * points. `String.length` counts UTF-16 units, so one emoji would count as two
+ * and the editor would refuse a text the server accepts.
+ */
+export function countDraftCharacters(text: string): number {
+  let count = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const unit = text.charCodeAt(i);
+    // The low half of a surrogate pair belongs to the high half just counted.
+    const isLowSurrogate = unit >= 0xdc00 && unit <= 0xdfff;
+    const followsHigh =
+      i > 0 && text.charCodeAt(i - 1) >= 0xd800 && text.charCodeAt(i - 1) <= 0xdbff;
+    if (!(isLowSurrogate && followsHigh)) count += 1;
+  }
+  return count;
 }
 
 export interface ConversionResponse {
@@ -348,7 +384,10 @@ export interface ScanResult {
 }
 
 /**
- * Scan data/knowledge/ for runbook files not tracked in the database.
+ * Import runbook files placed by hand in `data/knowledge/` as drafts. The scan
+ * is STANDALONE-ONLY (faultmaven#1950): a multi-tenant deployment answers 422
+ * "This deployment has no runbook directory; upload or convert instead", which
+ * arrives as the `APIError` message. It never changes an existing draft.
  */
 export async function scanForRunbooks(): Promise<ScanResult> {
   const response = await makeAuthenticatedRequest(`${CONVERT_BASE}/scan`, {

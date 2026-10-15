@@ -109,6 +109,21 @@ describe('UserManagementPage — backend-real admin user shape', () => {
     mockListUsers.mockResolvedValue(listResponse);
   });
 
+  it("keeps the table's card `overflow-hidden` around a sideways scroller", async () => {
+    // The row is wide, so `UserTable` scrolls inside this card (#228). The card
+    // keeps `overflow-hidden` so the header band stays inside its rounded
+    // corners. happy-dom does no layout, so this pins the classes; the width it
+    // takes was measured in Chromium.
+    await act(async () => {
+      renderPage();
+    });
+
+    await waitFor(() => screen.getByText('Ada Admin'));
+    const scroller = screen.getByRole('table').parentElement;
+    expect(scroller).toHaveClass('overflow-x-auto');
+    expect(scroller?.parentElement).toHaveClass('overflow-hidden', 'rounded-fm-card');
+  });
+
   it('shows the real user count from `total`', async () => {
     await act(async () => {
       renderPage();

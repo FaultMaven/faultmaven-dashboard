@@ -84,67 +84,75 @@ export function CaseTable({
           <p className="text-fm-text-tertiary text-sm">No cases found.</p>
         </div>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="bg-fm-elevated border-b border-fm-border">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Title</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Creator</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Driver</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
-              <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
-                {dateColumn.label}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-fm-border">
-            {cases.map((c) => {
-              const parties = partyLabels(c);
-              return (
-              <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Link
-                      to={caseHref(c)}
-                      className="font-medium text-fm-text-primary hover:text-fm-accent transition-colors"
-                    >
-                      {c.title || 'Untitled Case'}
-                    </Link>
-                    <SourceBadge source={c.source} />
-                    <TeamShareBadge teamIds={c.shared_team_ids} teamsById={teamsById} />
-                  </div>
-                  {c.description && (
-                    <p className="text-xs text-fm-text-tertiary mt-0.5 line-clamp-1">{c.description}</p>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-creator">
-                  <CasePersonName label={parties.creator} />
-                </td>
-                <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-driver">
-                  <CasePersonName label={parties.driver} />
-                </td>
-                <td className="px-4 py-3">
-                  <CaseStateBadge state={c.state} />
-                </td>
-                <td className="px-4 py-3">
-                  <CaseStageCell
-                    state={c.state}
-                    stage={c.stage}
-                    turnsWithoutProgress={c.turns_without_progress}
-                  />
-                </td>
-                {/* The SAME `dateColumn` the header above read, so the two
-                    cannot name different dates. Formatting is unchanged:
-                    `toLocaleDateString()` in the viewer's own timezone, with no
-                    guard — both keys are required on `CaseSummary`. */}
-                <td className="px-4 py-3 text-fm-text-tertiary">
-                  {new Date(c[dateColumn.field]).toLocaleDateString()}
-                </td>
+        // The row is wide (Title with its badges, Creator, Driver, State, Stage,
+        // the date), so on a narrow window it scrolls inside the card rather
+        // than clipping the right-hand columns. The card keeps `overflow-hidden`
+        // so the header band stays inside its rounded corners
+        // (faultmaven-dashboard#222; the operator metadata table does the same,
+        // #220).
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-fm-elevated border-b border-fm-border">
+              <tr>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Title</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Creator</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Driver</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">State</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">Stage</th>
+                <th className="text-left px-4 py-3 font-medium text-fm-text-secondary">
+                  {dateColumn.label}
+                </th>
               </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-fm-border">
+              {cases.map((c) => {
+                const parties = partyLabels(c);
+                return (
+                <tr key={c.case_id} className="hover:bg-fm-elevated/50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        to={caseHref(c)}
+                        className="font-medium text-fm-text-primary hover:text-fm-accent transition-colors"
+                      >
+                        {c.title || 'Untitled Case'}
+                      </Link>
+                      <SourceBadge source={c.source} />
+                      <TeamShareBadge teamIds={c.shared_team_ids} teamsById={teamsById} />
+                    </div>
+                    {c.description && (
+                      <p className="text-xs text-fm-text-tertiary mt-0.5 line-clamp-1">{c.description}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-creator">
+                    <CasePersonName label={parties.creator} />
+                  </td>
+                  <td className="px-4 py-3 text-fm-text-secondary" data-testid="case-driver">
+                    <CasePersonName label={parties.driver} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <CaseStateBadge state={c.state} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <CaseStageCell
+                      state={c.state}
+                      stage={c.stage}
+                      turnsWithoutProgress={c.turns_without_progress}
+                    />
+                  </td>
+                  {/* The SAME `dateColumn` the header above read, so the two
+                      cannot name different dates. Formatting is unchanged:
+                      `toLocaleDateString()` in the viewer's own timezone, with no
+                      guard — both keys are required on `CaseSummary`. */}
+                  <td className="px-4 py-3 text-fm-text-tertiary">
+                    {new Date(c[dateColumn.field]).toLocaleDateString()}
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
