@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import type { ConversionDraft, ValidationResult, QualityScore } from '../lib/knowledge/conversion';
+import React, { useId, useState } from 'react';
+import {
+  DRAFT_CONTENT_MAX_CHARS,
+  DRAFT_CONTENT_MIN_CHARS,
+  countDraftCharacters,
+  type ConversionDraft,
+  type ValidationResult,
+  type QualityScore,
+} from '../lib/knowledge/conversion';
 
 interface DraftEditorProps {
   draft: ConversionDraft;
@@ -9,26 +16,54 @@ interface DraftEditorProps {
   saving: boolean;
 }
 
+/**
+ * Local state is seeded ONCE from `draft`, so a parent that learns the server's
+ * draft is different (after an activation, or a 409 from save or verify) must
+ * remount this component with a new `key` — `KBPage`'s `OverlayPanel` does, from
+ * the draft's id, its status and a counter bumped on every server resync. An
+ * editor left mounted would keep showing, and offering to save, text the server
+ * no longer holds.
+ */
 export function DraftEditor({ draft, onSave, onVerify, onCancel, saving }: DraftEditorProps) {
-  const [content, setContent] = useState(draft.content || '');
+  const [content, setContent] = useState(draft.content);
   const [validation, setValidation] = useState<ValidationResult>(draft.validation);
   const [quality, setQuality] = useState<QualityScore>(draft.quality_score);
-  const [dirty, setDirty] = useState(false);
+  // The text the server holds as of the last successful save (or the seed).
+  // "Dirty" is the textarea differing from it, not a flag set by a keystroke
+  // and cleared by a save: typing while a save is in flight must stay dirty, or
+  // Activate would be offered over text that was never sent.
+  const [savedContent, setSavedContent] = useState(draft.content);
+  const dirty = content !== savedContent;
   const [saveError, setSaveError] = useState<string | null>(null);
+  const counterId = useId();
+
+  // Only a draft in the `draft` state can be saved: core answers 409 for a
+  // verified one. The text of any other state is shown, not offered for edit.
+  const editable = draft.status === 'draft';
+  const length = countDraftCharacters(content);
+  // Why Save is refused on length alone, stated beside the counter. `maxLength`
+  // on the textarea is not used: it truncates a paste silently.
+  const lengthProblem =
+    length > DRAFT_CONTENT_MAX_CHARS
+      ? `${(length - DRAFT_CONTENT_MAX_CHARS).toLocaleString('en-US')} ${length - DRAFT_CONTENT_MAX_CHARS === 1 ? 'character' : 'characters'} over the limit. Shorten the runbook to save it.`
+      : length < DRAFT_CONTENT_MIN_CHARS
+        ? `Too short to save: a runbook needs at least ${DRAFT_CONTENT_MIN_CHARS} characters.`
+        : null;
+  const saveBlockedReason = editable ? lengthProblem : null;
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
-    setDirty(true);
   };
 
   const handleSave = async () => {
     setSaveError(null);
+    const sent = content;
     try {
-      const updated = await onSave(content);
+      const updated = await onSave(sent);
       if (updated) {
         setValidation(updated.validation);
         setQuality(updated.quality_score);
-        setDirty(false);
+        setSavedContent(sent);
       }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
@@ -91,9 +126,23 @@ export function DraftEditor({ draft, onSave, onVerify, onCancel, saving }: Draft
       <textarea
         value={content}
         onChange={handleContentChange}
+        readOnly={!editable}
+        aria-label="Runbook content"
+        aria-describedby={counterId}
         className="w-full h-[500px] px-4 py-3 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary font-mono text-sm leading-relaxed resize-y focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors"
         spellCheck={false}
       />
+
+      {/* Length: the bounds are stated before the user reaches them */}
+      <div id={counterId} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className={saveBlockedReason ? 'text-fm-critical font-medium' : 'text-fm-text-tertiary'}>
+          {length.toLocaleString('en-US')} / {DRAFT_CONTENT_MAX_CHARS.toLocaleString('en-US')} characters
+        </span>
+        {saveBlockedReason && <span className="text-fm-critical">{saveBlockedReason}</span>}
+        {draft.status === 'verified' && (
+          <span className="text-fm-text-tertiary">This runbook is activated, so its text can no longer be edited.</span>
+        )}
+      </div>
 
       {/* Save error */}
       {saveError && (
@@ -114,7 +163,8 @@ export function DraftEditor({ draft, onSave, onVerify, onCancel, saving }: Draft
       <div className="flex gap-3 pt-2">
         <button
           onClick={handleSave}
-          disabled={saving || !dirty}
+          disabled={saving || !dirty || !editable || saveBlockedReason !== null}
+          title={saveBlockedReason ?? undefined}
           className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? 'Saving...' : 'Save Draft'}

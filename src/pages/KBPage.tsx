@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
 import { logoutAuth, uploadDocument } from '../lib/api';
@@ -17,6 +17,7 @@ import {
   ConversionAPIError,
 } from '../lib/knowledge/conversion';
 import type {
+  ScanResult,
   ConversionResponse,
   ConversionDraft,
   ConversionErrorInfo,
@@ -39,6 +40,7 @@ import { RUNBOOK_SEVERITIES } from '../lib/knowledge/runbookVocabulary';
 import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
+import { APIError, NetworkError } from '../lib/knowledge/errors';
 
 const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -431,6 +433,44 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
 // Drafts Tab Content
 // =============================================================================
 
+/** What the scan banner shows: the server's answer, styled by what it was. */
+interface ScanOutcome {
+  tone: 'success' | 'warning' | 'error';
+  text: string;
+}
+
+const SCAN_TONE_CLASSES: Record<ScanOutcome['tone'], string> = {
+  success: 'text-fm-success bg-fm-success-bg border-fm-success-border',
+  warning: 'text-fm-warning bg-fm-warning-bg border-fm-warning-border',
+  error: 'text-fm-critical bg-fm-critical-bg border-fm-critical-border',
+};
+
+/** The banner for a scan that answered: what was imported, left alone, or refused. */
+function describeScan(result: ScanResult): ScanOutcome {
+  const plural = (n: number, noun: string) => `${n} ${noun}${n !== 1 ? 's' : ''}`;
+  // The body is read off the wire, not validated: a 2xx that leaves out a field
+  // (a proxy's own answer, a core that changes the shape) must not throw here.
+  const discovered = result.discovered ?? 0;
+  const skipped = result.skipped ?? 0;
+  const errors = Array.isArray(result.errors) ? result.errors : [];
+  const parts: string[] = [];
+  if (discovered > 0) {
+    parts.push(`Imported ${plural(discovered, 'runbook file')} as ${discovered === 1 ? 'a draft' : 'drafts'}`);
+  }
+  if (skipped > 0) {
+    parts.push(`${skipped} skipped (already tracked or not permitted)`);
+  }
+  if (errors.length > 0) {
+    // Each entry is the server's own sentence about one file ("name: too short …").
+    const [first, ...rest] = errors;
+    parts.push(
+      `${plural(errors.length, 'file')} could not be imported (${first}${rest.length > 0 ? `; and ${rest.length} more` : ''})`,
+    );
+  }
+  if (parts.length === 0) return { tone: 'success', text: 'No new runbook files found.' };
+  return { tone: errors.length > 0 ? 'warning' : 'success', text: parts.join('. ') + '.' };
+}
+
 interface DraftsTabProps {
   drafts: DraftSummary[];
   /** Active case-id filter (e.g. from deep-link), or null. */
@@ -440,10 +480,12 @@ interface DraftsTabProps {
   loading: boolean;
   onOpen: (conversionId: string) => void;
   onRefresh: () => void;
+  /** Whether this deployment can import a runbook directory (standalone only). */
+  scanAvailable: boolean;
   onScan: () => Promise<void>;
   onDismissScan: () => void;
   scanning: boolean;
-  scanResult: string | null;
+  scanResult: ScanOutcome | null;
   selectedDrafts: Array<{ conversion_id: string; draft_id: string }>;
   onSelectionChange: (selected: Array<{ conversion_id: string; draft_id: string }>) => void;
   onBatchVerify: () => void;
@@ -451,7 +493,7 @@ interface DraftsTabProps {
   batchActionInProgress: boolean;
 }
 
-function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
+function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, scanAvailable, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
 
   const gradeColor: Record<string, string> = {
@@ -573,23 +615,28 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, onS
             </>
           )}
         </div>
-        <button
-          onClick={onScan}
-          disabled={scanning}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors disabled:opacity-50"
-          title="Scan data/knowledge/ for runbook files not yet tracked"
-        >
-          <svg className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          {scanning ? 'Scanning...' : 'Scan for runbooks'}
-        </button>
+        {scanAvailable && (
+          <button
+            onClick={onScan}
+            disabled={scanning}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-fm-text-secondary border border-fm-border rounded-fm-btn hover:bg-fm-elevated transition-colors disabled:opacity-50"
+            title="Import runbook files placed in data/knowledge/ as drafts. A draft that already exists is never changed."
+          >
+            <svg className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {scanning ? 'Scanning...' : 'Scan for runbooks'}
+          </button>
+        )}
       </div>
 
       {scanResult && (
-        <div className="mb-4 text-sm text-fm-success bg-fm-success-bg border border-fm-success-border rounded-fm-btn p-3 flex items-center justify-between">
-          <span>{scanResult}</span>
-          <button onClick={() => onDismissScan()} className="text-fm-success hover:brightness-75 ml-3" aria-label="Dismiss">
+        <div
+          role={scanResult.tone === 'error' ? 'alert' : 'status'}
+          className={`mb-4 text-sm rounded-fm-btn p-3 flex items-center justify-between border ${SCAN_TONE_CLASSES[scanResult.tone]}`}
+        >
+          <span>{scanResult.text}</span>
+          <button onClick={() => onDismissScan()} className="hover:brightness-75 ml-3" aria-label="Dismiss">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -640,7 +687,13 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, onS
         <div className="py-10 text-center">
           <p className="text-fm-text-secondary mb-1">No draft runbooks yet.</p>
           <p className="text-sm text-fm-text-tertiary">
-            Use <strong>+ New</strong> to create runbooks, or <strong>Scan for runbooks</strong> to discover files in data/knowledge/.
+            Use <strong>+ New</strong> to create runbooks
+            {scanAvailable && (
+              <>
+                , or <strong>Scan for runbooks</strong> to import files you placed in data/knowledge/ as drafts
+              </>
+            )}
+            .
           </p>
         </div>
       ) : pendingDrafts.length === 0 ? (
@@ -681,6 +734,8 @@ interface OverlayPanelProps {
   onManualCreate: (data: RunbookCreateInput) => Promise<void>;
   // Results/Editor
   editingDraft: ConversionDraft | null;
+  /** Bumped whenever the page replaces the open draft with the server's copy. */
+  editorSync: number;
   saving: boolean;
   onEdit: (draft: ConversionDraft) => void;
   onSave: (content: string) => Promise<ConversionDraft | null>;
@@ -845,6 +900,12 @@ function OverlayPanel(props: OverlayPanelProps) {
     return (
       <div className="bg-fm-surface rounded-fm-card border border-fm-border p-6 mb-6">
         <DraftEditor
+          // The editor seeds its text from `draft` once. A new key remounts it
+          // on a new server state: another draft, a new status (activated), or
+          // `editorSync` (the page took the server's copy after a verify or a
+          // 409). A save the editor made itself changes none of these, so its
+          // caret and scroll survive it.
+          key={`${props.editingDraft.draft_id}:${props.editingDraft.status}:${props.editorSync}`}
           draft={props.editingDraft}
           onSave={props.onSave}
           onVerify={() => props.onVerify(props.editingDraft!)}
@@ -862,6 +923,28 @@ function OverlayPanel(props: OverlayPanelProps) {
 // KBPage
 // =============================================================================
 
+/**
+ * A refusal that means the server's draft is not the one on screen.
+ *
+ * The wire shapes, read from core's conversion service:
+ * - SAVE: 409 `already_verified` when the draft was verified; **404 "Draft not
+ *   found"** when it was discarded before or during the save (or its job is
+ *   gone). A save never answers 409 `discarded` or `unexpected_state`.
+ * - VERIFY: 409 `already_verified`, `changed_during_verification` or
+ *   `discarded` (`unexpected_state` exists but no draft status reaches it), and
+ *   404 for a draft or job that is not there.
+ * Every one of them is answered the same way: reload, and show the server's.
+ */
+function isDraftRefusal(err: unknown): err is APIError {
+  return err instanceof APIError && (err.statusCode === 409 || err.statusCode === 404);
+}
+
+/** The slug core puts in a 409 body's `conflict_reason`, when it is a string. */
+function conflictReason(err: APIError): string | null {
+  const reason = err.details?.conflict_reason;
+  return typeof reason === 'string' ? reason : null;
+}
+
 export default function KBPage() {
   // `isAdmin` comes from the context (the `platform_admin` role) rather than
   // from `role === 'platform_admin'`: `deriveRole` collapses every standalone
@@ -871,7 +954,17 @@ export default function KBPage() {
   // Authoring itself is NOT on the operator axis — every authenticated user can
   // create personal-scope runbooks. Global scope is gated by `canModifyDocument`
   // below and, authoritatively, by the backend.
-  const { isAdmin, authState, clearAuthState } = useAuth();
+  const { isAdmin, authState, clearAuthState, deployment } = useAuth();
+
+  // The scan imports runbook files placed by hand in the API's `data/knowledge/`
+  // directory, which only a standalone deployment has: on a multi-tenant one
+  // the replicas share no disk and core answers 422. No endpoint advertises
+  // tenancy, and `writePolicy.ts` rightly refuses to infer it from
+  // `deployment` — but this is not that question. It is "does this deployment
+  // have a hand-placed runbook directory worth scanning?", and standalone is
+  // exactly that (core guarantees standalone => single-tenant). `null` (not yet
+  // confirmed) offers nothing; the control appears once the deployment is known.
+  const scanAvailable = deployment === 'standalone';
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link
   // here. The ReportTab in case-detail links to ``/kb?tab=drafts&case=<id>``
@@ -920,6 +1013,7 @@ export default function KBPage() {
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
   const [conversion, setConversion] = useState<ConversionResponse | null>(null);
   const [editingDraft, setEditingDraft] = useState<ConversionDraft | null>(null);
+  const [editorSync, setEditorSync] = useState(0);
   const [converting, setConverting] = useState(false);
   const [convertError, setConvertError] = useState<ConversionErrorInfo | null>(null);
   const [saving, setSaving] = useState(false);
@@ -939,7 +1033,7 @@ export default function KBPage() {
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<ScanOutcome | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   // Multi-select state
@@ -970,13 +1064,14 @@ export default function KBPage() {
     try {
       const result = await scanForRunbooks();
       loadDrafts();
-      const parts: string[] = [];
-      if (result.discovered > 0) {
-        parts.push(`Discovered ${result.discovered} new runbook${result.discovered !== 1 ? 's' : ''}`);
-      }
-      setScanResult(parts.length > 0 ? parts.join('. ') + '.' : 'No new runbook files found.');
-    } catch {
-      setScanResult('Scan failed. Check that data/knowledge/ exists.');
+      setScanResult(describeScan(result));
+    } catch (err: unknown) {
+      // The server's own sentence (the 422 refusal, a 500's generic text) or the
+      // network's ("Could not reach the FaultMaven API at …"), never a guess at
+      // the cause. Any other Error is the page's own — a body that is not JSON
+      // ("Unexpected token '<' …") or a bug — and says nothing a user can act on.
+      const said = err instanceof APIError || err instanceof NetworkError ? err.message : '';
+      setScanResult({ tone: 'error', text: said || 'Scan failed.' });
     } finally {
       setScanning(false);
     }
@@ -1001,7 +1096,7 @@ export default function KBPage() {
   // owned by the server-side startup bootstrap (faultmaven/bootstrap/kb_init.py).
   // The page-mount scan used to mutate data (downgrade verified→draft on every
   // visit), which corrupted live KB state. Users who want to re-scan
-  // manually can use the explicit "Scan for runbooks" button.
+  // manually can use the explicit "Scan for runbooks" button (standalone only).
   useEffect(() => {
     setInitialLoadDone(true);
     loadDrafts();
@@ -1124,31 +1219,152 @@ export default function KBPage() {
     setOverlayMode('editor');
   };
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // The draft the editor is open on, as of the last commit. The batch handlers
+  // run for seconds across awaits, so a closure over `editingDraft` would be the
+  // one from the render that started them; the editor can be opened meanwhile.
+  const openDraftRef = useRef<{ conversionId: string; draftId: string } | null>(null);
+  useEffect(() => {
+    openDraftRef.current =
+      overlayMode === 'editor' && conversion && editingDraft
+        ? { conversionId: conversion.conversion_id, draftId: editingDraft.draft_id }
+        : null;
+  });
+
+  /**
+   * Replace what the page holds of a conversion with the server's copy, and the
+   * open editor's draft with it.
+   *
+   * A verify rewrites the draft's text server-side (frontmatter `status:
+   * verified`, `verified_by`), and a refusal means the draft is not what this
+   * page last saw, so after either the copy in hand is stale in more than its
+   * status. Patching a field locally would leave the rest of it wrong.
+   *
+   * `gone`: the server no longer serves the draft (a discarded draft is not
+   * listed) or the conversion (404), so there is nothing to edit; the editor is
+   * closed. `unavailable`: the refetch itself failed, and the page still holds
+   * the old copy.
+   */
+  const adoptServerConversion = async (
+    conversionId: string,
+    draftId: string,
+  ): Promise<'adopted' | 'gone' | 'unavailable'> => {
+    const editorIsOnIt = () => openDraftRef.current?.draftId === draftId;
+    let fresh: ConversionResponse;
+    try {
+      fresh = await getConversion(conversionId);
+    } catch (err: unknown) {
+      if (err instanceof APIError && err.statusCode === 404) {
+        if (editorIsOnIt()) {
+          setEditingDraft(null);
+          closeOverlay();
+        }
+        return 'gone';
+      }
+      return 'unavailable';
+    }
+    setConversion(fresh);
+    const serverDraft = fresh.drafts.find((d) => d.draft_id === draftId);
+    if (serverDraft) {
+      setEditingDraft((open) => (open && open.draft_id === draftId ? serverDraft : open));
+      setEditorSync((n) => n + 1);
+      return 'adopted';
+    }
+    if (editorIsOnIt()) {
+      setEditingDraft(null);
+      if (fresh.drafts.length > 0) setOverlayMode('results');
+      else closeOverlay();
+    }
+    return 'gone';
+  };
+
+  /**
+   * The server verified this draft and the page could not reload it: mark it
+   * activated by hand so nothing offers to save or activate it again. Its text
+   * stays the last one the page saw, which the notice beside it says.
+   */
+  const markDraftVerified = (draftId: string) => {
+    const mark = (d: ConversionDraft): ConversionDraft =>
+      d.draft_id === draftId ? { ...d, status: 'verified' } : d;
+    setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map(mark) } : prev);
+    setEditingDraft((open) => (open ? mark(open) : open));
+  };
+
+  /**
+   * A 409 or 404 from a draft save or verify (see `isDraftRefusal`) means the
+   * server's draft is not the one on screen. Show the server's draft, and keep
+   * the server's sentence on screen with it.
+   */
+  const handleDraftRefusal = async (err: APIError, conversionId: string, draftId: string) => {
+    const outcome = await adoptServerConversion(conversionId, draftId);
+    if (outcome === 'unavailable' && conflictReason(err) === 'already_verified') {
+      markDraftVerified(draftId);
+    }
+    loadDrafts();
+    setActionError(
+      outcome === 'unavailable'
+        ? `${err.message} (The latest version could not be loaded; reopen the draft to see it.)`
+        : err.message,
+    );
+  };
+
+  /**
+   * A batch just verified or discarded drafts the page may have open. The
+   * editor learns about it the way it learns about a refusal: by reloading.
+   */
+  const resyncOpenDraft = async (refs: Array<{ conversion_id: string; draft_id: string }>) => {
+    const open = openDraftRef.current;
+    if (!open) return;
+    if (!refs.some((r) => r.conversion_id === open.conversionId && r.draft_id === open.draftId)) return;
+    await adoptServerConversion(open.conversionId, open.draftId);
+  };
+
   const handleSaveDraft = async (content: string): Promise<ConversionDraft | null> => {
     if (!conversion || !editingDraft) return null;
+    const conversionId = conversion.conversion_id;
+    const draftId = editingDraft.draft_id;
+    setActionError(null);
     setSaving(true);
     try {
-      const updated = await updateDraft(conversion.conversion_id, editingDraft.draft_id, content);
+      const updated = await updateDraft(conversionId, draftId, content);
       setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map((d) => d.draft_id === updated.draft_id ? updated : d) } : prev);
       setEditingDraft(updated);
       return updated;
+    } catch (err: unknown) {
+      if (isDraftRefusal(err)) {
+        await handleDraftRefusal(err, conversionId, draftId);
+        return null;
+      }
+      // Anything else (a 422 on length, a network failure) is the editor's own
+      // inline save error; the draft on screen is still the server's.
+      throw err;
     } finally {
       setSaving(false);
     }
   };
 
-  const [actionError, setActionError] = useState<string | null>(null);
-
   const handleVerifyConfirmed = async () => {
     if (!conversion || !confirmVerify) return;
+    const conversionId = conversion.conversion_id;
+    const draftId = confirmVerify.draft_id;
     setActionError(null);
     try {
-      await verifyDraft(conversion.conversion_id, confirmVerify.draft_id);
-      setConversion((prev) => prev ? { ...prev, drafts: prev.drafts.map((d) => d.draft_id === confirmVerify.draft_id ? { ...d, status: 'verified' as const } : d) } : prev);
+      await verifyDraft(conversionId, draftId);
+      const outcome = await adoptServerConversion(conversionId, draftId);
+      if (outcome === 'unavailable') {
+        // The verify itself succeeded.
+        markDraftVerified(draftId);
+        setActionError('Activated, but the latest version of the runbook could not be loaded; reopen it to see its final text.');
+      }
       loadDrafts();
       setDocsRefreshKey((k) => k + 1);
     } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Verification failed');
+      if (isDraftRefusal(err)) {
+        await handleDraftRefusal(err, conversionId, draftId);
+      } else {
+        setActionError(err instanceof Error ? err.message : 'Verification failed');
+      }
     } finally {
       setConfirmVerify(null);
     }
@@ -1205,6 +1421,7 @@ export default function KBPage() {
     setSelectedDrafts([]);
     loadDrafts();
     setDocsRefreshKey((k) => k + 1);
+    await resyncOpenDraft(selectedDrafts);
     setBatchActionInProgress(false);
   };
 
@@ -1218,6 +1435,7 @@ export default function KBPage() {
       }
       setSelectedDrafts([]);
       loadDrafts();
+      await resyncOpenDraft(selectedDrafts);
     } finally {
       setBatchActionInProgress(false);
     }
@@ -1263,6 +1481,9 @@ export default function KBPage() {
     loadDrafts();
     setDocsRefreshKey((k) => k + 1);
     setActiveTab('documents');
+    // The draft open in the editor may have been one of them (the banner stays
+    // up under an open editor, and an editor can be opened mid-batch).
+    await resyncOpenDraft(refs);
     setBatchActionInProgress(false);
   };
 
@@ -1374,6 +1595,7 @@ export default function KBPage() {
           manualError={manualError}
           onManualCreate={handleManualCreate}
           editingDraft={editingDraft}
+          editorSync={editorSync}
           saving={saving}
           onEdit={handleEdit}
           onSave={handleSaveDraft}
@@ -1436,6 +1658,7 @@ export default function KBPage() {
                   loading={draftsLoading}
                   onOpen={handleOpenDraft}
                   onRefresh={loadDrafts}
+                  scanAvailable={scanAvailable}
                   onScan={handleScan}
                   onDismissScan={() => setScanResult(null)}
                   scanning={scanning}
