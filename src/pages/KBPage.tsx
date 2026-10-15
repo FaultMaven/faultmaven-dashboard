@@ -453,6 +453,8 @@ function describeScan(result: ScanResult): ScanOutcome {
   const discovered = result.discovered ?? 0;
   const skipped = result.skipped ?? 0;
   const errors = Array.isArray(result.errors) ? result.errors : [];
+  // Absent on a core older than faultmaven#1997: no notes.
+  const notes = Array.isArray(result.notes) ? result.notes : [];
   const parts: string[] = [];
   if (discovered > 0) {
     parts.push(`Imported ${plural(discovered, 'runbook file')} as ${discovered === 1 ? 'a draft' : 'drafts'}`);
@@ -466,6 +468,12 @@ function describeScan(result: ScanResult): ScanOutcome {
     parts.push(
       `${plural(errors.length, 'file')} could not be imported (${first}${rest.length > 0 ? `; and ${rest.length} more` : ''})`,
     );
+  }
+  if (notes.length > 0) {
+    // Informational: each entry is the server's own sentence about a file that WAS
+    // imported ("team_x/foo.md imported as personal: …"). It never changes the tone.
+    const [first, ...rest] = notes;
+    parts.push(`${first}${rest.length > 0 ? `; and ${rest.length} more` : ''}`);
   }
   if (parts.length === 0) return { tone: 'success', text: 'No new runbook files found.' };
   return { tone: errors.length > 0 ? 'warning' : 'success', text: parts.join('. ') + '.' };

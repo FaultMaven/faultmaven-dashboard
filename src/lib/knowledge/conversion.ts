@@ -373,6 +373,14 @@ export interface ScanResult {
   discovered: number;
   skipped: number;
   errors: string[];
+  /**
+   * One sentence per IMPORTED file whose requested scope could not be honoured
+   * (a `team_*` file imported as personal on a deployment with no teams,
+   * faultmaven#1986). Informational, unlike `errors`, which names files that
+   * were NOT imported. Optional: a core older than faultmaven#1997 omits it,
+   * and absent reads as none.
+   */
+  notes?: string[];
   drafts: Array<{
     draft_id: string;
     title: string;
