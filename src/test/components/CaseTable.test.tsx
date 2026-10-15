@@ -137,3 +137,67 @@ describe('CaseTable — the one date column', () => {
     expect(screen.queryByRole('columnheader', { name: other.label })).toBeNull();
   });
 });
+
+describe('CaseTable — a narrow window', () => {
+  /**
+   * The row is wide, and a card that only clips cuts off the right-hand
+   * columns and any row action there with no way to scroll to them
+   * (faultmaven-dashboard#222; the operator metadata table had the same defect,
+   * #220). jsdom/happy-dom do no layout, so this pins the structure that makes
+   * the overflow scroll; the width it takes was measured in Chromium.
+   *
+   * What holds the invariant (every column and row action reachable): the
+   * table's parent scrolls, and the card around that scroller keeps
+   * `overflow-hidden` so the header band stays inside its rounded corners.
+   */
+  it('scrolls the table sideways rather than clipping its right-hand columns', () => {
+    render(
+      <MemoryRouter>
+        <CaseTable
+          cases={[sampleCase]}
+          loading={false}
+          dateColumn={LAST_ACTIVITY_COLUMN}
+          renderActions={() => <button type="button">Archive</button>}
+        />
+      </MemoryRouter>,
+    );
+
+    const scroller = screen.getByRole('table').parentElement;
+    expect(scroller).toHaveClass('overflow-x-auto');
+
+    // The row action, the right-most thing in the row, is inside the scroller.
+    expect(scroller).toContainElement(screen.getByRole('button', { name: 'Archive' }));
+
+    // The card keeps `overflow-hidden` (rounded corners) and its own shape.
+    const card = scroller?.parentElement;
+    expect(card).toHaveClass('overflow-hidden', 'rounded-fm-card');
+  });
+
+  it('scrolls without the action column too', () => {
+    renderTable(LAST_ACTIVITY_COLUMN);
+
+    const scroller = screen.getByRole('table').parentElement;
+    expect(scroller).toHaveClass('overflow-x-auto');
+    expect(scroller?.parentElement).toHaveClass('overflow-hidden');
+  });
+
+  it('keeps the loading and empty states outside the scroller', () => {
+    // They are not tables; a scroll container around them would only add a
+    // second scroll surface to a one-line message.
+    const { container, rerender } = render(
+      <MemoryRouter>
+        <CaseTable cases={[]} loading={true} dateColumn={LAST_ACTIVITY_COLUMN} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Loading cases...')).toBeInTheDocument();
+    expect(container.querySelector('.overflow-x-auto')).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <CaseTable cases={[]} loading={false} dateColumn={LAST_ACTIVITY_COLUMN} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('No cases found.')).toBeInTheDocument();
+    expect(container.querySelector('.overflow-x-auto')).toBeNull();
+  });
+});
