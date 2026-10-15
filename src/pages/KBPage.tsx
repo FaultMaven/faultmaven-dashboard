@@ -453,6 +453,11 @@ function describeScan(result: ScanResult): ScanOutcome {
   const discovered = result.discovered ?? 0;
   const skipped = result.skipped ?? 0;
   const errors = Array.isArray(result.errors) ? result.errors : [];
+  // Absent on a core older than faultmaven#1997: no notes. Read off the wire like
+  // the rest, so an element that is not a non-blank string is dropped, not rendered.
+  const notes = Array.isArray(result.notes)
+    ? result.notes.filter((n): n is string => typeof n === 'string' && n.trim() !== '')
+    : [];
   const parts: string[] = [];
   if (discovered > 0) {
     parts.push(`Imported ${plural(discovered, 'runbook file')} as ${discovered === 1 ? 'a draft' : 'drafts'}`);
@@ -466,6 +471,12 @@ function describeScan(result: ScanResult): ScanOutcome {
     parts.push(
       `${plural(errors.length, 'file')} could not be imported (${first}${rest.length > 0 ? `; and ${rest.length} more` : ''})`,
     );
+  }
+  if (notes.length > 0) {
+    // Informational: each entry is the server's own sentence about a file that WAS
+    // imported ("team_x/foo.md imported as personal: …"). It never changes the tone.
+    const [first, ...rest] = notes;
+    parts.push(`${first}${rest.length > 0 ? ` (and ${rest.length} more like it)` : ''}`);
   }
   if (parts.length === 0) return { tone: 'success', text: 'No new runbook files found.' };
   return { tone: errors.length > 0 ? 'warning' : 'success', text: parts.join('. ') + '.' };
@@ -635,7 +646,9 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, sca
           role={scanResult.tone === 'error' ? 'alert' : 'status'}
           className={`mb-4 text-sm rounded-fm-btn p-3 flex items-center justify-between border ${SCAN_TONE_CLASSES[scanResult.tone]}`}
         >
-          <span>{scanResult.text}</span>
+          {/* min-w-0 + break-words: a deep path in a note or an error has no break opportunity,
+              and would otherwise push the dismiss button off-screen and scroll the page sideways. */}
+          <span className="min-w-0 break-words">{scanResult.text}</span>
           <button onClick={() => onDismissScan()} className="hover:brightness-75 ml-3" aria-label="Dismiss">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

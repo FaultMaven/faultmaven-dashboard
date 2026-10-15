@@ -1,4 +1,4 @@
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import KBPage from '../../pages/KBPage';
@@ -222,5 +222,129 @@ describe('KBPage Drafts tab — the scan banner shows what the server said', () 
     await clickScan();
 
     expect(screen.getByRole('status')).toHaveTextContent('No new runbook files found.');
+  });
+});
+
+describe("KBPage Drafts tab — the scan banner shows the scan's notes (faultmaven#1986)", () => {
+  const NOTE = 'team_x/foo.md imported as personal: this deployment has no teams to share it with';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listAllDrafts.mockResolvedValue([]);
+  });
+
+  async function scanAnswering(answer: Awaited<ReturnType<typeof conversion.scanForRunbooks>>) {
+    scanForRunbooks.mockResolvedValue(answer);
+    await renderDraftsTab('standalone');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Scan for runbooks/ }));
+    });
+    return screen.getByRole('status');
+  }
+
+  it('shows nothing extra when the body carries no notes (a core older than #1997)', async () => {
+    const banner = await scanAnswering({ discovered: 1, skipped: 0, errors: [], drafts: [] });
+
+    expect(banner.textContent).toBe('Imported 1 runbook file as a draft.');
+    expect(banner).not.toHaveTextContent('imported as personal');
+    expect(banner).not.toHaveTextContent('more');
+  });
+
+  it('shows nothing extra for an empty notes list', async () => {
+    const banner = await scanAnswering({ discovered: 1, skipped: 0, errors: [], notes: [], drafts: [] });
+
+    expect(banner.textContent).toBe('Imported 1 runbook file as a draft.');
+  });
+
+  it('shows a single note verbatim', async () => {
+    const banner = await scanAnswering({ discovered: 1, skipped: 0, errors: [], notes: [NOTE], drafts: [] });
+
+    expect(banner).toHaveTextContent(NOTE);
+    expect(banner.textContent).toBe(`Imported 1 runbook file as a draft. ${NOTE}.`);
+    expect(banner).not.toHaveTextContent('more');
+    // Informational: plain success, not the warning a refused file earns.
+    expect(banner).toHaveClass('text-fm-success');
+    expect(banner).not.toHaveClass('text-fm-warning');
+  });
+
+  it('shows the first of three notes plus "and 2 more"', async () => {
+    const banner = await scanAnswering({
+      discovered: 3,
+      skipped: 0,
+      errors: [],
+      notes: [NOTE, 'team_x/bar.md imported as personal: second', 'team_y/baz.md imported as personal: third'],
+      drafts: [],
+    });
+
+    expect(banner).toHaveTextContent(`${NOTE} (and 2 more like it)`);
+    expect(banner).not.toHaveTextContent('team_x/bar.md');
+    expect(banner).not.toHaveTextContent('team_y/baz.md');
+  });
+
+  it('shows notes and errors together, in the errors tone', async () => {
+    const banner = await scanAnswering({
+      discovered: 1,
+      skipped: 0,
+      errors: ['bad.md: too short (50 chars)'],
+      notes: [NOTE],
+      drafts: [],
+    });
+
+    expect(banner).toHaveTextContent('1 file could not be imported (bad.md: too short (50 chars))');
+    expect(banner).toHaveTextContent(NOTE);
+    expect(banner).toHaveClass('text-fm-warning');
+    expect(banner).not.toHaveClass('text-fm-success');
+  });
+
+  it('shows notes even when nothing was counted as discovered, rather than "No new runbook files found."', async () => {
+    const banner = await scanAnswering({ discovered: 0, skipped: 0, errors: [], notes: [NOTE], drafts: [] });
+
+    expect(banner).toHaveTextContent(NOTE);
+    expect(banner).not.toHaveTextContent('No new runbook files found.');
+    expect(banner).toHaveClass('text-fm-success');
+  });
+
+  it('renders nothing for note elements that are not non-blank strings', async () => {
+    // The wire is not validated: [null], [{}], [""] and [" "] are not sentences.
+    const banner = await scanAnswering(
+      JSON.parse('{"discovered": 1, "skipped": 0, "errors": [], "notes": [null, {}, "", "   ", 7], "drafts": []}'),
+    );
+
+    expect(banner.textContent).toBe('Imported 1 runbook file as a draft.');
+  });
+
+  it('counts only the valid notes toward "and N more like it"', async () => {
+    const banner = await scanAnswering(
+      JSON.parse(`{"discovered": 2, "skipped": 0, "errors": [], "notes": [null, "${NOTE}", "", "second note"], "drafts": []}`),
+    );
+
+    expect(banner).toHaveTextContent(`${NOTE} (and 1 more like it)`);
+  });
+
+  it('lets the banner text wrap, so a deep path never pushes Dismiss off-screen', async () => {
+    // happy-dom has no layout: the classes are the observable. Without min-w-0 the flex
+    // child cannot shrink below its longest unbreakable word; without break-words it
+    // cannot wrap one. Both are in the built CSS.
+    const deepPath = `team_${'a'.repeat(40)}/${'nested-directory-name/'.repeat(8)}runbook.md`;
+    const banner = await scanAnswering({
+      discovered: 1,
+      skipped: 0,
+      errors: [`${deepPath}: too short (50 chars)`],
+      notes: [`${deepPath} imported as personal: this deployment has no teams to share it with`],
+      drafts: [],
+    });
+
+    const text = within(banner).getByText(/imported as personal/);
+    expect(text).toHaveClass('min-w-0', 'break-words');
+    expect(text).toHaveTextContent(deepPath);
+    // The same span carries the errors, and the dismiss control stays a sibling of it.
+    expect(text).toHaveTextContent('could not be imported');
+    expect(within(banner).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+  });
+
+  it('does not throw on a notes field that is not a list', async () => {
+    const banner = await scanAnswering(JSON.parse('{"discovered": 1, "skipped": 0, "errors": [], "notes": "oops", "drafts": []}'));
+
+    expect(banner.textContent).toBe('Imported 1 runbook file as a draft.');
   });
 });
