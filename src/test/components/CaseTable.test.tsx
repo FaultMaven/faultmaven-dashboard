@@ -186,3 +186,29 @@ describe('CaseTable — a narrow window', () => {
     expect(container.querySelector('.overflow-x-auto')).toBeNull();
   });
 });
+
+describe('CaseTable — its props', () => {
+  /**
+   * `renderActions` was removed because nothing passed it
+   * (faultmaven-dashboard#229). A prop nothing passes cannot fail a runtime
+   * test, so this one is a type-level pin: `pnpm typecheck:tests` fails on this
+   * line if the prop is declared again (TS2578, an unused `@ts-expect-error`)
+   * and is green only while `CaseTable` rejects it. The header count is the
+   * runtime half, for a restored prop that also renders its cell.
+   */
+  it('takes no row-action prop', () => {
+    render(
+      <MemoryRouter>
+        <CaseTable
+          cases={[sampleCase]}
+          loading={false}
+          dateColumn={LAST_ACTIVITY_COLUMN}
+          // @ts-expect-error renderActions is not a CaseTable prop
+          renderActions={() => null}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByRole('columnheader')).toHaveLength(6);
+  });
+});
