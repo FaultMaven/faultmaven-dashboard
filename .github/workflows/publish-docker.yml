@@ -86,11 +86,12 @@ jobs:
       # short-lived token scoped to faultmaven-enterprise-infra. The image is
       # already pushed above; if the App credentials are missing or wrong the
       # mint step fails and the job goes RED — the queue can no longer silently
-      # fall behind (which once stranded the dashboard on a stale pin). Runs only
-      # on the canonical repo; forks (no org creds) skip with a note.
+      # fall behind (which once stranded the dashboard on a stale pin). Queue
+      # updates run only for main, as in the other service repos, and only on
+      # the canonical repo; forks (no org creds) skip with a note.
       - name: Mint infra token (GitHub App)
         id: infra-token
-        if: github.event_name != 'pull_request' && github.repository == 'FaultMaven/faultmaven-dashboard'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.INFRA_BOT_APP_ID }}
@@ -99,14 +100,14 @@ jobs:
           repositories: faultmaven-enterprise-infra
 
       - name: Note skipped queue update (fork)
-        if: github.event_name != 'pull_request' && github.repository != 'FaultMaven/faultmaven-dashboard'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository != 'FaultMaven/faultmaven-dashboard'
         run: |
           echo "::warning::Not the canonical repo — skipping enterprise-infra image queue update (expected on forks)."
 
       # The image queue moved to enterprise-infra's `image-queue` branch
       # (infra#408). This step checks out that branch, and the next one pushes it.
       - name: Checkout enterprise-infra
-        if: github.event_name != 'pull_request' && github.repository == 'FaultMaven/faultmaven-dashboard'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
         uses: actions/checkout@v4
         with:
           repository: FaultMaven/faultmaven-enterprise-infra
@@ -115,7 +116,7 @@ jobs:
           path: enterprise-infra
 
       - name: Install yq
-        if: github.event_name != 'pull_request' && github.repository == 'FaultMaven/faultmaven-dashboard'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
@@ -134,7 +135,7 @@ jobs:
       # runs of one repository rewrite the same three lines, and that rebase
       # stops on a conflict.
       - name: Update image queue
-        if: github.event_name != 'pull_request' && github.repository == 'FaultMaven/faultmaven-dashboard'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
         env:
           GH_TOKEN: ${{ github.token }}
           TRIGGERED_BY: ${{ github.actor }}
