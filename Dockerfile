@@ -30,9 +30,11 @@ FROM nginx:alpine
 #   - libcrypto3/libssl3>=3.5.8-r0 → CVE-2026-45447 (openssl PKCS7_verify UAF)
 #                                    and CVE-2026-14456 (openssl QUIC server
 #                                    unbounded memory growth → DoS)
-#   - libexpat>=2.8.5-r0  → CVE-2026-45186 (expat DoS via crafted XML)
+#   - libexpat>=2.9.0-r0  → CVE-2026-45186 (expat DoS via crafted XML)
 #                           CVE-2026-93990 (expat XML injection via malformed
 #                           UTF-16 input)
+#                           CVE-2026-77214 (expat information disclosure via
+#                           heap buffer)
 #   - c-ares>=1.34.8-r0   → CVE-2026-33630 (c-ares UAF/double-free in query-completion handling)
 #   - libuuid>=2.42.3-r1  → the util-linux HIGH set: CVE-2026-53612/53613 (mount
 #                           TOCTOU), CVE-2026-53614 (SUID mount bypasses
@@ -47,7 +49,7 @@ FROM nginx:alpine
 #                           regular expression)
 #   - tiff>=4.7.2-r0      → CVE-2026-4775 (HIGH; fixed in Alpine v3.24's 4.7.2-r0)
 RUN apk update && apk upgrade --no-cache \
-    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.8.5-r0" "c-ares>=1.34.8-r0" "libuuid>=2.42.3-r1" "pcre2>=10.49-r0" "tiff>=4.7.2-r0"
+    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.9.0-r0" "c-ares>=1.34.8-r0" "libuuid>=2.42.3-r1" "pcre2>=10.49-r0" "tiff>=4.7.2-r0"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
