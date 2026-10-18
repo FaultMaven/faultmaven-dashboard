@@ -23,9 +23,11 @@ RUN pnpm build
 FROM nginx:alpine
 
 # Update Alpine packages to fix security vulnerabilities.
-# The explicit version floors pull the fixes AND change this layer's cache key
-# so `apk upgrade` re-runs against the current package index instead of serving
-# a stale cached layer:
+# The explicit version floors pull the fixes. A floor change also alters this
+# layer's cache key, so the next build re-runs apk against the current package
+# index. Between floor edits the CI cache (cache-from: type=gha) reuses this
+# layer, so an upstream fix arrives only with an edit here (tracked as
+# infra#425):
 #   - libxml2>=2.13.9-r1  → CVE-2026-6732
 #   - libcrypto3/libssl3>=3.5.8-r0 → CVE-2026-45447 (openssl PKCS7_verify UAF)
 #                                    and CVE-2026-14456 (openssl QUIC server
@@ -35,6 +37,8 @@ FROM nginx:alpine
 #                           UTF-16 input)
 #                           CVE-2026-77214 (expat information disclosure via
 #                           heap buffer)
+#                           CVE-2026-102633 (expat integer overflow in
+#                           expat_realloc on 32-bit platforms)
 #   - c-ares>=1.34.8-r0   → CVE-2026-33630 (c-ares UAF/double-free in query-completion handling)
 #   - libuuid>=2.42.3-r1  → the util-linux HIGH set: CVE-2026-53612/53613 (mount
 #                           TOCTOU), CVE-2026-53614 (SUID mount bypasses
