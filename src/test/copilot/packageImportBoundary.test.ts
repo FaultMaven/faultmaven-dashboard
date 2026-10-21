@@ -162,10 +162,11 @@ function sourceReferences(code: string, fileName: string): ModuleReference[] {
  * reference is credited with an elision another compiler setting might skip.
  */
 function runtimeReferences(code: string, fileName = 'module.ts'): ModuleReference[] {
-  // A declaration file emits nothing (and transpileModule cannot emit one).
-  if (fileName.endsWith('.d.ts')) return [];
+  // The build compiles any file a runtime import reaches, a declaration file
+  // included, so read one as the module it would become (and transpileModule
+  // cannot emit a file it names a declaration).
   const emitted = ts.transpileModule(code, {
-    fileName,
+    fileName: fileName.endsWith('.tsx') ? 'module.tsx' : 'module.ts',
     compilerOptions: {
       verbatimModuleSyntax: true,
       module: ts.ModuleKind.ESNext,
@@ -429,7 +430,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     const entry = runtimeEntryReferences({ ...sources, '../../escaped.ts': escaped });
     expect(entry.map((ref) => ref.file)).not.toEqual(['../../copilot/CopilotPanelMount.tsx']);
     expect(entry).toContainEqual(expect.objectContaining({ file: '../../escaped.ts', isDynamic: false }));
-    // Delta finding 1: a declaration file emits nothing, so it adds no runtime reference.
+    // Delta finding 1: a type-only declaration file adds no runtime reference.
     const declaration =
       "import type { HostUser } from '@faultmaven/copilot-ui';\ndeclare global { interface Window { fmProbeUser?: HostUser } }\nexport {};";
     expect(runtimeReferences(declaration, 'probe.d.ts')).toEqual([]);
@@ -437,6 +438,22 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     expect(withDeclaration.map((ref) => [ref.file, ref.isDynamic])).toEqual([
       ['../../copilot/CopilotPanelMount.tsx', true],
     ]);
+  });
+
+  it('reads a declaration file as the module the build would compile from it', () => {
+    // Second delta finding 1: the build compiles a `.d.ts` that a runtime
+    // import reaches, and keeps its side-effect imports.
+    const sideEffect = "import '@faultmaven/copilot-ui';\nexport {};";
+    expect(runtimeReferences(sideEffect, 'probe.d.ts')).toEqual([
+      { specifier: PACKAGE, isDynamic: false, names: [] },
+    ]);
+    const entry = runtimeEntryReferences({ ...sources, '../../types/probe.d.ts': sideEffect });
+    expect(entry.map((ref) => ref.file)).not.toEqual(['../../copilot/CopilotPanelMount.tsx']);
+    expect(entry).toContainEqual(expect.objectContaining({ file: '../../types/probe.d.ts', isDynamic: false }));
+    // Second delta finding 2: `*.d.<ext>.ts` is a declaration-file name too.
+    const typeOnly =
+      "import type { HostUser } from '@faultmaven/copilot-ui';\ndeclare global { interface Window { fmProbeUser?: HostUser } }\nexport {};";
+    expect(runtimeReferences(typeOnly, 'probe.d.css.ts')).toEqual([]);
   });
 
   it('has exactly one runtime import of the ENTRY, and it is dynamic', () => {
