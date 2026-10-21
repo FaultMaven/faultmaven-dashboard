@@ -58,15 +58,33 @@ describe('PreWithMermaid', () => {
     );
   });
 
-  it('keeps error rendering suppressed so parse failures cannot draw into document.body', async () => {
-    render(<MD content={'```mermaid\nflowchart LR\n  init --> check\n```'} />);
-    await waitFor(() => expect(initializeMock).toHaveBeenCalled());
-    expect(initializeMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        suppressErrorRendering: true,
-        securityLevel: 'strict',
-      })
+  it("initializes mermaid exactly once, with copilot-ui's MERMAID_CONFIG", async () => {
+    // mermaid's site config is one global and the last initializer wins
+    // whole; the embedded copilot panel initializes it too. The same object,
+    // not an equal copy, is what keeps the look independent of load order.
+    // A fresh registry, so the loader's memo and the svg cache start empty:
+    // under the file's earlier renders, a lost memo would go unseen.
+    vi.resetModules();
+    initializeMock.mockClear();
+    const { default: FreshDiagram } = await import('../../components/MermaidDiagram');
+    const fresh = await import('@faultmaven/copilot-ui/mermaid-config');
+    const { container } = render(
+      <>
+        <FreshDiagram chart={'flowchart LR\n  once1 --> once2'} />
+        <FreshDiagram chart={'flowchart LR\n  once3 --> once4'} />
+      </>
     );
+    await waitFor(() =>
+      expect(container.querySelectorAll('[role="img"]')).toHaveLength(2)
+    );
+    expect(initializeMock).toHaveBeenCalledTimes(1);
+    expect(initializeMock.mock.calls[0][0]).toBe(fresh.MERMAID_CONFIG);
+    // The config is what keeps a parse failure from drawing into
+    // document.body, and what makes the inner-HTML svg safe to insert.
+    expect(fresh.MERMAID_CONFIG).toMatchObject({
+      suppressErrorRendering: true,
+      securityLevel: 'strict',
+    });
   });
 
   it('falls back to the raw source when the render resolves with an empty svg', async () => {

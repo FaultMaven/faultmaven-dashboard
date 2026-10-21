@@ -53,22 +53,31 @@ change reaches both or reaches neither.
 - **Import the package ENTRY only.** Deep subpaths resolve and are still off
   limits: they exist for the extension, which lives in the same repository as
   the package and can be updated in the same commit.
-- **`/contract` and `/turn-label` are the code exceptions, each through ONE
-  door per subject.** They carry the cross-repo names both repositories must
-  agree on, and they are cheap (constants and two DOM readers, no panel).
-  `advertisement.ts` owns the panel attribute and window messages;
-  `copilotCapability.ts` owns the capability attribute, its tokens and its
-  reader; `lib/cases/turnLabel.ts` the TURN LABELS — which number a surface
-  prints, versus the message clock it addresses a turn with. Nothing else may
-  reach either subpath, and no door may pull another's names — routing
-  capabilities through `advertisement.ts` would make the capability GATE depend
-  on the module it gates. The file list, the per-file name sets and the
+- **`/contract`, `/turn-label` and `/mermaid-config` are the code exceptions,
+  each through ONE door per subject.** They carry the cross-repo names both
+  repositories must agree on, and they are cheap (constants and two DOM
+  readers, no panel). `advertisement.ts` owns the panel attribute and window
+  messages; `copilotCapability.ts` owns the capability attribute, its tokens
+  and its reader; `lib/cases/turnLabel.ts` the TURN LABELS — which number a
+  surface prints, versus the message clock it addresses a turn with;
+  `components/MermaidDiagram.tsx` the MERMAID SITE CONFIG — mermaid's config
+  is one global the embedded panel initializes too, so both pass the one
+  object (fm#2119). Nothing else may reach any of these subpaths, and no door
+  may pull another's names — routing capabilities through `advertisement.ts`
+  would make the capability GATE depend on the module it gates. The file list, the per-file name sets and the
   per-subpath door list are all asserted.
 
-  Both exempt modules must stay **import-free**, and that is the whole basis of
-  the exemption: the entry costs +200 kB in the signed-out chunk (ADR-016 D3)
-  while these cost ~196 bytes. The boundary test walks one hop — a door may
-  re-export the package's zero-dependency state modules and nothing else.
+  The exempt modules must stay **import-free** (`mermaid-config.ts` imports only
+  mermaid's config type, which TypeScript erases; the boundary test reads the
+  TypeScript-emitted code, so it skips type-only imports and nothing else), and
+  that is the whole basis of the exemption: the entry costs +200 kB in the
+  signed-out chunk (ADR-016 D3), while each exempt module costs hundreds of
+  bytes. Attributed by source map in the entry chunk at fm#2119: `contract.ts`
+  about 515 bytes (196 when it was introduced), `turn-label.ts` 95 plus 547 for
+  the two state modules it re-exports, and `mermaid-config.ts` about 504 — it
+  took the chunk from 825,630 to 826,167 bytes (+537). The boundary test walks
+  one hop — a door may re-export the package's zero-dependency state modules
+  and nothing else.
 - **The one runtime import OF THE ENTRY is dynamic**, in
   `CopilotPanelMount.tsx`. That is what keeps the shared UI out of the entry
   chunk so nothing of it is fetched before sign-in. The exempt subpaths above
