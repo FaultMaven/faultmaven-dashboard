@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, isValidElement } from 'react';
 import type { ComponentProps, ReactElement, ReactNode } from 'react';
 import type { ExtraProps } from 'react-markdown';
+import { MERMAID_CONFIG } from '@faultmaven/copilot-ui/mermaid-config';
 import {
   decideRenderAction,
   readSvg,
@@ -13,18 +14,12 @@ let mermaidModule: Promise<typeof import('mermaid')> | null = null;
 function loadMermaid() {
   mermaidModule ??= import('mermaid')
     .then((mod) => {
-      mod.default.initialize({
-        startOnLoad: false,
-        // Diagram sources arrive inside markdown from the backend (reports)
-        // and case transcripts, so treat them as untrusted content.
-        securityLevel: 'strict',
-        // Without this, a parse failure draws mermaid's "Syntax error"
-        // diagram into document.body and throws before its own cleanup —
-        // the component's code-block fallback must be the only failure UI.
-        suppressErrorRendering: true,
-        theme: 'dark',
-        fontFamily: 'inherit',
-      });
+      // The copilot panel embedded in this page initializes the same global
+      // with the same object, so the look cannot depend on which surface
+      // loaded mermaid first (fm#2119). Diagram sources here arrive inside
+      // markdown from the backend and case transcripts, which is what the
+      // config's securityLevel 'strict' and suppressErrorRendering are for.
+      mod.default.initialize(MERMAID_CONFIG);
       return mod;
     })
     .catch((err) => {

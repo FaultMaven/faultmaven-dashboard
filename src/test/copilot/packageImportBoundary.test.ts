@@ -62,6 +62,10 @@ const nonTsSources = import.meta.glob<string>(
  *    the whole panel. The Dashboard and the panel print turn numbers for the
  *    same case on the same page, so the rules deciding WHICH number have to be
  *    one implementation (faultmaven#1387);
+ *  - the MERMAID SITE CONFIG, for the same reason again: `mermaid-config.ts`
+ *    imports only mermaid's config TYPE, which is erased. mermaid's site config
+ *    is one global and the last initializer wins whole, so this app's diagrams
+ *    and the embedded panel's must initialize from one object (faultmaven#2119);
  *  - the CONTRACT, because importing those three values from the ENTRY pulls
  *    the whole package into the eager graph. Measured: it moved the host store,
  *    transport and persistence internals into this app's entry chunk (+200 kB
@@ -69,7 +73,7 @@ const nonTsSources = import.meta.glob<string>(
  *    imports nothing, and the same measurement puts it at +196 bytes.
  */
 /** The `.ts` exceptions, which must be proven import-free to keep their exemption. */
-const EXEMPT_MODULES = ['contract', 'turn-label'] as const;
+const EXEMPT_MODULES = ['contract', 'turn-label', 'mermaid-config'] as const;
 
 const DEEP_PATH_EXCEPTIONS = [
   `${PACKAGE}/styles/globals.css`,
@@ -81,7 +85,37 @@ const DEEP_PATH_EXCEPTIONS = [
 const EXEMPT_DOORS: Record<string, string[]> = {
   contract: ['../../copilot/advertisement.ts', '../../copilot/copilotCapability.ts'],
   'turn-label': ['../../lib/cases/turnLabel.ts'],
+  'mermaid-config': ['../../components/MermaidDiagram.tsx'],
 };
+
+/**
+ * A declaration TypeScript always erases: `import type …` / `export type …`.
+ * Not `import type from '…'` or `import type, { … }`, whose default binding is
+ * NAMED `type` and is a runtime import.
+ */
+const TYPE_ONLY = /^(?:import|export)\s+type\b(?!\s*(?:,|from\s*['"]))/;
+
+/**
+ * Every specifier a module reaches at runtime: import or re-export
+ * declarations however quoted, bare side-effect imports, and `require`.
+ * Type-only declarations are skipped, and only those.
+ */
+function runtimeSpecifiers(source: string): string[] {
+  const declarations = [
+    ...source.matchAll(/(?:^|\s)(?:import|export)\s+[^;]*?from\s*['"]([^'"]+)['"]/g),
+  ].filter((m) => {
+    // Judged from the NEAREST keyword, as collectReferences reads it: the lazy
+    // gap can start at an `import type` in a comment and run on into a value
+    // import, which must not be skipped with it.
+    const keywordAt = Math.max(m[0].lastIndexOf('import'), m[0].lastIndexOf('export'));
+    return !TYPE_ONLY.test(m[0].slice(keywordAt));
+  });
+  return [
+    ...declarations,
+    ...source.matchAll(/(?:^|\s)import\s*['"]([^'"]+)['"]/g),
+    ...source.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+  ].map((m) => m[1]);
+}
 
 interface Reference {
   file: string;
@@ -114,11 +148,12 @@ function collectReferences(): Reference[] {
       const keywordAt = Math.max(before.lastIndexOf('import'), before.lastIndexOf('export'));
       if (keywordAt < 0) continue;
       const lead = before.slice(keywordAt);
+      const statement = `${lead}${match[0]}`;
       refs.push({
         file,
-        statement: `${lead}${match[0]}`,
+        statement,
         specifier: match[1],
-        isTypeOnly: /^(?:import|export)\s+type\b/.test(lead),
+        isTypeOnly: TYPE_ONLY.test(statement),
         isDynamic: /^import\s*\(\s*$/.test(lead),
       });
     }
@@ -174,6 +209,8 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     // An exception is not an open door. Without this, any file under `src/`
     // could import the turn-label rules directly — a second, third, fourth
     // door — while `turnLabel.ts` goes on calling itself "the third".
+    // Every exempt module has its doors listed, or it would have none checked.
+    expect(Object.keys(EXEMPT_DOORS).sort()).toEqual([...EXEMPT_MODULES].sort());
     for (const [module, doors] of Object.entries(EXEMPT_DOORS)) {
       const refs = references.filter((ref) => ref.specifier === `${PACKAGE}/${module}`);
       expect(refs.length, `nothing reaches ${module}`).toBeGreaterThan(0);
@@ -252,6 +289,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
         '/node_modules/@faultmaven/copilot-ui/tailwind-preset.cjs',
         '/node_modules/@faultmaven/copilot-ui/contract.ts',
         '/node_modules/@faultmaven/copilot-ui/turn-label.ts',
+        '/node_modules/@faultmaven/copilot-ui/mermaid-config.ts',
       ],
       { query: '?raw', import: 'default', eager: true },
     );
@@ -272,6 +310,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
       [
         '/node_modules/@faultmaven/copilot-ui/contract.ts',
         '/node_modules/@faultmaven/copilot-ui/turn-label.ts',
+        '/node_modules/@faultmaven/copilot-ui/mermaid-config.ts',
         '/node_modules/@faultmaven/copilot-ui/lib/state/turn-label.ts',
         '/node_modules/@faultmaven/copilot-ui/lib/state/message-kind.ts',
       ],
@@ -281,19 +320,11 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
 
     // Fail closed: a renamed or moved module must break this rather than make
     // every assertion below vacuous.
-    expect(files.length).toBe(4);
+    expect(files.length).toBe(5);
 
     for (const [file, source] of files) {
       const isDoor = EXEMPT_MODULES.some((m) => file.endsWith(`/${m}.ts`));
-      // Every import or re-export specifier, however quoted, plus bare
-      // side-effect imports and `require`.
-      const specifiers = [
-        ...source.matchAll(/(?:^|\s)(?:import|export)\s+[^;]*?from\s*['"]([^'"]+)['"]/g),
-        ...source.matchAll(/(?:^|\s)import\s*['"]([^'"]+)['"]/g),
-        ...source.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
-      ].map((m) => m[1]);
-
-      for (const s of specifiers) {
+      for (const s of runtimeSpecifiers(source)) {
         // A DOOR may re-export the import-free state modules asserted here and
         // nothing else. A LEAF must reach nothing at all.
         expect(
@@ -301,6 +332,24 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
           `${file} reaches ${s}`,
         ).toBe(true);
       }
+    }
+  });
+
+  it('skips only the imports the compiler erases', () => {
+    // `mermaid-config.ts` imports mermaid's config TYPE; anything that survives
+    // to runtime must still be caught, or the exemption above proves nothing.
+    expect(runtimeSpecifiers("import type { A } from 'mermaid';")).toEqual([]);
+    expect(runtimeSpecifiers("export type { A } from 'mermaid';")).toEqual([]);
+    for (const runtime of [
+      "import { A } from 'mermaid';",
+      "import { type A, b } from 'mermaid';",
+      "import { type A } from 'mermaid';", // kept as `import {} from` under verbatimModuleSyntax
+      "import type from 'mermaid';", // a default binding named `type`
+      "import 'mermaid';",
+      "const m = require('mermaid');",
+      "// import type notes\nimport { A } from 'mermaid';",
+    ]) {
+      expect(runtimeSpecifiers(runtime), runtime).toEqual(['mermaid']);
     }
   });
 
