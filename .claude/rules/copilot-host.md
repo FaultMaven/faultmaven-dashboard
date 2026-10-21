@@ -68,11 +68,16 @@ change reaches both or reaches neither.
   per-subpath door list are all asserted.
 
   The exempt modules must stay **import-free** (`mermaid-config.ts` imports only
-  mermaid's config type, which TypeScript erases; the boundary test skips
-  type-only imports and nothing else), and that is the whole basis of
-  the exemption: the entry costs +200 kB in the signed-out chunk (ADR-016 D3)
-  while these cost ~196 bytes. The boundary test walks one hop — a door may
-  re-export the package's zero-dependency state modules and nothing else.
+  mermaid's config type, which TypeScript erases; the boundary test reads the
+  TypeScript-emitted code, so it skips type-only imports and nothing else), and
+  that is the whole basis of the exemption: the entry costs +200 kB in the
+  signed-out chunk (ADR-016 D3), while each exempt module costs hundreds of
+  bytes. Attributed by source map in the entry chunk at fm#2119: `contract.ts`
+  about 515 bytes (196 when it was introduced), `turn-label.ts` 95 plus 547 for
+  the two state modules it re-exports, and `mermaid-config.ts` about 504 — it
+  took the chunk from 825,630 to 826,167 bytes (+537). The boundary test walks
+  one hop — a door may re-export the package's zero-dependency state modules
+  and nothing else.
 - **The one runtime import OF THE ENTRY is dynamic**, in
   `CopilotPanelMount.tsx`. That is what keeps the shared UI out of the entry
   chunk so nothing of it is fetched before sign-in. The exempt subpaths above

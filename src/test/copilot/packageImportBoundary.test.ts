@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import ts from 'typescript';
 
 /**
  * How this app is allowed to reach the Copilot UI package.
@@ -88,85 +89,124 @@ const EXEMPT_DOORS: Record<string, string[]> = {
   'mermaid-config': ['../../components/MermaidDiagram.tsx'],
 };
 
-/**
- * A declaration TypeScript always erases: `import type …` / `export type …`.
- * Not `import type from '…'` or `import type, { … }`, whose default binding is
- * NAMED `type` and is a runtime import.
- */
-const TYPE_ONLY = /^(?:import|export)\s+type\b(?!\s*(?:,|from\s*['"]))/;
-
-/**
- * Every specifier a module reaches at runtime: import or re-export
- * declarations however quoted, bare side-effect imports, and `require`.
- * Type-only declarations are skipped, and only those.
- */
-function runtimeSpecifiers(source: string): string[] {
-  const declarations = [
-    ...source.matchAll(/(?:^|\s)(?:import|export)\s+[^;]*?from\s*['"]([^'"]+)['"]/g),
-  ].filter((m) => {
-    // Judged from the NEAREST keyword, as collectReferences reads it: the lazy
-    // gap can start at an `import type` in a comment and run on into a value
-    // import, which must not be skipped with it.
-    const keywordAt = Math.max(m[0].lastIndexOf('import'), m[0].lastIndexOf('export'));
-    return !TYPE_ONLY.test(m[0].slice(keywordAt));
-  });
-  return [
-    ...declarations,
-    ...source.matchAll(/(?:^|\s)import\s*['"]([^'"]+)['"]/g),
-    ...source.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
-  ].map((m) => m[1]);
-}
-
-interface Reference {
-  file: string;
-  statement: string;
+interface ModuleReference {
+  /** The module named, or `<computed>` for an `import()` / `require()` of an expression. */
   specifier: string;
-  isTypeOnly: boolean;
+  /** `import()`: the only reference that leaves its module out of the importer's chunk. */
   isDynamic: boolean;
+  /** What a declaration takes: imported or re-exported names, `default`, `*`. */
+  names: string[];
+}
+
+function specifierOf(node: ts.Node | undefined): string {
+  return node && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node))
+    ? node.text
+    : '<computed>';
+}
+
+function namesOf(node: ts.ImportDeclaration | ts.ExportDeclaration): string[] {
+  if (ts.isImportDeclaration(node)) {
+    const clause = node.importClause;
+    const bindings = clause?.namedBindings;
+    return [
+      ...(clause?.name ? ['default'] : []),
+      ...(bindings && ts.isNamespaceImport(bindings) ? ['*'] : []),
+      ...(bindings && ts.isNamedImports(bindings)
+        ? bindings.elements.map((e) => (e.propertyName ?? e.name).text)
+        : []),
+    ];
+  }
+  const clause = node.exportClause;
+  return clause && ts.isNamedExports(clause)
+    ? clause.elements.map((e) => (e.propertyName ?? e.name).text)
+    : ['*'];
 }
 
 /**
- * Anchored on the SPECIFIER, then read backwards to the nearest `import` or
- * `export` keyword.
- *
- * The obvious pattern — one regex spanning keyword to specifier — silently
- * mis-reads a multi-line import block: its lazy gap matcher happily starts at
- * an unrelated `import { useEffect } from 'react'` three lines above and runs
- * on to the first specifier that matches, so a type-only import is reported as
- * a runtime one. That failure was observed here before this was rewritten.
+ * Every module a parsed file names: import and export-from declarations,
+ * `import x = require()`, `import()` and `require()` calls, and `import('…')`
+ * types. Walked, not scanned: a comment or a string cannot pass for syntax.
  */
-function collectReferences(): Reference[] {
-  const refs: Reference[] = [];
-  const quoted = new RegExp(
-    String.raw`['"](` + PACKAGE.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&') + String.raw`[^'"]*)['"]`,
-    'g',
-  );
+function moduleReferences(file: ts.SourceFile): ModuleReference[] {
+  const found: ModuleReference[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || (ts.isExportDeclaration(node) && node.moduleSpecifier)) {
+      found.push({ specifier: specifierOf(node.moduleSpecifier), isDynamic: false, names: namesOf(node) });
+    } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      found.push({ specifier: specifierOf(node.moduleReference.expression), isDynamic: false, names: ['default'] });
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
+    ) {
+      const isDynamic = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+      found.push({ specifier: specifierOf(node.arguments[0]), isDynamic, names: [] });
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      found.push({ specifier: specifierOf(node.argument.literal), isDynamic: false, names: [] });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return found;
+}
 
-  for (const [file, text] of Object.entries(sources)) {
-    for (const match of text.matchAll(quoted)) {
-      const before = text.slice(0, match.index);
-      const keywordAt = Math.max(before.lastIndexOf('import'), before.lastIndexOf('export'));
-      if (keywordAt < 0) continue;
-      const lead = before.slice(keywordAt);
-      const statement = `${lead}${match[0]}`;
-      refs.push({
-        file,
-        statement,
-        specifier: match[1],
-        isTypeOnly: TYPE_ONLY.test(statement),
-        isDynamic: /^import\s*\(\s*$/.test(lead),
-      });
+/** Every module the SOURCE names, type-only included: rule 1 holds those too. */
+function sourceReferences(code: string, fileName: string): ModuleReference[] {
+  return moduleReferences(ts.createSourceFile(fileName, code, ts.ScriptTarget.ESNext, true));
+}
+
+/**
+ * Every module the EMITTED code reaches. TypeScript does the erasing, not a
+ * pattern: under `verbatimModuleSyntax` it drops exactly what is written as a
+ * type (`import type …`, `export type …`) and keeps everything else, so no
+ * reference is credited with an elision another compiler setting might skip.
+ */
+function runtimeReferences(code: string, fileName = 'module.ts'): ModuleReference[] {
+  const emitted = ts.transpileModule(code, {
+    fileName,
+    compilerOptions: {
+      verbatimModuleSyntax: true,
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ESNext,
+      jsx: ts.JsxEmit.Preserve,
+    },
+  }).outputText;
+  return sourceReferences(emitted, fileName.replace(/\.ts$/, '.js').replace(/\.tsx$/, '.jsx'));
+}
+
+const runtimeSpecifiers = (code: string, fileName?: string): string[] =>
+  runtimeReferences(code, fileName).map((r) => r.specifier);
+
+interface Reference extends ModuleReference {
+  file: string;
+}
+
+/** The references to the package, read by `read`, from each file that spells its name. */
+function collectReferences(
+  read: (code: string, fileName: string) => ModuleReference[],
+  files: Record<string, string> = sources,
+): Reference[] {
+  const refs: Reference[] = [];
+  for (const [file, text] of Object.entries(files)) {
+    if (!text.includes(PACKAGE)) continue;
+    for (const ref of read(text, file)) {
+      if (ref.specifier === PACKAGE || ref.specifier.startsWith(`${PACKAGE}/`)) refs.push({ file, ...ref });
     }
   }
   return refs;
 }
 
+/** The runtime references to the ENTRY: ADR-016 D3 allows exactly one, dynamic. */
+function runtimeEntryReferences(files: Record<string, string> = sources): Reference[] {
+  return collectReferences(runtimeReferences, files).filter((ref) => ref.specifier === PACKAGE);
+}
+
 describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
-  const references = collectReferences();
+  const references = collectReferences(sourceReferences);
 
   it('finds the references it is about to judge', () => {
     // Fail closed: with no hits every loop below asserts nothing, so a renamed
-    // package or a broken pattern must break this test rather than pass it.
+    // package or a broken reader must break this test rather than pass it.
     expect(Object.keys(sources).length).toBeGreaterThan(20);
     expect(references.length).toBeGreaterThan(0);
   });
@@ -238,12 +278,8 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
       const allowed = subject[ref.file as keyof typeof subject];
       expect(allowed, `${ref.file} is not a documented contract door`).toBeDefined();
 
-      // The braces of the statement this reference was read from, split on
-      // commas and stripped of `type` markers and aliases.
-      const names = (ref.statement.match(/\{([^}]*)\}/)?.[1] ?? '')
-        .split(',')
-        .map((n) => n.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim())
-        .filter(Boolean);
+      // The names the declaration takes from the contract, before any alias.
+      const { names } = ref;
 
       expect(names.length, `${ref.file} reaches the contract but names nothing`).toBeGreaterThan(0);
       for (const name of names) {
@@ -324,7 +360,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
 
     for (const [file, source] of files) {
       const isDoor = EXEMPT_MODULES.some((m) => file.endsWith(`/${m}.ts`));
-      for (const s of runtimeSpecifiers(source)) {
+      for (const s of runtimeSpecifiers(source, file)) {
         // A DOOR may re-export the import-free state modules asserted here and
         // nothing else. A LEAF must reach nothing at all.
         expect(
@@ -338,19 +374,45 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
   it('skips only the imports the compiler erases', () => {
     // `mermaid-config.ts` imports mermaid's config TYPE; anything that survives
     // to runtime must still be caught, or the exemption above proves nothing.
-    expect(runtimeSpecifiers("import type { A } from 'mermaid';")).toEqual([]);
-    expect(runtimeSpecifiers("export type { A } from 'mermaid';")).toEqual([]);
+    for (const erased of [
+      "import type { A } from 'mermaid';\nexport const x: A = {} as A;",
+      "export type { A } from 'mermaid';",
+      "export type * from 'mermaid';",
+      "import type * as M from 'mermaid';\nexport const x: M.A = {} as M.A;",
+    ]) {
+      expect(runtimeSpecifiers(erased), erased).toEqual([]);
+    }
     for (const runtime of [
       "import { A } from 'mermaid';",
       "import { type A, b } from 'mermaid';",
-      "import { type A } from 'mermaid';", // kept as `import {} from` under verbatimModuleSyntax
-      "import type from 'mermaid';", // a default binding named `type`
+      "import { type A } from 'mermaid';", // emitted as `import {} from 'mermaid'`
+      "import type from 'mermaid';\nexport const x = type;", // a default binding named `type`
+      "import type , { a } from 'mermaid';\nexport const x = [type, a];",
       "import 'mermaid';",
       "const m = require('mermaid');",
+      'export const f = () => import(`mermaid`);',
       "// import type notes\nimport { A } from 'mermaid';",
+      // A comment INSIDE the clause is still a comment (review F1).
+      "import { a /* import type */ } from 'mermaid';\nexport const x = a;",
+      "import {\n  a, // was: import type { A }\n  b,\n} from 'mermaid';\nexport const x = [a, b];",
+      "export { a, // was: export type { A }\n} from 'mermaid';",
     ]) {
       expect(runtimeSpecifiers(runtime), runtime).toEqual(['mermaid']);
     }
+    expect(runtimeSpecifiers('declare const name: string;\nexport const m = require(name);')).toEqual([
+      '<computed>',
+    ]);
+  });
+
+  it('counts a static ENTRY import as runtime, whatever its comments say', () => {
+    // Review F2: the one-dynamic-import rule below read the same comments.
+    const probe = "import { PANEL_ROOT_CLASS /* import type */ } from '@faultmaven/copilot-ui';\nexport const c = PANEL_ROOT_CLASS;";
+    const entry = runtimeEntryReferences({ ...sources, '../../probe.ts': probe });
+    expect(entry.map((ref) => ref.file)).not.toEqual(['../../copilot/CopilotPanelMount.tsx']);
+    expect(entry).toContainEqual(expect.objectContaining({ file: '../../probe.ts', isDynamic: false }));
+    // A type-only import of the entry is erased, and stays out of the rule.
+    const typeOnly = "import type { HostUser } from '@faultmaven/copilot-ui';\nexport type U = HostUser;";
+    expect(runtimeEntryReferences({ '../../probe.ts': typeOnly })).toEqual([]);
   });
 
   it('has exactly one runtime import of the ENTRY, and it is dynamic', () => {
@@ -359,9 +421,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     // visitor downloads. The contract subpath is exempt precisely because it
     // drags nothing (asserted below); it is filtered out here rather than
     // silently widening this rule.
-    const runtimeEntry = references.filter(
-      (ref) => !ref.isTypeOnly && ref.specifier === PACKAGE,
-    );
+    const runtimeEntry = runtimeEntryReferences();
 
     expect(runtimeEntry.map((ref) => ref.file)).toEqual(['../../copilot/CopilotPanelMount.tsx']);
     expect(runtimeEntry[0].isDynamic).toBe(true);
