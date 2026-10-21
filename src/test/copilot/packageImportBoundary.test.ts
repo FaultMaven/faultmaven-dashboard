@@ -162,6 +162,8 @@ function sourceReferences(code: string, fileName: string): ModuleReference[] {
  * reference is credited with an elision another compiler setting might skip.
  */
 function runtimeReferences(code: string, fileName = 'module.ts'): ModuleReference[] {
+  // A declaration file emits nothing (and transpileModule cannot emit one).
+  if (fileName.endsWith('.d.ts')) return [];
   const emitted = ts.transpileModule(code, {
     fileName,
     compilerOptions: {
@@ -181,16 +183,22 @@ interface Reference extends ModuleReference {
   file: string;
 }
 
-/** The references to the package, read by `read`, from each file that spells its name. */
+const isPackage = (specifier: string): boolean =>
+  specifier === PACKAGE || specifier.startsWith(`${PACKAGE}/`);
+
+/**
+ * The references to the package, read by `read`, from each file whose PARSED
+ * source names it: raw text misses an escaped specifier the compiler resolves.
+ */
 function collectReferences(
   read: (code: string, fileName: string) => ModuleReference[],
   files: Record<string, string> = sources,
 ): Reference[] {
   const refs: Reference[] = [];
   for (const [file, text] of Object.entries(files)) {
-    if (!text.includes(PACKAGE)) continue;
+    if (!sourceReferences(text, file).some((ref) => isPackage(ref.specifier))) continue;
     for (const ref of read(text, file)) {
-      if (ref.specifier === PACKAGE || ref.specifier.startsWith(`${PACKAGE}/`)) refs.push({ file, ...ref });
+      if (isPackage(ref.specifier)) refs.push({ file, ...ref });
     }
   }
   return refs;
@@ -413,6 +421,22 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     // A type-only import of the entry is erased, and stays out of the rule.
     const typeOnly = "import type { HostUser } from '@faultmaven/copilot-ui';\nexport type U = HostUser;";
     expect(runtimeEntryReferences({ '../../probe.ts': typeOnly })).toEqual([]);
+  });
+
+  it('reads an escaped ENTRY specifier, and a declaration file, the way the compiler does', () => {
+    // Delta finding 2: a file was chosen by raw text, so `\u0040…` was never read.
+    const escaped = "import { PANEL_ROOT_CLASS } from '\\u0040faultmaven/copilot-ui';\nexport const c = PANEL_ROOT_CLASS;";
+    const entry = runtimeEntryReferences({ ...sources, '../../escaped.ts': escaped });
+    expect(entry.map((ref) => ref.file)).not.toEqual(['../../copilot/CopilotPanelMount.tsx']);
+    expect(entry).toContainEqual(expect.objectContaining({ file: '../../escaped.ts', isDynamic: false }));
+    // Delta finding 1: a declaration file emits nothing, so it adds no runtime reference.
+    const declaration =
+      "import type { HostUser } from '@faultmaven/copilot-ui';\ndeclare global { interface Window { fmProbeUser?: HostUser } }\nexport {};";
+    expect(runtimeReferences(declaration, 'probe.d.ts')).toEqual([]);
+    const withDeclaration = runtimeEntryReferences({ ...sources, '../../types/probe.d.ts': declaration });
+    expect(withDeclaration.map((ref) => [ref.file, ref.isDynamic])).toEqual([
+      ['../../copilot/CopilotPanelMount.tsx', true],
+    ]);
   });
 
   it('has exactly one runtime import of the ENTRY, and it is dynamic', () => {
