@@ -161,8 +161,10 @@ jobs:
       # Verified to bite when introduced: against the pre-remediation lockfile
       # this exact command exits 1 (45 high, 1 critical); against the
       # remediated lockfile it exits 0 with no known vulnerabilities.
-      - name: Audit lockfile (high/critical, fail closed)
-        run: pnpm audit --audit-level high
+      # Moderate since faultmaven#2156: against cf137aa's lockfile (@vitest/mocker
+      # 4.1.11, two moderates) this command exits 1; `--audit-level high` exited 0.
+      - name: Audit lockfile (moderate and above, fail closed)
+        run: pnpm audit --audit-level moderate
 
   # ============================================================================
   # Copilot UI pin: still on main, still current, still one API contract
