@@ -21,6 +21,12 @@ env:
   SERVICE_NAME: faultmaven-dashboard
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/faultmaven/faultmaven-dashboard
+  # The Dockerfile's apk layer is keyed on this (#236), so each run, and each
+  # re-run, upgrades Alpine's packages instead of restoring an older run's
+  # layer from the GHA cache. The build and smoke jobs share it, so the smoke
+  # test runs the layer Trivy scanned, and publish-docker.yml passes the same
+  # key to publish it.
+  PKG_REFRESH: ${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
   # ============================================================================
@@ -346,6 +352,7 @@ jobs:
           push: false
           load: true
           tags: ${{ env.IMAGE_NAME }}:ci-${{ github.sha }}
+          build-args: PKG_REFRESH=${{ env.PKG_REFRESH }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
@@ -464,6 +471,7 @@ jobs:
           push: false
           load: true
           tags: ${{ env.IMAGE_NAME }}:smoke-${{ github.sha }}
+          build-args: PKG_REFRESH=${{ env.PKG_REFRESH }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -22,40 +22,19 @@ RUN pnpm build
 # Stage 2: Production
 FROM nginx:alpine
 
-# Update Alpine packages to fix security vulnerabilities.
-# The explicit version floors pull the fixes. A floor change also alters this
-# layer's cache key, so the next build re-runs apk against the current package
-# index. Between floor edits the CI cache (cache-from: type=gha) reuses this
-# layer, so an upstream fix arrives only with an edit here (tracked as
-# infra#425):
-#   - libxml2>=2.13.9-r1  → CVE-2026-6732
-#   - libcrypto3/libssl3>=3.5.8-r0 → CVE-2026-45447 (openssl PKCS7_verify UAF)
-#                                    and CVE-2026-14456 (openssl QUIC server
-#                                    unbounded memory growth → DoS)
-#   - libexpat>=2.9.0-r0  → CVE-2026-45186 (expat DoS via crafted XML)
-#                           CVE-2026-93990 (expat XML injection via malformed
-#                           UTF-16 input)
-#                           CVE-2026-77214 (expat information disclosure via
-#                           heap buffer)
-#                           CVE-2026-102633 (expat integer overflow in
-#                           expat_realloc on 32-bit platforms)
-#   - c-ares>=1.34.8-r0   → CVE-2026-33630 (c-ares UAF/double-free in query-completion handling)
-#   - libuuid>=2.42.3-r1  → the util-linux HIGH set: CVE-2026-53612/53613 (mount
-#                           TOCTOU), CVE-2026-53614 (SUID mount bypasses
-#                           nosuid/noexec), CVE-2026-76642 (failed external mount
-#                           helper still runs privileged X-mount post-hooks),
-#                           CVE-2026-78408 (nsenter --join-cgroup leaks root
-#                           cgroup migration authority), CVE-2026-78409/78410
-#                           (X-mount.subdir escape via intermediate symlinks;
-#                           restricted bind mounts do not pin the source).
-#                           libuuid is the only util-linux package in this image.
-#   - pcre2>=10.49-r0     → CVE-2026-103111 (out-of-bounds write via a crafted
-#                           regular expression)
-#   - tiff>=4.7.2-r0      → CVE-2026-4775 (HIGH; fixed in Alpine v3.24's 4.7.2-r0)
-#   - libx11>=1.8.14-r0   → CVE-2026-88806 (HIGH; libX11 heap-based buffer
-#                           overflow via a malicious X server)
-RUN apk update && apk upgrade --no-cache \
-    && apk add --no-cache "libxml2>=2.13.9-r1" "libcrypto3>=3.5.8-r0" "libssl3>=3.5.8-r0" "libexpat>=2.9.0-r0" "c-ares>=1.34.8-r0" "libuuid>=2.42.3-r1" "pcre2>=10.49-r0" "tiff>=4.7.2-r0" "libx11>=1.8.14-r0"
+# Upgrade every Alpine package to its current release, so a fix Alpine ships
+# reaches the next build without an edit here (#236). BuildKit keys this layer
+# on the base digest, this RUN's text and the ARG values in scope. The first
+# two stay the same for weeks, so CI passes PKG_REFRESH, a value per CI run:
+# without it, the GitHub Actions cache (cache-from: type=gha) restores the
+# layer from whichever run built it first. A build without the arg (a local
+# one) caches the layer as before; `--build-arg PKG_REFRESH=$(date +%s)`
+# refreshes it.
+#
+# --no-cache reads the index into memory, so no APKINDEX ships in the image.
+# Trivy in CI is what fails a build that still carries a fixed CVE.
+ARG PKG_REFRESH
+RUN apk upgrade --no-cache
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
