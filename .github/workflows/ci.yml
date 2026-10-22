@@ -130,7 +130,8 @@ jobs:
   # assets — no node_modules, no package manifests — so it is structurally
   # blind to vulnerable npm dependencies in this repo: 48 open Dependabot
   # alerts accumulated on main while every Trivy scan stayed green. This gate
-  # audits pnpm-lock.yaml itself and fails closed on high/critical advisories.
+  # audits pnpm-lock.yaml itself and fails closed on moderate, high and
+  # critical advisories (moderate since faultmaven#2156).
   #
   # Escape hatch for a true positive with no upstream patch: add the GHSA id
   # to `pnpm.auditConfig.ignoreGhsas` in package.json, alongside a documented
@@ -158,11 +159,13 @@ jobs:
           node-version: '20'
 
       # No install step: `pnpm audit` reads pnpm-lock.yaml directly.
-      # Verified to bite when introduced: against the pre-remediation lockfile
-      # this exact command exits 1 (45 high, 1 critical); against the
-      # remediated lockfile it exits 0 with no known vulnerabilities.
-      - name: Audit lockfile (high/critical, fail closed)
-        run: pnpm audit --audit-level high
+      # Verified to bite when introduced at `--audit-level high`: against the
+      # pre-remediation lockfile it exited 1 (45 high, 1 critical); against the
+      # remediated lockfile it exited 0 with no known vulnerabilities.
+      # Moderate since faultmaven#2156: against cf137aa's lockfile (@vitest/mocker
+      # 4.1.11, two moderates) this command exits 1; `--audit-level high` exited 0.
+      - name: Audit lockfile (moderate and above, fail closed)
+        run: pnpm audit --audit-level moderate
 
   # ============================================================================
   # Copilot UI pin: still on main, still current, still one API contract
