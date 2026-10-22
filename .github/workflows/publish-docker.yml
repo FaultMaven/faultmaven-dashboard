@@ -1,7 +1,8 @@
 name: Publish Docker Image
 
 on:
-  # Trigger after CI workflow completes successfully on main branch
+  # Trigger after CI Pipeline completes; the job's `if:` decides which
+  # completed runs publish
   workflow_run:
     workflows: ["CI Pipeline"]
     types: [completed]
@@ -19,15 +20,40 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Only publish if CI workflow succeeded (or if triggered by tag/manual)
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    # A tag push or a manual run publishes. A CI run publishes only when it
+    # passed on a push to this repository (#235). `branches: [main]` above
+    # matches the triggering run's HEAD branch, so a fork PR from a branch
+    # named main reaches this job too, and a dispatched CI run can skip its
+    # tests and still conclude success.
+    if: >-
+      ${{ (github.event_name == 'workflow_run'
+           && github.event.workflow_run.conclusion == 'success'
+           && github.event.workflow_run.event == 'push'
+           && github.event.workflow_run.head_repository.full_name == github.repository)
+          || github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read
       packages: write
+    env:
+      # The commit this run builds, tags and queues. Under workflow_run,
+      # github.sha is main's head when the event fires, not the commit whose
+      # CI passed: once main has moved on they differ (#235). That commit is
+      # the run's head_sha. A tag push or a manual run builds github.sha.
+      BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_SHA }}
+
+      # sha-<first 7>, the tag metadata-action's type=sha writes, but of
+      # BUILD_SHA: type=sha reads github.sha, and has no input that points it
+      # at a workflow_run's head_sha. The queue step names the image by this
+      # same output.
+      - name: Resolve the commit tag
+        id: commit
+        run: echo "tag=sha-${BUILD_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -48,12 +74,20 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY_GHCR }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          # `latest` and the branch tag name the branch's head, so only a run
+          # that built the head writes them. A CI run whose commit main has
+          # moved past (one that finished after a newer commit's, or an old
+          # commit's rerun) publishes its sha- tag alone, and leaves them
+          # where the newer run put them.
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=branch
-            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && env.BUILD_SHA == github.sha }}
+            type=ref,event=branch,enable=${{ env.BUILD_SHA == github.sha }}
+            type=raw,value=${{ steps.commit.outputs.tag }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+          # metadata-action fills this label from github.sha too.
+          labels: |
+            org.opencontainers.image.revision=${{ env.BUILD_SHA }}
 
       # Build and push Docker image
       - name: Build and push Docker image
@@ -146,6 +180,7 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
         env:
           GH_TOKEN: ${{ github.token }}
+          IMAGE_TAG: ${{ steps.commit.outputs.tag }}
           TRIGGERED_BY: ${{ github.actor }}
           WORKFLOW_NAME: ${{ github.workflow }}
         run: |
@@ -154,8 +189,8 @@ jobs:
           git config user.email "faultmaven-infra-queue-bot[bot]@users.noreply.github.com"
 
           QUEUE_FILE="available-images/staging/faultmaven-dashboard.yaml"
-          RUN_SHA="$GITHUB_SHA"
-          TAG="sha-${GITHUB_SHA:0:7}"
+          RUN_SHA="$BUILD_SHA"
+          TAG="$IMAGE_TAG"
           REPO="$GITHUB_REPOSITORY"
           COMMIT_MSG="chore(queue): update faultmaven-dashboard image to ${TAG}
 
