@@ -131,7 +131,9 @@ jobs:
   # blind to vulnerable npm dependencies in this repo: 48 open Dependabot
   # alerts accumulated on main while every Trivy scan stayed green. This gate
   # audits pnpm-lock.yaml itself and fails closed on moderate, high and
-  # critical advisories (moderate since faultmaven#2156).
+  # critical advisories (moderate since faultmaven#2156). The audit lives in
+  # .github/actions/lockfile-audit, which the daily scheduled-audit.yml also
+  # runs against main (faultmaven#2159), so both use one level.
   #
   # Escape hatch for a true positive with no upstream patch: add the GHSA id
   # to `pnpm.auditConfig.ignoreGhsas` in package.json, alongside a documented
@@ -163,9 +165,13 @@ jobs:
       # pre-remediation lockfile it exited 1 (45 high, 1 critical); against the
       # remediated lockfile it exited 0 with no known vulnerabilities.
       # Moderate since faultmaven#2156: against cf137aa's lockfile (@vitest/mocker
-      # 4.1.11, two moderates) this command exits 1; `--audit-level high` exited 0.
+      # 4.1.11, two moderates) the audit exits 1; `--audit-level high` exited 0.
+      # The action retries only while npm's advisory endpoint is unreachable, and
+      # `fail` keeps this gate closed if it stays unreachable after four attempts.
       - name: Audit lockfile (moderate and above, fail closed)
-        run: pnpm audit --audit-level moderate
+        uses: ./.github/actions/lockfile-audit
+        with:
+          on-unreachable: fail
 
   # ============================================================================
   # Copilot UI pin: still on main, still current, still one API contract
