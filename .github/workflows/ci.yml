@@ -24,8 +24,10 @@ env:
   # The Dockerfile's apk layer is keyed on this (#236), so each run, and each
   # re-run, upgrades Alpine's packages instead of restoring an older run's
   # layer from the GHA cache. The build and smoke jobs share it, so the smoke
-  # test runs the layer Trivy scanned, and publish-docker.yml passes the same
-  # key to publish it.
+  # job usually restores the layer the build job scanned. Usually: BuildKit's
+  # gha index holds only the last export, so another run's build in between
+  # makes smoke upgrade again. publish-docker.yml passes the same key, and
+  # scans what it pushes.
   PKG_REFRESH: ${{ github.run_id }}-${{ github.run_attempt }}
 
 jobs:
@@ -474,6 +476,7 @@ jobs:
           build-args: PKG_REFRESH=${{ env.PKG_REFRESH }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          platforms: linux/amd64
 
       - name: Start nginx container
         run: |

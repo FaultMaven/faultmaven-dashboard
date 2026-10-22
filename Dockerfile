@@ -28,11 +28,13 @@ FROM nginx:alpine
 # two stay the same for weeks, so CI passes PKG_REFRESH, a value per CI run:
 # without it, the GitHub Actions cache (cache-from: type=gha) restores the
 # layer from whichever run built it first. A build without the arg (a local
-# one) caches the layer as before; `--build-arg PKG_REFRESH=$(date +%s)`
-# refreshes it.
+# one) keeps its cached layer until its base image changes, and no edit here
+# refreshes it any more: `--build-arg PKG_REFRESH=$(date +%s)` does.
 #
 # --no-cache reads the index into memory, so no APKINDEX ships in the image.
-# Trivy in CI is what fails a build that still carries a fixed CVE.
+# apk stops (exit 99) when it cannot read a repository's index, so an
+# unreachable mirror fails the build. Trivy, in CI and before each publish,
+# fails a build that carries a fixed HIGH or CRITICAL CVE.
 ARG PKG_REFRESH
 RUN apk upgrade --no-cache
 
