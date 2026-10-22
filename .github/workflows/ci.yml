@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       skip_tests:
-        description: 'Skip tests (emergency only - not recommended)'
+        description: 'Skip tests. A dispatched CI run never publishes: for an emergency image, run Publish Docker Image by hand'
         required: false
         default: 'false'
         type: boolean
