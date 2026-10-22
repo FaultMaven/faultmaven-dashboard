@@ -42,6 +42,16 @@ jobs:
       # CI passed: once main has moved on they differ (#235). That commit is
       # the run's head_sha. A tag push or a manual run builds github.sha.
       BUILD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # The Dockerfile's apk layer is keyed on PKG_REFRESH (#236). A
+      # workflow_run passes the key of the CI run that passed, in ci.yml's
+      # form, so the build usually restores that run's layer from the GHA
+      # cache, and re-running this workflow republishes the same packages.
+      # Usually, not always: BuildKit's gha index holds only the last export,
+      # so another build exported since, an eviction or a moved nginx:alpine
+      # makes it upgrade again. A tag push or a manual run, which no CI run
+      # precedes, upgrades under its own key. Either way the scan below is
+      # what every pushed image passes.
+      PKG_REFRESH: ${{ github.event.workflow_run.id || github.run_id }}-${{ github.event.workflow_run.run_attempt || github.run_attempt }}
 
     steps:
       - name: Checkout repository
@@ -68,6 +78,10 @@ jobs:
       # ref in "grafted, HEAD""). The queue step names the image by this same
       # output.
       #
+      # `image` is the repository as metadata-action writes it, lowercased:
+      # the owner is `FaultMaven`, and an image reference must be lowercase.
+      # The scan and the pushed-image check read it.
+      #
       # `head` says whether BUILD_SHA is the head of github.ref NOW, read
       # from the remote just before the build. github.sha cannot say it: it is
       # fixed when the event fires, and a re-run keeps it.
@@ -75,6 +89,7 @@ jobs:
         id: commit
         run: |
           echo "tag=sha-${BUILD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY_GHCR}/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
           head="$(git ls-remote origin "$GITHUB_REF" | awk -v ref="$GITHUB_REF" '$2 == ref { print $1 }')"
           if [ "$head" = "$BUILD_SHA" ]; then
             echo "head=true" >> "$GITHUB_OUTPUT"
@@ -110,8 +125,33 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ env.BUILD_SHA }}
 
-      # Build and push Docker image
-      - name: Build and push Docker image
+      # Build into the runner's Docker, scan it, then push it (#236). The push
+      # step rebuilds from this builder's own cache, so it pushes the layers
+      # just scanned, and the step after it checks that it did. What this run
+      # pushes has passed the scan, whatever the GHA cache handed back.
+      - name: Build Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: PKG_REFRESH=${{ env.PKG_REFRESH }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      # The same gate as ci.yml's build job.
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: '${{ steps.commit.outputs.image }}:${{ steps.commit.outputs.tag }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Push Docker image
         id: build
         uses: docker/build-push-action@v7
         with:
@@ -119,9 +159,28 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: PKG_REFRESH=${{ env.PKG_REFRESH }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           platforms: linux/amd64
+
+      # The pushed image's layers (its config's diff_ids) must be the scanned
+      # image's. A rebuild that missed the builder's cache would differ here.
+      # The tags are already pushed by then, so this turns the run red before
+      # the queue step: the queue never names an unscanned image.
+      - name: Check the pushed image is the scanned one
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ${{ steps.commit.outputs.image }}
+          TAG: ${{ steps.commit.outputs.tag }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          scanned="$(docker image inspect "${IMAGE}:${TAG}" --format '{{json .RootFS.Layers}}' | tr -d ' \n')"
+          pushed="$(docker buildx imagetools inspect "${IMAGE}@${DIGEST}" --format '{{json .Image.RootFS.DiffIDs}}' | tr -d ' \n')"
+          if [ -z "$scanned" ] || [ "$scanned" != "$pushed" ]; then
+            echo "::error::${IMAGE}@${DIGEST} does not hold the layers Trivy scanned in ${IMAGE}:${TAG}."
+            exit 1
+          fi
+          echo "${IMAGE}@${DIGEST} holds the $(echo "$scanned" | tr ',' '\n' | wc -l) layers Trivy scanned."
 
       # `digest` comes from build-push-action, NOT metadata-action — the latter
       # emits tags/labels/version/json and no digest at all, so this line
