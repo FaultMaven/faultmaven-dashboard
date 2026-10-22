@@ -166,8 +166,9 @@ jobs:
       # remediated lockfile it exited 0 with no known vulnerabilities.
       # Moderate since faultmaven#2156: against cf137aa's lockfile (@vitest/mocker
       # 4.1.11, two moderates) the audit exits 1; `--audit-level high` exited 0.
-      # The action retries only while npm's advisory endpoint is unreachable, and
-      # `fail` keeps this gate closed if it stays unreachable after four attempts.
+      # The action retries while npm's advisory endpoint is unreachable, failing
+      # (5xx, 408, 429) or stalled (90 s per attempt), and `fail` keeps this gate
+      # closed if that lasts all four attempts.
       - name: Audit lockfile (moderate and above, fail closed)
         uses: ./.github/actions/lockfile-audit
         with:
