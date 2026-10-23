@@ -167,11 +167,11 @@ jobs:
       # The same gate as ci.yml's build job. cache-dir keeps Trivy's database
       # out of the build context. Its default is the workspace (.cache/trivy),
       # where the push step's `COPY . .` saw 1.6 GB the build step had not, so
-      # the push step rebuilt instead of reusing the scanned layers. A rebuild
-      # is safe only while nothing else writes the shared gha cache scope; when
-      # another commit's CI exported to it in between, the push held layers
-      # that were never scanned (#253). With the context unchanged, the push
-      # step rebuilds nothing.
+      # the push step re-ran `COPY . .` and `pnpm build`. That stayed harmless
+      # only while nothing else wrote the shared gha cache scope: when another
+      # commit's CI exported to it in between, the final stage rebuilt too and
+      # the push held layers that were never scanned (#253). With the context
+      # unchanged, the push step rebuilds nothing.
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
