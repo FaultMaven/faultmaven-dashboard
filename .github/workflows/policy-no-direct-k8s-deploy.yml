@@ -29,8 +29,9 @@ jobs:
           # owned by faultmaven-enterprise-infra (GitOps). Anchor on the actual
           # mutating invocations rather than bare tool mentions, so that legitimate
           # read-only or non-deploy references do NOT trip the gate — e.g.
-          # publish-docker.yml checks out faultmaven-enterprise-infra to bump an
-          # image-queue file, and `kubectl version` is read-only.
+          # publish-docker.yml mints a faultmaven-enterprise-infra token and bumps
+          # an image-queue file through FaultMaven/ci-actions' update-image-queue,
+          # and `kubectl version` is read-only.
           #
           #   - kubectl <mutating subcommand>   (apply/create/delete/rollout/...)
           #   - helm install|upgrade|uninstall|rollback
