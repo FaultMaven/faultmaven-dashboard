@@ -164,11 +164,16 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      # The same gate as ci.yml's build job.
+      # The same gate as ci.yml's build job. cache-dir keeps Trivy's database
+      # out of the build context: its default is the workspace
+      # (.cache/trivy), where the push step's `COPY . .` would see 1.6 GB the
+      # build step did not, miss, rerun `pnpm build`, and push layers that were
+      # never scanned (#253).
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: '${{ steps.commit.outputs.image }}:${{ steps.commit.outputs.tag }}'
+          cache-dir: ${{ runner.temp }}/trivy
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
