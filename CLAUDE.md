@@ -15,7 +15,9 @@ frontend only, needing a running FaultMaven API. The investigation UI itself is
 `@faultmaven/copilot-ui`, a SHA-pinned git dependency from `faultmaven-copilot`,
 hosted here through `src/copilot/`.
 
-## Commands (Node 20+, pnpm 9)
+## Commands
+
+Node and pnpm are declared once, in `package.json`: `engines.node` and `packageManager`. CI's workflows and the Dockerfile read both (`scripts/check-toolchain-pins.mjs` holds the Dockerfile to them). Vercel reads `engines.node`, and `packageManager` only when its project sets `ENABLE_EXPERIMENTAL_COREPACK=1`. Never pin a version anywhere else.
 
 ```bash
 pnpm install

@@ -48,17 +48,21 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          version: '9'
           run_install: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version-file: package.json
           cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # package.json declares Node and pnpm once; the Dockerfile's FROM is the
+      # one copy that cannot read it.
+      - name: Assert the image builds on package.json's Node and pnpm
+        run: node scripts/check-toolchain-pins.mjs
 
       - name: Run ESLint
         # --max-warnings 0 makes warnings blocking in CI (locally `pnpm lint`
@@ -121,7 +125,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version-file: package.json
 
       # No pnpm install: the script is dependency-free by design, so this gate
       # keeps reporting on the contract even when the lockfile will not resolve.
@@ -158,13 +162,12 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          version: '9'
           run_install: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version-file: package.json
 
       # No install step: `pnpm audit` reads pnpm-lock.yaml directly.
       # Verified to bite when introduced at `--audit-level high`: against the
@@ -212,7 +215,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version-file: package.json
 
       # No pnpm install: the script is dependency-free by design, so this gate
       # keeps reporting on the pin even when the lockfile will not resolve.
@@ -243,13 +246,12 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          version: '9'
           run_install: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version-file: package.json
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -440,13 +442,12 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          version: '9'
           run_install: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version-file: package.json
           cache: 'pnpm'
 
       - name: Install dependencies
