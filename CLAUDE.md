@@ -40,7 +40,7 @@ node scripts/brand-lint.mjs  # brand terminology in README.md / package.json (wo
 CI (`.github/workflows/ci.yml`) runs `pnpm lint --max-warnings 0` — warnings
 are blocking there, including `@typescript-eslint/no-explicit-any` — then
 `pnpm typecheck`, `pnpm typecheck:tests`, `pnpm build` plus the two bundle checks, `pnpm test:coverage`,
-`pnpm audit --audit-level moderate` (`.github/actions/lockfile-audit`, also run daily
+`pnpm audit --audit-level moderate` (`FaultMaven/ci-actions/lockfile-audit`, also run daily
 against `main` by `scheduled-audit.yml`), the `copilot-ui-pin` / `sso-slug-drift` /
 `api-types-drift` jobs, a Docker image build with a Trivy scan, and an nginx
 smoke test.

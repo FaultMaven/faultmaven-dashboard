@@ -140,7 +140,7 @@ jobs:
   # alerts accumulated on main while every Trivy scan stayed green. This gate
   # audits pnpm-lock.yaml itself and fails closed on moderate, high and
   # critical advisories (moderate since faultmaven#2156). The audit lives in
-  # .github/actions/lockfile-audit, which the daily scheduled-audit.yml also
+  # FaultMaven/ci-actions/lockfile-audit, which the daily scheduled-audit.yml also
   # runs against main (faultmaven#2159), so both use one level.
   #
   # Escape hatch for a true positive with no upstream patch: add the GHSA id
@@ -179,7 +179,7 @@ jobs:
       # (5xx, 408, 429) or stalled (90 s per attempt), and `fail` keeps this gate
       # closed if that lasts all four attempts.
       - name: Audit lockfile (moderate and above, fail closed)
-        uses: ./.github/actions/lockfile-audit
+        uses: FaultMaven/ci-actions/lockfile-audit@3d24d91b3eff1001ebd151243095efd7bc225ff2 # v1.1.0
         with:
           on-unreachable: fail
 
