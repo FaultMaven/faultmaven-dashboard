@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       skip_tests:
-        description: 'Skip tests. A dispatched CI run never publishes: for an emergency image, run Publish Docker Image by hand'
+        description: 'Skip tests. A dispatched CI run never publishes; Publish Docker Image by hand publishes only a commit whose push CI passed'
         required: false
         default: 'false'
         type: boolean
@@ -36,21 +36,23 @@ jobs:
   # ============================================================================
   lint:
     name: Lint & Type Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: green max 1.8m.
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
           version: '9'
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -107,15 +109,17 @@ jobs:
   # structurally blind to them. This is the gate that is not blind (dash#79).
   sso-slug-drift:
     name: SSO Slug Drift Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: green max 0.2m.
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
 
@@ -142,21 +146,23 @@ jobs:
   # ============================================================================
   dependency-audit:
     name: Dependency Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: green max 0.7m, a failing run 4.4m.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
           version: '9'
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
 
@@ -194,15 +200,17 @@ jobs:
   # ============================================================================
   copilot-ui-pin:
     name: Copilot UI Pin Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: green max 0.3m.
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
 
@@ -217,12 +225,14 @@ jobs:
 
   api-types-drift:
     name: API Types Drift Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: green max 1.4m.
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Two commits, so `HEAD^` exists on a push. At the default depth of 1
           # the hop report's push arm could never resolve a base and was
@@ -231,13 +241,13 @@ jobs:
           fetch-depth: 2
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
           version: '9'
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -344,20 +354,22 @@ jobs:
   # ============================================================================
   build:
     name: Build and Verify Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: green max 1.9m; a cold layer cache rebuilds more.
+    timeout-minutes: 15
     permissions:
       contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build Docker image (verification only)
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./Dockerfile
@@ -388,7 +400,7 @@ jobs:
           echo "✅ Image verified in local Docker daemon"
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: '${{ env.IMAGE_NAME }}:ci-${{ github.sha }}'
           format: 'table'
@@ -415,22 +427,24 @@ jobs:
     name: Frontend Tests
     # Removed needs: build to allow parallel execution with build job
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip_tests != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: green max 1.8m.
+    timeout-minutes: 10
     permissions:
       contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
           version: '9'
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -464,19 +478,21 @@ jobs:
     name: Smoke Test
     needs: [lint, build, test]
     if: always() && needs.lint.result == 'success' && needs.build.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 52 runs to 2026-10-23: green max 1.6m; it builds the image too.
+    timeout-minutes: 15
     permissions:
       contents: read
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build Docker image for smoke test
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./Dockerfile
@@ -549,7 +565,9 @@ jobs:
     name: Pipeline Summary
     needs: [lint, dependency-audit, api-types-drift, sso-slug-drift, copilot-ui-pin, build, test, smoke]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # 60 runs to 2026-10-23: max 0.1m.
+    timeout-minutes: 5
     # No checkout and no GitHub API call: this job only reads `needs.*.result`
     # and appends to $GITHUB_STEP_SUMMARY, which is a file on the runner.
     # It needs no token scope at all.

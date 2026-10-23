@@ -7,10 +7,10 @@ on:
     workflows: ["CI Pipeline"]
     types: [completed]
     branches: [main]
-  # Also trigger on version tags
+  # A version tag or a manual run publishes only a commit whose CI passed on a
+  # push: see "Require a green CI run".
   push:
     tags: [ 'v*.*.*' ]
-  # Manual trigger for emergency releases
   workflow_dispatch:
 
 env:
@@ -19,8 +19,11 @@ env:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
-    # A tag push or a manual run publishes. A CI run publishes only when it
+    runs-on: ubuntu-24.04
+    # 58 runs to 2026-10-23: green max 2.2m on a warm cache; a cold build and the Trivy DB download take longer.
+    timeout-minutes: 20
+    # A tag push or a manual run publishes once "Require a green CI run"
+    # passes. A CI run publishes only when it
     # passed on a push (#235): `branches: [main]` above matches the triggering
     # run's HEAD branch, so a fork PR from a branch named main reaches this
     # job too, and a dispatched CI run can skip its tests and still conclude
@@ -36,6 +39,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read  # the CI-verdict lookup for a tag or a dispatch
     env:
       # The commit this run builds, tags and queues. Under workflow_run,
       # github.sha is main's head when the event fires, not the commit whose
@@ -54,18 +58,37 @@ jobs:
       PKG_REFRESH: ${{ github.event.workflow_run.id || github.run_id }}-${{ github.event.workflow_run.run_attempt || github.run_attempt }}
 
     steps:
+      # A tag push or a manual run carries no CI verdict of its own, so it
+      # publishes only a commit with a green "CI Pipeline" run from a PUSH
+      # (FaultMaven/faultmaven#2185 added the same gate in core). A dispatched
+      # CI run does not count: it can skip its tests and still succeed. A
+      # mistyped tag target is refused, not shipped. A workflow_run already is
+      # that verdict.
+      - name: Require a green CI run
+        if: github.event_name != 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          green="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${BUILD_SHA}&event=push&status=success&per_page=100" \
+            --jq '.workflow_runs | length')"
+          if [ "$green" -eq 0 ]; then
+            echo "::error::${BUILD_SHA} has no successful CI Pipeline run from a push; refusing to publish it"
+            exit 1
+          fi
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.BUILD_SHA }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Login to GHCR (GitHub Container Registry)
       - name: Log into GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY_GHCR }}
           username: ${{ github.actor }}
@@ -101,7 +124,7 @@ jobs:
       # Extract metadata for Docker tags and labels
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: |
             ${{ env.REGISTRY_GHCR }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
@@ -130,7 +153,7 @@ jobs:
       # just scanned, and the step after it checks that it did. What this run
       # pushes has passed the scan, whatever the GHA cache handed back.
       - name: Build Docker image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
@@ -143,7 +166,7 @@ jobs:
 
       # The same gate as ci.yml's build job.
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: '${{ steps.commit.outputs.image }}:${{ steps.commit.outputs.tag }}'
           format: 'table'
@@ -153,7 +176,7 @@ jobs:
 
       - name: Push Docker image
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -206,7 +229,7 @@ jobs:
       - name: Mint infra token (GitHub App)
         id: infra-token
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         with:
           app-id: ${{ vars.INFRA_BOT_APP_ID }}
           private-key: ${{ secrets.INFRA_BOT_PRIVATE_KEY }}
@@ -222,7 +245,7 @@ jobs:
       # (infra#408). This step checks out that branch, and the next one pushes it.
       - name: Checkout enterprise-infra
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: FaultMaven/faultmaven-enterprise-infra
           ref: image-queue
@@ -234,6 +257,10 @@ jobs:
         run: |
           sudo wget -qO /usr/local/bin/yq \
             https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_linux_amd64
+          # A release asset can be replaced after it ships, and this job holds
+          # packages: write and the infra app token. The hash is the release's
+          # own `checksums` entry for this file.
+          echo "c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385  /usr/local/bin/yq" | sha256sum -c -
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
