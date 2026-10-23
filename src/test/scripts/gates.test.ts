@@ -184,6 +184,7 @@ describe('check-toolchain-pins.mjs', () => {
   it.each([
     ['a comment names a pnpm version', `# was pnpm@9 before #2163\n${DOCKERFILE}`],
     ['the tag is digest-pinned', DOCKERFILE.replace('node:24-alpine', 'node:24-alpine@sha256:0123abcd')],
+    ['the major is digest-pinned', DOCKERFILE.replace('node:24-alpine', 'node:24@sha256:0123abcd')],
   ])('passes when %s', (_case, dockerfile) => {
     withTempDir((dir) => {
       fixture(dir, PKG, dockerfile);
@@ -215,6 +216,8 @@ describe('check-toolchain-pins.mjs', () => {
     ['a registry-qualified stage is on another major', PKG, `${DOCKERFILE}FROM docker.io/library/node:20 AS tools\n`, /node:20/],
     ['an indented stage is on another major', PKG, `${DOCKERFILE}  FROM node:20\n`, /node:20/],
     ['pnpm is installed without reading packageManager', PKG, DOCKERFILE.replace(/RUN .*\n/, 'RUN npm install -g pnpm\n'), /does not install/],
+    ['a stage is pinned by digest with no tag', PKG, `${DOCKERFILE}FROM node@sha256:0123abcd AS x\n`, /node@sha256/],
+    ['a stage is bare node (implicitly latest)', PKG, `${DOCKERFILE}FROM node AS tools\n`, /FROM node,/],
   ])('FAILS when %s', (_case, pkg, dockerfile, message) => {
     withTempDir((dir) => {
       fixture(dir, pkg, dockerfile);

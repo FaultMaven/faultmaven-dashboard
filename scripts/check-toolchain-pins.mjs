@@ -59,9 +59,10 @@ if (dockerfile !== null) {
     .split('\n')
     .filter((line) => !/^\s*#/.test(line))
     .join('\n');
-  // `node`, from any registry or namespace (`docker.io/library/node`), by tag
-  // or by digest. A stage FROM some other image is not a Node stage.
-  const froms = [...code.matchAll(/^\s*FROM\s+(?:--platform=\S+\s+)?(?:[\w.-]+(?::\d+)?\/)*node([:@]\S+)/gim)].map((m) => m[1]);
+  // `node`, from any registry or namespace (`docker.io/library/node`), by tag,
+  // by digest or bare (implicitly `latest`, which names no major and fails). A
+  // stage FROM some other image is not a Node stage.
+  const froms = [...code.matchAll(/^\s*FROM\s+(?:--platform=\S+\s+)?(?:[\w.-]+(?::\d+)?\/)*node((?:[:@]\S+)?)(?=\s|$)/gim)].map((m) => m[1]);
   if (froms.length === 0) {
     problem('the Dockerfile has no `FROM node:<tag>` line, so nothing was compared.');
   }
