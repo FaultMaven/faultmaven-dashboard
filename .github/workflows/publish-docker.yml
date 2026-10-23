@@ -210,10 +210,10 @@ jobs:
       # printed "with digest " and nothing else for as long as it existed. It
       # reads like provenance and carried none.
       #
-      # This is the one the actionlint gate added in this change actually
-      # caught, and will catch again: metadata-action is pinned @v5 here, whose
-      # output set actionlint knows. The identical bug in faultmaven is
-      # invisible to the same gate because that repo is on @v6.
+      # The actionlint gate checks that step `build` exists, not that it emits
+      # `digest`: it resolves no outputs for an action pinned by commit sha, so
+      # `steps.meta.outputs.digest` would pass it too. Keep this reference by
+      # inspection.
       - name: Image digest
         if: github.event_name != 'pull_request'
         run: echo "Published Docker images with digest ${{ steps.build.outputs.digest }}"
