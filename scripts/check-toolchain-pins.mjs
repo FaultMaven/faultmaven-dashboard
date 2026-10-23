@@ -54,17 +54,27 @@ if (!/^pnpm@\d+\.\d+\.\d+$/.test(String(pkg.packageManager ?? ''))) {
 
 const dockerfile = read('Dockerfile');
 if (dockerfile !== null) {
-  const tags = [...dockerfile.matchAll(/^FROM\s+(?:--platform=\S+\s+)?node:(\S+)/gim)].map((m) => m[1]);
-  if (tags.length === 0) {
+  // Instructions only: a comment that names a version is not an instruction.
+  const code = dockerfile
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  // `node`, from any registry or namespace (`docker.io/library/node`), by tag
+  // or by digest. A stage FROM some other image is not a Node stage.
+  const froms = [...code.matchAll(/^\s*FROM\s+(?:--platform=\S+\s+)?(?:[\w.-]+(?::\d+)?\/)*node([:@]\S+)/gim)].map((m) => m[1]);
+  if (froms.length === 0) {
     problem('the Dockerfile has no `FROM node:<tag>` line, so nothing was compared.');
   }
-  for (const tag of tags) {
-    const major = /^(\d+)(?:[.-]|$)/.exec(tag)?.[1];
+  for (const ref of froms) {
+    const major = /^:(\d+)(?:[.-]|@|$)/.exec(ref)?.[1];
     if (engine && major !== engine[1]) {
-      problem(`the Dockerfile builds FROM node:${tag}, but package.json engines.node is ${engine[1]}.x.`);
+      problem(`the Dockerfile builds FROM node${ref}, but package.json engines.node is ${engine[1]}.x.`);
     }
   }
-  if (/pnpm@\d/.test(dockerfile)) {
+  if (!/require\(\s*['"]\.\/package\.json['"]\s*\)\.packageManager/.test(code)) {
+    problem("the Dockerfile does not install the pnpm package.json's packageManager names.");
+  }
+  if (/pnpm@\d/.test(code)) {
     problem('the Dockerfile installs a literal pnpm version; install the one package.json packageManager names.');
   }
 }

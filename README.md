@@ -74,7 +74,7 @@ Access the dashboard at `http://localhost:3333`.
 
 ### Local Development
 
-**Prerequisites:** the Node major in `package.json` `engines.node`, and [pnpm](https://pnpm.io/). pnpm switches itself to the version `packageManager` names. CI, Vercel and the Docker build read both fields.
+**Prerequisites:** the Node major in `package.json` `engines.node`, and [pnpm](https://pnpm.io/) at the version `packageManager` names. pnpm 10 or later switches to that version by itself; with an older pnpm, run `corepack enable`. CI and the Docker build read both fields, and Vercel reads `engines.node`.
 
 To run only this dashboard locally for development:
 

@@ -181,6 +181,16 @@ describe('check-toolchain-pins.mjs', () => {
     if (dockerfile !== null) writeFileSync(join(dir, 'Dockerfile'), dockerfile);
   }
 
+  it.each([
+    ['a comment names a pnpm version', `# was pnpm@9 before #2163\n${DOCKERFILE}`],
+    ['the tag is digest-pinned', DOCKERFILE.replace('node:24-alpine', 'node:24-alpine@sha256:0123abcd')],
+  ])('passes when %s', (_case, dockerfile) => {
+    withTempDir((dir) => {
+      fixture(dir, PKG, dockerfile);
+      expect(runGate('check-toolchain-pins.mjs', dir).code).toBe(0);
+    });
+  });
+
   it('passes when the Dockerfile builds on the engines major and installs packageManager', () => {
     withTempDir((dir) => {
       fixture(dir, PKG, DOCKERFILE);
@@ -200,6 +210,11 @@ describe('check-toolchain-pins.mjs', () => {
     ['packageManager is not exact', { ...PKG, packageManager: 'pnpm@9' }, DOCKERFILE, /packageManager/],
     ['package.json is missing', null, DOCKERFILE, /cannot read package\.json/],
     ['the Dockerfile is missing', PKG, null, /cannot read Dockerfile/],
+    ['engines.node is a bare major', { ...PKG, engines: { node: '24' } }, DOCKERFILE, /engines\.node/],
+    ['a --platform stage is on another major', PKG, `${DOCKERFILE}FROM --platform=linux/amd64 node:20-alpine AS x\n`, /node:20-alpine/],
+    ['a registry-qualified stage is on another major', PKG, `${DOCKERFILE}FROM docker.io/library/node:20 AS tools\n`, /node:20/],
+    ['an indented stage is on another major', PKG, `${DOCKERFILE}  FROM node:20\n`, /node:20/],
+    ['pnpm is installed without reading packageManager', PKG, DOCKERFILE.replace(/RUN .*\n/, 'RUN npm install -g pnpm\n'), /does not install/],
   ])('FAILS when %s', (_case, pkg, dockerfile, message) => {
     withTempDir((dir) => {
       fixture(dir, pkg, dockerfile);

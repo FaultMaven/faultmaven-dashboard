@@ -17,7 +17,7 @@ hosted here through `src/copilot/`.
 
 ## Commands
 
-Node and pnpm are declared once, in `package.json`: `engines.node` and `packageManager`. CI's workflows, Vercel and the Dockerfile read them (`scripts/check-toolchain-pins.mjs` holds the Dockerfile's `FROM` to `engines`), so never pin a version anywhere else.
+Node and pnpm are declared once, in `package.json`: `engines.node` and `packageManager`. CI's workflows and the Dockerfile read both (`scripts/check-toolchain-pins.mjs` holds the Dockerfile to them). Vercel reads `engines.node`, and `packageManager` only when its project sets `ENABLE_EXPERIMENTAL_COREPACK=1`. Never pin a version anywhere else.
 
 ```bash
 pnpm install
