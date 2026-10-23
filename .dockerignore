@@ -11,6 +11,10 @@ dist
 # otherwise pull a local .env with VITE_* values straight into the bundle.
 .env
 .env.*
+# Tool caches a CI step writes into the workspace (Trivy's default cache-dir is
+# .cache/trivy): never build context, or a rebuild stops matching what was
+# scanned (#253).
+.cache
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -376,10 +376,13 @@ jobs:
           docker image inspect ${{ env.IMAGE_NAME }}:ci-${{ github.sha }}
           echo "✅ Image verified in local Docker daemon"
 
+      # cache-dir matches publish-docker.yml's, so the two scans share one
+      # actions/cache entry (its version hashes the path).
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: '${{ env.IMAGE_NAME }}:ci-${{ github.sha }}'
+          cache-dir: ${{ runner.temp }}/trivy
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
