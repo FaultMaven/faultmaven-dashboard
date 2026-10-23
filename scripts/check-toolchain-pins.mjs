@@ -3,9 +3,10 @@
  * The image builds on the Node and pnpm package.json declares.
  *
  * package.json is the single source (faultmaven#2163): `engines.node` names
- * the Node major and `packageManager` the exact pnpm. Every workflow sets both
- * up through FaultMaven/ci-actions `setup-js`, which reads them there; Vercel
- * reads `engines.node` directly, and the Dockerfile installs `packageManager`. The
+ * the Node major and `packageManager` the exact pnpm. Every workflow job that
+ * sets up Node, and pnpm where it uses pnpm, does it through FaultMaven/ci-actions
+ * `setup-js`, which reads them there; Vercel reads `engines.node` directly, and
+ * the Dockerfile installs `packageManager`. The
  * Dockerfile's `FROM node:<tag>` is the one consumer that cannot read the
  * file, so this gate holds it to `engines.node`. Without it, CI would test on
  * one Node while the shipped image is built on another.
