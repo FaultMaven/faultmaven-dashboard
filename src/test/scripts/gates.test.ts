@@ -168,3 +168,44 @@ describe('check-shared-ui-styles.mjs — preflight', () => {
     });
   });
 });
+
+describe('check-toolchain-pins.mjs', () => {
+  const PKG = { private: true, packageManager: 'pnpm@9.15.9', engines: { node: '24.x' } };
+  const DOCKERFILE =
+    'FROM node:24-alpine AS builder\n' +
+    'RUN npm install -g "$(node -p "require(\'./package.json\').packageManager")"\n' +
+    'FROM nginx:alpine\n';
+
+  function fixture(dir: string, pkg: object | null, dockerfile: string | null) {
+    if (pkg !== null) writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
+    if (dockerfile !== null) writeFileSync(join(dir, 'Dockerfile'), dockerfile);
+  }
+
+  it('passes when the Dockerfile builds on the engines major and installs packageManager', () => {
+    withTempDir((dir) => {
+      fixture(dir, PKG, DOCKERFILE);
+      const { code, output } = runGate('check-toolchain-pins.mjs', dir);
+      expect(output).toContain('Node 24 with pnpm@9.15.9');
+      expect(code).toBe(0);
+    });
+  });
+
+  it.each([
+    ['the FROM major differs from engines.node', PKG, DOCKERFILE.replace('node:24-alpine', 'node:20-alpine'), /node:20-alpine.*24\.x/],
+    ['the FROM tag names no major', PKG, DOCKERFILE.replace('node:24-alpine', 'node:lts-alpine'), /node:lts-alpine/],
+    ['the Dockerfile installs a literal pnpm', PKG, DOCKERFILE.replace(/RUN .*\n/, 'RUN npm install -g pnpm@9\n'), /literal pnpm/],
+    ['the Dockerfile has no FROM node line', PKG, 'FROM nginx:alpine\n', /nothing was compared/],
+    ['engines.node is missing', { ...PKG, engines: undefined }, DOCKERFILE, /engines\.node/],
+    ['engines.node is not a major', { ...PKG, engines: { node: '>=20' } }, DOCKERFILE, /engines\.node/],
+    ['packageManager is not exact', { ...PKG, packageManager: 'pnpm@9' }, DOCKERFILE, /packageManager/],
+    ['package.json is missing', null, DOCKERFILE, /cannot read package\.json/],
+    ['the Dockerfile is missing', PKG, null, /cannot read Dockerfile/],
+  ])('FAILS when %s', (_case, pkg, dockerfile, message) => {
+    withTempDir((dir) => {
+      fixture(dir, pkg, dockerfile);
+      const { code, output } = runGate('check-toolchain-pins.mjs', dir);
+      expect(code).toBe(1);
+      expect(output).toMatch(message);
+    });
+  });
+});

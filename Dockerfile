@@ -1,15 +1,17 @@
 # Multi-stage build for FaultMaven Dashboard
 
 # Stage 1: Build
-FROM node:20-alpine AS builder
+# The Node major is package.json's `engines.node`. FROM cannot read a file, so
+# scripts/check-toolchain-pins.mjs fails CI when the two differ.
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
-# Install pnpm and dependencies
-RUN npm install -g pnpm@9 && \
+# Install the pnpm package.json's `packageManager` names, then dependencies
+RUN npm install -g "$(node -p "require('./package.json').packageManager")" && \
     pnpm install --frozen-lockfile
 
 # Copy source code

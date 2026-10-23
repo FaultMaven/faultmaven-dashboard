@@ -74,7 +74,7 @@ Access the dashboard at `http://localhost:3333`.
 
 ### Local Development
 
-**Prerequisites:** Node 20+ and [pnpm](https://pnpm.io/) (this repo uses a pnpm lockfile; CI runs Node 20 / pnpm).
+**Prerequisites:** the Node major in `package.json` `engines.node`, and [pnpm](https://pnpm.io/). pnpm switches itself to the version `packageManager` names. CI, Vercel and the Docker build read both fields.
 
 To run only this dashboard locally for development:
 
@@ -119,7 +119,7 @@ For the full stack (API + Dashboard), use the [main FaultMaven deployment](https
 ### Setup
 
 ```bash
-# Clone and install (Node 20+, pnpm)
+# Clone and install (Node and pnpm as package.json declares)
 git clone https://github.com/FaultMaven/faultmaven-dashboard.git
 cd faultmaven-dashboard
 pnpm install

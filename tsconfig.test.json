@@ -5,9 +5,9 @@
   // app code under the browser environment the app targets.
   //
   // Tests run under Vitest on Node, so this project describes that runtime
-  // instead: the ES2022 library (what Node 20 runs; today `@types/node` 20's
-  // compatibility shim also declares `.at`, so this line is what keeps `.at`
-  // typed when that shim goes) and Node's own modules, which some tests read
+  // instead: the ES2022 library (a subset of what the Node in package.json's
+  // `engines` runs, and what keeps `.at` typed whatever `@types/node`'s
+  // compatibility shim declares) and Node's own modules, which some tests read
   // the filesystem with. Node's types come from `src/test/node-env.d.ts`, a
   // test-only ambient file, so `types` is inherited from tsconfig.json rather
   // than restated.
