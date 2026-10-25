@@ -21,8 +21,8 @@ importers:
   .:
     dependencies:
       '@faultmaven/copilot-ui':
-        specifier: github:FaultMaven/faultmaven-copilot#6665badfdad92704cc05a8f6e11b94bcd90b4c4c&path:packages/copilot-ui
-        version: https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/6665badfdad92704cc05a8f6e11b94bcd90b4c4c#path:packages/copilot-ui(@tanstack/react-query@5.102.8(react@19.1.0))(mermaid@12.2.0)(react-dom@19.1.0(react@19.1.0))(react-markdown@10.1.0(@types/react@19.1.4)(react@19.1.0))(react@19.1.0)(rehype-highlight@7.0.2)(remark-gfm@4.0.1)(tailwindcss@3.4.17)(zustand@5.0.15(@types/react@19.1.4)(react@19.1.0))
+        specifier: github:FaultMaven/faultmaven-copilot#2b32e0b32bb35d528b70fb6516a9b0b03ae28569&path:packages/copilot-ui
+        version: https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/2b32e0b32bb35d528b70fb6516a9b0b03ae28569#path:packages/copilot-ui(@tanstack/react-query@5.102.8(react@19.1.0))(mermaid@12.2.0)(react-dom@19.1.0(react@19.1.0))(react-markdown@10.1.0(@types/react@19.1.4)(react@19.1.0))(react@19.1.0)(rehype-highlight@7.0.2)(remark-gfm@4.0.1)(tailwindcss@3.4.17)(zustand@5.0.15(@types/react@19.1.4)(react@19.1.0))
       '@fontsource/dm-sans':
         specifier: ^5.2.8
         version: 5.2.8
@@ -533,8 +533,8 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@faultmaven/copilot-ui@https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/6665badfdad92704cc05a8f6e11b94bcd90b4c4c#path:packages/copilot-ui':
-    resolution: {path: packages/copilot-ui, tarball: https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/6665badfdad92704cc05a8f6e11b94bcd90b4c4c}
+  '@faultmaven/copilot-ui@https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/2b32e0b32bb35d528b70fb6516a9b0b03ae28569#path:packages/copilot-ui':
+    resolution: {path: packages/copilot-ui, tarball: https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/2b32e0b32bb35d528b70fb6516a9b0b03ae28569}
     version: 0.0.0
     peerDependencies:
       '@tanstack/react-query': ^5.90.17
@@ -3672,7 +3672,7 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@faultmaven/copilot-ui@https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/6665badfdad92704cc05a8f6e11b94bcd90b4c4c#path:packages/copilot-ui(@tanstack/react-query@5.102.8(react@19.1.0))(mermaid@12.2.0)(react-dom@19.1.0(react@19.1.0))(react-markdown@10.1.0(@types/react@19.1.4)(react@19.1.0))(react@19.1.0)(rehype-highlight@7.0.2)(remark-gfm@4.0.1)(tailwindcss@3.4.17)(zustand@5.0.15(@types/react@19.1.4)(react@19.1.0))':
+  '@faultmaven/copilot-ui@https://codeload.github.com/FaultMaven/faultmaven-copilot/tar.gz/2b32e0b32bb35d528b70fb6516a9b0b03ae28569#path:packages/copilot-ui(@tanstack/react-query@5.102.8(react@19.1.0))(mermaid@12.2.0)(react-dom@19.1.0(react@19.1.0))(react-markdown@10.1.0(@types/react@19.1.4)(react@19.1.0))(react@19.1.0)(rehype-highlight@7.0.2)(remark-gfm@4.0.1)(tailwindcss@3.4.17)(zustand@5.0.15(@types/react@19.1.4)(react@19.1.0))':
     dependencies:
       '@fontsource/dm-sans': 5.2.8
       '@fontsource/inter': 5.3.0

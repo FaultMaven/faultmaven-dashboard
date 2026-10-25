@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // NO `vi.mock('@faultmaven/copilot-ui')`. That is the entire point of this file.
@@ -11,8 +12,49 @@ import CopilotPanel, {
   clearHostStore,
   type WiredHost,
 } from '@faultmaven/copilot-ui';
+import { MemoryRouter } from 'react-router-dom';
 import { PANEL_STORAGE_NAMESPACE, createWebHostCapabilities } from '../../copilot/webHost';
 import { resetPageSingletonsForTests } from '../../copilot/pageSingletons';
+import CopilotPanelMount from '../../copilot/CopilotPanelMount';
+import type { WebSession } from '../../copilot/webSession';
+
+// For the mint tests below, which mount through `CopilotPanelMount`: the host
+// session it builds is real, and only what that session reads is stubbed, the
+// credential store and the `/auth/me` profile.
+const auth = vi.hoisted(() => ({
+  getAccessTokenFor: vi.fn(),
+  peekAccessToken: vi.fn(),
+  refreshTokens: vi.fn(),
+  onAuthCleared: vi.fn(),
+}));
+vi.mock('../../lib/auth/AuthManager', () => ({ authManager: auth }));
+vi.mock('../../lib/auth/functions', () => ({
+  getAccountProfile: vi.fn(async () => ({
+    user_id: 'u1',
+    username: 'ada',
+    display_name: 'Ada L',
+    email: 'ada@example.com',
+    roles: ['user'],
+    is_dev_user: false,
+    created_at: '2026-01-01T00:00:00Z',
+    organization: null,
+  })),
+}));
+
+/** Every session the real mount builds, unchanged but for a spy on `onUnauthorized`. */
+const builtSessions = vi.hoisted((): WebSession[] => []);
+vi.mock('../../copilot/webSession', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../copilot/webSession')>();
+  return {
+    ...real,
+    createWebSession: (...args: Parameters<typeof real.createWebSession>) => {
+      const session = real.createWebSession(...args);
+      vi.spyOn(session, 'onUnauthorized');
+      builtSessions.push(session);
+      return session;
+    },
+  };
+});
 
 /**
  * The REAL panel, mounted once, against this repository's own host adapter.
@@ -56,7 +98,9 @@ function stubBackend() {
       return json({ features: {}, dashboardUrl: 'http://localhost:3333' });
     }
     if (url.includes('/sessions')) {
-      return json({ session_id: 'sess-1', created_at: new Date().toISOString() });
+      // Minted for the host's user: the panel keeps only a session minted for
+      // the user it was built for, and treats any other as a refused bearer.
+      return json({ session_id: 'sess-1', user_id: 'u1', created_at: new Date().toISOString() });
     }
     if (url.includes('/cases')) {
       return json({ cases: [], total_count: 0 });
@@ -171,6 +215,13 @@ describe('the real @faultmaven/copilot-ui panel, in this host', () => {
     // Something of the panel is actually on screen — so "no fallback" is not
     // being satisfied by an empty tree.
     expect(container.textContent?.length ?? 0).toBeGreaterThan(0);
+    // And it holds a session, kept for this host's user. A mint the panel
+    // refused renders nothing (its error is never shown), so without this the
+    // smoke test stays green over a panel that has no session.
+    await waitFor(() => {
+      expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}sessionId`)).toBe('"sess-1"');
+      expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}sessionUserId`)).toBe('"u1"');
+    });
   });
 });
 
@@ -275,6 +326,120 @@ describe('sign-out leaves nothing of the previous user behind', () => {
         .join('\n');
       expect(surviving).not.toMatch(/PREVIOUS USER SECRET CASE/);
     });
+  });
+});
+
+describe('the session mint, through this host\u2019s real mount (faultmaven#1460)', () => {
+  /**
+   * Only with a bearer, and only for the signed-in user.
+   *
+   * The package at the old pin sent `POST /api/v1/sessions` header-less when
+   * the host had no credential to give, the server minted that session for
+   * nobody, and the panel kept it, and heartbeated it, for whoever signed in.
+   * The server cannot require a bearer on the mint while a client does that.
+   *
+   * Mounted through `CopilotPanelMount`, so the session is the one this host
+   * builds and the transport is the one it installs, which hands a refused
+   * bearer to `onUnauthorized`.
+   */
+  type SentRequest = { path: string; method: string; headers: Headers };
+
+  /** The backend, recording every request and minting each session for `mintedFor`. */
+  function recordingBackend(mintedFor: string): SentRequest[] {
+    const sent: SentRequest[] = [];
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        const request = { path: url.pathname, method: init?.method ?? 'GET', headers: new Headers(init?.headers) };
+        sent.push(request);
+        if (url.pathname.endsWith('/capabilities')) return json({ features: {}, dashboardUrl: 'http://localhost:3333' });
+        if (isMint(request)) return json({ session_id: 'sess-1', user_id: mintedFor });
+        if (url.pathname.startsWith('/api/v1/cases')) return json({ cases: [], total_count: 0 });
+        return json({});
+      }),
+    );
+    return sent;
+  }
+
+  const isMint = (r: SentRequest) => r.method === 'POST' && r.path === '/api/v1/sessions';
+
+  /** One of the panel's keys, as this host's store holds it. */
+  const stored = (key: string) => localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}${key}`);
+
+  /** Lets every continuation already queued run, so an absence is not merely "not yet". */
+  const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+
+  beforeEach(() => {
+    builtSessions.length = 0;
+    auth.getAccessTokenFor.mockReset();
+    auth.peekAccessToken.mockReset().mockResolvedValue(null);
+    auth.refreshTokens.mockReset().mockResolvedValue(null);
+    auth.onAuthCleared.mockReset().mockReturnValue(() => {});
+    localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}hasCompletedFirstRun`, 'true');
+  });
+
+  async function mountThroughHost() {
+    const result = render(
+      <MemoryRouter>
+        <CopilotPanelMount initialCase={{ kind: 'new' }} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(builtSessions).toHaveLength(1));
+    return result;
+  }
+
+  it('(a) sends no mint while the host has no credential to give, and signs no one out', async () => {
+    auth.getAccessTokenFor.mockResolvedValue({ kind: 'none' });
+    const sent = recordingBackend('u1');
+
+    await mountThroughHost();
+    await waitFor(() => expect(auth.getAccessTokenFor).toHaveBeenCalledWith('u1'));
+    await settle();
+
+    expect(sent.filter(isMint)).toEqual([]);
+    expect(builtSessions[0].onUnauthorized).not.toHaveBeenCalled();
+    expect(auth.refreshTokens).not.toHaveBeenCalled();
+    expect(stored('sessionId')).toBeNull();
+  });
+
+  it('(b) mints with the bearer, keeps the session for its user, and sends it next', async () => {
+    auth.getAccessTokenFor.mockResolvedValue({ kind: 'token', token: 'tok-live' });
+    const sent = recordingBackend('u1');
+
+    const { container } = await mountThroughHost();
+    await waitFor(() => expect(stored('sessionUserId')).toBe('"u1"'));
+
+    const mints = sent.filter(isMint);
+    expect(mints).toHaveLength(1);
+    expect(mints[0].headers.get('Authorization')).toBe('Bearer tok-live');
+    expect(stored('sessionId')).toBe('"sess-1"');
+
+    // The next `/cases` request, a question asked, carries that session.
+    const before = sent.length;
+    await userEvent.type(container.querySelector('textarea') as HTMLTextAreaElement, 'why is checkout slow{Enter}');
+    await waitFor(() => expect(sent.slice(before).some((r) => r.path.startsWith('/api/v1/cases'))).toBe(true));
+    const next = sent.slice(before).find((r) => r.path.startsWith('/api/v1/cases'));
+    expect(next?.headers.get('X-Session-Id')).toBe('sess-1');
+    expect(next?.headers.get('Authorization')).toBe('Bearer tok-live');
+  });
+
+  it('(c) takes a session minted for another user as a refused bearer, and keeps none', async () => {
+    auth.getAccessTokenFor.mockResolvedValue({ kind: 'token', token: 'tok-live' });
+    const sent = recordingBackend('someone-else');
+
+    await mountThroughHost();
+    await waitFor(() => expect(builtSessions[0].onUnauthorized).toHaveBeenCalled());
+    await settle();
+
+    expect(sent.filter(isMint)).toHaveLength(1);
+    expect(builtSessions[0].onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(builtSessions[0].onUnauthorized).toHaveBeenCalledWith('tok-live');
+    expect(auth.refreshTokens).toHaveBeenCalledWith('tok-live');
+    expect(stored('sessionId')).toBeNull();
+    expect(stored('sessionUserId')).toBeNull();
   });
 });
 

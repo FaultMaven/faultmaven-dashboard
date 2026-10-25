@@ -85,10 +85,13 @@ export function createWebSession(
      *
      * The plain `Error` for "no token" is deliberate, and so is NOT throwing the
      * package's `AuthenticationError` there. No token is not a verdict: a
-     * refresh that failed transiently (5xx, offline) keeps the session, and the
-     * contract's "anything else" sends the request header-less so its 401 takes
-     * the recoverable path rather than ending a session the next request could
-     * use. A session that HAS ended reaches the panel through
+     * refresh that failed transiently (5xx, offline) keeps the session. The
+     * contract's "anything else" sends the request header-less, and its 401
+     * keeps both this credential and the panel's FaultMaven session and mints
+     * nothing, so the next request can still use them. The session mint itself
+     * is never sent without a bearer, since the server would mint it for nobody
+     * (faultmaven#1460); the panel retries it 15 s later, then on each
+     * heartbeat. A session that HAS ended reaches the panel through
      * `subscribeAuthState`, below.
      */
     async accessToken() {
