@@ -50,8 +50,6 @@ vi.mock('../../lib/auth/functions', () => ({
 vi.mock('../../lib/auth/AuthManager', () => ({
   authManager: {
     getAccessToken: vi.fn().mockResolvedValue('tok-live'),
-    // What the host session reads its bearer through.
-    getAccessTokenFor: vi.fn().mockResolvedValue({ kind: 'token', token: 'tok-live' }),
     peekAccessToken: vi.fn().mockResolvedValue('tok-live'),
     refreshTokens: vi.fn(),
     onAuthCleared: vi.fn().mockReturnValue(() => {}),
@@ -135,8 +133,7 @@ function stubBackend() {
     if (url.includes('/capabilities')) {
       return json({ features: {}, dashboardUrl: 'http://localhost:3333' });
     }
-    // Minted for the host's user: the panel keeps no session minted for anyone else.
-    if (url.includes('/sessions')) return json({ session_id: 'sess-1', user_id: 'u1' });
+    if (url.includes('/sessions')) return json({ session_id: 'sess-1' });
     if (url.includes('/cases')) return json({ cases: [], total_count: 0 });
     return json({});
   });
