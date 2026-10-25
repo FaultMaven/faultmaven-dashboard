@@ -59,7 +59,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-    "happy-dom": "^20.8.9",
+    "happy-dom": "^21.0.4",
     "jsdom": "^27.3.0",
     "openapi-typescript": "7.10.1",
     "postcss": "^8.5.23",
@@ -81,10 +81,11 @@
       "brace-expansion@2": "^2.1.7",
       "browserslist": "^4.28.7",
       "dompurify": "^3.4.16",
-      "fast-uri": "^3.1.8",
+      "fast-uri@3": "^3.1.9",
       "js-yaml": "^4.3.2",
       "postcss-selector-parser": "^7.1.6",
-      "source-map-js": "^1.2.2"
+      "source-map-js": "^1.2.2",
+      "zod@4": "^4.6.6"
     }
   }
 }
