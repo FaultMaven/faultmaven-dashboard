@@ -35,8 +35,9 @@ let lastOnCaseChanged: ((id: string) => void) | undefined;
 
 // Hoisted with the mock that returns it, so a test can name the class the
 // mount must hand the session — the package's own, by identity.
-const { SessionSwitchedErrorStub } = vi.hoisted(() => ({
+const { SessionSwitchedErrorStub, CredentialUnavailableErrorStub } = vi.hoisted(() => ({
   SessionSwitchedErrorStub: class SessionSwitchedError extends Error {},
+  CredentialUnavailableErrorStub: class CredentialUnavailableError extends Error {},
 }));
 
 vi.mock('@faultmaven/copilot-ui', () => ({
@@ -45,6 +46,7 @@ vi.mock('@faultmaven/copilot-ui', () => ({
   setApiTransport,
   clearPersistedSession,
   SessionSwitchedError: SessionSwitchedErrorStub,
+  CredentialUnavailableError: CredentialUnavailableErrorStub,
   clearApiTransport,
   getApiTransport,
   clearHostEndpoints,
@@ -72,9 +74,12 @@ vi.mock('../../lib/auth/functions', () => ({
 
 const getAccessTokenFor = vi.fn();
 const refreshTokens = vi.fn();
+const holdsSessionFor = vi.fn();
 vi.mock('../../lib/auth/AuthManager', () => ({
   authManager: {
     getAccessTokenFor: (...args: unknown[]) => getAccessTokenFor(...args),
+    holdsSessionFor: (...args: unknown[]) => holdsSessionFor(...args),
+    isSigningOut: vi.fn().mockReturnValue(false),
     peekAccessToken: vi.fn().mockResolvedValue(null),
     refreshTokens: (...args: unknown[]) => refreshTokens(...args),
     onAuthCleared: vi.fn().mockReturnValue(() => {}),
@@ -190,6 +195,18 @@ describe('CopilotPanelMount', () => {
     await expect(transport.accessToken()).rejects.toBeInstanceOf(SessionSwitchedErrorStub);
   });
 
+  it("refuses a request with no token while the session is kept with the PACKAGE'S CredentialUnavailableError (fm#1460)", async () => {
+    // Same reason: any other class sends the request header-less, and its 401
+    // reads as "Sign in first" inside a signed-in Dashboard.
+    getAccessTokenFor.mockResolvedValue({ kind: 'none' });
+    holdsSessionFor.mockResolvedValue(true);
+    mount(NEW_INVESTIGATION);
+    await screen.findByTestId('shared-copilot-ui');
+
+    const transport = setApiTransport.mock.calls[0][0];
+    await expect(transport.accessToken()).rejects.toBeInstanceOf(CredentialUnavailableErrorStub);
+  });
+
   it('hands the refresh the bearer the refused request carried', async () => {
     // Not whatever storage holds by the time the 401 lands (copilot#348).
     refreshTokens.mockResolvedValue('tok-new');
@@ -208,7 +225,13 @@ describe('CopilotPanelMount', () => {
 
     await expect(transport.sessionId()).resolves.toBeNull();
 
+    // Only this user's session is sent: never another account's, nor one
+    // stored before sessions recorded an owner (fm#1460).
     localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}sessionId`, JSON.stringify('sess-1'));
+    await expect(transport.sessionId()).resolves.toBeNull();
+    localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}sessionUserId`, JSON.stringify('u2'));
+    await expect(transport.sessionId()).resolves.toBeNull();
+    localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}sessionUserId`, JSON.stringify('u1'));
     await expect(transport.sessionId()).resolves.toBe('sess-1');
 
     // Delegated to the package's own single writer of those keys rather than

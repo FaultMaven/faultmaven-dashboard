@@ -21,7 +21,7 @@ vi.mock('../../lib/auth/AuthManager', () => ({
   },
 }));
 
-import { SessionSwitchedError } from '@faultmaven/copilot-ui';
+import { CredentialUnavailableError, SessionSwitchedError } from '@faultmaven/copilot-ui';
 import { createWebSession, hostUserFromProfile } from '../../copilot/webSession';
 import type { AccountProfile } from '../../lib/auth/functions';
 
@@ -43,8 +43,9 @@ const USER: HostUser = {
   roles: ['user'],
 };
 
-/** The session as the mount builds it: with the package's own error class. */
-const session = () => createWebSession(USER, SessionSwitchedError);
+/** The session as the mount builds it: with the package's own error classes. */
+const session = () =>
+  createWebSession(USER, { SessionSwitched: SessionSwitchedError, CredentialUnavailable: CredentialUnavailableError });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -119,14 +120,39 @@ describe('accessToken', () => {
     await expect(session().accessToken()).rejects.toBeInstanceOf(SessionSwitchedError);
   });
 
-  it('THROWS when the manager cannot produce one', async () => {
-    // The contract is non-null on purpose. A null would hand the shared UI a
-    // decision about what an absent credential means, and that decision belongs
-    // to whoever owns the credential — a caller that cannot get a token is
-    // looking at a session that has ended, which is onUnauthorized's business.
+  // The contract is non-null on purpose. A null would hand the shared UI a
+  // decision about what an absent credential means, and that decision belongs
+  // to whoever owns the credential.
+  it.each([
+    ['still holds the session', true],
+    ['cannot read storage', null],
+  ])("THROWS the PACKAGE'S CredentialUnavailableError when there is no token and AuthManager %s (faultmaven#1460)", async (_, held) => {
+    // A 5xx or offline renewal kept the session: nothing is sent, and the
+    // panel shows its connection error, not "Sign in first".
     getAccessTokenFor.mockResolvedValue({ kind: 'none' });
+    holdsSessionFor.mockResolvedValue(held);
+    await expect(session().accessToken()).rejects.toBeInstanceOf(CredentialUnavailableError);
+    expect(holdsSessionFor).toHaveBeenCalledExactlyOnceWith('u1');
+  });
+
+  it('THROWS CredentialUnavailableError during this tab’s own sign-out too: the session is still held', async () => {
+    // `isSigningOut()` is not asked here. Between `beginSignOut()` and
+    // `clearAuthState()` the session is still held, and a plain Error then
+    // would send the request with no bearer.
+    getAccessTokenFor.mockResolvedValue({ kind: 'none' });
+    holdsSessionFor.mockResolvedValue(true);
+    isSigningOut.mockReturnValue(true);
+    await expect(session().accessToken()).rejects.toBeInstanceOf(CredentialUnavailableError);
+  });
+
+  it('THROWS a plain Error when there is no token and AuthManager holds no session for this user', async () => {
+    // Read as gone: the request goes out header-less, the not-signed-in path,
+    // and the session's end reaches the panel through `subscribeAuthState`.
+    getAccessTokenFor.mockResolvedValue({ kind: 'none' });
+    holdsSessionFor.mockResolvedValue(false);
     const attempt = session().accessToken();
     await expect(attempt).rejects.toThrow(/no faultmaven session/i);
+    await expect(attempt).rejects.not.toBeInstanceOf(CredentialUnavailableError);
     await expect(attempt).rejects.not.toBeInstanceOf(SessionSwitchedError);
   });
 });
@@ -185,12 +211,19 @@ describe('onUnauthorized', () => {
     expect(holdsSessionFor).toHaveBeenCalledExactlyOnceWith('u1');
   });
 
-  it("answers 'unavailable' when the refresh renewed nothing and kept the session (faultmaven#1460)", async () => {
+  it.each([
     // A 5xx or offline renewal. 'ended' here showed a sign-out inside a
     // signed-in Dashboard; the panel shows its connection error instead.
+    ['kept the session, still holding the refused token', 'unavailable', true, 'tok-refused'],
+    ['could not read storage: that settles nothing', 'unavailable', null, 'tok-refused'],
+    // Another tab rotated while this refresh failed: its token is live.
+    ['kept the session, now holding a newer token', 'refreshed', true, 'tok-rotated'],
+  ])("when the refresh renewed nothing and AuthManager %s, answers '%s'", async (_, verdict, held, stored) => {
     refreshTokens.mockResolvedValue(null);
+    holdsSessionFor.mockResolvedValue(held);
+    peekAccessToken.mockResolvedValue(stored);
 
-    await expect(session().onUnauthorized('tok-refused')).resolves.toBe('unavailable');
+    await expect(session().onUnauthorized('tok-refused')).resolves.toBe(verdict);
   });
 
   it("answers 'ended' while a sign-out is under way, whatever is still stored", async () => {
@@ -200,10 +233,10 @@ describe('onUnauthorized', () => {
     await expect(session().onUnauthorized('tok-refused')).resolves.toBe('ended');
   });
 
-  it("answers 'refreshed' on a renewal even with a stale sign-out flag", async () => {
-    // A sign-out in another tab sets `isSigningOut()`, and only a sign-in IN
-    // THIS TAB clears it. After the other tab signs back in, a renewed 401 is
-    // still a renewal; reading the flag first answered 'ended' to every 401.
+  it("answers 'refreshed' on a renewal even with the sign-out flag set", async () => {
+    // Defensive: through AuthManager the flag and a held session coexist only
+    // in this tab's own sign-out, between `beginSignOut()` and
+    // `clearAuthState()`. A renewal there is still a renewal.
     isSigningOut.mockReturnValue(true);
     refreshTokens.mockResolvedValue('tok-new');
 

@@ -32,7 +32,8 @@ import CopilotPanel, {
 } from '@faultmaven/copilot-ui';
 import { PageHeader } from '../../components/PageHeader';
 import CopilotPanelMount from '../../copilot/CopilotPanelMount';
-import { createWebHostCapabilities } from '../../copilot/webHost';
+import { PANEL_STORAGE_NAMESPACE, createWebHostCapabilities } from '../../copilot/webHost';
+import { resetPageSingletonsForTests } from '../../copilot/pageSingletons';
 
 vi.mock('../../lib/auth/functions', () => ({
   getAccountProfile: vi.fn().mockResolvedValue({
@@ -55,6 +56,8 @@ vi.mock('../../lib/auth/AuthManager', () => ({
     peekAccessToken: vi.fn().mockResolvedValue('tok-live'),
     refreshTokens: vi.fn(),
     onAuthCleared: vi.fn().mockReturnValue(() => {}),
+    isSigningOut: vi.fn().mockReturnValue(false),
+    holdsSessionFor: vi.fn().mockResolvedValue(true),
   },
 }));
 
@@ -221,6 +224,10 @@ async function renderWithFullChrome(chrome: PanelChrome = 'full') {
 }
 
 beforeEach(() => {
+  // The afterEach clears the store the mount installs once per page, so each
+  // mount installs it again; without this, every mount after the first ran
+  // with no store, and so with no session.
+  resetPageSingletonsForTests();
   localStorage.clear();
   vi.stubGlobal('fetch', stubBackend());
   Element.prototype.scrollIntoView ??= () => {};
@@ -268,6 +275,9 @@ describe('the panel embedded in a Dashboard page', () => {
     const { container } = await renderDashboardPage();
 
     expect(container.querySelector('textarea')).not.toBeNull();
+    // With a session, kept for this host's user: the panel keeps none minted
+    // for anyone else.
+    await waitFor(() => expect(localStorage.getItem(`${PANEL_STORAGE_NAMESPACE}sessionUserId`)).toBe('"u1"'));
   });
 });
 

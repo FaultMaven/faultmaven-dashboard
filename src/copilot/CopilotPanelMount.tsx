@@ -145,7 +145,10 @@ export default function CopilotPanelMount({
       // second mount would install equivalent values, so it does not.
       installPageSingletons(ui, capabilities);
 
-      const session = createWebSession(hostUserFromProfile(profile), ui.SessionSwitchedError);
+      const session = createWebSession(hostUserFromProfile(profile), {
+        SessionSwitched: ui.SessionSwitchedError,
+        CredentialUnavailable: ui.CredentialUnavailableError,
+      });
 
       // Held so the cleanup can tell OUR transport from a later mount's.
       const transport = {
@@ -153,10 +156,12 @@ export default function CopilotPanelMount({
         accessToken: () => session.accessToken(),
         // Through the same store everything else reads this key from. A direct
         // `localStorage` read here would work and be a second storage path by
-        // another name.
+        // another name. Only this user's: a session minted for another account,
+        // or stored before sessions recorded an owner, is never sent as theirs.
         async sessionId() {
-          const stored = await capabilities.store.get(['sessionId']);
-          return (stored.sessionId as string | undefined) ?? null;
+          const stored = await capabilities.store.get(['sessionId', 'sessionUserId']);
+          const owner = stored.sessionUserId as string | undefined;
+          return owner && owner === session.user.id ? ((stored.sessionId as string | undefined) ?? null) : null;
         },
         // Delegated, not reimplemented. Which keys a FaultMaven session occupies
         // is the package's to know, and it is their single writer — restating

@@ -535,6 +535,11 @@ export class AuthManager {
    * bearer `logoutAuth` would send to revoke "this" account's sessions.
    */
   private async readState(): Promise<AuthState | null> {
+    return (await this.readOwnRow()).state;
+  }
+
+  /** `readState`, and whether storage could be read at all. */
+  private async readOwnRow(): Promise<{ readable: boolean; state: AuthState | null }> {
     const { readable, state } = await this.readStoredRow();
     if (this.identity.kind === 'unread' && readable) {
       // A tab restored with a session never signs in — the session was already
@@ -544,7 +549,7 @@ export class AuthManager {
       // session until a reload.
       this.identity = state ? signedInAs(state) : { kind: 'signedOut' };
     }
-    return this.isThisTabs(state) ? state : null;
+    return { readable, state: this.isThisTabs(state) ? state : null };
   }
 
   /** The stored row, whoever it belongs to. */
@@ -921,16 +926,22 @@ export class AuthManager {
   }
 
   /**
-   * Whether this tab still holds `userId`'s session: `getAccessTokenFor`'s
-   * question without its renewal.
+   * Whether THIS TAB still holds `userId`'s session: `getAccessTokenFor`'s
+   * question without its renewal. `null` when storage cannot be read, which
+   * settles nothing.
    *
-   * For a caller whose refresh just renewed nothing. `refreshTokens` returns
-   * null both when it cleared the session (a rejected refresh token) and when
-   * it kept it (a 5xx or offline renewal), and only this read tells the two
-   * apart (faultmaven#1460).
+   * For a caller with no usable token. `refreshTokens` returns null both when
+   * it cleared the session (a rejected refresh token) and when it kept it (a
+   * 5xx or offline renewal), and only this read tells the two apart
+   * (faultmaven#1460). Per tab, through `readState`: a tab signed out from
+   * another tab does not hold a session that tab signs in again. A session
+   * that names no user is never `userId`'s.
    */
-  async holdsSessionFor(userId: string): Promise<boolean> {
-    return (await this.readState())?.user?.user_id === userId;
+  async holdsSessionFor(userId: string): Promise<boolean | null> {
+    const { readable, state } = await this.readOwnRow();
+    if (!readable) return null;
+    const owner = state?.user?.user_id;
+    return !!owner && owner === userId;
   }
 
   /** `authState`'s access token, renewed first when it is at or near expiry. */

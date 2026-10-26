@@ -38,6 +38,7 @@ vi.mock('@faultmaven/copilot-ui', async () => {
     clearApiTransport: vi.fn(),
     clearPersistedSession: vi.fn().mockResolvedValue(undefined),
     SessionSwitchedError: class SessionSwitchedError extends Error {},
+    CredentialUnavailableError: class CredentialUnavailableError extends Error {},
     CopilotPanel: Stub,
   };
 });

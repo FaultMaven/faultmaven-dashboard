@@ -28,6 +28,8 @@ vi.mock('../../lib/auth/AuthManager', () => ({
     getAccessTokenFor: vi.fn().mockResolvedValue({ kind: 'token', token: 'tok-live' }),
     peekAccessToken: vi.fn().mockResolvedValue('tok-live'),
     refreshTokens: vi.fn().mockResolvedValue('tok-live'),
+    isSigningOut: vi.fn().mockReturnValue(false),
+    holdsSessionFor: vi.fn().mockResolvedValue(true),
     onAuthCleared: (listener: () => void) => {
       onAuthClearedListeners.push(listener);
       return () => {
