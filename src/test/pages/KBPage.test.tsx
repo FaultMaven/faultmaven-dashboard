@@ -1,4 +1,4 @@
-import { render, screen, act, fireEvent, within } from '@testing-library/react';
+import { render, screen, act, fireEvent, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import KBPage from '../../pages/KBPage';
@@ -35,6 +35,20 @@ vi.mock('../../context/AuthContext', () => ({
 const mockUseAvailableScopes = vi.fn();
 vi.mock('../../hooks/useAvailableScopes', () => ({
   useAvailableScopes: () => mockUseAvailableScopes(),
+}));
+
+// The write gate's tenancy term (FaultMaven/faultmaven#1489). Multi-tenant by
+// default, the hook's own answer until the backend says otherwise.
+const mockMultiTenant = vi.fn(() => true);
+vi.mock('../../hooks/useCapabilities', () => ({
+  useCapabilities: () => ({
+    managementConsole: false,
+    teamSharing: false,
+    multiTenant: mockMultiTenant(),
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 function renderPage() {
@@ -451,6 +465,7 @@ describe('KBPage — personal-scope edit rights come from owner_id alone', () =>
 describe('KBPage — the write gate follows the server policy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMultiTenant.mockReturnValue(true);
     mockUseAvailableScopes.mockReturnValue({
       scopes: ['personal'],
       loading: false,
@@ -511,13 +526,29 @@ describe('KBPage — the write gate follows the server policy', () => {
     // ADR-012: operator access to tenant content is the audited break-glass
     // path, never a standing bypass — and `personal` is the most tenant-private
     // tier. An earlier draft of this change granted it here by mirroring the
-    // server, which was wrong twice over: the server's operator arm is
-    // single-tenant only (a term this client cannot evaluate), and the branch
-    // had never granted it before, so it was a NEW bypass rather than a
-    // preserved one.
+    // server, which was wrong: the branch had never granted it before, so it
+    // was a NEW bypass rather than a preserved one. Single-tenant included.
+    mockMultiTenant.mockReturnValue(false);
     await renderDocs([{ scope: 'personal', owner_id: 'u-2' }], 'u-1', true);
 
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('offers the operator another account\'s team and global runbooks only when the backend says single-tenant', async () => {
+    // FaultMaven/faultmaven#1489: under multi-tenant the server refuses the
+    // operator arm, so Edit and the bulk checkbox are offered only on
+    // `multiTenant: false`.
+    const docs = [{ scope: 'team', owner_id: 'u-2' }, { scope: 'global', owner_id: null }];
+    await renderDocs(docs, 'u-1', true);
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select Runbook 1' })).not.toBeInTheDocument();
+    cleanup();
+
+    mockMultiTenant.mockReturnValue(false);
+    await renderDocs(docs, 'u-1', true);
+    expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(2);
+    expect(screen.getByRole('checkbox', { name: 'Select Runbook 1' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select Runbook 2' })).toBeInTheDocument();
   });
 
   it('gives a standard user a delete path for a runbook they wrote', async () => {

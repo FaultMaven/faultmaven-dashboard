@@ -33,6 +33,10 @@ vi.mock('../../hooks/useNavigationItems', () => ({ useNavigationItems: () => [] 
 vi.mock('../../hooks/useAvailableScopes', () => ({
   useAvailableScopes: () => ({ scopes: ['personal'], loading: false, error: null, refetch: vi.fn() }),
 }));
+// KBPage reads /meta/capabilities for the write gate; never fetch it here.
+vi.mock('../../hooks/useCapabilities', () => ({
+  useCapabilities: () => ({ managementConsole: false, teamSharing: false, multiTenant: true, loading: false, error: null, refetch: vi.fn() }),
+}));
 
 const mockUseAuth = vi.fn();
 vi.mock('../../context/AuthContext', () => ({ useAuth: () => mockUseAuth() }));

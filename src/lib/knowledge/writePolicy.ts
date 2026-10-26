@@ -28,27 +28,23 @@
  * this client had not caught up.
  *
  * ‼ The OPERATOR arm is NOT extended to `personal`, and that asymmetry is
- * deliberate rather than an oversight. The server's operator arm is
- * conditional on the deployment not being multi-tenant
- * (`is_global_authoring_allowed`), and this client cannot evaluate that term:
- * `deploymentMode` on `/meta/capabilities` is derived from the dashboard URL
- * (`settings.is_cloud`), not from the tenant provider, and no capability
- * advertises tenancy. Guessing costs something either way — `deployment ===
- * 'cloud'` would strip global authoring from cloud operators today, since
- * Cloud is still single-tenant until ADR-010 P2.
+ * deliberate rather than an oversight. The server grants it there too when
+ * single-tenant, but ADR-012 is the tie-breaker: operator access to tenant
+ * content is the audited break-glass path, never a standing bypass, and
+ * `personal` is the most tenant-private tier there is. Adding a new standing
+ * operator bypass there is the thing that ADR is most directly against. So
+ * the operator arm stays exactly where it already was (`global`, `team`).
  *
- * So the operator arm stays exactly where it already was (`global`, `team`)
- * and is not added to `personal`. ADR-012 is the tie-breaker: operator access
- * to tenant content is the audited break-glass path, never a standing bypass,
- * and `personal` is the most tenant-private tier there is. Adding a new
- * standing operator bypass there is the thing that ADR is most directly
- * against — and neither bug this module fixes needs it.
- *
- * ⚠️ The pre-existing `global` and `team` operator arms remain wrong under
- * multi-tenant, where the server refuses them: an operator is offered Edit and
- * meets a 403. That is not introduced here and not removable here. Closing it
- * needs a tenancy capability from the backend — gate on that when it exists,
- * never on `deployment`, which answers a different question.
+ * The operator arm on `global` and `team` mirrors the server's condition that
+ * the deployment is not multi-tenant (`is_global_authoring_allowed`) through
+ * `features.multiTenant` on `/meta/capabilities`, which the backend derives
+ * from the same setting its policy reads (FaultMaven/faultmaven#1489). It
+ * arrives as `multiTenant` from `useCapabilities`, where an absent field (an
+ * older core), a loading fetch and a failed one all read as multi-tenant: an
+ * operator the page cannot vouch for is offered no Edit rather than one that
+ * meets a 403. Never gate it on `deployment`: `deploymentMode` is derived from
+ * the dashboard URL (`settings.is_cloud`) and answers a different question,
+ * and a single-tenant cloud's operator does hold the arm.
  */
 
 /** The fields the policy reads. Both are optional on a list row. */
@@ -61,6 +57,7 @@ export function canWriteDocument(
   doc: WritableDocument,
   isAdmin: boolean,
   userId: string | null,
+  multiTenant: boolean,
 ): boolean {
   // An absent scope falls through to `global`: fail closed to admin-only.
   const scope = doc.scope || 'global';
@@ -71,8 +68,11 @@ export function canWriteDocument(
   // (null) compare equal and every such row unlocks.
   const isOwner = userId !== null && !!doc.owner_id && doc.owner_id === userId;
 
-  if (scope === 'global') return isAdmin;
-  if (scope === 'team') return isOwner || isAdmin;
+  // The server refuses the operator arm under multi-tenant, on every scope.
+  const isOperator = isAdmin && !multiTenant;
+
+  if (scope === 'global') return isOperator;
+  if (scope === 'team') return isOwner || isOperator;
   if (scope === 'personal') return isOwner;
   return false;
 }

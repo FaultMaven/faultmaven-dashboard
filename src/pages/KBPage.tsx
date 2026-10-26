@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { logoutAuth, uploadDocument } from '../lib/api';
 import { canWriteDocument } from '../lib/knowledge/writePolicy';
 import {
@@ -141,6 +142,9 @@ function ScopeBadge({ scope }: { scope: string }) {
 function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
+  // Whether the server refuses the operator's write arm (true until the
+  // backend says otherwise): the write gate below mirrors it.
+  const { multiTenant } = useCapabilities();
 
   // Re-fetch documents when refreshKey changes (e.g., after draft verification)
   useEffect(() => {
@@ -236,8 +240,9 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
   // evaluated three times per row per render, next to neighbours that are all
   // `useMemo`d.
   const canWrite = useCallback(
-    (d: { scope?: string | null; owner_id?: string | null }) => canWriteDocument(d, isAdmin, userId),
-    [isAdmin, userId],
+    (d: { scope?: string | null; owner_id?: string | null }) =>
+      canWriteDocument(d, isAdmin, userId, multiTenant),
+    [isAdmin, userId, multiTenant],
   );
   const removableDocuments = useMemo(
     () => displayDocuments.filter(canWrite),
