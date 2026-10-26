@@ -103,23 +103,12 @@ jobs:
       #
       # `image` is the repository as metadata-action writes it, lowercased:
       # the owner is `FaultMaven`, and an image reference must be lowercase.
-      # The scan and the pushed-image check read it.
-      #
-      # `head` says whether BUILD_SHA is the head of github.ref NOW, read
-      # from the remote just before the build. github.sha cannot say it: it is
-      # fixed when the event fires, and a re-run keeps it.
+      # The scan, the pushed-image check and the tag move read it.
       - name: Resolve the commit's tags
         id: commit
         run: |
           echo "tag=sha-${BUILD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           echo "image=${REGISTRY_GHCR}/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
-          head="$(git ls-remote origin "$GITHUB_REF" | awk -v ref="$GITHUB_REF" '$2 == ref { print $1 }')"
-          if [ "$head" = "$BUILD_SHA" ]; then
-            echo "head=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "head=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::${GITHUB_REF} is at ${head:-nothing}, not ${BUILD_SHA}: this run writes no branch tag and no latest."
-          fi
 
       # Extract metadata for Docker tags and labels
       - name: Extract Docker metadata
@@ -128,24 +117,23 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY_GHCR }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
-          # `latest` names main's head and the branch tag its branch's head, so
-          # only a run whose commit is that head when it builds writes them. A
-          # CI run whose commit main has moved past (one that finished after a
-          # newer commit's, or a re-run of an old one) publishes its sha- tag
-          # alone. `latest` waits while main's head has no passing CI.
+          # The build pushes only the sha- tag and any semver tags. `latest`
+          # and the branch tag move in the last step, only while BUILD_SHA is
+          # still the branch's tip (FaultMaven/faultmaven#2347).
           #
           # latest=false: by default metadata-action also adds `latest` to a
           # semver tag push, on whatever commit the tag names.
           flavor: |
             latest=false
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && steps.commit.outputs.head == 'true' }}
-            type=ref,event=branch,enable=${{ steps.commit.outputs.head == 'true' }}
             type=raw,value=${{ steps.commit.outputs.tag }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-          # metadata-action fills this label from github.sha too.
+          # metadata-action fills the revision label and annotation from
+          # github.sha too. A custom entry replaces the generated one.
           labels: |
+            org.opencontainers.image.revision=${{ env.BUILD_SHA }}
+          annotations: |
             org.opencontainers.image.revision=${{ env.BUILD_SHA }}
 
       # Build into the runner's Docker, scan it, then push it (#236). The push
@@ -199,6 +187,7 @@ jobs:
       # The tags are already pushed by then, so this turns the run red before
       # the queue step: the queue never names an unscanned image.
       - name: Check the pushed image is the scanned one
+        id: check
         if: github.event_name != 'pull_request'
         env:
           IMAGE: ${{ steps.commit.outputs.image }}
@@ -256,8 +245,23 @@ jobs:
       # private key never reaches the action.
       - name: Update image queue
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
-        uses: FaultMaven/ci-actions/update-image-queue@4b5989bc5f9e1fcd5eee69cf18cfa0854a6f2894 # v1.2.0
+        uses: FaultMaven/ci-actions/update-image-queue@d01fb8619a0df2b2f71ef8e7e807b9373561b722 # v1.3.0
         with:
           service: faultmaven-dashboard
           sha: ${{ env.BUILD_SHA }}
           token: ${{ steps.infra-token.outputs.token }}
+
+      # Points latest and the branch tag at the pushed digest, only while
+      # BUILD_SHA is still the branch's tip (FaultMaven/faultmaven#2347). Read
+      # before the build, that answer went stale while the image built and was
+      # scanned, and an older commit's push could then move both tags back over
+      # a newer one's. It runs whatever the queue steps did, but only for an
+      # image the check above proved is the scanned one. The move itself never
+      # fails the job; ci-actions' README states the rule.
+      - name: Move latest and the branch tag
+        if: ${{ !cancelled() && steps.check.outcome == 'success' }}
+        uses: FaultMaven/ci-actions/move-branch-tags@d01fb8619a0df2b2f71ef8e7e807b9373561b722 # v1.3.0
+        with:
+          image: ${{ steps.commit.outputs.image }}
+          digest: ${{ steps.build.outputs.digest }}
+          sha: ${{ env.BUILD_SHA }}
