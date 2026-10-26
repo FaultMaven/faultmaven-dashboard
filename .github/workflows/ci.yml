@@ -549,16 +549,18 @@ jobs:
           echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          # Each stage's result as the gate step below reads it: `skipped` is a
+          # pass there (the skip_tests input), so it must not read "Failed" here.
+          echo "| Stage | Result |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Lint & Type Check | ${{ needs.lint.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Dependency Audit | ${{ needs['dependency-audit'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| API Types Drift | ${{ needs['api-types-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SSO Slug Drift | ${{ needs['sso-slug-drift'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Copilot UI Pin | ${{ needs['copilot-ui-pin'].result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build & Verify | ${{ needs.build.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend Tests | ${{ needs.test.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Smoke Test | ${{ needs.smoke.result == 'success' && 'Passed' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Type Check | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Audit | ${{ needs['dependency-audit'].result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Types Drift | ${{ needs['api-types-drift'].result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SSO Slug Drift | ${{ needs['sso-slug-drift'].result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Copilot UI Pin | ${{ needs['copilot-ui-pin'].result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Verify | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Test | ${{ needs.smoke.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**CI Features:**" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Build and Test run in parallel" >> $GITHUB_STEP_SUMMARY
@@ -566,7 +568,7 @@ jobs:
           echo "- ✅ pnpm caching enabled" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Trivy vulnerability scanning" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Publishing:** Images are published by the publish-docker.yml workflow to Docker Hub and GHCR." >> $GITHUB_STEP_SUMMARY
+          echo "**Publishing:** publish-docker.yml publishes the image to GHCR after this pipeline passes on a push to main." >> $GITHUB_STEP_SUMMARY
 
       - name: Fail if any required stage failed
         # `summary` runs with `if: always()` so the table is written even when an
