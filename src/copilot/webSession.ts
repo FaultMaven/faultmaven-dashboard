@@ -85,10 +85,12 @@ export function createWebSession(
      *
      * The plain `Error` for "no token" is deliberate, and so is NOT throwing the
      * package's `AuthenticationError` there. No token is not a verdict: a
-     * refresh that failed transiently (5xx, offline) keeps the session, and the
-     * contract's "anything else" sends the request header-less so its 401 takes
-     * the recoverable path rather than ending a session the next request could
-     * use. A session that HAS ended reaches the panel through
+     * refresh that failed transiently (5xx, offline) keeps the session. The
+     * contract's "anything else" sends the request header-less, and its 401
+     * keeps both this credential and the panel's FaultMaven session and mints
+     * nothing. The session mint itself is not sent without a bearer
+     * (faultmaven#1460): the panel retries it on its backoff (15 s, doubling
+     * to 60 s). A session that HAS ended reaches the panel through
      * `subscribeAuthState`, below.
      */
     async accessToken() {
@@ -121,8 +123,16 @@ export function createWebSession(
      * nothing and assumed the worst: it threw `AuthenticationError` after this
      * callback whatever happened, so a host that had just successfully renewed
      * the credential still got a blocking "session expired" modal whose action
-     * wiped the panel while the shell stayed signed in. `'refreshed'` means the
-     * session continues and the client should retry; `'ended'` means it is over.
+     * wiped the panel while the shell stayed signed in. Three answers, because
+     * a refresh that renewed nothing is two different states (faultmaven#1460):
+     *   - `'refreshed'`: renewed, so the client retries. First, and whatever
+     *     `isSigningOut()` says: that flag stays set after a sign-out in
+     *     another tab until this tab next signs someone in.
+     *   - `'ended'`: AuthManager no longer holds this panel user's session
+     *     (cleared, or another account's), or a sign-out is under way.
+     *   - `'unavailable'`: a 5xx or offline renewal kept the session. The panel
+     *     shows its connection error and stays signed in; answering `'ended'`
+     *     there showed a sign-out inside a signed-in Dashboard.
      *
      * `rejectedBearer` is the token the refused request CARRIED, which the
      * transport passes (copilot#348). Storage may hold a newer one by the time
@@ -133,7 +143,9 @@ export function createWebSession(
     async onUnauthorized(rejectedBearer?: string): Promise<AuthOutcome> {
       const rejected = rejectedBearer || (await authManager.peekAccessToken());
       const renewed = await authManager.refreshTokens(rejected ?? undefined);
-      return renewed ? 'refreshed' : 'ended';
+      if (renewed) return 'refreshed';
+      if (authManager.isSigningOut() || !(await authManager.holdsSessionFor(user.id))) return 'ended';
+      return 'unavailable';
     },
 
     /**

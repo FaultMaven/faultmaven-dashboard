@@ -6,6 +6,8 @@ const peekAccessToken = vi.fn();
 const refreshTokens = vi.fn();
 const onAuthCleared = vi.fn();
 const clearAuthState = vi.fn();
+const isSigningOut = vi.fn();
+const holdsSessionFor = vi.fn();
 
 vi.mock('../../lib/auth/AuthManager', () => ({
   authManager: {
@@ -14,6 +16,8 @@ vi.mock('../../lib/auth/AuthManager', () => ({
     refreshTokens: (...args: unknown[]) => refreshTokens(...args),
     onAuthCleared: (...args: unknown[]) => onAuthCleared(...args),
     clearAuthState: (...args: unknown[]) => clearAuthState(...args),
+    isSigningOut: () => isSigningOut(),
+    holdsSessionFor: (...args: unknown[]) => holdsSessionFor(...args),
   },
 }));
 
@@ -45,6 +49,8 @@ const session = () => createWebSession(USER, SessionSwitchedError);
 beforeEach(() => {
   vi.clearAllMocks();
   onAuthCleared.mockReturnValue(() => {});
+  isSigningOut.mockReturnValue(false);
+  holdsSessionFor.mockResolvedValue(true);
 });
 
 describe('hostUserFromProfile', () => {
@@ -168,11 +174,41 @@ describe('onUnauthorized', () => {
     await expect(session().onUnauthorized()).resolves.toBe('refreshed');
   });
 
-  it("answers 'ended' when the session is genuinely over", async () => {
+  it("answers 'ended' when AuthManager no longer holds THIS user's session", async () => {
+    // Cleared by a rejected refresh token, or another account's session in
+    // its place: either way not this panel's user, which is what is asked.
     peekAccessToken.mockResolvedValue('tok-refused');
     refreshTokens.mockResolvedValue(null);
+    holdsSessionFor.mockResolvedValue(false);
 
     await expect(session().onUnauthorized()).resolves.toBe('ended');
+    expect(holdsSessionFor).toHaveBeenCalledExactlyOnceWith('u1');
+  });
+
+  it("answers 'unavailable' when the refresh renewed nothing and kept the session (faultmaven#1460)", async () => {
+    // A 5xx or offline renewal. 'ended' here showed a sign-out inside a
+    // signed-in Dashboard; the panel shows its connection error instead.
+    refreshTokens.mockResolvedValue(null);
+
+    await expect(session().onUnauthorized('tok-refused')).resolves.toBe('unavailable');
+  });
+
+  it("answers 'ended' while a sign-out is under way, whatever is still stored", async () => {
+    refreshTokens.mockResolvedValue(null);
+    isSigningOut.mockReturnValue(true);
+
+    await expect(session().onUnauthorized('tok-refused')).resolves.toBe('ended');
+  });
+
+  it("answers 'refreshed' on a renewal even with a stale sign-out flag", async () => {
+    // A sign-out in another tab sets `isSigningOut()`, and only a sign-in IN
+    // THIS TAB clears it. After the other tab signs back in, a renewed 401 is
+    // still a renewal; reading the flag first answered 'ended' to every 401.
+    isSigningOut.mockReturnValue(true);
+    refreshTokens.mockResolvedValue('tok-new');
+
+    await expect(session().onUnauthorized('tok-refused')).resolves.toBe('refreshed');
+    expect(holdsSessionFor).not.toHaveBeenCalled();
   });
 
   it('does not clear the session itself', async () => {

@@ -72,6 +72,7 @@ export function makeAuthManagerMock(overrides: Record<string, unknown> = {}) {
     onAuthCleared: vi.fn().mockReturnValue(() => {}),
     watchCrossTabAuthChanges: vi.fn().mockReturnValue(() => {}),
     isSigningOut: vi.fn().mockReturnValue(false),
+    holdsSessionFor: vi.fn().mockResolvedValue(true),
     beginSignOut: vi.fn(),
     writeBridgeAuthState: vi.fn(),
     hasBridgeAuthState: vi.fn().mockReturnValue(false),

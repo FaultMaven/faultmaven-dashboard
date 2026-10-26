@@ -3,10 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 // NO mock of '@faultmaven/copilot-ui'. The purge under test is the package's.
-import { clearApiTransport, clearHostEndpoints, clearHostStore } from '@faultmaven/copilot-ui';
-import CopilotPanelMount from '../../copilot/CopilotPanelMount';
 import { PANEL_STORAGE_NAMESPACE } from '../../copilot/webHost';
-import { resetPageSingletonsForTests } from '../../copilot/pageSingletons';
 
 /**
  * Sign-out and unmount, at the same instant, through the real mount.
@@ -27,6 +24,8 @@ const onAuthClearedListeners: Array<() => void> = [];
 vi.mock('../../lib/auth/AuthManager', () => ({
   authManager: {
     getAccessToken: vi.fn().mockResolvedValue('tok-live'),
+    // What the host session reads its bearer through.
+    getAccessTokenFor: vi.fn().mockResolvedValue({ kind: 'token', token: 'tok-live' }),
     peekAccessToken: vi.fn().mockResolvedValue('tok-live'),
     refreshTokens: vi.fn().mockResolvedValue('tok-live'),
     onAuthCleared: (listener: () => void) => {
@@ -60,7 +59,8 @@ function stubBackend() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('/capabilities')) return json({ features: {} });
-    if (url.includes('/sessions')) return json({ session_id: 'sess-1' });
+    // Minted for the host's user: the panel keeps no session minted for anyone else.
+    if (url.includes('/sessions')) return json({ session_id: 'sess-1', user_id: 'u1' });
     if (url.includes('/cases')) return json({ cases: [], total_count: 0 });
     return json({});
   });
@@ -79,10 +79,6 @@ beforeEach(() => {
   onAuthClearedListeners.length = 0;
   consoleLines.length = 0;
   localStorage.clear();
-  resetPageSingletonsForTests();
-  clearApiTransport();
-  clearHostEndpoints();
-  clearHostStore();
   for (const level of ['warn', 'error'] as const) {
     vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
       consoleLines.push(args.map(String).join(' '));
@@ -108,6 +104,11 @@ afterEach(() => {
 });
 
 async function mountPanel() {
+  // A fresh copy of the package, and of the mount's page singletons: the
+  // store, the session epoch and the timers are module state, with no reset.
+  vi.resetModules();
+  await import('@faultmaven/copilot-ui');
+  const { default: CopilotPanelMount } = await import('../../copilot/CopilotPanelMount');
   const result = render(
     <MemoryRouter>
       <CopilotPanelMount initialCase={{ kind: 'new' }} />
@@ -117,6 +118,8 @@ async function mountPanel() {
     expect(screen.queryByTestId('copilot-panel-loading')).toBeNull();
   });
   await waitFor(() => expect(onAuthClearedListeners.length).toBeGreaterThan(0));
+  // The session the mount minted: the race below has to purge it too.
+  await waitFor(() => expect(panelKeys()).toEqual(expect.arrayContaining(['sessionId', 'sessionUserId'])));
   return result;
 }
 
