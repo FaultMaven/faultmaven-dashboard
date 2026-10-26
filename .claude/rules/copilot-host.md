@@ -110,8 +110,10 @@ change reaches both or reaches neither.
   panel's own sidebar carries a case list, an account row and an "Open
   Dashboard" button — all three of which this app already renders around it,
   and the last of which links to the page the user is already on.
-- **Two tests render the REAL package**, `realPanelMounts.test.tsx` and
-  `embeddedChrome.test.tsx`. Every other test here mocks
+- **Four tests render the REAL package**: `realPanelMounts.test.tsx`,
+  `embeddedChrome.test.tsx`, `signOutRace.test.tsx`, and
+  `refreshOutage.test.tsx`, which runs it on the real `AuthManager` too.
+  Every other test here mocks
   `@faultmaven/copilot-ui`, which is right for asserting the wiring and
   structurally blind to a package/host MISMATCH — a mocked package has no
   dependencies, so the whole suite stayed green while the panel crashed on

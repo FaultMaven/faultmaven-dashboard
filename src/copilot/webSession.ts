@@ -9,7 +9,13 @@
  * non-nullable, so there is no value of the host type without a signed-in user
  * and no state in which the panel could decide to show one (ADR-016 D3).
  */
-import type { AuthOutcome, HostSession, HostUser, SessionSwitchedError } from '@faultmaven/copilot-ui';
+import type {
+  AuthOutcome,
+  CredentialUnavailableError,
+  HostSession,
+  HostUser,
+  SessionSwitchedError,
+} from '@faultmaven/copilot-ui';
 import { authManager } from '../lib/auth/AuthManager';
 import type { AccountProfile } from '../lib/auth/functions';
 
@@ -47,21 +53,27 @@ export type WebSession = Omit<HostSession, 'onUnauthorized'> & {
 };
 
 /**
+ * The package's own error classes this host throws, handed in from the module
+ * the mount loaded. The package entry is imported once, dynamically, by the
+ * mount, and the request path tells each apart with `instanceof`, so a copy,
+ * or a class of our own, would let the request through.
+ */
+export interface PackageErrors {
+  SessionSwitched: typeof SessionSwitchedError;
+  CredentialUnavailable: typeof CredentialUnavailableError;
+}
+
+/**
  * Build the session the panel runs against.
  *
  * `user` is passed in rather than fetched here so the caller owns the loading
  * state: the panel must not mount until there IS a user, and a session object
  * that resolved its identity asynchronously would have a window in which it
  * had none.
- *
- * `SessionSwitched` is the package's own class, handed in from the loaded
- * module: the package entry is imported once, dynamically, by the mount, and
- * the request path tells the error apart with `instanceof` — so a copy, or a
- * class of our own, would let the request through.
  */
 export function createWebSession(
   user: HostUser,
-  SessionSwitched: typeof SessionSwitchedError,
+  { SessionSwitched, CredentialUnavailable }: PackageErrors,
 ): WebSession {
   return {
     user,
@@ -83,15 +95,23 @@ export function createWebSession(
      * about what an absent credential means, and that decision belongs to
      * whoever owns it.
      *
-     * The plain `Error` for "no token" is deliberate, and so is NOT throwing the
-     * package's `AuthenticationError` there. No token is not a verdict: a
-     * refresh that failed transiently (5xx, offline) keeps the session. The
-     * contract's "anything else" sends the request header-less, and its 401
-     * keeps both this credential and the panel's FaultMaven session and mints
-     * nothing. The session mint itself is not sent without a bearer
-     * (faultmaven#1460): the panel retries it on its backoff (15 s, doubling
-     * to 60 s). A session that HAS ended reaches the panel through
-     * `subscribeAuthState`, below.
+     * No token is not a verdict, so it is never the package's
+     * `AuthenticationError`. What it is turns on whether this tab still holds
+     * `user`'s session (faultmaven#1460):
+     *   - held, or storage unreadable: the package's
+     *     `CredentialUnavailableError`. A refresh that failed transiently (5xx,
+     *     offline) keeps the session, so nothing is sent and the panel shows its
+     *     connection error. Sent with no bearer, the request's 401 read as
+     *     "Sign in first" inside a signed-in Dashboard. `isSigningOut()` is not
+     *     asked: during this tab's own sign-out the session is still held, and
+     *     nothing goes out without a bearer then either;
+     *   - not held: a plain `Error`. The request goes out header-less, the
+     *     not-signed-in path, and the session's end reaches the panel through
+     *     `subscribeAuthState`, below.
+     *
+     * Two reads, not one: a session cleared or restored between them costs one
+     * connection error, and the next attempt reads it right. The mint is never
+     * sent without a bearer either way; the panel retries it on its backoff.
      */
     async accessToken() {
       const credential = await authManager.getAccessTokenFor(user.id);
@@ -99,6 +119,9 @@ export function createWebSession(
         throw new SessionSwitched();
       }
       if (credential.kind === 'none') {
+        if ((await authManager.holdsSessionFor(user.id)) !== false) {
+          throw new CredentialUnavailable('No usable FaultMaven credential right now; the session is kept.');
+        }
         throw new Error('No FaultMaven session: the Dashboard holds no usable access token.');
       }
       return credential.token;
@@ -125,14 +148,19 @@ export function createWebSession(
      * the credential still got a blocking "session expired" modal whose action
      * wiped the panel while the shell stayed signed in. Three answers, because
      * a refresh that renewed nothing is two different states (faultmaven#1460):
-     *   - `'refreshed'`: renewed, so the client retries. First, and whatever
-     *     `isSigningOut()` says: that flag stays set after a sign-out in
-     *     another tab until this tab next signs someone in.
-     *   - `'ended'`: AuthManager no longer holds this panel user's session
-     *     (cleared, or another account's), or a sign-out is under way.
-     *   - `'unavailable'`: a 5xx or offline renewal kept the session. The panel
-     *     shows its connection error and stays signed in; answering `'ended'`
-     *     there showed a sign-out inside a signed-in Dashboard.
+     *   - `'refreshed'`: renewed, or another tab rotated while this refresh
+     *     failed, so storage holds a token for this user other than the one
+     *     refused. The client retries. A renewal is answered before
+     *     `isSigningOut()` is read, defensively: through AuthManager the flag
+     *     and a held session coexist only in this tab's own sign-out, between
+     *     `logoutAuth`'s `beginSignOut()` and its `clearAuthState()`, and a
+     *     sign-out from another tab leaves this tab nothing to renew.
+     *   - `'ended'`: a sign-out is under way, or AuthManager no longer holds
+     *     this panel user's session (cleared, or another account's).
+     *   - `'unavailable'`: a 5xx or offline renewal kept the session, or
+     *     storage could not be read. The panel shows its connection error and
+     *     stays signed in; answering `'ended'` there showed a sign-out inside
+     *     a signed-in Dashboard.
      *
      * `rejectedBearer` is the token the refused request CARRIED, which the
      * transport passes (copilot#348). Storage may hold a newer one by the time
@@ -144,8 +172,11 @@ export function createWebSession(
       const rejected = rejectedBearer || (await authManager.peekAccessToken());
       const renewed = await authManager.refreshTokens(rejected ?? undefined);
       if (renewed) return 'refreshed';
-      if (authManager.isSigningOut() || !(await authManager.holdsSessionFor(user.id))) return 'ended';
-      return 'unavailable';
+      if (authManager.isSigningOut()) return 'ended';
+      const held = await authManager.holdsSessionFor(user.id);
+      if (held === false) return 'ended';
+      const stored = held && (await authManager.peekAccessToken());
+      return stored && stored !== rejected ? 'refreshed' : 'unavailable';
     },
 
     /**

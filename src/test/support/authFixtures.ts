@@ -125,6 +125,7 @@ export function makeCopilotUiMock(
     clearApiTransport: vi.fn(),
     clearPersistedSession: vi.fn().mockResolvedValue(undefined),
     SessionSwitchedError: class SessionSwitchedError extends Error {},
+    CredentialUnavailableError: class CredentialUnavailableError extends Error {},
     DASHBOARD_PANEL_ATTR: 'data-faultmaven-dashboard-panel',
     DASHBOARD_PANEL_MESSAGE: 'FM_DASHBOARD_PANEL_AVAILABLE',
     dashboardAdvertisesPanel: (doc: Document = document) => {

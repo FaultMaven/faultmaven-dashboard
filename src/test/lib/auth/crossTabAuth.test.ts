@@ -6,7 +6,7 @@ import { AuthManager, authManager } from '../../../lib/auth/AuthManager';
 import { AUTH_STATE_STORAGE_KEY, decodeCrossTabAuthState } from '../../../lib/auth/crossTab';
 import { createWebSession, hostUserFromProfile } from '../../../copilot/webSession';
 import { TEST_AUTH_STATE, OTHER_AUTH_STATE, TEST_PROFILE } from '../../support/authFixtures';
-import { SessionSwitchedError } from '@faultmaven/copilot-ui';
+import { CredentialUnavailableError, SessionSwitchedError } from '@faultmaven/copilot-ui';
 import type { AuthState } from '../../../lib/auth/types';
 
 /**
@@ -73,6 +73,9 @@ function installGlobals() {
 }
 
 let harness: ReturnType<typeof installGlobals>;
+
+/** The package's own error classes, as the mount hands them to the host session. */
+const PACKAGE_ERRORS = { SessionSwitched: SessionSwitchedError, CredentialUnavailable: CredentialUnavailableError };
 
 beforeEach(() => {
   for (const k of Object.keys(store)) delete store[k];
@@ -274,7 +277,7 @@ describe('an account switch in another tab, before this tab hears it (#212)', ()
     // carry B's bearer and create A's first message as a case in B's account.
     // The package's own class, so `getAuthHeaders` does not send it at all.
     await authManager.saveAuthState(TEST_AUTH_STATE);
-    const session = createWebSession(hostUserFromProfile(TEST_PROFILE), SessionSwitchedError);
+    const session = createWebSession(hostUserFromProfile(TEST_PROFILE), PACKAGE_ERRORS);
     anotherTabSignsIn(OTHER_AUTH_STATE);
 
     await expect(session.accessToken()).rejects.toBeInstanceOf(SessionSwitchedError);
@@ -409,7 +412,7 @@ describe('holdsSessionFor: what a refresh that renewed nothing left (faultmaven#
   // `refreshTokens` returns null whether it cleared the session or kept it,
   // and the Copilot panel's verdict on a 401 turns on which. The real manager,
   // the real host session, and `fetch` answering the refresh.
-  const panel = () => createWebSession(hostUserFromProfile(TEST_PROFILE), SessionSwitchedError);
+  const panel = () => createWebSession(hostUserFromProfile(TEST_PROFILE), PACKAGE_ERRORS);
 
   beforeEach(async () => {
     await authManager.saveAuthState(TEST_AUTH_STATE);
@@ -437,6 +440,29 @@ describe('holdsSessionFor: what a refresh that renewed nothing left (faultmaven#
     await expect(panel().onUnauthorized('tok-live')).resolves.toBe('ended');
     expect(await authManager.holdsSessionFor('u1')).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('is per tab: false here after a sign-out from another tab, though that tab signs the same user in again', async () => {
+    // Storage holds `u1` signed in, but not this tab's session: this tab ended
+    // and has not signed in since. A read of the raw row would answer true.
+    const manager = await signedInManager();
+    manager.watchCrossTabAuthChanges();
+    harness.fireStorage(null);
+    await vi.waitFor(() => expect(manager.isSigningOut()).toBe(true));
+
+    anotherTabSignsIn(TEST_AUTH_STATE)();
+
+    expect(await manager.holdsSessionFor('u1')).toBe(false);
+  });
+
+  it('never matches an unknown user: a row naming no one is not held for a profile with no id', async () => {
+    // This tab holds the legacy row; `undefined === undefined` must not make it
+    // the session of a profile that carried no `user_id`.
+    store.authState = { ...TEST_AUTH_STATE, user: { ...TEST_AUTH_STATE.user, user_id: undefined } };
+    const manager = new AuthManager();
+    expect(await manager.getAuthState()).not.toBeNull();
+
+    expect(await manager.holdsSessionFor(undefined as unknown as string)).toBe(false);
   });
 
   it('renews nothing itself, even for an expired token', async () => {
