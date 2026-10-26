@@ -173,9 +173,23 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
   // Drop any pending debounced search when the tab unmounts.
   useEffect(() => () => handleSearchChange.cancel(), [handleSearchChange]);
 
+  // ONE predicate, memoised, for the Edit button AND the checkbox AND the
+  // removable filter below. The server applies one policy to PUT and DELETE,
+  // so handing `DocumentList` two separate callbacks would be two things that
+  // can drift — the very class of bug this page is fixing. Memoised because it
+  // was being evaluated three times per row per render, next to neighbours
+  // that are all `useMemo`d; and the selection reset below keys on it.
+  const canWrite = useCallback(
+    (d: { scope?: string | null; owner_id?: string | null }) =>
+      canWriteDocument(d, isAdmin, userId, multiTenant),
+    [isAdmin, userId, multiTenant],
+  );
+
   // A selection must never outlive the rows it was made against: a filter,
   // scope, or page change swaps the visible set, so a stale id could act on a
-  // row the user can no longer see.
+  // row the user can no longer see. Nor the write gate it was made under: a
+  // `canWrite` change (a `multiTenant` flip on a capabilities refetch) can
+  // leave ids selected that the viewer may no longer write.
   //
   // ‼ The ROWS are a dependency, not just the controls that usually change
   // them. The Runbooks tab is hidden rather than unmounted, so this state
@@ -186,7 +200,7 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
   const rowIdentity = filteredDocuments.map((d) => d.document_id).join(',');
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page, rowIdentity]);
+  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page, rowIdentity, canWrite]);
 
   // Derive filter options from loaded documents
   const domains = useMemo(() =>
@@ -233,17 +247,6 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
     });
   };
 
-  // ONE predicate, memoised, for the Edit button AND the checkbox AND this
-  // filter. The server applies one policy to PUT and DELETE, so handing
-  // `DocumentList` two separate callbacks would be two things that can drift —
-  // the very class of bug this page is fixing. Memoised because it was being
-  // evaluated three times per row per render, next to neighbours that are all
-  // `useMemo`d.
-  const canWrite = useCallback(
-    (d: { scope?: string | null; owner_id?: string | null }) =>
-      canWriteDocument(d, isAdmin, userId, multiTenant),
-    [isAdmin, userId, multiTenant],
-  );
   const removableDocuments = useMemo(
     () => displayDocuments.filter(canWrite),
     [displayDocuments, canWrite],
@@ -976,12 +979,13 @@ export default function KBPage() {
 
   // The scan imports runbook files placed by hand in the API's `data/knowledge/`
   // directory, which only a standalone deployment has: on a multi-tenant one
-  // the replicas share no disk and core answers 422. No endpoint advertises
-  // tenancy, and `writePolicy.ts` rightly refuses to infer it from
-  // `deployment` — but this is not that question. It is "does this deployment
-  // have a hand-placed runbook directory worth scanning?", and standalone is
-  // exactly that (core guarantees standalone => single-tenant). `null` (not yet
-  // confirmed) offers nothing; the control appears once the deployment is known.
+  // the replicas share no disk and core answers 422. The scan gate keys on
+  // `deployment`, the scan route's own policy; tenancy is now advertised by
+  // `features.multiTenant`, which the write gate reads, but this is not that
+  // question. It is "does this deployment have a hand-placed runbook directory
+  // worth scanning?", and standalone is exactly that (core guarantees
+  // standalone => single-tenant). `null` (not yet confirmed) offers nothing;
+  // the control appears once the deployment is known.
   const scanAvailable = deployment === 'standalone';
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link

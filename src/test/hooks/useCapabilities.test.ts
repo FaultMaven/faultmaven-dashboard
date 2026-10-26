@@ -87,7 +87,7 @@ describe('useCapabilities', () => {
     it.each([
       ['false when the backend says false', { features: { multiTenant: false } }, false],
       ['true when the backend says true', { features: { multiTenant: true } }, true],
-      ['true when the field is absent (a core older than contract 14.7.0)', { features: { teamSharing: false } }, true],
+      ['true when the field is absent (a core that predates it)', { features: { teamSharing: false } }, true],
     ])('is %s', async (_label, response, expected) => {
       mockGetCapabilities.mockResolvedValue(response);
       const { result } = await loadHook();

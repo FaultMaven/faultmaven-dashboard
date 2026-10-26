@@ -140,7 +140,10 @@ src/
   and `src/copilot/usePanelAdvertisement.ts`.
 - Gate on an advertised capability, never on a version, and absent reads as NO
   (`=== true`): `useCapabilities` (`/meta/capabilities`) and the `oauth.*` flags
-  on `/auth/config` share the convention.
+  on `/auth/config` share the convention. `features.multiTenant` is the
+  exception, whose safe direction is `true` (absent or unknown reads as
+  multi-tenant, which hides the operator's KB write arm): `useCapabilities`
+  reads it `!== false`.
 - KB lists go through `useKBList` (paging / search / delete). The older
   clients (`auth`, `cases`, `knowledge`, `llm`, `users`) are re-exported by
   `src/lib/api.ts` — a backward-compat barrel by its own header — and pages

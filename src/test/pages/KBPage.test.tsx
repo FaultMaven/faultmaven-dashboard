@@ -503,9 +503,7 @@ describe('KBPage — the write gate follows the server policy', () => {
       offset: 0,
       scope_counts: { global: 0, team: 0, personal: docs.length },
     });
-    await act(async () => {
-      renderPage();
-    });
+    return act(async () => renderPage());
   }
 
   it('offers Edit to the AUTHOR of a team runbook', async () => {
@@ -549,6 +547,29 @@ describe('KBPage — the write gate follows the server policy', () => {
     expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(2);
     expect(screen.getByRole('checkbox', { name: 'Select Runbook 1' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Select Runbook 2' })).toBeInTheDocument();
+  });
+
+  it('clears the selection when the write gate changes under it', async () => {
+    // A capabilities refetch that flips `multiTenant` mid-session must not
+    // leave the operator holding ids the server now refuses. Runbook 2 is the
+    // operator's own, so the toolbar (and a stale count) would stay on screen.
+    mockMultiTenant.mockReturnValue(false);
+    const view = await renderDocs(
+      [{ scope: 'team', owner_id: 'u-2' }, { scope: 'personal', owner_id: 'u-1' }],
+      'u-1',
+      true
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Select Runbook 1' }));
+    });
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    mockMultiTenant.mockReturnValue(true);
+    await act(async () => {
+      view.rerender(<MemoryRouter><KBPage /></MemoryRouter>);
+    });
+    expect(screen.queryByRole('checkbox', { name: 'Select Runbook 1' })).not.toBeInTheDocument();
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument();
   });
 
   it('gives a standard user a delete path for a runbook they wrote', async () => {

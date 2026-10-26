@@ -30,6 +30,8 @@ describe('canWriteDocument', () => {
     ['a non-owner may not write a team runbook',       { scope: 'team', owner_id: OTHER },     false,   OWNER,  SINGLE, false],
     ['the operator may write a team runbook, single-tenant', { scope: 'team', owner_id: OTHER }, true,  OWNER,  SINGLE, true],
     ['‼ NOT the operator on a team runbook, multi-tenant', { scope: 'team', owner_id: OTHER }, true,    OWNER,  MULTI,  false],
+    // The owner arm holds for an admin too: multi-tenant removes only the operator arm.
+    ['an operator who OWNS a team runbook, multi-tenant', { scope: 'team', owner_id: OWNER }, true,    OWNER,  MULTI,  true],
 
     ['the author of a personal runbook may write it',  { scope: 'personal', owner_id: OWNER }, false,   OWNER,  MULTI,  true],
     ['a non-owner may not write a personal runbook',   { scope: 'personal', owner_id: OTHER }, false,   OWNER,  SINGLE, false],

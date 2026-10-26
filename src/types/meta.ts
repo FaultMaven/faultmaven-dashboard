@@ -18,12 +18,14 @@ export interface MetaCapabilityFeatures {
   caseHistory?: boolean;
   sso?: boolean;
   /**
-   * The backend runs the multi-tenant provider (`TENANT_PROVIDER=multi`),
-   * derived from the setting its KB write policy reads (FaultMaven/faultmaven#1489,
-   * contract 14.7.0). Under it the server refuses the platform operator's arm
-   * on `global` and non-owned documents. NOT `deploymentMode`, which comes from
-   * the dashboard URL. Unlike the flags above, absent reads as `true`: a core
-   * that predates the field gets no operator arm (`useCapabilities`).
+   * The backend runs the multi-tenant provider (`TENANT_PROVIDER=multi`):
+   * the KB write policy's own predicate, derived from the tenant provider
+   * setting (FaultMaven/faultmaven#1489). Under it the server refuses the
+   * platform operator's arm on `global` and non-owned documents. NOT
+   * `deploymentMode`, which is `DEPLOYMENT_MODE`: a cloud deployment can run
+   * the single-tenant provider. Unlike the flags above, absent reads as
+   * `true`: a core that predates the field gets no operator arm
+   * (`useCapabilities`).
    */
   multiTenant?: boolean;
 }

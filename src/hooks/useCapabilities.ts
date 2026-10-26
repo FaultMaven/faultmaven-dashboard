@@ -88,10 +88,10 @@ export interface Capabilities {
  *
  * `multiTenant` is the exception: its safe direction is `true`, because what it
  * gates is a permission (the operator's KB write arm), granted only when the
- * backend says single-tenant. An absent field (a core older than contract
- * 14.7.0), a fetch still loading and a failed fetch with nothing cached all
- * read as `true`, so a control the server could refuse is never offered on a
- * guess.
+ * backend says single-tenant. An absent field (a core that predates
+ * `features.multiTenant`), a fetch still loading and a failed fetch with
+ * nothing cached all read as `true`, so a control the server could refuse is
+ * never offered on a guess.
  */
 export function useCapabilities(): Capabilities {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot);
