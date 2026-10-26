@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAvailableScopes } from '../hooks/useAvailableScopes';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { logoutAuth, uploadDocument } from '../lib/api';
 import { canWriteDocument } from '../lib/knowledge/writePolicy';
 import {
@@ -141,6 +142,9 @@ function ScopeBadge({ scope }: { scope: string }) {
 function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin: boolean; userId: string | null; refreshKey: number; onCountChange: (count: number) => void }) {
   const { filteredDocuments, totalCount, loading, error, page, pageSize, search, setSearch, scopeFilter, setScopeFilter, scopeCounts, loadPage, deleteById } =
     useKBList('user');
+  // Whether the server refuses the operator's write arm (true until the
+  // backend says otherwise): the write gate below mirrors it.
+  const { multiTenant } = useCapabilities();
 
   // Re-fetch documents when refreshKey changes (e.g., after draft verification)
   useEffect(() => {
@@ -169,9 +173,23 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
   // Drop any pending debounced search when the tab unmounts.
   useEffect(() => () => handleSearchChange.cancel(), [handleSearchChange]);
 
+  // ONE predicate, memoised, for the Edit button AND the checkbox AND the
+  // removable filter below. The server applies one policy to PUT and DELETE,
+  // so handing `DocumentList` two separate callbacks would be two things that
+  // can drift — the very class of bug this page is fixing. Memoised because it
+  // was being evaluated three times per row per render, next to neighbours
+  // that are all `useMemo`d; and the selection reset below keys on it.
+  const canWrite = useCallback(
+    (d: { scope?: string | null; owner_id?: string | null }) =>
+      canWriteDocument(d, isAdmin, userId, multiTenant),
+    [isAdmin, userId, multiTenant],
+  );
+
   // A selection must never outlive the rows it was made against: a filter,
   // scope, or page change swaps the visible set, so a stale id could act on a
-  // row the user can no longer see.
+  // row the user can no longer see. Nor the write gate it was made under: a
+  // `canWrite` change (a `multiTenant` flip on a capabilities refetch) can
+  // leave ids selected that the viewer may no longer write.
   //
   // ‼ The ROWS are a dependency, not just the controls that usually change
   // them. The Runbooks tab is hidden rather than unmounted, so this state
@@ -182,7 +200,7 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
   const rowIdentity = filteredDocuments.map((d) => d.document_id).join(',');
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page, rowIdentity]);
+  }, [scopeFilter, search, domainFilter, serviceFilter, severityFilter, page, rowIdentity, canWrite]);
 
   // Derive filter options from loaded documents
   const domains = useMemo(() =>
@@ -229,16 +247,6 @@ function DocumentsTab({ isAdmin, userId, refreshKey, onCountChange }: { isAdmin:
     });
   };
 
-  // ONE predicate, memoised, for the Edit button AND the checkbox AND this
-  // filter. The server applies one policy to PUT and DELETE, so handing
-  // `DocumentList` two separate callbacks would be two things that can drift —
-  // the very class of bug this page is fixing. Memoised because it was being
-  // evaluated three times per row per render, next to neighbours that are all
-  // `useMemo`d.
-  const canWrite = useCallback(
-    (d: { scope?: string | null; owner_id?: string | null }) => canWriteDocument(d, isAdmin, userId),
-    [isAdmin, userId],
-  );
   const removableDocuments = useMemo(
     () => displayDocuments.filter(canWrite),
     [displayDocuments, canWrite],
@@ -971,11 +979,14 @@ export default function KBPage() {
 
   // The scan imports runbook files placed by hand in the API's `data/knowledge/`
   // directory, which only a standalone deployment has: on a multi-tenant one
-  // the replicas share no disk and core answers 422. No endpoint advertises
-  // tenancy, and `writePolicy.ts` rightly refuses to infer it from
-  // `deployment` — but this is not that question. It is "does this deployment
-  // have a hand-placed runbook directory worth scanning?", and standalone is
-  // exactly that (core guarantees standalone => single-tenant). `null` (not yet
+  // the replicas share no disk and core answers 422. The scan gate is narrower
+  // than the core route's: core refuses the disk scan under the multi-tenant
+  // provider (replicas share no disk), and this client offers it only on a
+  // standalone deployment (`deployment === 'standalone'`).
+  // `features.multiTenant` advertises the tenancy the route refuses on, but
+  // scan stays on the narrower gate. It is "does this deployment have a
+  // hand-placed runbook directory worth scanning?", and standalone is exactly
+  // that (core guarantees standalone => single-tenant). `null` (not yet
   // confirmed) offers nothing; the control appears once the deployment is known.
   const scanAvailable = deployment === 'standalone';
 

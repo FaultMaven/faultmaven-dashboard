@@ -27,6 +27,10 @@ vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({
   authState: { user: { user_id: 'u-1' } }, clearAuthState: vi.fn() }) }));
 vi.mock('../../hooks/useAvailableScopes', () => ({ useAvailableScopes: () => ({
   scopes: ['personal'], loading: false, error: null, refetch: vi.fn() }) }));
+// KBPage reads /meta/capabilities for the write gate; never fetch it here.
+vi.mock('../../hooks/useCapabilities', () => ({
+  useCapabilities: () => ({ managementConsole: false, teamSharing: false, multiTenant: true, loading: false, error: null, refetch: vi.fn() }),
+}));
 
 /**
  * An in-card save must survive the refresh it triggers.

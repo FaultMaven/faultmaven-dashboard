@@ -79,4 +79,34 @@ describe('useCapabilities', () => {
     await waitFor(() => expect(second.result.current.managementConsole).toBe(true));
     expect(mockGetCapabilities).toHaveBeenCalledTimes(2);
   });
+
+  // `multiTenant` gates a permission (the operator's KB write arm), so its safe
+  // direction is the opposite of the flags above: only an explicit `false`
+  // grants it (FaultMaven/faultmaven#1489).
+  describe('multiTenant reads as true unless the backend says false', () => {
+    it.each([
+      ['false when the backend says false', { features: { multiTenant: false } }, false],
+      ['true when the backend says true', { features: { multiTenant: true } }, true],
+      ['true when the field is absent (a core that predates it)', { features: { teamSharing: false } }, true],
+    ])('is %s', async (_label, response, expected) => {
+      mockGetCapabilities.mockResolvedValue(response);
+      const { result } = await loadHook();
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.multiTenant).toBe(expected);
+    });
+
+    it('is true while the fetch is loading', async () => {
+      mockGetCapabilities.mockReturnValue(new Promise(() => {}));
+      const { result } = await loadHook();
+      expect(result.current.loading).toBe(true);
+      expect(result.current.multiTenant).toBe(true);
+    });
+
+    it('is true when the fetch failed with nothing cached', async () => {
+      mockGetCapabilities.mockRejectedValue(new Error('offline'));
+      const { result } = await loadHook();
+      await waitFor(() => expect(result.current.error).toBe('offline'));
+      expect(result.current.multiTenant).toBe(true);
+    });
+  });
 });

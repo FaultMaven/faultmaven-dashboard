@@ -87,7 +87,8 @@ export function GatedRoute({ children, requires, allow }: GatedRouteProps) {
   }
 
   // `capError` counts, not just `capLoading`: a failed capabilities fetch leaves
-  // the hook returning its defaults (every flag `false`), which a predicate reads
+  // the hook returning its defaults (every feature flag `false`, and
+  // `multiTenant` `true`, its safe direction), which a predicate reads
   // as "the feature is off" and a guard turns into a redirect. Correct for
   // rendering a feature, wrong for deciding whether a page exists.
   // Truthiness, not `!== null`: the hook types this `string | null`, so there is

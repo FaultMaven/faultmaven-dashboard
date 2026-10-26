@@ -68,6 +68,12 @@ export interface Capabilities {
   managementConsole: boolean;
   /** Team-based KB/case sharing (ADR-013). Same TeamService signal. */
   teamSharing: boolean;
+  /**
+   * The backend runs the multi-tenant provider, where its KB write policy
+   * refuses the platform operator's arm (FaultMaven/faultmaven#1489). False only
+   * when the backend says `false`; see the hook's comment for why.
+   */
+  multiTenant: boolean;
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -79,6 +85,13 @@ export interface Capabilities {
  * Shares one process-wide fetch across consumers and refetches on window focus
  * so a deployment that activates multi-tenancy mid-session surfaces the console
  * without a full reload. Unknown/missing flags read as `false` (feature off).
+ *
+ * `multiTenant` is the exception: its safe direction is `true`, because what it
+ * gates is a permission (the operator's KB write arm), granted only when the
+ * backend says single-tenant. An absent field (a core that predates
+ * `features.multiTenant`), a fetch still loading and a failed fetch with
+ * nothing cached all read as `true`, so a control the server could refuse is
+ * never offered on a guess.
  */
 export function useCapabilities(): Capabilities {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot);
@@ -104,6 +117,7 @@ export function useCapabilities(): Capabilities {
   return {
     managementConsole: features?.managementConsole === true,
     teamSharing: features?.teamSharing === true,
+    multiTenant: features?.multiTenant !== false,
     loading: snapshot.loading,
     error: snapshot.error,
     refetch,
