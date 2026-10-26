@@ -42,9 +42,9 @@
  * arrives as `multiTenant` from `useCapabilities`, where an absent field (an
  * older core), a loading fetch and a failed one all read as multi-tenant: an
  * operator the page cannot vouch for is offered no Edit rather than one that
- * meets a 403. Never gate it on `deployment`: `deploymentMode` is
- * `DEPLOYMENT_MODE` and answers a different question, and a single-tenant
- * cloud's operator does hold the arm.
+ * meets a 403. Never gate it on `deployment`, which this client derives from
+ * `/auth/config`'s `auth_mode` and which answers a different question;
+ * tenancy is advertised by `features.multiTenant`.
  */
 
 /** The fields the policy reads. Both are optional on a list row. */

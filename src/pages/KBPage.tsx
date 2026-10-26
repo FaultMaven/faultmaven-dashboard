@@ -979,13 +979,15 @@ export default function KBPage() {
 
   // The scan imports runbook files placed by hand in the API's `data/knowledge/`
   // directory, which only a standalone deployment has: on a multi-tenant one
-  // the replicas share no disk and core answers 422. The scan gate keys on
-  // `deployment`, the scan route's own policy; tenancy is now advertised by
-  // `features.multiTenant`, which the write gate reads, but this is not that
-  // question. It is "does this deployment have a hand-placed runbook directory
-  // worth scanning?", and standalone is exactly that (core guarantees
-  // standalone => single-tenant). `null` (not yet confirmed) offers nothing;
-  // the control appears once the deployment is known.
+  // the replicas share no disk and core answers 422. The scan gate is narrower
+  // than the core route's: core refuses the disk scan under the multi-tenant
+  // provider (replicas share no disk), and this client offers it only on a
+  // standalone deployment (`deployment === 'standalone'`).
+  // `features.multiTenant` advertises the tenancy the route refuses on, but
+  // scan stays on the narrower gate. It is "does this deployment have a
+  // hand-placed runbook directory worth scanning?", and standalone is exactly
+  // that (core guarantees standalone => single-tenant). `null` (not yet
+  // confirmed) offers nothing; the control appears once the deployment is known.
   const scanAvailable = deployment === 'standalone';
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link
