@@ -404,3 +404,46 @@ describe('unsubscribing', () => {
     expect(cleared).not.toHaveBeenCalled();
   });
 });
+
+describe('holdsSessionFor: what a refresh that renewed nothing left (faultmaven#1460)', () => {
+  // `refreshTokens` returns null whether it cleared the session or kept it,
+  // and the Copilot panel's verdict on a 401 turns on which. The real manager,
+  // the real host session, and `fetch` answering the refresh.
+  const panel = () => createWebSession(hostUserFromProfile(TEST_PROFILE), SessionSwitchedError);
+
+  beforeEach(async () => {
+    await authManager.saveAuthState(TEST_AUTH_STATE);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ['answers 5xx, keeping it', () => Promise.resolve(new Response(null, { status: 503 })), true],
+    ['fails on the network, keeping it', () => Promise.reject(new TypeError('offline')), true],
+    ['rejects the refresh token, clearing it', () => Promise.resolve(new Response(null, { status: 401 })), false],
+  ])('a refresh that %s', async (_arm, refresh, held) => {
+    vi.stubGlobal('fetch', vi.fn(refresh));
+
+    await expect(panel().onUnauthorized('tok-live')).resolves.toBe(held ? 'unavailable' : 'ended');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(await authManager.holdsSessionFor('u1')).toBe(held);
+  });
+
+  it('is false for another identity: asked about another user, or another account signed in', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    expect(await authManager.holdsSessionFor('u2')).toBe(false);
+
+    anotherTabSignsIn(OTHER_AUTH_STATE);
+    await expect(panel().onUnauthorized('tok-live')).resolves.toBe('ended');
+    expect(await authManager.holdsSessionFor('u1')).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('renews nothing itself, even for an expired token', async () => {
+    await authManager.saveAuthState({ ...TEST_AUTH_STATE, expires_at: Date.now() - 1_000 });
+    vi.stubGlobal('fetch', vi.fn());
+
+    expect(await authManager.holdsSessionFor('u1')).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});

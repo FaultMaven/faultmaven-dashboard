@@ -920,6 +920,19 @@ export class AuthManager {
     return stored?.user?.user_id ? { kind: 'anotherUser' } : { kind: 'none' };
   }
 
+  /**
+   * Whether this tab still holds `userId`'s session: `getAccessTokenFor`'s
+   * question without its renewal.
+   *
+   * For a caller whose refresh just renewed nothing. `refreshTokens` returns
+   * null both when it cleared the session (a rejected refresh token) and when
+   * it kept it (a 5xx or offline renewal), and only this read tells the two
+   * apart (faultmaven#1460).
+   */
+  async holdsSessionFor(userId: string): Promise<boolean> {
+    return (await this.readState())?.user?.user_id === userId;
+  }
+
   /** `authState`'s access token, renewed first when it is at or near expiry. */
   private async usableTokenOf(authState: AuthState): Promise<string | null> {
     // Still fresh → use directly.
