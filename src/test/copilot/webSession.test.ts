@@ -135,6 +135,16 @@ describe('accessToken', () => {
     expect(holdsSessionFor).toHaveBeenCalledExactlyOnceWith('u1');
   });
 
+  it('THROWS CredentialUnavailableError during this tab’s own sign-out too: the session is still held', async () => {
+    // `isSigningOut()` is not asked here. Between `beginSignOut()` and
+    // `clearAuthState()` the session is still held, and a plain Error then
+    // would send the request with no bearer.
+    getAccessTokenFor.mockResolvedValue({ kind: 'none' });
+    holdsSessionFor.mockResolvedValue(true);
+    isSigningOut.mockReturnValue(true);
+    await expect(session().accessToken()).rejects.toBeInstanceOf(CredentialUnavailableError);
+  });
+
   it('THROWS a plain Error when there is no token and AuthManager holds no session for this user', async () => {
     // Read as gone: the request goes out header-less, the not-signed-in path,
     // and the session's end reaches the panel through `subscribeAuthState`.

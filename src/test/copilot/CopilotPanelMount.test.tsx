@@ -79,6 +79,7 @@ vi.mock('../../lib/auth/AuthManager', () => ({
   authManager: {
     getAccessTokenFor: (...args: unknown[]) => getAccessTokenFor(...args),
     holdsSessionFor: (...args: unknown[]) => holdsSessionFor(...args),
+    isSigningOut: vi.fn().mockReturnValue(false),
     peekAccessToken: vi.fn().mockResolvedValue(null),
     refreshTokens: (...args: unknown[]) => refreshTokens(...args),
     onAuthCleared: vi.fn().mockReturnValue(() => {}),
