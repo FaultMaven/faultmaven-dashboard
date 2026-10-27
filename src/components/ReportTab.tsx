@@ -48,7 +48,8 @@ interface ReportTabProps {
    * Whether the viewer created this case (`isCaseCreator`, decided by the
    * page). A runbook draft generated from a case lands in the case CREATOR's
    * personal Knowledge Base (ADR-020 D6), and the Drafts list shows each user
-   * only their own drafts, so the banner links only the creator there. Anyone
+   * their own drafts and global ones (never a case's), so the banner links
+   * only the creator there. Anyone
    * else is told whose Knowledge Base holds it, as core's own chat notice
    * tells every reader (FaultMaven/faultmaven#1947); a link would open a list
    * that can never contain it (#262).

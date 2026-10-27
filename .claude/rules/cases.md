@@ -166,8 +166,9 @@ state change on the server.
   they render as a banner, never a tab. The banner's **Open in KB** link
   (`/kb?tab=drafts&case=<id>`) is the CREATOR's only (`viewerIsCreator`): a
   case's draft lands in the creator's personal KB (ADR-020 D6) and the Drafts
-  list is the viewer's own, so for anyone else the link opened a list that can
-  never contain it (#262). They are told it is in the case creator's Knowledge
+  list holds the viewer's own drafts and global ones (a case's draft is never
+  global), so for anyone else the link opened a list that can never contain
+  it (#262). They are told it is in the case creator's Knowledge
   Base, as core's chat notice tells every reader (faultmaven#1947). Bound by
   `src/test/pages/CaseDetailRunbookBanner.test.tsx`.
 - **IssueTab**: structured view of the investigation outcome (problem,

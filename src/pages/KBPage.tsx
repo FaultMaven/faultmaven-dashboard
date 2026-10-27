@@ -453,6 +453,17 @@ const SCAN_TONE_CLASSES: Record<ScanOutcome['tone'], string> = {
   error: 'text-fm-critical bg-fm-critical-bg border-fm-critical-border',
 };
 
+/**
+ * What a failed request can tell the user: the server's own sentence (the 422
+ * refusal, a 500's generic text) or the network's ("Could not reach the
+ * FaultMaven API at …"), never a guess at the cause. Any other Error is the
+ * page's own — a body that is not JSON ("Unexpected token '<' …") or a bug —
+ * and says nothing a user can act on, so it gives ''.
+ */
+function sentenceFrom(err: unknown): string {
+  return err instanceof APIError || err instanceof NetworkError ? err.message : '';
+}
+
 /** The banner for a scan that answered: what was imported, left alone, or refused. */
 function describeScan(result: ScanResult): ScanOutcome {
   const plural = (n: number, noun: string) => `${n} ${noun}${n !== 1 ? 's' : ''}`;
@@ -520,6 +531,21 @@ interface DraftsTabProps {
 
 function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, onOpen, onRefresh, scanAvailable, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
+
+  // Try again stays mounted and focusable while its retry runs (aria-disabled,
+  // not disabled, which drops focus), and the alert's text changes meanwhile,
+  // so a retry that fails again is announced again. A retry that succeeds
+  // removes the alert, button and all: focus then moves to the drafts it
+  // loaded instead of falling to <body>.
+  const retryPressed = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (loading || !retryPressed.current) return;
+    retryPressed.current = false;
+    if (!loadError && (document.activeElement === null || document.activeElement === document.body)) {
+      listRef.current?.focus();
+    }
+  }, [loading, loadError]);
 
   const gradeColor: Record<string, string> = {
     A: 'text-fm-success', B: 'text-fm-success', C: 'text-fm-warning', D: 'text-fm-warning', F: 'text-fm-critical',
@@ -676,11 +702,16 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, 
           role="alert"
           className={`mb-4 text-sm rounded-fm-btn p-3 flex items-center justify-between border ${SCAN_TONE_CLASSES.error}`}
         >
-          <span className="min-w-0 break-words">{loadError}</span>
+          <span className="min-w-0 break-words">{loading ? 'Loading your drafts…' : loadError}</span>
           <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="ml-3 font-medium whitespace-nowrap hover:brightness-75 disabled:opacity-50"
+            type="button"
+            onClick={() => {
+              if (loading) return;
+              retryPressed.current = true;
+              onRefresh();
+            }}
+            aria-disabled={loading}
+            className={`ml-3 font-medium whitespace-nowrap hover:brightness-75 ${loading ? 'opacity-50 cursor-default' : ''}`}
           >
             Try again
           </button>
@@ -707,18 +738,22 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, 
         </div>
       )}
 
+      <div ref={listRef} tabIndex={-1} role="region" aria-label="Drafts" className="outline-none">
       {loading ? (
         <p className="text-xs text-fm-text-tertiary py-6 text-center">Loading drafts...</p>
-      ) : loadError && drafts.length === 0 ? (
-        // Nothing loaded: the error above is all that is known.
+      ) : loadError && pendingDrafts.length === 0 ? (
+        // No row to show: the error above is all that is known. Not
+        // `drafts.length`, because rows a failed refresh left that are all
+        // verified would say "All drafts have been verified." under it.
         null
       ) : drafts.length === 0 && caseFilter ? (
         // Filter is active but yielded no rows — be specific about why
         // and offer a way back to the full list rather than nudging the
         // user toward "+ New" or "Scan", which aren't what they came for.
-        // The only two causes: this list is the viewer's own drafts, and a
-        // case's draft is the case creator's (ADR-020 D6); or it was deleted.
-        // Never "verified": a verified draft is still listed (#262).
+        // The only two causes: the list holds the viewer's own drafts and
+        // global ones, and a case's draft is the case creator's and never
+        // global (ADR-020 D6, faultmaven#1897); or it was deleted. Never
+        // "verified": a verified draft is still listed (#262).
         <div className="py-10 text-center">
           <p className="text-fm-text-secondary mb-1">None of your drafts came from this case.</p>
           <p className="text-sm text-fm-text-tertiary">
@@ -758,6 +793,7 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, 
           {pendingDrafts.map(renderDraftRow)}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -1028,11 +1064,12 @@ export default function KBPage() {
     searchParams.get('tab') === 'drafts' ? 'drafts' : 'documents';
   const caseFilter = searchParams.get('case');
 
-  // Switching the tab is a NAVIGATION, so a call that lands after the user
-  // left /kb must do nothing. React Router's navigate still fires from an
-  // unmounted page, resolving the URL against /kb, so the end of a slow
-  // Activate All took the user back here and replaced the history entry of
-  // the page they had gone to (#264).
+  // The tab and the case filter are in the URL, so changing either is a
+  // NAVIGATION, and one that lands after the user left /kb must do nothing.
+  // React Router's navigate still fires from an unmounted page, resolving the
+  // URL against /kb, so the end of a slow Activate All took the user back here
+  // and replaced the history entry of the page they had gone to (#264). Every
+  // change goes through replaceSearch, so none can.
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -1041,20 +1078,13 @@ export default function KBPage() {
     };
   }, []);
 
-  const setActiveTab = useCallback(
-    (tab: KBTab) => {
+  const replaceSearch = useCallback(
+    (update: (next: URLSearchParams) => void) => {
       if (!mountedRef.current) return;
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          if (tab === 'drafts') {
-            next.set('tab', 'drafts');
-          } else {
-            next.delete('tab');
-            // Case filter is meaningful only for the Drafts tab; clear
-            // it when leaving so it doesn't surprise the user on return.
-            next.delete('case');
-          }
+          update(next);
           return next;
         },
         { replace: true },
@@ -1063,16 +1093,25 @@ export default function KBPage() {
     [setSearchParams],
   );
 
-  const clearCaseFilter = useCallback(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('case');
-        return next;
-      },
-      { replace: true },
-    );
-  }, [setSearchParams]);
+  const setActiveTab = useCallback(
+    (tab: KBTab) =>
+      replaceSearch((next) => {
+        if (tab === 'drafts') {
+          next.set('tab', 'drafts');
+        } else {
+          next.delete('tab');
+          // Case filter is meaningful only for the Drafts tab; clear
+          // it when leaving so it doesn't surprise the user on return.
+          next.delete('case');
+        }
+      }),
+    [replaceSearch],
+  );
+
+  const clearCaseFilter = useCallback(
+    () => replaceSearch((next) => next.delete('case')),
+    [replaceSearch],
+  );
 
   const [docsRefreshKey, setDocsRefreshKey] = useState(0);
 
@@ -1135,35 +1174,39 @@ export default function KBPage() {
       loadDrafts();
       setScanResult(describeScan(result));
     } catch (err: unknown) {
-      // The server's own sentence (the 422 refusal, a 500's generic text) or the
-      // network's ("Could not reach the FaultMaven API at …"), never a guess at
-      // the cause. Any other Error is the page's own — a body that is not JSON
-      // ("Unexpected token '<' …") or a bug — and says nothing a user can act on.
-      const said = err instanceof APIError || err instanceof NetworkError ? err.message : '';
-      setScanResult({ tone: 'error', text: said || 'Scan failed.' });
+      setScanResult({ tone: 'error', text: sentenceFrom(err) || 'Scan failed.' });
     } finally {
       setScanning(false);
     }
   };
 
+  // Only the newest load applies its answer. A Scan, a verify or a delete
+  // reloads while an earlier load can still be out, and the older answer
+  // landing last would put a stale list, or a stale error, over a fresh one.
+  const draftsReqRef = useRef(0);
   const loadDrafts = useCallback(async () => {
+    const reqId = ++draftsReqRef.current;
     setDraftsLoading(true);
     try {
       const result = await listAllDrafts();
+      if (reqId !== draftsReqRef.current) return;
       setDrafts(result);
       setDraftsError(null);
       const count = result.filter((d) => d.status === 'draft').length;
       setCachedCount(count);
-      localStorage.setItem(draftCountKey, String(count));
+      try {
+        localStorage.setItem(draftCountKey, String(count));
+      } catch {
+        // The badge's cache. Full or blocked storage is not a failed load.
+      }
     } catch (err: unknown) {
+      if (reqId !== draftsReqRef.current) return;
       // Shown, never swallowed: an unloaded list rendered as an empty one told
       // the user they had no drafts, or, under ?case=, that the case's draft
-      // "may have been deleted" (#263). The server's or the network's own
-      // sentence, as the scan banner shows it.
-      const said = err instanceof APIError || err instanceof NetworkError ? err.message : '';
-      setDraftsError(said || 'Your drafts could not be loaded.');
+      // "may have been deleted" (#263).
+      setDraftsError(sentenceFrom(err) || 'Your drafts could not be loaded.');
     } finally {
-      setDraftsLoading(false);
+      if (reqId === draftsReqRef.current) setDraftsLoading(false);
     }
   }, [draftCountKey]);
 
