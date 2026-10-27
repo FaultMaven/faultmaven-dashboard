@@ -716,10 +716,14 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, 
         // Filter is active but yielded no rows — be specific about why
         // and offer a way back to the full list rather than nudging the
         // user toward "+ New" or "Scan", which aren't what they came for.
+        // The only two causes: this list is the viewer's own drafts, and a
+        // case's draft is the case creator's (ADR-020 D6); or it was deleted.
+        // Never "verified": a verified draft is still listed (#262).
         <div className="py-10 text-center">
-          <p className="text-fm-text-secondary mb-1">No drafts found for this case.</p>
+          <p className="text-fm-text-secondary mb-1">None of your drafts came from this case.</p>
           <p className="text-sm text-fm-text-tertiary">
-            The draft may have been verified or deleted.{' '}
+            A runbook draft generated from a case is in the case creator&apos;s Knowledge Base, and a
+            deleted draft is not listed.{' '}
             <button
               onClick={onClearCaseFilter}
               className="text-fm-accent hover:underline"
@@ -1016,9 +1020,9 @@ export default function KBPage() {
   const scanAvailable = deployment === 'standalone';
 
   // Tab + draft-case-filter are URL-driven so other pages can deep-link
-  // here. The ReportTab in case-detail links to ``/kb?tab=drafts&case=<id>``
-  // when a runbook draft was generated for that case — landing the user
-  // on the Drafts tab filtered to that case's runbook(s).
+  // here. The ReportTab in case-detail links the case's creator to
+  // ``/kb?tab=drafts&case=<id>`` when a runbook draft was generated for that
+  // case — landing them on the Drafts tab filtered to that case's runbook(s).
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab: KBTab =
     searchParams.get('tab') === 'drafts' ? 'drafts' : 'documents';

@@ -241,6 +241,11 @@ export default function CaseDetailPage() {
   // only where sharing is wired.
   const canShare = teamSharingEnabled && isCaseCreator(caseDetail, viewerId);
 
+  // Whose Knowledge Base holds this case's runbook draft: always the
+  // CREATOR's (ADR-020 D6; core runs the conversion as the case's `user_id`).
+  // The Report tab links only the creator to it (#262).
+  const viewerIsCreator = isCaseCreator(caseDetail, viewerId);
+
   /**
    * Whether the person looking at this case DRIVES it (ADR-020).
    *
@@ -418,6 +423,7 @@ export default function CaseDetailPage() {
               caseDetail={caseDetail}
               layout={layout}
               readOnly={!isDriver}
+              viewerIsCreator={viewerIsCreator}
               onCaseChanged={handleCaseChanged}
             />
           </div>

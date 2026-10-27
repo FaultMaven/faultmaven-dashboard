@@ -162,6 +162,14 @@ state change on the server.
 
 - **ReportTab**: view-only display of auto-generated terminal summaries
   (resolution or closure), markdown-rendered, with download. No manual generate.
+  Core also reports the case's runbook drafts (`report_type: "runbook"` rows);
+  they render as a banner, never a tab. The banner's **Open in KB** link
+  (`/kb?tab=drafts&case=<id>`) is the CREATOR's only (`viewerIsCreator`): a
+  case's draft lands in the creator's personal KB (ADR-020 D6) and the Drafts
+  list is the viewer's own, so for anyone else the link opened a list that can
+  never contain it (#262). They are told it is in the case creator's Knowledge
+  Base, as core's chat notice tells every reader (faultmaven#1947). Bound by
+  `src/test/pages/CaseDetailRunbookBanner.test.tsx`.
 - **IssueTab**: structured view of the investigation outcome (problem,
   milestones, root cause, solutions, resolution notes). Shown for all cases.
 - **HypothesesTab** (inline in `CaseTabs.tsx`): renders `active_hypotheses` from
@@ -209,7 +217,7 @@ state change on the server.
 ### Creator and driver (ADR-020)
 
 A case has a **creator** (`user_id`) and one **driver** (`driver_id`, always the
-EFFECTIVE driver on the wire — the creator until they hand it on). Three
+EFFECTIVE driver on the wire — the creator until they hand it on). Four
 questions, three predicates in `src/lib/cases/driver.ts`, each failing CLOSED on
 an unknown id:
 
@@ -217,6 +225,7 @@ an unknown id:
 |---|---|---|
 | Is there a composer here? | `isCaseDriver` | the conversation surface (`isDriver` into `resolveCaseConversationLayout`), `CaseTabs readOnly`, `ConversationDock readOnly` |
 | Is there a Share button? | `isCaseCreator` | `canShare` (governance: share, unshare, delete — this page has no delete) |
+| Does the runbook banner link to the KB? | `isCaseCreator` | `CaseTabs viewerIsCreator` → `ReportTab` (the case's draft is the creator's, ADR-020 D6) |
 | Is there a "Change driver" control? | `mayReassignDriver` + a candidate other than the current driver | `CaseDriverField` |
 
 - A creator who handed the case on reads it like any teammate until they take

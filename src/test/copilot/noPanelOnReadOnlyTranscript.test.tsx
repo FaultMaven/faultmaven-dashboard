@@ -150,7 +150,7 @@ const CASE: CaseDetail = {
 function renderTabs(tab: string, layout: CaseConversationLayout = LAYOUTS.nonDriver) {
   return render(
     <MemoryRouter initialEntries={[`/?tab=${tab}`]}>
-      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} readOnly />
+      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} readOnly viewerIsCreator={false} />
     </MemoryRouter>,
   );
 }

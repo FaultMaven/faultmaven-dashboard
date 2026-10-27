@@ -71,7 +71,7 @@ async function renderAt(path: string, deployment: 'standalone' | 'cloud' = 'clou
 
 function expectNoEmptyState() {
   expect(screen.queryByText('No draft runbooks yet.')).not.toBeInTheDocument();
-  expect(screen.queryByText(/No drafts .*this case/)).not.toBeInTheDocument();
+  expect(screen.queryByText('None of your drafts came from this case.')).not.toBeInTheDocument();
   expect(screen.queryByText('All drafts have been verified.')).not.toBeInTheDocument();
 }
 

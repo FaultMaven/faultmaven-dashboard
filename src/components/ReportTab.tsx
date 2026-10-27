@@ -44,9 +44,19 @@ function relativeTime(dateStr: string | undefined): string {
 interface ReportTabProps {
   caseId: string;
   caseDetail: CaseDetail;
+  /**
+   * Whether the viewer created this case (`isCaseCreator`, decided by the
+   * page). A runbook draft generated from a case lands in the case CREATOR's
+   * personal Knowledge Base (ADR-020 D6), and the Drafts list shows each user
+   * only their own drafts, so the banner links only the creator there. Anyone
+   * else is told whose Knowledge Base holds it, as core's own chat notice
+   * tells every reader (FaultMaven/faultmaven#1947); a link would open a list
+   * that can never contain it (#262).
+   */
+  viewerIsCreator: boolean;
 }
 
-export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
+export function ReportTab({ caseId, caseDetail, viewerIsCreator }: ReportTabProps) {
   // Summary rows only (resolution_summary | closure_summary). Runbooks
   // are tracked separately and surfaced via the KB-link banner instead
   // of being rendered as a tab here.
@@ -119,10 +129,10 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
     }, 50);
   }
 
-  // Deep-link target for the runbook banner. ``case=<id>`` lets the KB
-  // page filter the Drafts list to runbooks generated from this case
-  // (other drafts come from document conversion or manual creation, so
-  // the filter narrows what's relevant).
+  // Deep-link target for the runbook banner, the creator's only (see
+  // `viewerIsCreator`). ``case=<id>`` lets the KB page filter the Drafts list
+  // to runbooks generated from this case (other drafts come from document
+  // conversion or manual creation, so the filter narrows what's relevant).
   const runbookBanner = runbookCount > 0 && (
     <div className="mb-3 flex items-center justify-between gap-3 px-3 py-2 rounded-fm-input border border-fm-border bg-fm-surface-alt">
       <div className="flex items-center gap-2 text-sm text-fm-text-secondary">
@@ -131,14 +141,20 @@ export function ReportTab({ caseId, caseDetail }: ReportTabProps) {
           {runbookCount === 1
             ? 'A runbook draft was generated from this case.'
             : `${runbookCount} runbook drafts were generated from this case.`}
+          {!viewerIsCreator &&
+            (runbookCount === 1
+              ? " It is in the case creator's Knowledge Base."
+              : " They are in the case creator's Knowledge Base.")}
         </span>
       </div>
-      <Link
-        to={`/kb?tab=drafts&case=${encodeURIComponent(caseId)}`}
-        className="text-xs text-fm-accent hover:underline whitespace-nowrap"
-      >
-        Open in KB →
-      </Link>
+      {viewerIsCreator && (
+        <Link
+          to={`/kb?tab=drafts&case=${encodeURIComponent(caseId)}`}
+          className="text-xs text-fm-accent hover:underline whitespace-nowrap"
+        >
+          Open in KB →
+        </Link>
+      )}
     </div>
   );
 
