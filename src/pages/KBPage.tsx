@@ -497,6 +497,12 @@ interface DraftsTabProps {
   /** Clear the case filter (drops the URL ``case`` param). */
   onClearCaseFilter: () => void;
   loading: boolean;
+  /**
+   * Why the last load failed, or null. While set, no empty state renders: an
+   * unloaded list is not an empty one. Rows a failed refresh left on screen
+   * stay, under the error.
+   */
+  loadError: string | null;
   onOpen: (conversionId: string) => void;
   onRefresh: () => void;
   /** Whether this deployment can import a runbook directory (standalone only). */
@@ -512,7 +518,7 @@ interface DraftsTabProps {
   batchActionInProgress: boolean;
 }
 
-function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, scanAvailable, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
+function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, onOpen, onRefresh, scanAvailable, onScan, onDismissScan, scanning, scanResult, selectedDrafts, onSelectionChange, onBatchVerify, onBatchDelete, batchActionInProgress }: DraftsTabProps) {
   const pendingDrafts = drafts.filter((d) => d.status === 'draft');
 
   const gradeColor: Record<string, string> = {
@@ -665,6 +671,22 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, sca
         </div>
       )}
 
+      {loadError && (
+        <div
+          role="alert"
+          className={`mb-4 text-sm rounded-fm-btn p-3 flex items-center justify-between border ${SCAN_TONE_CLASSES.error}`}
+        >
+          <span className="min-w-0 break-words">{loadError}</span>
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="ml-3 font-medium whitespace-nowrap hover:brightness-75 disabled:opacity-50"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* Active case filter chip — set when the user landed here via a
           deep-link from a case's Report tab (``?case=<id>``). Clicking
           the × clears the filter and shows the full drafts list. */}
@@ -687,6 +709,9 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, onOpen, sca
 
       {loading ? (
         <p className="text-xs text-fm-text-tertiary py-6 text-center">Loading drafts...</p>
+      ) : loadError && drafts.length === 0 ? (
+        // Nothing loaded: the error above is all that is known.
+        null
       ) : drafts.length === 0 && caseFilter ? (
         // Filter is active but yielded no rows — be specific about why
         // and offer a way back to the full list rather than nudging the
@@ -1070,6 +1095,8 @@ export default function KBPage() {
   });
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
+  // Why the last drafts load failed, or null once one succeeds.
+  const [draftsError, setDraftsError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanOutcome | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -1120,11 +1147,17 @@ export default function KBPage() {
     try {
       const result = await listAllDrafts();
       setDrafts(result);
+      setDraftsError(null);
       const count = result.filter((d) => d.status === 'draft').length;
       setCachedCount(count);
       localStorage.setItem(draftCountKey, String(count));
-    } catch {
-      // silent
+    } catch (err: unknown) {
+      // Shown, never swallowed: an unloaded list rendered as an empty one told
+      // the user they had no drafts, or, under ?case=, that the case's draft
+      // "may have been deleted" (#263). The server's or the network's own
+      // sentence, as the scan banner shows it.
+      const said = err instanceof APIError || err instanceof NetworkError ? err.message : '';
+      setDraftsError(said || 'Your drafts could not be loaded.');
     } finally {
       setDraftsLoading(false);
     }
@@ -1694,6 +1727,7 @@ export default function KBPage() {
                   caseFilter={caseFilter}
                   onClearCaseFilter={clearCaseFilter}
                   loading={draftsLoading}
+                  loadError={draftsError}
                   onOpen={handleOpenDraft}
                   onRefresh={loadDrafts}
                   scanAvailable={scanAvailable}
