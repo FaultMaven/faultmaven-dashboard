@@ -999,8 +999,22 @@ export default function KBPage() {
     searchParams.get('tab') === 'drafts' ? 'drafts' : 'documents';
   const caseFilter = searchParams.get('case');
 
+  // Switching the tab is a NAVIGATION, so a call that lands after the user
+  // left /kb must do nothing. React Router's navigate still fires from an
+  // unmounted page, resolving the URL against /kb, so the end of a slow
+  // Activate All took the user back here and replaced the history entry of
+  // the page they had gone to (#264).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const setActiveTab = useCallback(
     (tab: KBTab) => {
+      if (!mountedRef.current) return;
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
