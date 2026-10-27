@@ -247,7 +247,7 @@ jobs:
       # private key never reaches the action.
       - name: Update image queue
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'FaultMaven/faultmaven-dashboard'
-        uses: FaultMaven/ci-actions/update-image-queue@d01fb8619a0df2b2f71ef8e7e807b9373561b722 # v1.3.0
+        uses: FaultMaven/ci-actions/update-image-queue@6d03d98637a9a4ae9d0d57580408c3299f5d5c0f # v1.3.1
         with:
           service: faultmaven-dashboard
           sha: ${{ env.BUILD_SHA }}
@@ -269,7 +269,7 @@ jobs:
       # the rule.
       - name: Move latest and the branch tag
         if: ${{ !cancelled() && steps.check.outcome == 'success' }}
-        uses: FaultMaven/ci-actions/move-branch-tags@d01fb8619a0df2b2f71ef8e7e807b9373561b722 # v1.3.0
+        uses: FaultMaven/ci-actions/move-branch-tags@6d03d98637a9a4ae9d0d57580408c3299f5d5c0f # v1.3.1
         with:
           image: ${{ steps.commit.outputs.image }}
           digest: ${{ steps.build.outputs.digest }}
