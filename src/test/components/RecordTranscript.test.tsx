@@ -84,6 +84,7 @@ function renderRecord(caseId = CASE.case_id) {
         caseDetail={{ ...CASE, case_id: caseId }}
         layout={LAYOUTS.nonDriver}
         readOnly
+        viewerIsCreator={false}
       />
     </MemoryRouter>,
   );
@@ -168,6 +169,7 @@ describe('the read-only transcript', () => {
           caseDetail={{ ...CASE, case_id: 'case-2' }}
           layout={LAYOUTS.nonDriver}
           readOnly
+          viewerIsCreator={false}
         />
       </MemoryRouter>,
     );

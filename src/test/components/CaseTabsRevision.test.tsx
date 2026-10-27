@@ -122,7 +122,7 @@ function renderTabs(detail: CaseDetail, route: string, layout: CaseConversationL
   // (as the page does on a quiet re-read) rather than remounting it.
   const view = (d: CaseDetail) => (
     <MemoryRouter initialEntries={[route]}>
-      <CaseTabs caseId={d.case_id} caseDetail={d} layout={layout} readOnly={false} />
+      <CaseTabs caseId={d.case_id} caseDetail={d} layout={layout} readOnly={false} viewerIsCreator />
     </MemoryRouter>
   );
   const utils = render(view(detail));

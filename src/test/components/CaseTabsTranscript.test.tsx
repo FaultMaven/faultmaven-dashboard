@@ -149,7 +149,7 @@ const CASE: CaseDetail = {
 function renderTabs(layout: CaseConversationLayout = LAYOUTS.narrowDriver) {
   return render(
     <MemoryRouter initialEntries={['/?tab=transcript']}>
-      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} readOnly={false} />
+      <CaseTabs caseId={CASE.case_id} caseDetail={CASE} layout={layout} readOnly={false} viewerIsCreator />
     </MemoryRouter>,
   );
 }
@@ -238,6 +238,7 @@ describe('the Transcript tab', () => {
           caseDetail={{ ...CASE, case_id: 'case-2' }}
           layout={LAYOUTS.narrowDriver}
           readOnly={false}
+          viewerIsCreator
         />
       </MemoryRouter>,
     );

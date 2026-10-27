@@ -75,6 +75,7 @@ function renderTabs(caseDetail: CaseDetail, route = '/') {
         caseDetail={caseDetail}
         layout={LAYOUTS.narrowDriver}
         readOnly={false}
+        viewerIsCreator
       />
     </MemoryRouter>
   );

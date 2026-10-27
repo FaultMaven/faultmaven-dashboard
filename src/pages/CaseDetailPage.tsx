@@ -234,12 +234,16 @@ export default function CaseDetailPage() {
 
   const viewerId = authState?.user?.user_id;
 
-  // Share-to-team is the CREATOR's (ADR-020 D2 — governance: share, unshare,
-  // delete; the backend enforces the same) and only shown where team sharing
-  // is live. Not the driver's: driving a case is not a right to widen who
-  // reads it. The badge itself needs neither gate — a case carries team ids
-  // only where sharing is wired.
-  const canShare = teamSharingEnabled && isCaseCreator(caseDetail, viewerId);
+  // The creator's two gates. Share-to-team is the CREATOR's (ADR-020 D2 —
+  // governance: share, unshare, delete; the backend enforces the same) and
+  // only shown where team sharing is live. Not the driver's: driving a case is
+  // not a right to widen who reads it. The badge itself needs neither gate — a
+  // case carries team ids only where sharing is wired. And this case's runbook
+  // draft is always in the CREATOR's Knowledge Base (ADR-020 D6; core runs the
+  // conversion as the case's `user_id`), so the Report tab links only the
+  // creator to it (#262).
+  const viewerIsCreator = isCaseCreator(caseDetail, viewerId);
+  const canShare = teamSharingEnabled && viewerIsCreator;
 
   /**
    * Whether the person looking at this case DRIVES it (ADR-020).
@@ -418,6 +422,7 @@ export default function CaseDetailPage() {
               caseDetail={caseDetail}
               layout={layout}
               readOnly={!isDriver}
+              viewerIsCreator={viewerIsCreator}
               onCaseChanged={handleCaseChanged}
             />
           </div>

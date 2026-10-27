@@ -68,6 +68,8 @@ interface CaseTabsProps {
    * not disagree about whether that guard is worth having.
    */
   readOnly: boolean;
+  /** Whether the viewer created the case (`isCaseCreator`, decided by the page); see ReportTab. */
+  viewerIsCreator: boolean;
   /** Forwarded to the docked panel; see CopilotPanelMount. */
   onCaseChanged?: (caseId: string) => void;
 }
@@ -528,7 +530,7 @@ function HypothesesTab({ caseId, caseDetail, revision }: { caseId: string; caseD
   );
 }
 
-export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }: CaseTabsProps) {
+export function CaseTabs({ caseId, caseDetail, layout, readOnly, viewerIsCreator, onCaseChanged }: CaseTabsProps) {
   const { surface, transcriptTabShown, viewportBounded } = layout;
   // The primitive, not the object: the page hands a new `caseDetail` on every
   // re-read, and only a change the server stamped is worth a refetch.
@@ -735,7 +737,7 @@ export function CaseTabs({ caseId, caseDetail, layout, readOnly, onCaseChanged }
             </div>
           )}
           {activeTab === 'issue' && <IssueTab caseDetail={caseDetail} />}
-          {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} />}
+          {activeTab === 'report' && <ReportTab caseId={caseId} caseDetail={caseDetail} viewerIsCreator={viewerIsCreator} />}
           {activeTab === 'hypotheses' && <HypothesesTab caseId={caseId} caseDetail={caseDetail} revision={revision} />}
           {activeTab === 'evidence' && <EvidenceTab caseId={caseId} revision={revision} />}
         </div>
