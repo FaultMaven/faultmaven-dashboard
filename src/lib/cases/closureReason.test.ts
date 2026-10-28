@@ -27,8 +27,22 @@ describe('closureReasonDisplay', () => {
       'closed_restatement_held',
       'inquiry_only',
       'mitigation_sufficient',
+      'resolution_declined',
       'solution_deferred',
     ]);
+  });
+
+  it('labels a declined resolution as a confirmed fix, not the bare fallback', () => {
+    // Contract 14.8.0: before this entry the Issue tab read "Closed — closed
+    // without a recorded resolution" for a case whose fix was confirmed.
+    const fallback = closureReasonDisplay('closed_after_investigation');
+    const info = closureReasonDisplay('resolution_declined');
+    expect(info).not.toEqual(fallback);
+    expect(info).toEqual({
+      label: 'Fix confirmed',
+      description:
+        'The fix was confirmed to work; the case was closed rather than marked resolved.',
+    });
   });
 
   it('never leaks the raw key to a user', () => {
