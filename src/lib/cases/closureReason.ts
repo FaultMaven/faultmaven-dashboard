@@ -55,6 +55,14 @@ export const CLOSURE_REASON_DISPLAY: Record<string, ClosureReasonDisplay> = {
     description:
       'The evidence showed the reported problem was not present; there was nothing to fix.',
   },
+  // Contract 14.8.0 (FaultMaven/faultmaven#2360): the user declined to mark a
+  // confirmed fix resolved, then closed. No actor in the description: a team
+  // reader did not decline, and the driver can change after close.
+  resolution_declined: {
+    label: 'Fix confirmed',
+    description:
+      'The fix was confirmed to work; the case was closed rather than marked resolved.',
+  },
   closed_insufficient_evidence: {
     label: 'Insufficient evidence',
     description:
