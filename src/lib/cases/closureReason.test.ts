@@ -11,25 +11,20 @@ import { describe, it, expect } from 'vitest';
 import {
   CLOSURE_REASON_DISPLAY,
   closureReasonDisplay,
+  type ClosureReasonTable,
 } from './closureReason';
 
 describe('closureReasonDisplay', () => {
-  it('covers exactly the backend closure reasons', () => {
-    // Mirrors VALID_CLOSURE_REASONS in
-    // faultmaven/modules/case/domain/models/lifecycle.py. Nothing shared crosses
-    // the repo boundary — `closure_reason` is a bare `string` in the generated types —
-    // so this pins the map against a deliberate edit here, NOT against backend
-    // drift. The fallback below is what actually protects users from drift.
-    expect(Object.keys(CLOSURE_REASON_DISPLAY).sort()).toEqual([
-      'closed_false_alarm',
-      'closed_insufficient_evidence',
-      'closed_rca_infeasible',
-      'closed_restatement_held',
-      'inquiry_only',
-      'mitigation_sufficient',
-      'resolution_declined',
-      'solution_deferred',
-    ]);
+  it('is keyed on the contract ClosureReason, so a reason with no label does not compile', () => {
+    // A type-level pin: `pnpm typecheck:tests` checks this file. If the table
+    // type loosened back to Record<string, …>, the directive would go unused
+    // and the typecheck would fail instead. The type replaces a hand-kept copy
+    // of the vocabulary that could not see backend drift.
+    const { solution_deferred: omitted, ...missingOne } = CLOSURE_REASON_DISPLAY;
+    // @ts-expect-error -- `solution_deferred` is a ClosureReason with no label
+    const incomplete: ClosureReasonTable = missingOne;
+    expect(omitted).toBeDefined();
+    expect(Object.hasOwn(incomplete, 'solution_deferred')).toBe(false);
   });
 
   it('labels a declined resolution as a confirmed fix, not the bare fallback', () => {
@@ -47,6 +42,7 @@ describe('closureReasonDisplay', () => {
 
   it('never leaks the raw key to a user', () => {
     for (const [key, info] of Object.entries(CLOSURE_REASON_DISPLAY)) {
+      expect(info.label.length).toBeGreaterThan(0);
       expect(info.label).not.toContain(key);
       expect(info.label).not.toContain('_');
       expect(info.description.length).toBeGreaterThan(0);
@@ -67,9 +63,16 @@ describe('closureReasonDisplay', () => {
     expect(closureReasonDisplay(undefined).label.length).toBeGreaterThan(0);
   });
 
+  it('degrades a prototype key, not resolving it to a function', () => {
+    // `constructor` used to index through to Object, which has no label.
+    expect(closureReasonDisplay('constructor')).toEqual(
+      closureReasonDisplay('closed_after_investigation'),
+    );
+  });
+
   it('returns the real entry for every known reason', () => {
-    for (const key of Object.keys(CLOSURE_REASON_DISPLAY)) {
-      expect(closureReasonDisplay(key)).toBe(CLOSURE_REASON_DISPLAY[key]);
+    for (const [key, info] of Object.entries(CLOSURE_REASON_DISPLAY)) {
+      expect(closureReasonDisplay(key)).toBe(info);
     }
   });
 

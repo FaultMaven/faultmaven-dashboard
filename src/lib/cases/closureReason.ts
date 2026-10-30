@@ -2,8 +2,8 @@
  * Display labels for the engine-derived `closure_reason`.
  *
  * `closure_reason` is a CLASSIFICATION, not prose: the backend derives it from
- * case state at the terminal transition and the LLM never authors it (see
- * `VALID_CLOSURE_REASONS` in faultmaven/modules/case/domain/models/lifecycle.py).
+ * case state at the terminal transition and the LLM never authors it (the
+ * contract publishes the vocabulary as the `ClosureReason` enum).
  * The Dashboard was rendering the raw value under a "Resolution Notes" heading,
  * so a user saw `closed_insufficient_evidence` presented as if it were a
  * sentence someone wrote.
@@ -11,12 +11,15 @@
  * It is also CLOSED-only — RESOLVED cases carry `null` — so the surrounding
  * copy must not promise resolution notes.
  *
- * Keys mirror the backend set exactly. Like the Copilot's
+ * Keyed on `ClosureReason`, so a published reason with no label, or a label
+ * for a reason the contract does not publish, fails `tsc`. Like the Copilot's
  * `CLOSURE_DISPLAY_INFO`, an unknown key degrades to a readable fallback rather
  * than disappearing or leaking the raw token: a case can still carry a value
- * retired from the vocabulary, and the backend can add a reason before this
- * build ships.
+ * retired from the vocabulary, and the backend can add a reason newer than
+ * this client's contract pin.
  */
+
+import type { ClosureReason } from '../../types/cases';
 
 export interface ClosureReasonDisplay {
   /** Short human label, e.g. for a heading or chip. */
@@ -25,7 +28,9 @@ export interface ClosureReasonDisplay {
   description: string;
 }
 
-export const CLOSURE_REASON_DISPLAY: Record<string, ClosureReasonDisplay> = {
+export type ClosureReasonTable = Record<ClosureReason, ClosureReasonDisplay>;
+
+export const CLOSURE_REASON_DISPLAY: ClosureReasonTable = {
   inquiry_only: {
     label: 'Inquiry only',
     description: 'Closed from inquiry — no investigation was started.',
@@ -81,9 +86,16 @@ const FALLBACK: ClosureReasonDisplay = {
  * Single resolution path on purpose. In the Copilot the same lookup was
  * hand-rolled per consumer and one of them drifted into dropping the row
  * entirely for an unrecognised value.
+ *
+ * Only an own key resolves, so a prototype key such as `constructor` falls back
+ * too rather than resolving to a function. Not `Object.hasOwn`: the app's
+ * `lib` is ES2020.
  */
 export function closureReasonDisplay(
   reason: string | null | undefined,
 ): ClosureReasonDisplay {
-  return (reason && CLOSURE_REASON_DISPLAY[reason]) || FALLBACK;
+  return reason != null &&
+    Object.prototype.hasOwnProperty.call(CLOSURE_REASON_DISPLAY, reason)
+    ? CLOSURE_REASON_DISPLAY[reason as ClosureReason]
+    : FALLBACK;
 }
