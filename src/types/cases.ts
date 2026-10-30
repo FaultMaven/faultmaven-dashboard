@@ -72,6 +72,9 @@ export type CaseListResponse = Omit<components['schemas']['CaseListResponse'], '
 
 export type InvestigationStage = components['schemas']['InvestigationStage'];
 
+/** Why a CLOSED case ended. Keys `CLOSURE_REASON_DISPLAY` (lib/cases/closureReason.ts). */
+export type ClosureReason = components['schemas']['ClosureReason'];
+
 // ==================== Operator "All Cases" list (ADR-012 D9) ====================
 
 /**
