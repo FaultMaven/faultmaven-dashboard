@@ -26,7 +26,7 @@
     "check:shared-ui-styles": "node scripts/check-shared-ui-styles.mjs"
   },
   "dependencies": {
-    "@faultmaven/copilot-ui": "github:FaultMaven/faultmaven-copilot#97ff00d590150c55a278b189c5a0c375bce80e25&path:packages/copilot-ui",
+    "@faultmaven/copilot-ui": "github:FaultMaven/faultmaven-copilot#8f1cfcc47929325db9832cc9f4d2ac78c77d9dda&path:packages/copilot-ui",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tanstack/react-query": "^5.90.17",
