@@ -2383,6 +2383,14 @@ export interface paths {
          *     check cannot run (the sanitizer or its pseudonym key is unavailable) the
          *     request answers **503**, a retryable server-side condition, with a generic
          *     detail, and nothing is saved.
+         *
+         *     **Retries (`Idempotency-Key`).** A keyed conversion commits a receipt with
+         *     its job, in the same transaction. A request with a key this caller already
+         *     used for a conversion: the same file and fields, once the job committed →
+         *     **201** with that job's body and `X-Idempotency-Replayed: true`, and no new
+         *     job or drafts; a different file or fields → **409** `IDEMPOTENCY_KEY_REUSE`;
+         *     the first still running → **409** `KB_REQUEST_IN_PROGRESS` with
+         *     `Retry-After`. Without a key, every request converts again.
          */
         post: operations["convert_document_api_v1_knowledge_convert_post"];
         delete?: never;
@@ -2438,6 +2446,22 @@ export interface paths {
          *     reversed. If that check cannot run (the sanitizer or its pseudonym key is
          *     unavailable) the upload answers **503**, a retryable server-side
          *     condition, with a generic detail, and nothing is saved.
+         *
+         *     **Retries (`Idempotency-Key`).** A keyed upload commits a receipt with the
+         *     runbook, in the same transaction. A request with a key this caller already
+         *     used for an upload:
+         *
+         *     - for the same upload (same file content, same fields), once it published
+         *       → **201** with that upload's body and `Location`, and
+         *       `X-Idempotency-Replayed: true`. Nothing is published again.
+         *     - for a different upload → **409** `x-error-code: IDEMPOTENCY_KEY_REUSE`.
+         *     - while the first is still running → **409** `x-error-code:
+         *       KB_REQUEST_IN_PROGRESS` with `Retry-After`; retry with the same key.
+         *
+         *     A lost response, or this route's **500** `KB_INGEST_OUTCOME_UNKNOWN`
+         *     (whose detail says to retry with the same key), is recovered by retrying
+         *     with the same key: it replays if the first published, and runs if it did
+         *     not. Without a key, every request publishes a new runbook.
          */
         post: operations["upload_document_api_v1_knowledge_documents_post"];
         delete?: never;
@@ -4891,18 +4915,11 @@ export interface components {
              */
             current_turn: number;
             /**
-             * Disposition Eligibility
-             * @description Per-disposition eligibility. ‼ The two keys answer for DIFFERENT audiences: ``closed`` gates a user CONTROL, ``resolved`` gates nothing in the UI — it is the engine's own readiness verdict, and what it decides is whether the agent OFFERS the resolution handshake. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
-             *     - ``ready`` — case content supports this disposition with no follow-up. On the CLOSED side: render the control. On the RESOLVED side: the agent proposes the handshake; render nothing.
-             *     - ``needs_info`` — content is partial; the user must supply more (root cause / solution / confirmation the problem is gone). Resolve side only, and no control either way — the agent asks in conversation.
-             *     - ``suggests_alternative`` — Close side only, and it means DO NOT RENDER CLOSE: the agent is offering the resolution, and Close and Resolve are not offered together. It is set when the case confirms a resolution (a qualifying causal-absence row and a symptom-absence row at or after the fix) and either the user has not declined that resolution, when every close pivots back to a resolve proposal, or the declined resolution is being offered again at the user's request. The honest rendering is no status control at all. Once the user declines the resolution, a Close closes the case and ``closed`` reads ``ready``, except while that resolution is offered again at the user's request (a Close sent then cancels the offer and closes). This holds until the state the decline was given against changes: a new confirmation that the fix held, a new solution, or the cause established differently.
-             *     - ``not_eligible`` — not available; render nothing.
+             * @description Per-disposition eligibility, ``{resolved, closed}``, both keys always present. ‼ The two keys answer for DIFFERENT audiences: ``closed`` (``CloseEligibility``) gates a user CONTROL — render Close only on ``ready``; ``resolved`` (``ResolveEligibility``) gates nothing in the UI — it is the engine's own readiness verdict, and what it decides is whether the agent OFFERS the resolution. Each value's meaning is its enum's ``x-enum-descriptions``. ``closed`` reads ``suggests_alternative`` while a resolve proposal is pending, and on a resolvable case whose resolution the user has not declined (a close would become a resolve proposal). A decline stands until a new solution or a new confirmation that the fix held is recorded; nothing else lapses it. A request for what a resolution still needs is not a proposal: it carries no confirmation chips, and Close stays.
              *
              *     Different from ``valid_next_states`` — that field is which actions the user may SELECT, this field is what the case CONTENT supports. The two no longer overlap on the resolve side: ``resolved`` here is the engine's own readiness verdict, which decides whether the agent offers the resolution handshake, not whether a control is rendered.
              */
-            disposition_eligibility?: {
-                [key: string]: string;
-            } | null;
+            disposition_eligibility?: components["schemas"]["DispositionEligibility"] | null;
             /** @description Nested inquiry phase data */
             inquiry: components["schemas"]["InquiryResponseData"];
             /**
@@ -4972,18 +4989,11 @@ export interface components {
              */
             current_turn: number;
             /**
-             * Disposition Eligibility
-             * @description Per-disposition eligibility. ‼ The two keys answer for DIFFERENT audiences: ``closed`` gates a user CONTROL, ``resolved`` gates nothing in the UI — it is the engine's own readiness verdict, and what it decides is whether the agent OFFERS the resolution handshake. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
-             *     - ``ready`` — case content supports this disposition with no follow-up. On the CLOSED side: render the control. On the RESOLVED side: the agent proposes the handshake; render nothing.
-             *     - ``needs_info`` — content is partial; the user must supply more (root cause / solution / confirmation the problem is gone). Resolve side only, and no control either way — the agent asks in conversation.
-             *     - ``suggests_alternative`` — Close side only, and it means DO NOT RENDER CLOSE: the agent is offering the resolution, and Close and Resolve are not offered together. It is set when the case confirms a resolution (a qualifying causal-absence row and a symptom-absence row at or after the fix) and either the user has not declined that resolution, when every close pivots back to a resolve proposal, or the declined resolution is being offered again at the user's request. The honest rendering is no status control at all. Once the user declines the resolution, a Close closes the case and ``closed`` reads ``ready``, except while that resolution is offered again at the user's request (a Close sent then cancels the offer and closes). This holds until the state the decline was given against changes: a new confirmation that the fix held, a new solution, or the cause established differently.
-             *     - ``not_eligible`` — not available; render nothing.
+             * @description Per-disposition eligibility, ``{resolved, closed}``, both keys always present. ‼ The two keys answer for DIFFERENT audiences: ``closed`` (``CloseEligibility``) gates a user CONTROL — render Close only on ``ready``; ``resolved`` (``ResolveEligibility``) gates nothing in the UI — it is the engine's own readiness verdict, and what it decides is whether the agent OFFERS the resolution. Each value's meaning is its enum's ``x-enum-descriptions``. ``closed`` reads ``suggests_alternative`` while a resolve proposal is pending, and on a resolvable case whose resolution the user has not declined (a close would become a resolve proposal). A decline stands until a new solution or a new confirmation that the fix held is recorded; nothing else lapses it. A request for what a resolution still needs is not a proposal: it carries no confirmation chips, and Close stays.
              *
              *     Different from ``valid_next_states`` — that field is which actions the user may SELECT, this field is what the case CONTENT supports. The two no longer overlap on the resolve side: ``resolved`` here is the engine's own readiness verdict, which decides whether the agent offers the resolution handshake, not whether a control is rendered.
              */
-            disposition_eligibility?: {
-                [key: string]: string;
-            } | null;
+            disposition_eligibility?: components["schemas"]["DispositionEligibility"] | null;
             /**
              * Investigation Turn
              * @description How many of this case's turns so far were investigation work (#1329/#1387) — the same quantity `TurnResponse.investigation_turn` reports, carried on the case read so a header or a resolution summary can show it without having just submitted a turn. Excludes out-of-band turns (small talk, trivia, questions about FaultMaven itself), which are answered outside the investigation: an aside advances `current_turn` and leaves this alone. Null when the server predates the field.
@@ -5065,18 +5075,11 @@ export interface components {
              */
             current_turn: number;
             /**
-             * Disposition Eligibility
-             * @description Per-disposition eligibility. ‼ The two keys answer for DIFFERENT audiences: ``closed`` gates a user CONTROL, ``resolved`` gates nothing in the UI — it is the engine's own readiness verdict, and what it decides is whether the agent OFFERS the resolution handshake. Shape: ``{'resolved': str, 'closed': str}`` where each value is one of:
-             *     - ``ready`` — case content supports this disposition with no follow-up. On the CLOSED side: render the control. On the RESOLVED side: the agent proposes the handshake; render nothing.
-             *     - ``needs_info`` — content is partial; the user must supply more (root cause / solution / confirmation the problem is gone). Resolve side only, and no control either way — the agent asks in conversation.
-             *     - ``suggests_alternative`` — Close side only, and it means DO NOT RENDER CLOSE: the agent is offering the resolution, and Close and Resolve are not offered together. It is set when the case confirms a resolution (a qualifying causal-absence row and a symptom-absence row at or after the fix) and either the user has not declined that resolution, when every close pivots back to a resolve proposal, or the declined resolution is being offered again at the user's request. The honest rendering is no status control at all. Once the user declines the resolution, a Close closes the case and ``closed`` reads ``ready``, except while that resolution is offered again at the user's request (a Close sent then cancels the offer and closes). This holds until the state the decline was given against changes: a new confirmation that the fix held, a new solution, or the cause established differently.
-             *     - ``not_eligible`` — not available; render nothing.
+             * @description Per-disposition eligibility, ``{resolved, closed}``, both keys always present. ‼ The two keys answer for DIFFERENT audiences: ``closed`` (``CloseEligibility``) gates a user CONTROL — render Close only on ``ready``; ``resolved`` (``ResolveEligibility``) gates nothing in the UI — it is the engine's own readiness verdict, and what it decides is whether the agent OFFERS the resolution. Each value's meaning is its enum's ``x-enum-descriptions``. ``closed`` reads ``suggests_alternative`` while a resolve proposal is pending, and on a resolvable case whose resolution the user has not declined (a close would become a resolve proposal). A decline stands until a new solution or a new confirmation that the fix held is recorded; nothing else lapses it. A request for what a resolution still needs is not a proposal: it carries no confirmation chips, and Close stays.
              *
              *     Different from ``valid_next_states`` — that field is which actions the user may SELECT, this field is what the case CONTENT supports. The two no longer overlap on the resolve side: ``resolved`` here is the engine's own readiness verdict, which decides whether the agent offers the resolution handshake, not whether a control is rendered.
              */
-            disposition_eligibility?: {
-                [key: string]: string;
-            } | null;
+            disposition_eligibility?: components["schemas"]["DispositionEligibility"] | null;
             /**
              * Investigation Turn
              * @description How many of this case's turns so far were investigation work (#1329/#1387) — the same quantity `TurnResponse.investigation_turn` reports, carried on the case read so a header or a resolution summary can show it without having just submitted a turn. Excludes out-of-band turns (small talk, trivia, questions about FaultMaven itself), which are answered outside the investigation: an aside advances `current_turn` and leaves this alone. Null when the server predates the field.
@@ -5154,6 +5157,12 @@ export interface components {
              */
             title?: string | null;
         };
+        /**
+         * CloseEligibility
+         * @description Whether to show the status menu's Close.
+         * @enum {string}
+         */
+        CloseEligibility: "ready" | "suggests_alternative" | "not_eligible";
         /**
          * ClosureReason
          * @description Why a CLOSED case ended: the most specific reason that holds when it is closed. Null for any case that is not CLOSED.
@@ -5256,6 +5265,15 @@ export interface components {
              * @description Username or email address (3-50 chars)
              */
             username: string;
+        };
+        /**
+         * DispositionEligibility
+         * @description Per-disposition eligibility: ``resolved`` and ``closed``, both
+         *     required, no other key.
+         */
+        DispositionEligibility: {
+            closed: components["schemas"]["CloseEligibility"];
+            resolved: components["schemas"]["ResolveEligibility"];
         };
         /**
          * DocumentSnippetResponse
@@ -6616,6 +6634,14 @@ export interface components {
              */
             total_duration_minutes: number;
         };
+        /**
+         * ResolveEligibility
+         * @description Whether the case has earned resolution. Gates no control: RESOLVED is
+         *     not user-selectable, and the engine offers the resolve confirmation
+         *     itself.
+         * @enum {string}
+         */
+        ResolveEligibility: "ready" | "needs_info" | "not_eligible";
         /**
          * RevokeUserTokensResponse
          * @description Per-user token revocation response (#769).
@@ -10466,7 +10492,10 @@ export interface operations {
     convert_document_api_v1_knowledge_convert_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. Identifies this submission across retries: a retry under the same key, with the same file and fields, returns the published result instead of publishing again. One key per submission; a new submission, or any change to its file or fields, takes a new key. */
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10476,14 +10505,27 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description The conversion job and its drafts. A retry under the same `Idempotency-Key` is answered with the same body, and carries `X-Idempotency-Replayed: true`. */
             201: {
                 headers: {
+                    /** @description `true` when this response replays a request that already published under this `Idempotency-Key`; absent otherwise. */
+                    "X-Idempotency-Replayed"?: "true";
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Conflict. Told apart by `x-error-code`: `KB_REQUEST_IN_PROGRESS` (a request with this `Idempotency-Key` is still running: retry with the same key after `Retry-After` seconds; it may still be running then); `IDEMPOTENCY_KEY_REUSE` (the key was used for a different file or different fields). `IDEMPOTENCY_REPLAY_UNAVAILABLE` (the conversion committed, and its stored response no longer validates: reload your conversions). Without `x-error-code`, `conflict_reason: duplicate_runbook_id`: a live draft already holds a runbook id this conversion minted. */
+            409: {
+                headers: {
+                    /** @description Seconds, on `KB_REQUEST_IN_PROGRESS` only: when the running request's claim lapses unless it is renewed. */
+                    "Retry-After"?: number;
+                    /** @description Which conflict. */
+                    "x-error-code"?: "KB_REQUEST_IN_PROGRESS" | "IDEMPOTENCY_KEY_REUSE" | "IDEMPOTENCY_REPLAY_UNAVAILABLE";
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -10536,7 +10578,10 @@ export interface operations {
     upload_document_api_v1_knowledge_documents_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. Identifies this submission across retries: a retry under the same key, with the same file and fields, returns the published result instead of publishing again. One key per submission; a new submission, or any change to its file or fields, takes a new key. */
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10546,9 +10591,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description The runbook, published. A retry under the same `Idempotency-Key` is answered with the same body, and carries `X-Idempotency-Replayed: true`. */
             201: {
                 headers: {
+                    /** @description The published runbook, on the first answer and its replay. */
+                    Location?: string;
+                    /** @description `true` when this response replays a request that already published under this `Idempotency-Key`; absent otherwise. */
+                    "X-Idempotency-Replayed"?: "true";
                     [name: string]: unknown;
                 };
                 content: {
@@ -10556,6 +10605,17 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Conflict. Told apart by `x-error-code`: `KB_REQUEST_IN_PROGRESS` (a request with this `Idempotency-Key` is still running: retry with the same key after `Retry-After` seconds; it may still be running then); `IDEMPOTENCY_KEY_REUSE` (the key was used for a different file or different fields). */
+            409: {
+                headers: {
+                    /** @description Seconds, on `KB_REQUEST_IN_PROGRESS` only: when the running request's claim lapses unless it is renewed. */
+                    "Retry-After"?: number;
+                    /** @description Which conflict. */
+                    "x-error-code"?: "KB_REQUEST_IN_PROGRESS" | "IDEMPOTENCY_KEY_REUSE";
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

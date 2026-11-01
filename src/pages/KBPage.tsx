@@ -42,6 +42,8 @@ import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
 import { APIError, NetworkError } from '../lib/knowledge/errors';
+import { describeUploadError } from '../lib/knowledge/kb';
+import { createSubmissionKeyHolder, IDEMPOTENCY_KEY_REUSE } from '../lib/knowledge/submissionKey';
 
 const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -881,7 +883,7 @@ function OverlayPanel(props: OverlayPanelProps) {
       await props.onUploadFile({ file: selectedFile, ...uploadForm, scope: effectiveUploadScope });
       props.onClose();
     } catch (error: unknown) {
-      setUploadError(error instanceof Error ? error.message : 'Upload failed');
+      setUploadError(describeUploadError(error));
     } finally {
       setUploading(false);
     }
@@ -1127,6 +1129,12 @@ export default function KBPage() {
   const [manualError, setManualError] = useState<string | null>(null);
   const [confirmVerify, setConfirmVerify] = useState<ConversionDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
+  // One Idempotency-Key per submission, held here so it outlives the overlay
+  // (which unmounts on close): re-picking the same file after a cancel is the
+  // same submission (#2433). Released on a success and on IDEMPOTENCY_KEY_REUSE;
+  // every other outcome keeps it, so an unchanged retry publishes at most once.
+  const [uploadKeys] = useState(createSubmissionKeyHolder);
+  const [convertKeys] = useState(createSubmissionKeyHolder);
 
   // Drafts. The cached count badge is per-user: an unscoped key leaked one
   // user's draft count to the next user on a shared browser (cross-user
@@ -1233,19 +1241,32 @@ export default function KBPage() {
   };
 
   const handleUploadFile = async (params: { file: File; title: string; document_type: string; tags: string; description: string; scope: string }) => {
-    await uploadDocument({ file: params.file, title: params.title, document_type: params.document_type, tags: params.tags, description: params.description, scope: params.scope });
+    const { file, title, document_type, tags, description, scope } = params;
+    const fields = { title, document_type, tags, description, scope };
+    try {
+      await uploadDocument({ file, ...fields }, uploadKeys.keyFor(file, fields));
+    } catch (err: unknown) {
+      if (err instanceof APIError && err.errorCode === IDEMPOTENCY_KEY_REUSE) uploadKeys.release();
+      throw err;
+    }
+    uploadKeys.release();
   };
 
   const handleConvert = async (file: File, scope: string) => {
     setConverting(true);
     setConvertError(null);
     try {
-      const result = await convertDocument(file, scope);
+      const result = await convertDocument(file, scope, convertKeys.keyFor(file, { scope }));
+      convertKeys.release();
       setConversion(result);
       setOverlayMode('results');
       loadDrafts();
     } catch (err: unknown) {
       if (err instanceof ConversionAPIError) {
+        if (err.errorCode === IDEMPOTENCY_KEY_REUSE) convertKeys.release();
+        // The conversion committed but its stored answer cannot be replayed:
+        // its drafts exist. Keep the key, so a resubmit cannot convert twice.
+        if (err.errorCode === 'IDEMPOTENCY_REPLAY_UNAVAILABLE') loadDrafts();
         setConvertError(err.errorInfo);
       } else {
         setConvertError({ title: 'Conversion failed', message: err instanceof Error ? err.message : 'Unknown error', action: 'Try again.' });

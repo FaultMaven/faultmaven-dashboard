@@ -36,7 +36,7 @@ const UNPARSEABLE_DATETIME = {
 };
 
 function refusal(status: number, body: unknown): Response {
-  return { ok: false, status, statusText: '', json: async () => body } as unknown as Response;
+  return { ok: false, status, statusText: '', headers: new Headers(), json: async () => body } as unknown as Response;
 }
 
 async function messageFrom(response: Response): Promise<string> {

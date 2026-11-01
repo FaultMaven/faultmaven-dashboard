@@ -2,7 +2,8 @@
 
 import type { components } from '../../types/api.generated';
 import { makeAuthenticatedRequest } from './client';
-import { handleAPIResponse } from './errors';
+import { handleAPIResponse, readRetryAfter } from './errors';
+import { IDEMPOTENCY_KEY_REUSE, KB_REQUEST_IN_PROGRESS, KEY_REUSE_MESSAGE, stillProcessingMessage } from './submissionKey';
 
 const CONVERT_BASE = '/api/v1/knowledge';
 
@@ -257,6 +258,23 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
     message: 'An error occurred during the conversion process.',
     action: 'Try again. If the problem persists, check the API logs for details.',
   },
+  // The keyed-retry answers (#2433). Core's detail names `Idempotency-Key`,
+  // which a Dashboard user cannot act on.
+  [KB_REQUEST_IN_PROGRESS]: {
+    title: 'Conversion still in progress',
+    message: stillProcessingMessage('conversion'),
+    action: 'Submit the same file and scope again; changing either starts a new conversion.',
+  },
+  [IDEMPOTENCY_KEY_REUSE]: {
+    title: 'Submission changed',
+    message: KEY_REUSE_MESSAGE,
+    action: 'Check the file and scope, then convert again.',
+  },
+  IDEMPOTENCY_REPLAY_UNAVAILABLE: {
+    title: 'Conversion already completed',
+    message: 'This conversion already completed. Your drafts list has been refreshed.',
+    action: 'Find its drafts on the Drafts tab.',
+  },
 };
 
 /**
@@ -265,6 +283,7 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
 export function translateConversionError(
   errorBody: { detail?: string; error_code?: string } | null,
   fallbackMessage: string,
+  retryAfter?: number,
 ): ConversionErrorInfo {
   // `hasOwnProperty.call`, never `in`: `in` walks the prototype chain, so an
   // `error_code` of "toString" / "constructor" / "valueOf" — from a mis-shaped
@@ -281,7 +300,9 @@ export function translateConversionError(
     errorBody?.error_code &&
     Object.prototype.hasOwnProperty.call(ERROR_TRANSLATIONS, errorBody.error_code)
   ) {
-    return { ...ERROR_TRANSLATIONS[errorBody.error_code], code: errorBody.error_code };
+    const info = { ...ERROR_TRANSLATIONS[errorBody.error_code], code: errorBody.error_code };
+    if (info.code === KB_REQUEST_IN_PROGRESS) info.message = stillProcessingMessage('conversion', retryAfter);
+    return info;
   }
   return {
     title: 'Conversion failed',
@@ -303,6 +324,7 @@ export class ConversionAPIError extends Error {
     public statusCode: number,
     public errorCode: string,
     public errorInfo: ConversionErrorInfo,
+    public retryAfter?: number,
   ) {
     super(message);
     this.name = 'ConversionAPIError';
@@ -310,11 +332,14 @@ export class ConversionAPIError extends Error {
 }
 
 /**
- * Upload a document and convert it to runbook drafts.
+ * Upload a document and convert it to runbook drafts. `idempotencyKey` is the
+ * submission's (`submissionKey.ts`): a retry under it replays the first 201
+ * instead of converting again (#2433).
  */
 export async function convertDocument(
   file: File,
   scope: string,
+  idempotencyKey: string,
 ): Promise<ConversionResponse> {
   const formData = new FormData();
   formData.append('file', file);
@@ -322,6 +347,7 @@ export async function convertDocument(
 
   const response = await makeAuthenticatedRequest(`${CONVERT_BASE}/convert`, {
     method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
     body: formData,
   });
 
@@ -332,13 +358,16 @@ export async function convertDocument(
     } catch {
       // not JSON
     }
-    const info = translateConversionError(errorBody, 'Document conversion failed');
-    throw new ConversionAPIError(
-      info.message,
-      response.status,
-      errorBody?.error_code || 'UNKNOWN',
-      info,
+    // The body's `error_code`, else the `x-error-code` header: the keyed-retry
+    // refusals send `{"detail"}` only and carry their code there.
+    const errorCode = errorBody?.error_code || response.headers.get('x-error-code') || undefined;
+    const retryAfter = readRetryAfter(response);
+    const info = translateConversionError(
+      { detail: errorBody?.detail, error_code: errorCode },
+      'Document conversion failed',
+      retryAfter,
     );
+    throw new ConversionAPIError(info.message, response.status, errorCode || 'UNKNOWN', info, retryAfter);
   }
 
   return await response.json();
