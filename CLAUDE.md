@@ -108,8 +108,7 @@ src/
 │   ├── breakGlass/          # Operator break-glass API (grants + audited content/transcript open)
 │   ├── teams/               # Teams + invitations client (api.ts) and refusal-slug copy (copy.ts)
 │   ├── organization/        # The billing organization console client (/admin/organization*)
-│   ├── knowledge/           # KB client, conversion, writePolicy, submissionKey (one Idempotency-Key per
-│   │                        #   upload or conversion), types (+ narrowing guards)
+│   ├── knowledge/           # KB client, conversion, writePolicy, types (+ narrowing guards)
 │   ├── llm/ users/ meta/    # LLM config, user management, /meta/capabilities clients
 │   ├── copilot/             # chatSurfacePreference.ts — the per-browser-profile chat-surface preference
 │   ├── access.ts            # Route/nav predicates: canManageUsers, canManageConsole, canUseTeams,

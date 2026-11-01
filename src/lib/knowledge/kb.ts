@@ -4,8 +4,7 @@
 // Write operations (upload, delete) require admin privileges on the backend.
 
 import { makeAuthenticatedRequest, buildQueryParams } from './client';
-import { APIError, handleAPIResponse } from './errors';
-import { IDEMPOTENCY_KEY_REUSE, KB_REQUEST_IN_PROGRESS, KEY_REUSE_MESSAGE, stillProcessingMessage } from './submissionKey';
+import { handleAPIResponse } from './errors';
 import type {
   KBDocument,
   KBDocumentUploadResult,
@@ -30,13 +29,9 @@ const KB_BASE = '/api/v1/knowledge/documents';
  * Any authenticated user may upload at their own scope; `global` — the platform
  * tier every tenant reads — requires the platform-admin role, which the backend
  * enforces on the SCOPE rather than on the route (FaultMaven/faultmaven#1377).
- *
- * `idempotencyKey` is the submission's (`submissionKey.ts`): a retry under it
- * replays the first 201 instead of publishing again (#2433).
  */
 export async function uploadDocument(
   params: UploadDocumentParams,
-  idempotencyKey: string,
 ): Promise<KBDocumentUploadResult> {
   const formData = new FormData();
   formData.append('file', params.file);
@@ -52,27 +47,11 @@ export async function uploadDocument(
 
   const response = await makeAuthenticatedRequest(KB_BASE, {
     method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey },
     body: formData,
   });
 
   await handleAPIResponse(response, 'Upload failed');
   return await response.json();
-}
-
-/**
- * The sentence an upload failure shows. Core's own detail for the keyed-retry
- * refusals names `Idempotency-Key`, which a Dashboard user cannot act on.
- */
-export function describeUploadError(error: unknown): string {
-  if (error instanceof APIError) {
-    if (error.errorCode === KB_REQUEST_IN_PROGRESS) return stillProcessingMessage('upload', error.retryAfter);
-    if (error.errorCode === IDEMPOTENCY_KEY_REUSE) return KEY_REUSE_MESSAGE;
-    if (error.errorCode === 'KB_INGEST_OUTCOME_UNKNOWN') {
-      return 'The runbook may have been published. Submit it again unchanged to find out; it will not be published twice.';
-    }
-  }
-  return error instanceof Error ? error.message : 'Upload failed';
 }
 
 /**
@@ -145,9 +124,8 @@ export async function deleteDocument(documentId: string): Promise<void> {
 
 export async function uploadAdminDocument(
   params: UploadAdminDocumentParams,
-  idempotencyKey: string,
 ): Promise<KBDocumentUploadResult> {
-  return uploadDocument(params as UploadDocumentParams, idempotencyKey);
+  return uploadDocument(params as UploadDocumentParams);
 }
 
 export async function listAdminDocuments(params?: {
