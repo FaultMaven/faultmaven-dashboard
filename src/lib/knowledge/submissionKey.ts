@@ -4,22 +4,24 @@
  * `POST /knowledge/documents` and `POST /knowledge/convert` publish once per
  * key (core contract 14.11.0): a retry under the same key replays the first
  * 201, and an unkeyed request publishes every time. So the key belongs to the
- * SUBMISSION, not the request. An unchanged retry carries the held key; any
- * change to the file or a field carries a new one.
+ * SUBMISSION, not the request: one key per identity, the file plus its fields.
+ * An unchanged retry carries that identity's key, a change carries another
+ * identity's, and reverting the change returns to the first key.
  *
- * The file is identified by `(name, size, lastModified, type)`, not by object:
- * picking the same file again after a cancel is a new `File` with the same
- * identity, and it is the same submission.
+ * The file is identified by `(name, size, lastModified, type)`, not by object.
+ * Picking the same file again after a cancel is a new `File` with the same
+ * identity, so it is the same submission only when the fields are the same too
+ * (picking a file re-fills the title from its name).
  */
 
 export const IDEMPOTENCY_KEY_REUSE = 'IDEMPOTENCY_KEY_REUSE';
 export const KB_REQUEST_IN_PROGRESS = 'KB_REQUEST_IN_PROGRESS';
 
 export interface SubmissionKeyHolder {
-  /** The held key when `file` and `fields` match the held submission; otherwise a new one, held. */
+  /** This submission's key, minted and held the first time its identity is seen. */
   keyFor(file: File, fields: Record<string, string>): string;
-  /** Drop the held key: the next submission takes a new one. */
-  release(): void;
+  /** Drop this submission's key only: its next send takes a new one, others keep theirs. */
+  release(file: File, fields: Record<string, string>): void;
 }
 
 function identityOf(file: File, fields: Record<string, string>): string {
@@ -35,15 +37,21 @@ function mintKey(): string {
 }
 
 export function createSubmissionKeyHolder(): SubmissionKeyHolder {
-  let held: { identity: string; key: string } | null = null;
+  // Per identity, never one slot: a slot let an edit-then-revert land under a
+  // third key, and let one submission's success drop another's in-flight key.
+  const held = new Map<string, string>();
   return {
     keyFor(file, fields) {
       const identity = identityOf(file, fields);
-      if (held?.identity !== identity) held = { identity, key: mintKey() };
-      return held.key;
+      let key = held.get(identity);
+      if (key === undefined) {
+        key = mintKey();
+        held.set(identity, key);
+      }
+      return key;
     },
-    release() {
-      held = null;
+    release(file, fields) {
+      held.delete(identityOf(file, fields));
     },
   };
 }
@@ -54,7 +62,7 @@ export function stillProcessingMessage(subject: 'upload' | 'conversion', retryAf
     retryAfterSeconds === undefined
       ? 'shortly'
       : `in about ${retryAfterSeconds} second${retryAfterSeconds === 1 ? '' : 's'}`;
-  return `This ${subject} is still being processed. Try again ${when}; it will not be published twice.`;
+  return `This ${subject} is still being processed. Try again ${when} without changing it; it will not be published twice.`;
 }
 
 export const KEY_REUSE_MESSAGE = 'This submission changed while it was being retried. Submit it again.';

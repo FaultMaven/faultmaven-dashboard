@@ -1129,10 +1129,12 @@ export default function KBPage() {
   const [manualError, setManualError] = useState<string | null>(null);
   const [confirmVerify, setConfirmVerify] = useState<ConversionDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
-  // One Idempotency-Key per submission, held here so it outlives the overlay
-  // (which unmounts on close): re-picking the same file after a cancel is the
-  // same submission (#2433). Released on a success and on IDEMPOTENCY_KEY_REUSE;
-  // every other outcome keeps it, so an unchanged retry publishes at most once.
+  // One Idempotency-Key per submission (file plus fields, #2433), held here so
+  // it outlives the overlay, which unmounts on close. Re-picking the same file
+  // after a cancel is the same submission only when the fields are the same too:
+  // picking a file re-fills the title from its name. A submission's key is
+  // released on its own 2xx and IDEMPOTENCY_KEY_REUSE; every other outcome keeps
+  // it, so an unchanged retry publishes at most once.
   const [uploadKeys] = useState(createSubmissionKeyHolder);
   const [convertKeys] = useState(createSubmissionKeyHolder);
 
@@ -1246,10 +1248,10 @@ export default function KBPage() {
     try {
       await uploadDocument({ file, ...fields }, uploadKeys.keyFor(file, fields));
     } catch (err: unknown) {
-      if (err instanceof APIError && err.errorCode === IDEMPOTENCY_KEY_REUSE) uploadKeys.release();
+      if (err instanceof APIError && err.errorCode === IDEMPOTENCY_KEY_REUSE) uploadKeys.release(file, fields);
       throw err;
     }
-    uploadKeys.release();
+    uploadKeys.release(file, fields);
   };
 
   const handleConvert = async (file: File, scope: string) => {
@@ -1257,13 +1259,13 @@ export default function KBPage() {
     setConvertError(null);
     try {
       const result = await convertDocument(file, scope, convertKeys.keyFor(file, { scope }));
-      convertKeys.release();
+      convertKeys.release(file, { scope });
       setConversion(result);
       setOverlayMode('results');
       loadDrafts();
     } catch (err: unknown) {
       if (err instanceof ConversionAPIError) {
-        if (err.errorCode === IDEMPOTENCY_KEY_REUSE) convertKeys.release();
+        if (err.errorCode === IDEMPOTENCY_KEY_REUSE) convertKeys.release(file, { scope });
         // The conversion committed but its stored answer cannot be replayed:
         // its drafts exist. Keep the key, so a resubmit cannot convert twice.
         if (err.errorCode === 'IDEMPOTENCY_REPLAY_UNAVAILABLE') loadDrafts();

@@ -42,7 +42,8 @@ const convertDocument = vi.mocked(conversion.convertDocument);
 const listAllDrafts = vi.mocked(conversion.listAllDrafts);
 const { ConversionAPIError, translateConversionError } = conversion;
 
-const sameFile = () => new File(['# rb'], 'redis.md', { type: 'text/markdown', lastModified: 1000 });
+const fileNamed = (name: string) => new File(['# rb'], name, { type: 'text/markdown', lastModified: 1000 });
+const outcomeUnknown = () => new APIError('Retry with the same Idempotency-Key.', 500, 'KB_INGEST_OUTCOME_UNKNOWN');
 const uploadKeys = () => uploadDocument.mock.calls.map((call) => call[1]);
 const convertKeys = () => convertDocument.mock.calls.map((call) => call[2]);
 
@@ -53,9 +54,23 @@ async function open(item: 'Add Runbook' | 'Convert to Runbook') {
   await click(screen.getByRole('button', { name: /New/i }));
   await click(screen.getByText(item));
 }
-async function pickFile() {
+async function pickFile(name = 'redis.md') {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-  await act(async () => { fireEvent.change(input, { target: { files: [sameFile()] } }); });
+  await act(async () => { fireEvent.change(input, { target: { files: [fileNamed(name)] } }); });
+}
+async function setTitle(value: string) {
+  await act(async () => { fireEvent.change(screen.getByPlaceholderText('Enter document title'), { target: { value } }); });
+}
+/** The overlay's own Cancel (outside the upload dialog), which unmounts the overlay. */
+async function closeOverlay() {
+  const dialog = screen.queryByRole('dialog');
+  await click(screen.getAllByRole('button', { name: 'Cancel' }).find((b) => !dialog?.contains(b)) as HTMLElement);
+}
+function deferred() {
+  let resolve: (value: Awaited<ReturnType<typeof api.uploadDocument>>) => void = () => {};
+  let reject: (error: unknown) => void = () => {};
+  const promise = new Promise<Awaited<ReturnType<typeof api.uploadDocument>>>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }
 const submitUpload = () => click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Upload' }));
 const submitConvert = () => click(screen.getByRole('button', { name: 'Convert' }));
@@ -70,11 +85,11 @@ beforeEach(async () => {
 
 describe('KBPage upload — one Idempotency-Key per submission', () => {
   it('reuses the key after a 500 KB_INGEST_OUTCOME_UNKNOWN, a modal cancel, and a closed overlay', async () => {
-    uploadDocument.mockRejectedValue(new APIError('Retry with the same Idempotency-Key.', 500, 'KB_INGEST_OUTCOME_UNKNOWN'));
+    uploadDocument.mockRejectedValue(outcomeUnknown());
     await open('Add Runbook');
     await pickFile();
     await submitUpload();
-    expect(screen.getByText('The runbook may have been published. Submit again to find out; it will not be published twice.')).toBeInTheDocument();
+    expect(screen.getByText('The runbook may have been published. Submit it again unchanged to find out; it will not be published twice.')).toBeInTheDocument();
     await submitUpload();
     // Cancel the modal, close the overlay (it unmounts), and pick the same file again.
     await click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
@@ -88,16 +103,71 @@ describe('KBPage upload — one Idempotency-Key per submission', () => {
   });
 
   it('takes a new key when a field changes between attempts', async () => {
-    uploadDocument.mockRejectedValue(new APIError('Retry with the same Idempotency-Key.', 500, 'KB_INGEST_OUTCOME_UNKNOWN'));
+    uploadDocument.mockRejectedValue(outcomeUnknown());
     await open('Add Runbook');
     await pickFile();
     await submitUpload();
-    await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText('Enter document title'), { target: { value: 'Redis OOM' } });
-    });
+    await setTitle('Redis OOM');
     await submitUpload();
     const [first, second] = uploadKeys();
     expect(second).not.toBe(first);
+  });
+
+  it('an edit that is reverted returns to the first key', async () => {
+    uploadDocument
+      .mockRejectedValueOnce(outcomeUnknown())
+      .mockRejectedValueOnce(new NetworkError('Could not reach the FaultMaven API'))
+      .mockRejectedValueOnce(outcomeUnknown());
+    await open('Add Runbook');
+    await pickFile();
+    await submitUpload();
+    await setTitle('Redis OOM');
+    await submitUpload();
+    await setTitle('redis');
+    await submitUpload();
+    const [first, edited, reverted] = uploadKeys();
+    expect(edited).not.toBe(first);
+    expect(reverted).toBe(first);
+  });
+
+  it('re-picking the same file keeps the key once the custom title is entered again', async () => {
+    uploadDocument.mockRejectedValue(outcomeUnknown());
+    await open('Add Runbook');
+    await pickFile();
+    await setTitle('Redis OOM runbook');
+    await submitUpload();
+    await click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    await pickFile();
+    // Picking a file re-fills the title from its name: not yet the same submission.
+    expect(screen.getByPlaceholderText('Enter document title')).toHaveValue('redis');
+    await setTitle('Redis OOM runbook');
+    await submitUpload();
+    const [first, second] = uploadKeys();
+    expect(second).toBe(first);
+  });
+
+  it("one upload's success does not drop another's key", async () => {
+    const a = deferred();
+    const b = deferred();
+    uploadDocument.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise).mockRejectedValueOnce(outcomeUnknown());
+    await open('Add Runbook');
+    await pickFile('redis.md');
+    await submitUpload();
+    await closeOverlay();
+    await open('Add Runbook');
+    await pickFile('kafka.md');
+    await submitUpload();
+    await act(async () => { a.resolve({ document_id: 'a' } as Awaited<ReturnType<typeof api.uploadDocument>>); });
+    await act(async () => { b.reject(outcomeUnknown()); });
+    // A's settlement may have closed the overlay B was in (FaultMaven/faultmaven#2456);
+    // start B's retry from a closed overlay either way.
+    if (screen.queryAllByRole('heading', { name: 'Add Runbook' }).length > 0) await closeOverlay();
+    await open('Add Runbook');
+    await pickFile('kafka.md');
+    await submitUpload();
+    const [keyA, keyB, retryB] = uploadKeys();
+    expect(keyB).not.toBe(keyA);
+    expect(retryB).toBe(keyB);
   });
 
   it('IDEMPOTENCY_KEY_REUSE shows its message and releases the key', async () => {
@@ -128,7 +198,7 @@ describe('KBPage upload — one Idempotency-Key per submission', () => {
     await open('Add Runbook');
     await pickFile();
     await submitUpload();
-    expect(screen.getByText('This upload is still being processed. Try again in about 7 seconds; it will not be published twice.')).toBeInTheDocument();
+    expect(screen.getByText('This upload is still being processed. Try again in about 7 seconds without changing it; it will not be published twice.')).toBeInTheDocument();
   });
 });
 
@@ -162,7 +232,7 @@ describe('KBPage conversion — one Idempotency-Key per submission', () => {
     const loadsBefore = listAllDrafts.mock.calls.length;
     await submitConvert();
     expect(listAllDrafts.mock.calls.length).toBe(loadsBefore + 1);
-    expect(screen.getByText('This conversion already completed. Your drafts list has been refreshed.')).toBeInTheDocument();
+    expect(screen.getByText('This conversion already completed. Your drafts list is being reloaded.')).toBeInTheDocument();
     await submitConvert();
     const [first, second] = convertKeys();
     expect(second).toBe(first);

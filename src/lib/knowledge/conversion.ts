@@ -272,7 +272,7 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
   },
   IDEMPOTENCY_REPLAY_UNAVAILABLE: {
     title: 'Conversion already completed',
-    message: 'This conversion already completed. Your drafts list has been refreshed.',
+    message: 'This conversion already completed. Your drafts list is being reloaded.',
     action: 'Find its drafts on the Drafts tab.',
   },
 };

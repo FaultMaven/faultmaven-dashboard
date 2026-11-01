@@ -20,8 +20,18 @@ describe('createSubmissionKeyHolder', () => {
     expect(edited).not.toBe(first);
     const otherFile = keys.keyFor(pick('redis.md', 2000), { ...fields, title: 'Redis OOM' });
     expect(otherFile).not.toBe(edited);
-    keys.release();
+    keys.release(pick('redis.md', 2000), { ...fields, title: 'Redis OOM' });
     expect(keys.keyFor(pick('redis.md', 2000), { ...fields, title: 'Redis OOM' })).not.toBe(otherFile);
+  });
+
+  it('holds a key per identity: a revert returns to the first key, and a release drops only its own', () => {
+    const keys = createSubmissionKeyHolder();
+    const first = keys.keyFor(pick(), fields);
+    const edited = keys.keyFor(pick(), { ...fields, title: 'Redis OOM' });
+    expect(keys.keyFor(pick(), fields)).toBe(first);
+    keys.release(pick(), { ...fields, title: 'Redis OOM' });
+    expect(keys.keyFor(pick(), fields)).toBe(first);
+    expect(keys.keyFor(pick(), { ...fields, title: 'Redis OOM' })).not.toBe(edited);
   });
 
   it('mints keys inside the server grammar', () => {

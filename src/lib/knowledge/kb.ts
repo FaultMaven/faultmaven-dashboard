@@ -69,7 +69,7 @@ export function describeUploadError(error: unknown): string {
     if (error.errorCode === KB_REQUEST_IN_PROGRESS) return stillProcessingMessage('upload', error.retryAfter);
     if (error.errorCode === IDEMPOTENCY_KEY_REUSE) return KEY_REUSE_MESSAGE;
     if (error.errorCode === 'KB_INGEST_OUTCOME_UNKNOWN') {
-      return 'The runbook may have been published. Submit again to find out; it will not be published twice.';
+      return 'The runbook may have been published. Submit it again unchanged to find out; it will not be published twice.';
     }
   }
   return error instanceof Error ? error.message : 'Upload failed';

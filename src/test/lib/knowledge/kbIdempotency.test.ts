@@ -83,13 +83,13 @@ describe('convertDocument', () => {
     expect(err.errorCode).toBe('KB_REQUEST_IN_PROGRESS');
     expect(err.retryAfter).toBe(1);
     expect(err.errorInfo.message).toBe(
-      'This conversion is still being processed. Try again in about 1 second; it will not be published twice.',
+      'This conversion is still being processed. Try again in about 1 second without changing it; it will not be published twice.',
     );
   });
 
   it('translates IDEMPOTENCY_REPLAY_UNAVAILABLE from the header, not the server detail', async () => {
     fetchSpy.mockResolvedValue(refusal(409, 'IDEMPOTENCY_REPLAY_UNAVAILABLE'));
     const err = (await convertDocument(file(), 'personal', KEY).catch((e: unknown) => e)) as ConversionAPIError;
-    expect(err.errorInfo.message).toBe('This conversion already completed. Your drafts list has been refreshed.');
+    expect(err.errorInfo.message).toBe('This conversion already completed. Your drafts list is being reloaded.');
   });
 });
