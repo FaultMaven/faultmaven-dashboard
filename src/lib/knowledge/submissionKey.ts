@@ -17,11 +17,23 @@
 export const IDEMPOTENCY_KEY_REUSE = 'IDEMPOTENCY_KEY_REUSE';
 export const KB_REQUEST_IN_PROGRESS = 'KB_REQUEST_IN_PROGRESS';
 
+/** How a send settled: a success, one of the two keyed-retry refusals, or any other failure. */
+export type SendOutcome = 'succeeded' | 'failed' | typeof KB_REQUEST_IN_PROGRESS | typeof IDEMPOTENCY_KEY_REUSE;
+
+/** The outcome of a failed send, from its refusal's code. */
+export function failureOutcome(errorCode: string | undefined): SendOutcome {
+  return errorCode === KB_REQUEST_IN_PROGRESS || errorCode === IDEMPOTENCY_KEY_REUSE ? errorCode : 'failed';
+}
+
+/** One send of a submission. Settle it exactly once, in a `finally`. */
+export interface SubmissionSend {
+  readonly key: string;
+  settle(outcome: SendOutcome): void;
+}
+
 export interface SubmissionKeyHolder {
-  /** This submission's key, minted and held the first time its identity is seen. */
-  keyFor(file: File, fields: Record<string, string>): string;
-  /** Drop this submission's key only: its next send takes a new one, others keep theirs. */
-  release(file: File, fields: Record<string, string>): void;
+  /** Start a send: this submission's key, minted and held the first time its identity is seen. */
+  begin(file: File, fields: Record<string, string>): SubmissionSend;
 }
 
 function identityOf(file: File, fields: Record<string, string>): string {
@@ -36,22 +48,52 @@ function mintKey(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+interface Held {
+  key: string;
+  /** Sends begun under this key and not yet settled. */
+  inFlight: number;
+  /** A send under this key was told KB_REQUEST_IN_PROGRESS, and its retry is still to come. */
+  contested: boolean;
+}
+
 export function createSubmissionKeyHolder(): SubmissionKeyHolder {
   // Per identity, never one slot: a slot let an edit-then-revert land under a
   // third key, and let one submission's success drop another's in-flight key.
-  const held = new Map<string, string>();
+  const held = new Map<string, Held>();
   return {
-    keyFor(file, fields) {
+    begin(file, fields) {
       const identity = identityOf(file, fields);
-      let key = held.get(identity);
-      if (key === undefined) {
-        key = mintKey();
-        held.set(identity, key);
+      let entry = held.get(identity);
+      if (entry === undefined) {
+        entry = { key: mintKey(), inFlight: 0, contested: false };
+        held.set(identity, entry);
       }
-      return key;
-    },
-    release(file, fields) {
-      held.delete(identityOf(file, fields));
+      const own = entry;
+      own.inFlight += 1;
+      let settled = false;
+      // Only this entry: a later send of the identity may already hold a new one.
+      const release = () => {
+        if (held.get(identity) === own) held.delete(identity);
+      };
+      return {
+        key: own.key,
+        settle(outcome) {
+          if (settled) return;
+          settled = true;
+          own.inFlight -= 1;
+          if (outcome === KB_REQUEST_IN_PROGRESS) {
+            own.contested = true;
+          } else if (outcome === IDEMPOTENCY_KEY_REUSE) {
+            release();
+          } else if (outcome === 'succeeded') {
+            // A sibling send still in flight, or told to retry, under this key
+            // keeps it: a new key for its retry would publish a second time. Its
+            // replay then settles as a success and releases.
+            if (own.inFlight === 0 && !own.contested) release();
+            else own.contested = false;
+          }
+        },
+      };
     },
   };
 }

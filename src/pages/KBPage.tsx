@@ -43,7 +43,7 @@ import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
 import { APIError, NetworkError } from '../lib/knowledge/errors';
 import { describeUploadError } from '../lib/knowledge/kb';
-import { createSubmissionKeyHolder, IDEMPOTENCY_KEY_REUSE } from '../lib/knowledge/submissionKey';
+import { createSubmissionKeyHolder, failureOutcome, type SendOutcome } from '../lib/knowledge/submissionKey';
 
 const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -1132,9 +1132,11 @@ export default function KBPage() {
   // One Idempotency-Key per submission (file plus fields, #2433), held here so
   // it outlives the overlay, which unmounts on close. Re-picking the same file
   // after a cancel is the same submission only when the fields are the same too:
-  // picking a file re-fills the title from its name. A submission's key is
-  // released on its own 2xx and IDEMPOTENCY_KEY_REUSE; every other outcome keeps
-  // it, so an unchanged retry publishes at most once.
+  // picking a file re-fills the title from its name. Every send begins once and
+  // settles once (in a `finally`). IDEMPOTENCY_KEY_REUSE releases the key, and so
+  // does a success unless a sibling send is in flight or was told
+  // KB_REQUEST_IN_PROGRESS under it; every other outcome keeps it, so an
+  // unchanged retry publishes at most once.
   const [uploadKeys] = useState(createSubmissionKeyHolder);
   const [convertKeys] = useState(createSubmissionKeyHolder);
 
@@ -1245,27 +1247,33 @@ export default function KBPage() {
   const handleUploadFile = async (params: { file: File; title: string; document_type: string; tags: string; description: string; scope: string }) => {
     const { file, title, document_type, tags, description, scope } = params;
     const fields = { title, document_type, tags, description, scope };
+    const send = uploadKeys.begin(file, fields);
+    let outcome: SendOutcome = 'failed';
     try {
-      await uploadDocument({ file, ...fields }, uploadKeys.keyFor(file, fields));
+      await uploadDocument({ file, ...fields }, send.key);
+      outcome = 'succeeded';
     } catch (err: unknown) {
-      if (err instanceof APIError && err.errorCode === IDEMPOTENCY_KEY_REUSE) uploadKeys.release(file, fields);
+      if (err instanceof APIError) outcome = failureOutcome(err.errorCode);
       throw err;
+    } finally {
+      send.settle(outcome);
     }
-    uploadKeys.release(file, fields);
   };
 
   const handleConvert = async (file: File, scope: string) => {
     setConverting(true);
     setConvertError(null);
+    const send = convertKeys.begin(file, { scope });
+    let outcome: SendOutcome = 'failed';
     try {
-      const result = await convertDocument(file, scope, convertKeys.keyFor(file, { scope }));
-      convertKeys.release(file, { scope });
+      const result = await convertDocument(file, scope, send.key);
+      outcome = 'succeeded';
       setConversion(result);
       setOverlayMode('results');
       loadDrafts();
     } catch (err: unknown) {
       if (err instanceof ConversionAPIError) {
-        if (err.errorCode === IDEMPOTENCY_KEY_REUSE) convertKeys.release(file, { scope });
+        outcome = failureOutcome(err.errorCode);
         // The conversion committed but its stored answer cannot be replayed:
         // its drafts exist. Keep the key, so a resubmit cannot convert twice.
         if (err.errorCode === 'IDEMPOTENCY_REPLAY_UNAVAILABLE') loadDrafts();
@@ -1274,6 +1282,7 @@ export default function KBPage() {
         setConvertError({ title: 'Conversion failed', message: err instanceof Error ? err.message : 'Unknown error', action: 'Try again.' });
       }
     } finally {
+      send.settle(outcome);
       setConverting(false);
     }
   };

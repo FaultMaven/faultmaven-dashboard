@@ -66,6 +66,27 @@ async function closeOverlay() {
   const dialog = screen.queryByRole('dialog');
   await click(screen.getAllByRole('button', { name: 'Cancel' }).find((b) => !dialog?.contains(b)) as HTMLElement);
 }
+/**
+ * Send the same file again from a closed overlay. A settling send may already
+ * have closed the overlay a later send was in (FaultMaven/faultmaven#2456), so
+ * close it here when it is still open: these tests do not depend on that bug.
+ */
+async function resubmitFromClosedOverlay(name = 'redis.md') {
+  if (screen.queryAllByRole('heading', { name: 'Add Runbook' }).length > 0) await closeOverlay();
+  await open('Add Runbook');
+  await pickFile(name);
+  await submitUpload();
+}
+const created = (id: string) => ({ document_id: id }) as Awaited<ReturnType<typeof api.uploadDocument>>;
+const converted: conversion.ConversionResponse = {
+  conversion_id: 'c1',
+  status: 'completed',
+  source_file: { filename: 'redis.md', size_bytes: 4, content_type: 'text/markdown' },
+  analysis: { is_actionable: true, failure_modes: [], source_assessment: { content_type: 'document', actionability_rating: 'high', missing_information: [] } },
+  drafts: [],
+  warnings: [],
+  created_at: '2026-11-01T00:00:00Z',
+};
 function deferred() {
   let resolve: (value: Awaited<ReturnType<typeof api.uploadDocument>>) => void = () => {};
   let reject: (error: unknown) => void = () => {};
@@ -157,17 +178,51 @@ describe('KBPage upload — one Idempotency-Key per submission', () => {
     await open('Add Runbook');
     await pickFile('kafka.md');
     await submitUpload();
-    await act(async () => { a.resolve({ document_id: 'a' } as Awaited<ReturnType<typeof api.uploadDocument>>); });
+    await act(async () => { a.resolve(created('a')); });
     await act(async () => { b.reject(outcomeUnknown()); });
-    // A's settlement may have closed the overlay B was in (FaultMaven/faultmaven#2456);
-    // start B's retry from a closed overlay either way.
-    if (screen.queryAllByRole('heading', { name: 'Add Runbook' }).length > 0) await closeOverlay();
-    await open('Add Runbook');
-    await pickFile('kafka.md');
-    await submitUpload();
+    await resubmitFromClosedOverlay('kafka.md');
     const [keyA, keyB, retryB] = uploadKeys();
     expect(keyB).not.toBe(keyA);
     expect(retryB).toBe(keyB);
+  });
+
+  it('a send told KB_REQUEST_IN_PROGRESS keeps the key through the first send’s 201', async () => {
+    const a = deferred();
+    uploadDocument
+      .mockReturnValueOnce(a.promise)
+      .mockRejectedValueOnce(new APIError('Still running.', 409, 'KB_REQUEST_IN_PROGRESS', undefined, 3));
+    await open('Add Runbook');
+    await pickFile();
+    await submitUpload();
+    await closeOverlay();
+    await open('Add Runbook');
+    await pickFile();
+    await submitUpload();
+    expect(screen.getByText(/This upload is still being processed/)).toBeInTheDocument();
+    await act(async () => { a.resolve(created('a')); });
+    await resubmitFromClosedOverlay();
+    const [keyA, keyB, retryB] = uploadKeys();
+    expect(keyB).toBe(keyA);
+    expect(retryB).toBe(keyA);
+  });
+
+  it('two sends of one submission that both succeed release the key', async () => {
+    const a = deferred();
+    const b = deferred();
+    uploadDocument.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
+    await open('Add Runbook');
+    await pickFile();
+    await submitUpload();
+    await closeOverlay();
+    await open('Add Runbook');
+    await pickFile();
+    await submitUpload();
+    await act(async () => { a.resolve(created('a')); });
+    await act(async () => { b.resolve(created('a')); });
+    await resubmitFromClosedOverlay();
+    const [keyA, keyB, next] = uploadKeys();
+    expect(keyB).toBe(keyA);
+    expect(next).not.toBe(keyA);
   });
 
   it('IDEMPOTENCY_KEY_REUSE shows its message and releases the key', async () => {
@@ -203,6 +258,20 @@ describe('KBPage upload — one Idempotency-Key per submission', () => {
 });
 
 describe('KBPage conversion — one Idempotency-Key per submission', () => {
+  it('a 201 releases the key: the next identical conversion takes a new one', async () => {
+    convertDocument.mockResolvedValue(converted);
+    await open('Convert to Runbook');
+    await pickFile();
+    await submitConvert();
+    await click(screen.getByRole('button', { name: 'Back' }));
+    await open('Convert to Runbook');
+    await pickFile();
+    await submitConvert();
+    const [first, second] = convertKeys();
+    expect(first).toBeTruthy();
+    expect(second).not.toBe(first);
+  });
+
   it('reuses the key after a network error', async () => {
     convertDocument.mockRejectedValue(new NetworkError('Could not reach the FaultMaven API'));
     await open('Convert to Runbook');
