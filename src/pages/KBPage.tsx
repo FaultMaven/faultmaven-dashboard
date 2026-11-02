@@ -735,7 +735,7 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, 
                   <span className="text-xs text-fm-text-secondary">{selectedDrafts.length} selected</span>
                   <button
                     onClick={onBatchVerify}
-                    disabled={batchActionInProgress}
+                    disabled={batchActionInProgress || loadError !== null}
                     className="px-2.5 py-1 text-xs font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
                   >
                     Activate
@@ -1160,17 +1160,22 @@ export default function KBPage() {
     };
   }, []);
 
-  // The deferred drafts a batch hands the Drafts tab it opens. Every view change retires it: one
-  // the page asks for here (the batch arms it after its own), and, in the effect, one that renders.
-  const selectionOnViewChange = useRef<BatchDraftRef[]>([]);
+  // The deferred drafts a batch that ends off the Drafts tab hands it, with the case filter
+  // they were kept for. A change to another tab retires it, and a rendered view change consumes it.
+  const selectionOnViewChange = useRef<{ refs: BatchDraftRef[]; caseFilter: string | null } | null>(null);
+  // The URL's params as of the last commit: a batch navigates long after the render that started it,
+  // whose own params would bring back a tab or case filter the user has left.
+  const liveSearch = useRef(searchParams);
+  useEffect(() => {
+    liveSearch.current = searchParams;
+  });
 
   const replaceSearch = useCallback(
     (update: (next: URLSearchParams) => void) => {
       if (!mountedRef.current) return;
-      selectionOnViewChange.current = [];
       setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
+        () => {
+          const next = new URLSearchParams(liveSearch.current);
           update(next);
           return next;
         },
@@ -1181,7 +1186,8 @@ export default function KBPage() {
   );
 
   const setActiveTab = useCallback(
-    (tab: KBTab) =>
+    (tab: KBTab) => {
+      if (tab !== 'drafts') selectionOnViewChange.current = null;
       replaceSearch((next) => {
         if (tab === 'drafts') {
           next.set('tab', 'drafts');
@@ -1191,7 +1197,8 @@ export default function KBPage() {
           // it when leaving so it doesn't surprise the user on return.
           next.delete('case');
         }
-      }),
+      });
+    },
     [replaceSearch],
   );
 
@@ -1251,8 +1258,10 @@ export default function KBPage() {
   const viewNow = useRef({ activeTab, caseFilter });
   useEffect(() => {
     viewNow.current = { activeTab, caseFilter };
-    setSelectedDrafts(activeTab === 'drafts' ? selectionOnViewChange.current : []);
-    selectionOnViewChange.current = [];
+    const handed = selectionOnViewChange.current;
+    selectionOnViewChange.current = null;
+    // Applied on the Drafts tab only, under a case filter that hides none of it.
+    setSelectedDrafts(handed && activeTab === 'drafts' && (!caseFilter || caseFilter === handed.caseFilter) ? handed.refs : []);
   }, [caseFilter, activeTab]);
 
   // Runbook count (lifted from DocumentsTab)
@@ -1669,19 +1678,22 @@ export default function KBPage() {
     let listed = await load;
     while (load !== draftsLoad.current) listed = await (load = draftsLoad.current);
 
-    // The deferred drafts stay selected, so Activate runs them again in one click: only
-    // those the reloaded list holds as drafts and the current case filter shows.
+    // The deferred drafts stay selected, so Activate runs them again in one click: only those the
+    // reloaded list holds as drafts and the current case filter shows. When the reload failed, the
+    // list the batch started from says which case each is in; only deferred drafts are kept either way.
     const now = viewNow.current;
-    const kept = !listed ? [] : refs.filter((ref) =>
-      tally.results.some((r) => r.status === 'deferred' && sameDraft(r, ref))
-      && listed.some((d) => d.status === 'draft' && sameDraft(d, ref) && (!now.caseFilter || d.case_id === now.caseFilter)));
+    const kept = refs.filter((ref) => {
+      const d = (listed ?? drafts).find((x) => sameDraft(x, ref));
+      return tally.results.some((r) => r.status === 'deferred' && sameDraft(r, ref))
+        && d?.status === 'draft' && (!now.caseFilter || d.case_id === now.caseFilter);
+    });
     if (entry === 'all' && tally.counts.deferred === 0) {
       setSelectedDrafts([]);
       setActiveTab('documents');
-    } else if (entry === 'all' && now.activeTab !== 'drafts') {
-      // Activate All opens the Drafts tab, where its deferred drafts can be activated again.
-      setActiveTab('drafts');
-      selectionOnViewChange.current = kept;
+    } else if (now.activeTab !== 'drafts') {
+      // Off the Drafts tab, the selection waits for it; Activate All opens it.
+      if (entry === 'all') setActiveTab('drafts');
+      selectionOnViewChange.current = { refs: kept, caseFilter: now.caseFilter };
     } else {
       setSelectedDrafts(kept);
     }

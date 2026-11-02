@@ -238,6 +238,60 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     expect(checkedRows()).toEqual([false, false]);
   });
 
+  it('a selection a batch restores after Runbooks was opened holds only drafts the Drafts list shows', async () => {
+    const list = drafts(4).map((d, i) => ({ ...d, case_id: i < 2 ? 'case-A' : 'case-B' }));
+    await renderKB('/kb?tab=drafts&case=case-A', 4, 0, list);
+    const batch = pending<BatchVerifyResponse>();
+    verifyBatch.mockReturnValueOnce(batch.promise);
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+    await click(screen.getByRole('button', { name: /^Runbooks/ }));
+    await act(async () => batch.settle(answer([0, 1, 2, 3].map((i) => item(i, 'deferred', DEFERRED)))));
+
+    expect(screen.getByText(`${checkedRows().filter(Boolean).length} selected`)).toBeInTheDocument();
+    const region = within(screen.getByRole('region', { name: 'Drafts' }));
+    const shown = list.filter((d) => region.queryByText(d.title));
+    verifyBatch.mockReturnValueOnce(new Promise(() => {}));
+    await click(screen.getByRole('button', { name: 'Activate' }));
+    expect(verifyBatch).toHaveBeenLastCalledWith(shown.map((d) => ({ conversion_id: d.conversion_id, draft_id: d.draft_id })));
+  });
+
+  it('a Drafts-tab batch that ends while Runbooks is open selects its deferred drafts on the return', async () => {
+    await renderKB('/kb?tab=drafts', 2, 1);
+    const batch = pending<BatchVerifyResponse>();
+    verifyBatch.mockReturnValueOnce(batch.promise);
+    await activateSelected();
+    await click(screen.getByRole('button', { name: /^Runbooks/ }));
+    await act(async () => batch.settle(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)])));
+
+    await click(screen.getByRole('button', { name: /^Drafts/ }));
+
+    expect(checkedRows()).toEqual([true, true]);
+  });
+
+  it('keeps the deferred drafts selected when the batch\'s reload fails, and after a Try again', async () => {
+    await renderKB('/kb', 3, 0);
+    listAllDrafts.mockRejectedValueOnce(new APIError('Service unavailable', 503));
+    verifyBatch.mockResolvedValueOnce(answer([item(0, 'verified'), item(1, 'deferred', DEFERRED), item(2, 'deferred', DEFERRED)]));
+
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+    expect(checkedRows()).toEqual([false, true, true]);
+
+    await click(screen.getByRole('button', { name: 'Try again' }));
+    expect(checkedRows()).toEqual([false, true, true]);
+  });
+
+  it('the toolbar\'s Activate is disabled while the drafts list is stale, until a load succeeds', async () => {
+    await renderKB('/kb?tab=drafts', 2, 1);
+    listAllDrafts.mockRejectedValueOnce(new APIError('Service unavailable', 503));
+    verifyBatch.mockResolvedValueOnce(answer([item(0, 'verified'), item(1, 'deferred', DEFERRED)]));
+
+    await activateSelected();
+    expect(screen.getByRole('button', { name: 'Activate' })).toBeDisabled();
+
+    await click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByRole('button', { name: 'Activate' })).toBeEnabled();
+  });
+
   it('selects only the deferred drafts the current case filter shows', async () => {
     const list = drafts(4).map((d, i) => ({ ...d, case_id: i < 2 ? 'case-A' : 'case-B' }));
     await renderKB('/kb?tab=drafts&case=case-A', 4, 0, list);
