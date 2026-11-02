@@ -42,6 +42,8 @@ import { useKBList, type KnowledgeScope } from '../hooks/useKBList';
 import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
 import { APIError, NetworkError } from '../lib/knowledge/errors';
+import { describeUploadError } from '../lib/knowledge/kb';
+import { IDEMPOTENCY_KEY_REUSE, IDEMPOTENCY_REPLAY_UNAVAILABLE, kbSubmissionKeys } from '../lib/knowledge/submissionKey';
 
 const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -881,7 +883,7 @@ function OverlayPanel(props: OverlayPanelProps) {
       await props.onUploadFile({ file: selectedFile, ...uploadForm, scope: effectiveUploadScope });
       props.onClose();
     } catch (error: unknown) {
-      setUploadError(error instanceof Error ? error.message : 'Upload failed');
+      setUploadError(describeUploadError(error));
     } finally {
       setUploading(false);
     }
@@ -1127,6 +1129,15 @@ export default function KBPage() {
   const [manualError, setManualError] = useState<string | null>(null);
   const [confirmVerify, setConfirmVerify] = useState<ConversionDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConversionDraft | null>(null);
+  // One Idempotency-Key per submission identity (the file plus its fields,
+  // #2433), per signed-in user, until a page reload: the holders are
+  // module-level, so they outlive the overlay and this page. Only an
+  // IDEMPOTENCY_KEY_REUSE refusal of a key releases it, so an unchanged retry,
+  // and an identical re-submission after a 201, replay instead of publishing
+  // again. Deleting a runbook deletes its receipt, so an identical upload then
+  // runs again; a conversion's receipt lives as long as its job, which the
+  // Dashboard never deletes (a draft delete is a soft delete).
+  const submissionUser = authState?.user?.user_id ?? 'anon';
 
   // Drafts. The cached count badge is per-user: an unscoped key leaked one
   // user's draft count to the next user on a shared browser (cross-user
@@ -1233,19 +1244,42 @@ export default function KBPage() {
   };
 
   const handleUploadFile = async (params: { file: File; title: string; document_type: string; tags: string; description: string; scope: string }) => {
-    await uploadDocument({ file: params.file, title: params.title, document_type: params.document_type, tags: params.tags, description: params.description, scope: params.scope });
+    const { file, title, document_type, tags, description, scope } = params;
+    const fields = { title, document_type, tags, description, scope };
+    const send = kbSubmissionKeys('upload', submissionUser).begin(file, fields);
+    try {
+      await uploadDocument({ file, ...fields }, send.key);
+    } catch (err: unknown) {
+      if (err instanceof APIError && err.errorCode === IDEMPOTENCY_KEY_REUSE) send.refusedAsReused();
+      throw err;
+    }
   };
 
   const handleConvert = async (file: File, scope: string) => {
     setConverting(true);
     setConvertError(null);
+    const send = kbSubmissionKeys('convert', submissionUser).begin(file, { scope });
     try {
-      const result = await convertDocument(file, scope);
-      setConversion(result);
+      const { conversion: answered, replayed } = await convertDocument(file, scope, send.key);
+      // A replay is the first job's stored body. Show the job as it is now, as
+      // the Drafts tab does, or the stored body when that read fails.
+      let shown = answered;
+      if (replayed) {
+        try {
+          shown = await getConversion(answered.conversion_id);
+        } catch {
+          // The stored body still names the job's drafts.
+        }
+      }
+      setConversion(shown);
       setOverlayMode('results');
       loadDrafts();
     } catch (err: unknown) {
       if (err instanceof ConversionAPIError) {
+        if (err.errorCode === IDEMPOTENCY_KEY_REUSE) send.refusedAsReused();
+        // The conversion committed but its stored answer cannot be replayed:
+        // its drafts exist. Keep the key, so a resubmit cannot convert twice.
+        if (err.errorCode === IDEMPOTENCY_REPLAY_UNAVAILABLE) loadDrafts();
         setConvertError(err.errorInfo);
       } else {
         setConvertError({ title: 'Conversion failed', message: err instanceof Error ? err.message : 'Unknown error', action: 'Try again.' });

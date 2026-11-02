@@ -11,7 +11,9 @@ export class APIError extends Error {
     message: string,
     public statusCode: number,
     public errorCode?: string,
-    public details?: Record<string, unknown>
+    public details?: Record<string, unknown>,
+    /** `Retry-After` in seconds, when the response sent a parseable one. */
+    public retryAfter?: number
   ) {
     super(message);
     this.name = 'APIError';
@@ -111,6 +113,15 @@ function readDetail(detail: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * `Retry-After` as whole seconds; undefined when absent or not delta-seconds.
+ * Core sends it with 429s and KB `KB_REQUEST_IN_PROGRESS` 409s (CORS-exposed).
+ */
+export function readRetryAfter(response: Response): number | undefined {
+  const raw = response.headers.get('Retry-After')?.trim();
+  return raw && /^\d+$/.test(raw) ? Number(raw) : undefined;
+}
+
 export async function handleAPIResponse(
   response: Response,
   defaultMessage = 'API request failed'
@@ -140,16 +151,20 @@ export async function handleAPIResponse(
       || errorData?.message
       || errorData?.error
       || defaultMessage;
-    // Prefer the machine-readable code the backend sends in the body; the HTTP
-    // statusText ("Bad Request") is a reason phrase, not an error code, and is
-    // often blank over HTTP/2.
-    const errorCode = errorData?.error_code || response.statusText || undefined;
+    // The machine-readable code: the body's `error_code`, else the
+    // `x-error-code` header, where core puts it on bodies that carry only
+    // `detail` (the KB idempotency refusals, #2433). The HTTP statusText ("Bad
+    // Request") is a reason phrase, not an error code, and is often blank over
+    // HTTP/2.
+    const errorCode =
+      errorData?.error_code || response.headers.get('x-error-code') || response.statusText || undefined;
 
     throw new APIError(
       message,
       response.status,
       errorCode,
-      errorData ? (errorData as Record<string, unknown>) : undefined
+      errorData ? (errorData as Record<string, unknown>) : undefined,
+      readRetryAfter(response)
     );
   }
 }
