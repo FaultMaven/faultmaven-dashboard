@@ -5,7 +5,8 @@ import KBPage from '../../pages/KBPage';
 import * as api from '../../lib/api';
 import * as conversion from '../../lib/knowledge/conversion';
 import type { BatchVerifyItemResult, BatchVerifyResponse } from '../../lib/knowledge/conversion';
-import { makeDraftSummary } from '../support/kbDrafts';
+import { APIError } from '../../lib/knowledge/errors';
+import { makeConversion, makeDraftSummary } from '../support/kbDrafts';
 
 /**
  * verify-batch reports each draft as `verified`, `failed`, `skipped`,
@@ -35,6 +36,7 @@ vi.mock('../../lib/api', () => ({
 vi.mock('../../lib/knowledge/conversion', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/knowledge/conversion')>()),
   listAllDrafts: vi.fn(),
+  getConversion: vi.fn(),
   verifyBatch: vi.fn(),
 }));
 
@@ -57,6 +59,7 @@ vi.mock('../../context/AuthContext', () => ({
 
 const listDocuments = vi.mocked(api.listDocuments);
 const listAllDrafts = vi.mocked(conversion.listAllDrafts);
+const getConversion = vi.mocked(conversion.getConversion);
 const verifyBatch = vi.mocked(conversion.verifyBatch);
 
 // Core's own sentences (conversion_service `verify_batch`, contract 14.12.0).
@@ -114,6 +117,8 @@ async function activateSelected() {
 }
 
 const summary = () => screen.getByRole('status');
+const checkedRows = () =>
+  (within(screen.getByRole('region', { name: 'Drafts' })).getAllByRole('checkbox') as HTMLInputElement[]).map((box) => box.checked);
 const lines = () => Array.from(summary().querySelectorAll('p'), (p) => p.textContent);
 
 beforeEach(() => {
@@ -140,8 +145,8 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     ]);
   });
 
-  it('Activate All: the summary outlives its tab switch and the banner a new runbook removes', async () => {
-    await renderKB('/kb?tab=drafts', 7, 0);
+  it('Activate All: the summary outlives the banner a new runbook removes, and the Drafts tab opens on the deferred', async () => {
+    await renderKB('/kb', 7, 0);
     // The first runbook exists once the batch has activated some.
     listDocuments.mockResolvedValue(runbooks(2));
     verifyBatch
@@ -153,9 +158,9 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
 
     await click(screen.getByRole('button', { name: 'Activate All' }));
 
-    // On the Runbooks tab, with the banner gone: a runbook now exists.
-    expect(screen.queryByRole('region', { name: 'Drafts' })).not.toBeInTheDocument();
+    // The banner is gone, a runbook now exists, and the deferred drafts are selected to activate again.
     expect(screen.queryByRole('button', { name: 'Activate All' })).not.toBeInTheDocument();
+    expect(checkedRows()).toEqual([false, false, false, false, true, true, true]);
     expect(lines()).toEqual([
       'Done. 2 activated, 1 not allowed, 1 may have been published, 3 deferred.',
       `“Kafka lag”: ${FORBIDDEN}`,
@@ -179,17 +184,32 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     expect(lines()[0]).toBe('Done. 5 activated, 2 deferred.');
   });
 
-  it('keeps exactly the deferred drafts selected after a Drafts-tab batch', async () => {
+  it('keeps selected exactly the deferred drafts the reloaded list still holds', async () => {
     await renderKB('/kb?tab=drafts', 4, 1);
+    listAllDrafts.mockResolvedValue(drafts(3)); // draft-3 is gone when the list reloads
     verifyBatch.mockResolvedValueOnce(answer([
       item(0, 'verified'), item(1, 'deferred', DEFERRED), item(2, 'failed', 'Draft not found'), item(3, 'deferred', DEFERRED),
     ]));
 
     await activateSelected();
 
-    const rows = within(screen.getByRole('region', { name: 'Drafts' })).getAllByRole('checkbox') as HTMLInputElement[];
-    expect(rows.map((box) => box.checked)).toEqual([false, true, false, true]);
-    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    expect(checkedRows()).toEqual([false, true, false]);
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('restores no selection when the tab changed while the batch ran', async () => {
+    await renderKB('/kb?tab=drafts', 2, 1);
+    let finish!: () => void;
+    verifyBatch.mockReturnValueOnce(new Promise((resolve) => {
+      finish = () => resolve(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)]));
+    }));
+    await activateSelected();
+    await click(screen.getByRole('button', { name: /^Runbooks/ }));
+    await click(screen.getByRole('button', { name: /^Drafts/ }));
+
+    await act(async () => finish());
+
+    expect(checkedRows()).toEqual([false, false]);
   });
 
   it('reads an older core without forbidden, unknown or deferred as the positive text', async () => {
@@ -204,22 +224,40 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     expect(summary()).toHaveClass('text-fm-success');
   });
 
-  it('counts a status this page does not know as another outcome', async () => {
-    await renderKB('/kb?tab=drafts', 2, 1);
-    verifyBatch.mockResolvedValueOnce(answer([item(0, 'verified'), item(1, 'quarantined', 'Held for review')]));
+  it('counts a status this page does not know as another outcome, with its first title and sentence', async () => {
+    await renderKB('/kb?tab=drafts', 3, 1);
+    verifyBatch.mockResolvedValueOnce(answer([
+      item(0, 'verified'), item(1, 'quarantined', 'Held for review'), item(2, 'quarantined', 'Held for review'),
+    ]));
 
     await activateSelected();
 
-    expect(lines()).toEqual(['Done. 1 activated, 1 with another outcome.']);
+    expect(lines()).toEqual(['Done. 1 activated, 2 with another outcome.', '“Disk full”: Held for review (and 1 more)']);
   });
 
-  it('counts a chunk whose request failed as failed', async () => {
+  it('counts an unknown status off the results when the answer has no total', async () => {
     await renderKB('/kb?tab=drafts', 2, 1);
-    verifyBatch.mockRejectedValueOnce(new Error('Could not reach the FaultMaven API'));
+    // Off the wire: a body that leaves out `total`.
+    verifyBatch.mockResolvedValueOnce(JSON.parse(JSON.stringify({
+      verified: 1, results: [item(0, 'verified'), item(1, 'quarantined', 'Held for review')],
+    })));
 
     await activateSelected();
 
-    expect(lines()).toEqual(['Nothing activated: 2 failed.', '“Redis out of memory”: Request failed (and 1 more)']);
+    expect(lines()[0]).toBe('Done. 1 activated, 1 with another outcome.');
+    expect(summary()).toHaveClass('text-fm-warning');
+  });
+
+  it('counts a chunk whose request failed as failed, with the request\'s own sentence', async () => {
+    await renderKB('/kb?tab=drafts', 2, 1);
+    verifyBatch.mockRejectedValueOnce(new APIError('Too many requests. Retry in about 30 seconds.', 429));
+
+    await activateSelected();
+
+    expect(lines()).toEqual([
+      'Nothing activated: 2 failed.',
+      '“Redis out of memory”: Too many requests. Retry in about 30 seconds. (and 1 more)',
+    ]);
   });
 
   it('an all-deferred Activate All leaves Activate All on screen and clickable', async () => {
@@ -229,6 +267,7 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     await click(screen.getByRole('button', { name: 'Activate All' }));
 
     expect(lines()[0]).toBe('Nothing activated: 5 deferred.');
+    expect(screen.getByText('5 selected')).toBeInTheDocument();
     const again = screen.getByRole('button', { name: 'Activate All' });
     expect(again).toBeEnabled();
     verifyBatch.mockReturnValueOnce(new Promise(() => {}));
@@ -251,5 +290,33 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     // The deferred draft is still selected: Activate runs it again at once.
     await click(screen.getByRole('button', { name: 'Activate' }));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('the summary stays on screen with the editor open', async () => {
+    await renderKB('/kb?tab=drafts', 2, 1);
+    verifyBatch.mockResolvedValueOnce(answer([item(0, 'verified'), item(1, 'deferred', DEFERRED)]));
+    await activateSelected();
+    getConversion.mockResolvedValue(makeConversion());
+
+    await click(screen.getByRole('button', { name: /Redis out of memory/ }));
+    await click(await screen.findByRole('button', { name: 'Edit' }));
+
+    expect(screen.getByRole('textbox', { name: 'Runbook content' })).toBeInTheDocument();
+    expect(lines()).toEqual(['Done. 1 activated, 1 deferred.', `“Disk full”: ${DEFERRED}`]);
+  });
+
+  it('Activate All stays disabled until the batch\'s drafts reload has landed', async () => {
+    await renderKB('/kb', 2, 0);
+    let reloaded!: () => void;
+    listAllDrafts.mockReturnValueOnce(new Promise((resolve) => {
+      reloaded = () => resolve(drafts(2));
+    }));
+    verifyBatch.mockResolvedValueOnce(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)]));
+
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+    expect(screen.getByRole('button', { name: 'Activate All' })).toBeDisabled();
+
+    await act(async () => reloaded());
+    expect(screen.getByRole('button', { name: 'Activate All' })).toBeEnabled();
   });
 });

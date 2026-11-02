@@ -537,6 +537,9 @@ function emptyTally(): BatchTally {
   return { counts: { verified: 0, failed: 0, skipped: 0, forbidden: 0, unknown: 0, deferred: 0 }, other: 0, results: [] };
 }
 
+const isKnownStatus = (status: string): boolean => (BATCH_VERIFY_STATUSES as readonly string[]).includes(status);
+const sameDraft = (a: BatchDraftRef, b: BatchDraftRef) => a.conversion_id === b.conversion_id && a.draft_id === b.draft_id;
+
 /** Add one request's answer, read off the wire as `describeScan` reads a scan's: a missing counter is 0. */
 function addToTally(tally: BatchTally, answer: BatchVerifyResponse): void {
   let known = 0;
@@ -545,8 +548,12 @@ function addToTally(tally: BatchTally, answer: BatchVerifyResponse): void {
     tally.counts[status] += n;
     known += n;
   }
-  tally.other += Math.max(0, (answer.total ?? 0) - known);
-  if (Array.isArray(answer.results)) tally.results.push(...answer.results);
+  const results = Array.isArray(answer.results) ? answer.results : [];
+  tally.results.push(...results);
+  // A status this page does not know is counted off the results; only without any, off what `total` leaves.
+  tally.other += results.length > 0
+    ? results.filter((r) => !isKnownStatus(r.status)).length
+    : Math.max(0, (answer.total ?? 0) - known);
 }
 
 /** The counts line's words for each status after `verified`, in the order it lists them. */
@@ -558,7 +565,7 @@ const BATCH_COUNT_WORDS: Array<[BatchVerifyStatus, string]> = [
   ['deferred', 'deferred'],
 ];
 
-/** The statuses that leave a draft unactivated; each gets a line with the server's own sentence. */
+/** The known statuses that leave a draft unactivated; each gets a line with the server's own sentence. */
 const BATCH_NOT_ACTIVATED: BatchVerifyStatus[] = ['failed', 'forbidden', 'unknown', 'deferred'];
 
 /**
@@ -574,7 +581,9 @@ function describeBatch(tally: BatchTally, titleOf: (ref: BatchDraftRef) => strin
     ? [`Done. ${counts.verified} activated`, ...parts].join(', ')
     : `Nothing activated${parts.length > 0 ? `: ${parts.join(', ')}` : ''}`;
   const lines = [`${head}.`];
-  for (const status of BATCH_NOT_ACTIVATED) {
+  // A status this page does not know gets its line too, after the known ones.
+  const unknown = Array.from(new Set(tally.results.map((r) => r.status).filter((status) => !isKnownStatus(status))));
+  for (const status of [...BATCH_NOT_ACTIVATED, ...unknown]) {
     const said = tally.results.filter(
       (r): r is BatchVerifyItemResult & { error: string } => r.status === status && typeof r.error === 'string' && r.error.trim() !== '',
     );
@@ -1231,9 +1240,15 @@ export default function KBPage() {
   const [batchActionInProgress, setBatchActionInProgress] = useState(false);
 
   // Drop draft selections when the visible set changes (switching tab or the
-  // deep-link case filter), so a batch action can't hit a now-hidden draft.
+  // deep-link case filter), so a batch action can't hit a now-hidden draft;
+  // except the selection a batch hands the Drafts tab it opens. `view` tells a
+  // running batch, across its awaits, whether and where the view moved.
+  const view = useRef({ changes: 0, activeTab, caseFilter });
+  const selectionOnViewChange = useRef<BatchDraftRef[]>([]);
   useEffect(() => {
-    setSelectedDrafts([]);
+    view.current = { changes: view.current.changes + 1, activeTab, caseFilter };
+    setSelectedDrafts(selectionOnViewChange.current);
+    selectionOnViewChange.current = [];
   }, [caseFilter, activeTab]);
 
   // Runbook count (lifted from DocumentsTab)
@@ -1264,12 +1279,13 @@ export default function KBPage() {
   // reloads while an earlier load can still be out, and the older answer
   // landing last would put a stale list, or a stale error, over a fresh one.
   const draftsReqRef = useRef(0);
-  const loadDrafts = useCallback(async () => {
+  // Answers the list it applied, or null when it failed or a newer load superseded it.
+  const loadDrafts = useCallback(async (): Promise<DraftSummary[] | null> => {
     const reqId = ++draftsReqRef.current;
     setDraftsLoading(true);
     try {
       const result = await listAllDrafts();
-      if (reqId !== draftsReqRef.current) return;
+      if (reqId !== draftsReqRef.current) return null;
       setDrafts(result);
       setDraftsError(null);
       const count = result.filter((d) => d.status === 'draft').length;
@@ -1279,12 +1295,14 @@ export default function KBPage() {
       } catch {
         // The badge's cache. Full or blocked storage is not a failed load.
       }
+      return result;
     } catch (err: unknown) {
-      if (reqId !== draftsReqRef.current) return;
+      if (reqId !== draftsReqRef.current) return null;
       // Shown, never swallowed: an unloaded list rendered as an empty one told
       // the user they had no drafts, or, under ?case=, that the case's draft
       // "may have been deleted" (#263).
       setDraftsError(sentenceFrom(err) || 'Your drafts could not be loaded.');
+      return null;
     } finally {
       if (reqId === draftsReqRef.current) setDraftsLoading(false);
     }
@@ -1610,8 +1628,13 @@ export default function KBPage() {
   // activate after an earlier one came back deferred (faultmaven#2055).
   const BATCH_SIZE = 5;
 
-  /** Activate `refs` chunk by chunk, and put what every status came to in the batch summary. */
-  const runBatch = async (refs: BatchDraftRef[]): Promise<BatchTally> => {
+  /**
+   * Activate `refs` chunk by chunk, and put what every status came to in the
+   * batch summary. The batch ends, and Activate All enables, only once the
+   * drafts list has reloaded: before that it would offer the drafts just activated.
+   */
+  const runBatch = async (refs: BatchDraftRef[], entry: 'selection' | 'all') => {
+    const viewAtStart = view.current.changes;
     setBatchActionInProgress(true);
     setBatchSummary(null);
     setBatchProgress({ total: refs.length, completed: 0 });
@@ -1621,11 +1644,12 @@ export default function KBPage() {
       const chunk = refs.slice(i, i + BATCH_SIZE);
       try {
         addToTally(tally, await verifyBatch(chunk));
-      } catch {
-        // Count chunk items as failed but continue with next chunk
+      } catch (err: unknown) {
+        // Count chunk items as failed, with the request's own sentence, but continue with next chunk
+        const error = sentenceFrom(err) || 'Request failed';
         tally.counts.failed += chunk.length;
         for (const ref of chunk) {
-          tally.results.push({ ...ref, status: 'failed', error: 'Request failed', knowledge_item_id: null });
+          tally.results.push({ ...ref, status: 'failed', error, knowledge_item_id: null });
         }
       }
       setBatchProgress((prev) => prev ? { ...prev, completed: Math.min(i + chunk.length, refs.length) } : prev);
@@ -1633,20 +1657,33 @@ export default function KBPage() {
 
     setBatchProgress(null);
     setBatchSummary(tally);
-    return tally;
+    setDocsRefreshKey((k) => k + 1);
+    const listed = await loadDrafts();
+
+    // The deferred drafts stay selected, so Activate runs them again in one click: only those
+    // the view still lists, and none once the tab or the case filter moved during the batch.
+    const now = view.current;
+    const kept = now.changes !== viewAtStart || !listed ? [] : refs.filter((ref) =>
+      tally.results.some((r) => r.status === 'deferred' && sameDraft(r, ref))
+      && listed.some((d) => d.status === 'draft' && sameDraft(d, ref) && (!now.caseFilter || d.case_id === now.caseFilter)));
+    if (entry === 'all' && tally.counts.deferred === 0) {
+      setSelectedDrafts([]);
+      setActiveTab('documents');
+    } else if (entry === 'all' && now.activeTab !== 'drafts') {
+      // Activate All opens the Drafts tab, where its deferred drafts can be activated again.
+      selectionOnViewChange.current = kept;
+      setActiveTab('drafts');
+    } else {
+      setSelectedDrafts(kept);
+    }
+    // The draft open in the editor may have been one of them (the banner stays
+    // up under an open editor, and an editor can be opened mid-batch).
+    await resyncOpenDraft(refs);
+    setBatchActionInProgress(false);
   };
 
   const handleBatchVerify = async () => {
-    if (selectedDrafts.length === 0) return;
-    const refs = selectedDrafts;
-    const tally = await runBatch(refs);
-    // The deferred drafts stay selected, so Activate runs them again in one click.
-    const deferred = tally.results.filter((r) => r.status === 'deferred');
-    setSelectedDrafts(refs.filter((ref) => deferred.some((r) => r.conversion_id === ref.conversion_id && r.draft_id === ref.draft_id)));
-    loadDrafts();
-    setDocsRefreshKey((k) => k + 1);
-    await resyncOpenDraft(refs);
-    setBatchActionInProgress(false);
+    if (selectedDrafts.length > 0) await runBatch(selectedDrafts, 'selection');
   };
 
   const handleBatchDelete = async () => {
@@ -1670,15 +1707,7 @@ export default function KBPage() {
     const pending = drafts.filter((d) => d.status === 'draft');
     const refs = pending.map((d) => ({ conversion_id: d.conversion_id, draft_id: d.draft_id }));
     setSelectedDrafts(refs);
-    await runBatch(refs);
-    setSelectedDrafts([]);
-    loadDrafts();
-    setDocsRefreshKey((k) => k + 1);
-    setActiveTab('documents');
-    // The draft open in the editor may have been one of them (the banner stays
-    // up under an open editor, and an editor can be opened mid-batch).
-    await resyncOpenDraft(refs);
-    setBatchActionInProgress(false);
+    await runBatch(refs, 'all');
   };
 
   const handleOverlayBack = () => {
@@ -1697,7 +1726,7 @@ export default function KBPage() {
   // Titles from the loaded drafts, which list activated ones too (#262); a draft not loaded is named by its id.
   const batchOutcome = batchSummary
     ? describeBatch(batchSummary, (ref) =>
-        drafts.find((d) => d.conversion_id === ref.conversion_id && d.draft_id === ref.draft_id)?.title || ref.draft_id)
+        drafts.find((d) => sameDraft(d, ref))?.title || ref.draft_id)
     : null;
 
   return (
