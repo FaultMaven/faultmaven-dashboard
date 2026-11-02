@@ -1160,9 +1160,14 @@ export default function KBPage() {
     };
   }, []);
 
+  // The deferred drafts a batch hands the Drafts tab it opens. Every view change retires it: one
+  // the page asks for here (the batch arms it after its own), and, in the effect, one that renders.
+  const selectionOnViewChange = useRef<BatchDraftRef[]>([]);
+
   const replaceSearch = useCallback(
     (update: (next: URLSearchParams) => void) => {
       if (!mountedRef.current) return;
+      selectionOnViewChange.current = [];
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -1241,13 +1246,12 @@ export default function KBPage() {
 
   // Drop draft selections when the visible set changes (switching tab or the
   // deep-link case filter), so a batch action can't hit a now-hidden draft;
-  // except the selection a batch hands the Drafts tab it opens. `view` tells a
-  // running batch, across its awaits, whether and where the view moved.
-  const view = useRef({ changes: 0, activeTab, caseFilter });
-  const selectionOnViewChange = useRef<BatchDraftRef[]>([]);
+  // except a batch's hand-off, applied only when the change is to the Drafts
+  // tab. `viewNow` is the view as of that change, for a batch's end.
+  const viewNow = useRef({ activeTab, caseFilter });
   useEffect(() => {
-    view.current = { changes: view.current.changes + 1, activeTab, caseFilter };
-    setSelectedDrafts(selectionOnViewChange.current);
+    viewNow.current = { activeTab, caseFilter };
+    setSelectedDrafts(activeTab === 'drafts' ? selectionOnViewChange.current : []);
     selectionOnViewChange.current = [];
   }, [caseFilter, activeTab]);
 
@@ -1280,7 +1284,7 @@ export default function KBPage() {
   // landing last would put a stale list, or a stale error, over a fresh one.
   const draftsReqRef = useRef(0);
   // Answers the list it applied, or null when it failed or a newer load superseded it.
-  const loadDrafts = useCallback(async (): Promise<DraftSummary[] | null> => {
+  const fetchDrafts = useCallback(async (): Promise<DraftSummary[] | null> => {
     const reqId = ++draftsReqRef.current;
     setDraftsLoading(true);
     try {
@@ -1307,6 +1311,9 @@ export default function KBPage() {
       if (reqId === draftsReqRef.current) setDraftsLoading(false);
     }
   }, [draftCountKey]);
+  // The newest load, so a batch can wait for the one that lands last.
+  const draftsLoad = useRef<Promise<DraftSummary[] | null>>(Promise.resolve(null));
+  const loadDrafts = useCallback(() => (draftsLoad.current = fetchDrafts()), [fetchDrafts]);
 
   // Load drafts on mount. Auto-scan was removed — KB ingestion is now
   // owned by the server-side startup bootstrap (faultmaven/bootstrap/kb_init.py).
@@ -1634,7 +1641,6 @@ export default function KBPage() {
    * drafts list has reloaded: before that it would offer the drafts just activated.
    */
   const runBatch = async (refs: BatchDraftRef[], entry: 'selection' | 'all') => {
-    const viewAtStart = view.current.changes;
     setBatchActionInProgress(true);
     setBatchSummary(null);
     setBatchProgress({ total: refs.length, completed: 0 });
@@ -1658,12 +1664,15 @@ export default function KBPage() {
     setBatchProgress(null);
     setBatchSummary(tally);
     setDocsRefreshKey((k) => k + 1);
-    const listed = await loadDrafts();
+    // The newest load: one another action (Scan, Try again, an editor action) starts meanwhile supersedes this one.
+    let load = loadDrafts();
+    let listed = await load;
+    while (load !== draftsLoad.current) listed = await (load = draftsLoad.current);
 
-    // The deferred drafts stay selected, so Activate runs them again in one click: only those
-    // the view still lists, and none once the tab or the case filter moved during the batch.
-    const now = view.current;
-    const kept = now.changes !== viewAtStart || !listed ? [] : refs.filter((ref) =>
+    // The deferred drafts stay selected, so Activate runs them again in one click: only
+    // those the reloaded list holds as drafts and the current case filter shows.
+    const now = viewNow.current;
+    const kept = !listed ? [] : refs.filter((ref) =>
       tally.results.some((r) => r.status === 'deferred' && sameDraft(r, ref))
       && listed.some((d) => d.status === 'draft' && sameDraft(d, ref) && (!now.caseFilter || d.case_id === now.caseFilter)));
     if (entry === 'all' && tally.counts.deferred === 0) {
@@ -1671,8 +1680,8 @@ export default function KBPage() {
       setActiveTab('documents');
     } else if (entry === 'all' && now.activeTab !== 'drafts') {
       // Activate All opens the Drafts tab, where its deferred drafts can be activated again.
-      selectionOnViewChange.current = kept;
       setActiveTab('drafts');
+      selectionOnViewChange.current = kept;
     } else {
       setSelectedDrafts(kept);
     }
@@ -1764,7 +1773,8 @@ export default function KBPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleIngestAll}
-                    disabled={batchActionInProgress}
+                    // Also while the drafts list is stale (its latest load failed), until a load succeeds.
+                    disabled={batchActionInProgress || draftsError !== null}
                     className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
                   >
                     Activate All

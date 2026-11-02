@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import KBPage from '../../pages/KBPage';
 import * as api from '../../lib/api';
 import * as conversion from '../../lib/knowledge/conversion';
-import type { BatchVerifyItemResult, BatchVerifyResponse } from '../../lib/knowledge/conversion';
+import type { BatchVerifyItemResult, BatchVerifyResponse, DraftSummary } from '../../lib/knowledge/conversion';
 import { APIError } from '../../lib/knowledge/errors';
 import { makeConversion, makeDraftSummary } from '../support/kbDrafts';
 
@@ -37,6 +37,7 @@ vi.mock('../../lib/knowledge/conversion', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/knowledge/conversion')>()),
   listAllDrafts: vi.fn(),
   getConversion: vi.fn(),
+  verifyDraft: vi.fn(),
   verifyBatch: vi.fn(),
 }));
 
@@ -60,6 +61,7 @@ vi.mock('../../context/AuthContext', () => ({
 const listDocuments = vi.mocked(api.listDocuments);
 const listAllDrafts = vi.mocked(conversion.listAllDrafts);
 const getConversion = vi.mocked(conversion.getConversion);
+const verifyDraft = vi.mocked(conversion.verifyDraft);
 const verifyBatch = vi.mocked(conversion.verifyBatch);
 
 // Core's own sentences (conversion_service `verify_batch`, contract 14.12.0).
@@ -94,14 +96,21 @@ const runbooks = (n: number) => ({
   total_count: n, limit: 20, offset: 0,
 });
 
-async function renderKB(path: string, draftCount: number, runbookCount: number) {
-  listAllDrafts.mockResolvedValue(drafts(draftCount));
+async function renderKB(path: string, draftCount: number, runbookCount: number, list = drafts(draftCount)) {
+  listAllDrafts.mockResolvedValue(list);
   listDocuments.mockResolvedValue(runbooks(runbookCount));
   await act(async () => {
     render(<MemoryRouter initialEntries={[path]}><KBPage /></MemoryRouter>);
   });
   // The Drafts tab lists them; the Runbooks tab shows the banner instead.
   await screen.findByText(path.includes('tab=drafts') ? TITLES[0] : /ready to ingest/);
+}
+
+/** A promise the test settles. */
+function pending<T>() {
+  let settle!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => { settle = resolve; });
+  return { promise, settle };
 }
 
 async function click(element: HTMLElement) {
@@ -123,7 +132,8 @@ const lines = () => Array.from(summary().querySelectorAll('p'), (p) => p.textCon
 
 beforeEach(() => {
   vi.clearAllMocks();
-  verifyBatch.mockReset();
+  // A queued `…Once` value survives `clearAllMocks`.
+  for (const mock of [listAllDrafts, getConversion, verifyDraft, verifyBatch]) mock.mockReset();
   localStorage.clear();
 });
 
@@ -197,19 +207,46 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     expect(screen.getByText('1 selected')).toBeInTheDocument();
   });
 
-  it('restores no selection when the tab changed while the batch ran', async () => {
-    await renderKB('/kb?tab=drafts', 2, 1);
-    let finish!: () => void;
-    verifyBatch.mockReturnValueOnce(new Promise((resolve) => {
-      finish = () => resolve(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)]));
-    }));
-    await activateSelected();
-    await click(screen.getByRole('button', { name: /^Runbooks/ }));
+  it('selects the deferred drafts when the user opened the Drafts tab while Activate All ran', async () => {
+    await renderKB('/kb', 2, 0);
+    const batch = pending<BatchVerifyResponse>();
+    verifyBatch.mockReturnValueOnce(batch.promise);
+    await click(screen.getByRole('button', { name: 'Activate All' }));
     await click(screen.getByRole('button', { name: /^Drafts/ }));
 
-    await act(async () => finish());
+    await act(async () => batch.settle(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)])));
+
+    expect(checkedRows()).toEqual([true, true]);
+  });
+
+  it('a hand-off retired by a tab change before it rendered selects nothing on a later Drafts visit', async () => {
+    await renderKB('/kb', 2, 0);
+    const reload = pending<DraftSummary[]>();
+    listAllDrafts.mockReturnValueOnce(reload.promise);
+    verifyBatch.mockResolvedValueOnce(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)]));
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+
+    // The batch ends and hands the Drafts tab its deferred drafts; before that renders, Runbooks is clicked.
+    await act(async () => {
+      reload.settle(drafts(2));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.click(screen.getByRole('button', { name: /^Runbooks/ }));
+    });
+    expect(screen.queryByRole('region', { name: 'Drafts' })).not.toBeInTheDocument();
+    await click(screen.getByRole('button', { name: /^Drafts/ }));
 
     expect(checkedRows()).toEqual([false, false]);
+  });
+
+  it('selects only the deferred drafts the current case filter shows', async () => {
+    const list = drafts(4).map((d, i) => ({ ...d, case_id: i < 2 ? 'case-A' : 'case-B' }));
+    await renderKB('/kb?tab=drafts&case=case-A', 4, 0, list);
+    verifyBatch.mockResolvedValueOnce(answer([0, 1, 2, 3].map((i) => item(i, 'deferred', DEFERRED))));
+
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+
+    expect(checkedRows()).toEqual([true, true]);
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
   });
 
   it('reads an older core without forbidden, unknown or deferred as the positive text', async () => {
@@ -233,6 +270,16 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     await activateSelected();
 
     expect(lines()).toEqual(['Done. 1 activated, 2 with another outcome.', '“Disk full”: Held for review (and 1 more)']);
+  });
+
+  it('counts what total leaves beyond the known counters as another outcome when there are no results', async () => {
+    await renderKB('/kb?tab=drafts', 3, 1);
+    // Off the wire: a body with counters and a total, and no results.
+    verifyBatch.mockResolvedValueOnce(JSON.parse(JSON.stringify({ total: 3, verified: 1 })));
+
+    await activateSelected();
+
+    expect(lines()).toEqual(['Done. 1 activated, 2 with another outcome.']);
   });
 
   it('counts an unknown status off the results when the answer has no total', async () => {
@@ -303,6 +350,44 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
 
     expect(screen.getByRole('textbox', { name: 'Runbook content' })).toBeInTheDocument();
     expect(lines()).toEqual(['Done. 1 activated, 1 deferred.', `“Disk full”: ${DEFERRED}`]);
+  });
+
+  it('Activate All stays disabled while the drafts list is stale, until a load succeeds', async () => {
+    await renderKB('/kb?tab=drafts', 3, 0);
+    listAllDrafts.mockRejectedValueOnce(new APIError('Service unavailable', 503));
+    verifyBatch.mockResolvedValueOnce(answer([
+      item(0, 'verified'), item(1, 'deferred', DEFERRED), item(2, 'deferred', DEFERRED),
+    ]));
+
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+    expect(screen.getByRole('button', { name: 'Activate All' })).toBeDisabled();
+
+    await click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByRole('button', { name: 'Activate All' })).toBeEnabled();
+  });
+
+  it('Activate All waits for the newest drafts load when another action starts one during the batch\'s', async () => {
+    await renderKB('/kb?tab=drafts', 2, 0);
+    getConversion.mockResolvedValue(makeConversion());
+    verifyDraft.mockResolvedValue({
+      draft_id: 'draft-1', runbook_id: 'redis-oom', status: 'verified', knowledge_item_id: 'ki-1',
+      ingested: true, ingested_at: null, collection: 'knowledge', chunks_created: 1,
+    });
+    await click(screen.getByRole('button', { name: /Disk full/ }));
+    const first = pending<DraftSummary[]>();
+    const second = pending<DraftSummary[]>();
+    listAllDrafts.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    verifyBatch.mockResolvedValueOnce(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)]));
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+    // While the batch's reload is out, the draft's own Activate (its results are open) starts another.
+    await click(screen.getByRole('button', { name: 'Activate' }));
+    await click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm' }));
+
+    await act(async () => first.settle(drafts(2)));
+    expect(screen.getByRole('button', { name: 'Activate All' })).toBeDisabled();
+
+    await act(async () => second.settle(drafts(2)));
+    expect(screen.getByRole('button', { name: 'Activate All' })).toBeEnabled();
   });
 
   it('Activate All stays disabled until the batch\'s drafts reload has landed', async () => {
