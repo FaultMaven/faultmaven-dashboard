@@ -5,7 +5,13 @@
 
 import { makeAuthenticatedRequest, buildQueryParams } from './client';
 import { APIError, handleAPIResponse } from './errors';
-import { IDEMPOTENCY_KEY_REUSE, KB_REQUEST_IN_PROGRESS, KEY_REUSE_MESSAGE, stillProcessingMessage } from './submissionKey';
+import {
+  IDEMPOTENCY_KEY_REUSE,
+  KB_INGEST_OUTCOME_UNKNOWN,
+  KB_REQUEST_IN_PROGRESS,
+  KEY_REUSE_MESSAGE,
+  stillProcessingMessage,
+} from './submissionKey';
 import type {
   KBDocument,
   KBDocumentUploadResult,
@@ -68,8 +74,8 @@ export function describeUploadError(error: unknown): string {
   if (error instanceof APIError) {
     if (error.errorCode === KB_REQUEST_IN_PROGRESS) return stillProcessingMessage('upload', error.retryAfter);
     if (error.errorCode === IDEMPOTENCY_KEY_REUSE) return KEY_REUSE_MESSAGE;
-    if (error.errorCode === 'KB_INGEST_OUTCOME_UNKNOWN') {
-      return 'The runbook may have been published. Submit it again unchanged to find out; it will not be published twice.';
+    if (error.errorCode === KB_INGEST_OUTCOME_UNKNOWN) {
+      return 'The runbook may have been published. Submit it again unchanged from this tab, without reloading, to find out; it will not be published twice.';
     }
   }
   return error instanceof Error ? error.message : 'Upload failed';

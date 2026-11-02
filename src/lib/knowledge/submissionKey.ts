@@ -23,6 +23,8 @@
 
 export const IDEMPOTENCY_KEY_REUSE = 'IDEMPOTENCY_KEY_REUSE';
 export const KB_REQUEST_IN_PROGRESS = 'KB_REQUEST_IN_PROGRESS';
+export const IDEMPOTENCY_REPLAY_UNAVAILABLE = 'IDEMPOTENCY_REPLAY_UNAVAILABLE';
+export const KB_INGEST_OUTCOME_UNKNOWN = 'KB_INGEST_OUTCOME_UNKNOWN';
 
 /** One send of a submission. */
 export interface SubmissionSend {
@@ -90,7 +92,7 @@ export function stillProcessingMessage(subject: 'upload' | 'conversion', retryAf
     retryAfterSeconds === undefined
       ? 'shortly'
       : `in about ${retryAfterSeconds} second${retryAfterSeconds === 1 ? '' : 's'}`;
-  return `This ${subject} is still being processed. Try again ${when} without changing it; it will not be published twice.`;
+  return `This ${subject} is still being processed. Try again ${when} from this tab, without changing it or reloading; it will not be published twice.`;
 }
 
 export const KEY_REUSE_MESSAGE = "The file's contents differ from what was submitted under this name. Submit it again.";

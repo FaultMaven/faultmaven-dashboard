@@ -24,7 +24,9 @@ const upload = () => uploadDocument({ file: file(), title: 'Redis', document_typ
 function refusal(status: number, code: string, retryAfter?: string): Response {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-error-code': code };
   if (retryAfter !== undefined) headers['Retry-After'] = retryAfter;
-  return new Response(JSON.stringify({ detail: 'Retry with the same Idempotency-Key.' }), { status, headers });
+  // A real reason phrase, as HTTP/1.1 sends: the code must come from x-error-code, not statusText.
+  const statusText = ({ 409: 'Conflict', 500: 'Internal Server Error' } as Record<number, string>)[status];
+  return new Response(JSON.stringify({ detail: 'Retry with the same Idempotency-Key.' }), { status, statusText, headers });
 }
 
 const sentKey = () => new Headers((fetchSpy.mock.calls[0][1] as RequestInit).headers).get('Idempotency-Key');
@@ -93,7 +95,7 @@ describe('convertDocument', () => {
     expect(err.errorCode).toBe('KB_REQUEST_IN_PROGRESS');
     expect(err.retryAfter).toBe(1);
     expect(err.errorInfo.message).toBe(
-      'This conversion is still being processed. Try again in about 1 second without changing it; it will not be published twice.',
+      'This conversion is still being processed. Try again in about 1 second from this tab, without changing it or reloading; it will not be published twice.',
     );
   });
 

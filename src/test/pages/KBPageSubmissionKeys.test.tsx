@@ -119,7 +119,7 @@ describe('KBPage upload — one Idempotency-Key per submission', () => {
     await open('Add Runbook');
     await pickFile();
     await submitUpload();
-    expect(screen.getByText('The runbook may have been published. Submit it again unchanged to find out; it will not be published twice.')).toBeInTheDocument();
+    expect(screen.getByText('The runbook may have been published. Submit it again unchanged from this tab, without reloading, to find out; it will not be published twice.')).toBeInTheDocument();
     await submitUpload();
     // Cancel the modal, close the overlay (it unmounts), and pick the same file again.
     await click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
@@ -265,7 +265,7 @@ describe('KBPage upload — one Idempotency-Key per submission', () => {
     await open('Add Runbook');
     await pickFile();
     await submitUpload();
-    expect(screen.getByText('This upload is still being processed. Try again in about 7 seconds without changing it; it will not be published twice.')).toBeInTheDocument();
+    expect(screen.getByText('This upload is still being processed. Try again in about 7 seconds from this tab, without changing it or reloading; it will not be published twice.')).toBeInTheDocument();
   });
 
   it('keeps the key across leaving the KB page and coming back', async () => {

@@ -43,7 +43,7 @@ import { debounce } from '../utils/debounce';
 import { useAuth } from '../context/AuthContext';
 import { APIError, NetworkError } from '../lib/knowledge/errors';
 import { describeUploadError } from '../lib/knowledge/kb';
-import { IDEMPOTENCY_KEY_REUSE, kbSubmissionKeys } from '../lib/knowledge/submissionKey';
+import { IDEMPOTENCY_KEY_REUSE, IDEMPOTENCY_REPLAY_UNAVAILABLE, kbSubmissionKeys } from '../lib/knowledge/submissionKey';
 
 const inputClass =
   'w-full px-3 py-2 bg-fm-surface-alt border border-fm-border rounded-fm-input text-fm-text-primary placeholder:text-fm-text-tertiary focus:ring-2 focus:ring-fm-accent focus:border-transparent transition-colors';
@@ -1266,7 +1266,7 @@ export default function KBPage() {
       let shown = answered;
       if (replayed) {
         try {
-          shown = (await getConversion(answered.conversion_id)) ?? answered;
+          shown = await getConversion(answered.conversion_id);
         } catch {
           // The stored body still names the job's drafts.
         }
@@ -1279,7 +1279,7 @@ export default function KBPage() {
         if (err.errorCode === IDEMPOTENCY_KEY_REUSE) send.refusedAsReused();
         // The conversion committed but its stored answer cannot be replayed:
         // its drafts exist. Keep the key, so a resubmit cannot convert twice.
-        if (err.errorCode === 'IDEMPOTENCY_REPLAY_UNAVAILABLE') loadDrafts();
+        if (err.errorCode === IDEMPOTENCY_REPLAY_UNAVAILABLE) loadDrafts();
         setConvertError(err.errorInfo);
       } else {
         setConvertError({ title: 'Conversion failed', message: err instanceof Error ? err.message : 'Unknown error', action: 'Try again.' });

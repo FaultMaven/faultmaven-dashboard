@@ -3,7 +3,13 @@
 import type { components } from '../../types/api.generated';
 import { makeAuthenticatedRequest } from './client';
 import { handleAPIResponse, readRetryAfter } from './errors';
-import { IDEMPOTENCY_KEY_REUSE, KB_REQUEST_IN_PROGRESS, KEY_REUSE_MESSAGE, stillProcessingMessage } from './submissionKey';
+import {
+  IDEMPOTENCY_KEY_REUSE,
+  IDEMPOTENCY_REPLAY_UNAVAILABLE,
+  KB_REQUEST_IN_PROGRESS,
+  KEY_REUSE_MESSAGE,
+  stillProcessingMessage,
+} from './submissionKey';
 
 const CONVERT_BASE = '/api/v1/knowledge';
 
@@ -270,7 +276,7 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
     message: KEY_REUSE_MESSAGE,
     action: 'Check the file and scope, then convert again.',
   },
-  IDEMPOTENCY_REPLAY_UNAVAILABLE: {
+  [IDEMPOTENCY_REPLAY_UNAVAILABLE]: {
     title: 'Conversion already completed',
     message: 'This conversion already completed. Your drafts list is being reloaded.',
     action: 'Find its drafts on the Drafts tab.',
