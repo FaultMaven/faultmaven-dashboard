@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import KBPage from '../../pages/KBPage';
 import * as conversion from '../../lib/knowledge/conversion';
-import { APIError } from '../../lib/knowledge/errors';
+import { APIError, handleAPIResponse } from '../../lib/knowledge/errors';
 import {
   RUNBOOK_TEXT,
   draftConflict,
@@ -506,6 +506,28 @@ describe('KBPage draft editor — it shows the draft the server holds', () => {
   });
 
   describe('on a failure that is not a 409', () => {
+    it('a 503 from Activate shows the server\'s sentence unchanged (contract 14.12.0)', async () => {
+      const busy =
+        'Other indexing on this server leaves no room for this document within this request. ' +
+        'Nothing was saved; retry in about 30 seconds.';
+      await openEditor();
+      // Through the real body reading: core sends the sentence as `detail`.
+      verifyDraft.mockImplementation(async () => {
+        await handleAPIResponse(
+          new Response(JSON.stringify({ detail: busy }), {
+            status: 503,
+            headers: { 'x-error-code': 'KNOWLEDGE_INDEXING_BUSY', 'Retry-After': '30' },
+          }),
+          'Failed to verify draft',
+        );
+        throw new Error('unreachable: the 503 throws');
+      });
+
+      await activateFromEditor();
+
+      expect(screen.getByText(busy)).toBeInTheDocument();
+    });
+
     it('shows the server\'s message inline and does not refetch', async () => {
       await openEditor();
       updateDraft.mockRejectedValue(new APIError('String should have at most 100000 characters', 422));

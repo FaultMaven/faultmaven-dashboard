@@ -500,19 +500,29 @@ export interface BatchDraftRef {
   draft_id: string;
 }
 
+/**
+ * The statuses verify-batch reports, each counted under its own name. The route
+ * declares no response model (faultmaven#1488), so the generated types do not
+ * describe this shape: it is hand-typed. `forbidden`: a draft the caller may
+ * not publish; `unknown`: its publication may have committed (faultmaven#2396);
+ * `deferred`: the request's indexing window ran out before it (14.12.0).
+ */
+export const BATCH_VERIFY_STATUSES = ['verified', 'failed', 'skipped', 'forbidden', 'unknown', 'deferred'] as const;
+export type BatchVerifyStatus = (typeof BATCH_VERIFY_STATUSES)[number];
+
 export interface BatchVerifyItemResult {
   conversion_id: string;
   draft_id: string;
-  status: 'verified' | 'failed' | 'skipped';
+  /** A known status, or one a newer core added: still a string, never typed away. */
+  status: BatchVerifyStatus | (string & {});
+  /** The server's own sentence about this draft, when it has one. */
   error: string | null;
   knowledge_item_id: string | null;
 }
 
-export interface BatchVerifyResponse {
+/** The counters are read off the wire: a core that omits one (older than 14.12.0 has no `deferred`) reads as 0. */
+export interface BatchVerifyResponse extends Partial<Record<BatchVerifyStatus, number>> {
   total: number;
-  verified: number;
-  failed: number;
-  skipped: number;
   results: BatchVerifyItemResult[];
 }
 

@@ -1,6 +1,7 @@
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DocumentCard, type DocumentCardData } from '../../components/DocumentCard';
+import { handleAPIResponse } from '../../lib/knowledge/errors';
 
 vi.mock('../../lib/knowledge/kb', () => ({
   getDocument: vi.fn(),
@@ -141,5 +142,39 @@ describe('DocumentCard — a save notifies the list', () => {
     // A refetch on failure would replace the user's unsaved text with the
     // server copy they were trying to change.
     expect(onUpdated).not.toHaveBeenCalled();
+  });
+});
+
+describe('DocumentCard — a refused save shows the server\'s sentence', () => {
+  it('a 413 from PUT reaches saveError unchanged (contract 14.12.0)', async () => {
+    const tooLarge =
+      'This document is 48,213 tokens, and this server can index at most 30,000 tokens in one request. ' +
+      'Split it into smaller documents. Nothing was saved.';
+    const kb = await import('../../lib/knowledge/kb');
+    (kb.getDocument as ReturnType<typeof vi.fn>).mockResolvedValue({ document_id: 'doc-1', content: '# Before' });
+    // Through the real body reading: core sends the sentence as `detail`.
+    (kb.updateDocument as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      await handleAPIResponse(
+        new Response(JSON.stringify({ detail: tooLarge }), {
+          status: 413,
+          headers: { 'x-error-code': 'KNOWLEDGE_DOCUMENT_TOO_LARGE' },
+        }),
+        'Failed to update document',
+      );
+      throw new Error('unreachable: the 413 throws');
+    });
+    card();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: '# After' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    });
+
+    expect(screen.getByText(tooLarge)).toBeInTheDocument();
   });
 });

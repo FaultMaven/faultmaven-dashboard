@@ -16,6 +16,7 @@ import {
   getConversion,
   scanForRunbooks,
   ConversionAPIError,
+  BATCH_VERIFY_STATUSES,
 } from '../lib/knowledge/conversion';
 import type {
   ScanResult,
@@ -23,8 +24,10 @@ import type {
   ConversionDraft,
   ConversionErrorInfo,
   DraftSummary,
+  BatchDraftRef,
   BatchVerifyResponse,
   BatchVerifyItemResult,
+  BatchVerifyStatus,
 } from '../lib/knowledge/conversion';
 import { UploadZone } from '../components/UploadZone';
 import { UploadModal } from '../components/UploadModal';
@@ -503,6 +506,86 @@ function describeScan(result: ScanResult): ScanOutcome {
   return { tone: errors.length > 0 ? 'warning' : 'success', text: parts.join('. ') + '.' };
 }
 
+/** A dismissible notice in the scan banner's look: a scan's answer, or a batch activation's. */
+function OutcomeNotice({ tone, onDismiss, children }: { tone: ScanOutcome['tone']; onDismiss: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      role={tone === 'error' ? 'alert' : 'status'}
+      className={`mb-4 text-sm rounded-fm-btn p-3 flex items-center justify-between border ${SCAN_TONE_CLASSES[tone]}`}
+    >
+      {/* min-w-0 + break-words: a deep path in a note or an error has no break opportunity,
+          and would otherwise push the dismiss button off-screen and scroll the page sideways. */}
+      <div className="min-w-0 break-words">{children}</div>
+      <button onClick={() => onDismiss()} className="hover:brightness-75 ml-3" aria-label="Dismiss">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/** What a batch activation came to, summed over its requests. */
+interface BatchTally {
+  counts: Record<BatchVerifyStatus, number>;
+  /** Drafts a reported `total` holds beyond the known counters: a status this page does not know. */
+  other: number;
+  results: BatchVerifyItemResult[];
+}
+
+function emptyTally(): BatchTally {
+  return { counts: { verified: 0, failed: 0, skipped: 0, forbidden: 0, unknown: 0, deferred: 0 }, other: 0, results: [] };
+}
+
+/** Add one request's answer, read off the wire as `describeScan` reads a scan's: a missing counter is 0. */
+function addToTally(tally: BatchTally, answer: BatchVerifyResponse): void {
+  let known = 0;
+  for (const status of BATCH_VERIFY_STATUSES) {
+    const n = answer[status] ?? 0;
+    tally.counts[status] += n;
+    known += n;
+  }
+  tally.other += Math.max(0, (answer.total ?? 0) - known);
+  if (Array.isArray(answer.results)) tally.results.push(...answer.results);
+}
+
+/** The counts line's words for each status after `verified`, in the order it lists them. */
+const BATCH_COUNT_WORDS: Array<[BatchVerifyStatus, string]> = [
+  ['failed', 'failed'],
+  ['skipped', 'skipped'],
+  ['forbidden', 'not allowed'],
+  ['unknown', 'may have been published'],
+  ['deferred', 'deferred'],
+];
+
+/** The statuses that leave a draft unactivated; each gets a line with the server's own sentence. */
+const BATCH_NOT_ACTIVATED: BatchVerifyStatus[] = ['failed', 'forbidden', 'unknown', 'deferred'];
+
+/**
+ * The batch summary: the counts, then, per status that left drafts
+ * unactivated, the first such draft's title with the server's sentence about
+ * it, and how many more share that status.
+ */
+function describeBatch(tally: BatchTally, titleOf: (ref: BatchDraftRef) => string): { tone: 'success' | 'warning'; lines: string[] } {
+  const { counts, other } = tally;
+  const parts = BATCH_COUNT_WORDS.filter(([status]) => counts[status] > 0).map(([status, words]) => `${counts[status]} ${words}`);
+  if (other > 0) parts.push(`${other} with another outcome`);
+  const head = counts.verified > 0
+    ? [`Done. ${counts.verified} activated`, ...parts].join(', ')
+    : `Nothing activated${parts.length > 0 ? `: ${parts.join(', ')}` : ''}`;
+  const lines = [`${head}.`];
+  for (const status of BATCH_NOT_ACTIVATED) {
+    const said = tally.results.filter(
+      (r): r is BatchVerifyItemResult & { error: string } => r.status === status && typeof r.error === 'string' && r.error.trim() !== '',
+    );
+    if (said.length === 0) continue;
+    const [first, ...rest] = said;
+    lines.push(`“${titleOf(first)}”: ${first.error}${rest.length > 0 ? ` (and ${rest.length} more)` : ''}`);
+  }
+  const unactivated = other + BATCH_NOT_ACTIVATED.reduce((sum, status) => sum + counts[status], 0);
+  return { tone: unactivated > 0 ? 'warning' : 'success', lines };
+}
+
 interface DraftsTabProps {
   drafts: DraftSummary[];
   /** Active case-id filter (e.g. from deep-link), or null. */
@@ -684,19 +767,7 @@ function DraftsTab({ drafts, caseFilter, onClearCaseFilter, loading, loadError, 
       </div>
 
       {scanResult && (
-        <div
-          role={scanResult.tone === 'error' ? 'alert' : 'status'}
-          className={`mb-4 text-sm rounded-fm-btn p-3 flex items-center justify-between border ${SCAN_TONE_CLASSES[scanResult.tone]}`}
-        >
-          {/* min-w-0 + break-words: a deep path in a note or an error has no break opportunity,
-              and would otherwise push the dismiss button off-screen and scroll the page sideways. */}
-          <span className="min-w-0 break-words">{scanResult.text}</span>
-          <button onClick={() => onDismissScan()} className="hover:brightness-75 ml-3" aria-label="Dismiss">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <OutcomeNotice tone={scanResult.tone} onDismiss={onDismissScan}>{scanResult.text}</OutcomeNotice>
       )}
 
       {loadError && (
@@ -1170,12 +1241,10 @@ export default function KBPage() {
 
   // First-time ingestion banner
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{
-    running: boolean;
-    total: number;
-    completed: number;
-    result: BatchVerifyResponse | null;
-  } | null>(null);
+  // Set while a batch activation runs, and only then.
+  const [batchProgress, setBatchProgress] = useState<{ total: number; completed: number } | null>(null);
+  // What the last batch activation came to: on the page until dismissed or the next batch starts.
+  const [batchSummary, setBatchSummary] = useState<BatchTally | null>(null);
 
   const handleScan = async () => {
     setScanning(true);
@@ -1536,44 +1605,47 @@ export default function KBPage() {
     }
   };
 
-  // Batch verify with chunked progress — small batches to avoid timeouts
+  // Batch verify with chunked progress — small batches to avoid timeouts. Each
+  // chunk is its own request and so its own indexing window: a later chunk can
+  // activate after an earlier one came back deferred (faultmaven#2055).
   const BATCH_SIZE = 5;
+
+  /** Activate `refs` chunk by chunk, and put what every status came to in the batch summary. */
+  const runBatch = async (refs: BatchDraftRef[]): Promise<BatchTally> => {
+    setBatchActionInProgress(true);
+    setBatchSummary(null);
+    setBatchProgress({ total: refs.length, completed: 0 });
+    const tally = emptyTally();
+
+    for (let i = 0; i < refs.length; i += BATCH_SIZE) {
+      const chunk = refs.slice(i, i + BATCH_SIZE);
+      try {
+        addToTally(tally, await verifyBatch(chunk));
+      } catch {
+        // Count chunk items as failed but continue with next chunk
+        tally.counts.failed += chunk.length;
+        for (const ref of chunk) {
+          tally.results.push({ ...ref, status: 'failed', error: 'Request failed', knowledge_item_id: null });
+        }
+      }
+      setBatchProgress((prev) => prev ? { ...prev, completed: Math.min(i + chunk.length, refs.length) } : prev);
+    }
+
+    setBatchProgress(null);
+    setBatchSummary(tally);
+    return tally;
+  };
 
   const handleBatchVerify = async () => {
     if (selectedDrafts.length === 0) return;
-    setBatchActionInProgress(true);
-    setBatchProgress({ running: true, total: selectedDrafts.length, completed: 0, result: null });
-
-    const allResults: BatchVerifyItemResult[] = [];
-    let verified = 0, failed = 0, skipped = 0;
-
-    for (let i = 0; i < selectedDrafts.length; i += BATCH_SIZE) {
-      const chunk = selectedDrafts.slice(i, i + BATCH_SIZE);
-      try {
-        const result = await verifyBatch(chunk);
-        allResults.push(...result.results);
-        verified += result.verified;
-        failed += result.failed;
-        skipped += result.skipped;
-      } catch {
-        failed += chunk.length;
-        for (const ref of chunk) {
-          allResults.push({ ...ref, status: 'failed', error: 'Request failed', knowledge_item_id: null });
-        }
-      }
-      setBatchProgress((prev) => prev ? { ...prev, completed: Math.min(i + chunk.length, selectedDrafts.length) } : prev);
-    }
-
-    setBatchProgress({
-      running: false,
-      total: selectedDrafts.length,
-      completed: selectedDrafts.length,
-      result: { total: selectedDrafts.length, verified, failed, skipped, results: allResults },
-    });
-    setSelectedDrafts([]);
+    const refs = selectedDrafts;
+    const tally = await runBatch(refs);
+    // The deferred drafts stay selected, so Activate runs them again in one click.
+    const deferred = tally.results.filter((r) => r.status === 'deferred');
+    setSelectedDrafts(refs.filter((ref) => deferred.some((r) => r.conversion_id === ref.conversion_id && r.draft_id === ref.draft_id)));
     loadDrafts();
     setDocsRefreshKey((k) => k + 1);
-    await resyncOpenDraft(selectedDrafts);
+    await resyncOpenDraft(refs);
     setBatchActionInProgress(false);
   };
 
@@ -1598,37 +1670,7 @@ export default function KBPage() {
     const pending = drafts.filter((d) => d.status === 'draft');
     const refs = pending.map((d) => ({ conversion_id: d.conversion_id, draft_id: d.draft_id }));
     setSelectedDrafts(refs);
-
-    setBatchActionInProgress(true);
-    setBatchProgress({ running: true, total: refs.length, completed: 0, result: null });
-
-    const allResults: BatchVerifyItemResult[] = [];
-    let verified = 0, failed = 0, skipped = 0;
-
-    for (let i = 0; i < refs.length; i += BATCH_SIZE) {
-      const chunk = refs.slice(i, i + BATCH_SIZE);
-      try {
-        const result = await verifyBatch(chunk);
-        allResults.push(...result.results);
-        verified += result.verified;
-        failed += result.failed;
-        skipped += result.skipped;
-      } catch {
-        // Count chunk items as failed but continue with next chunk
-        failed += chunk.length;
-        for (const ref of chunk) {
-          allResults.push({ ...ref, status: 'failed', error: 'Request failed', knowledge_item_id: null });
-        }
-      }
-      setBatchProgress((prev) => prev ? { ...prev, completed: Math.min(i + chunk.length, refs.length) } : prev);
-    }
-
-    setBatchProgress({
-      running: false,
-      total: refs.length,
-      completed: refs.length,
-      result: { total: refs.length, verified, failed, skipped, results: allResults },
-    });
+    await runBatch(refs);
     setSelectedDrafts([]);
     loadDrafts();
     setDocsRefreshKey((k) => k + 1);
@@ -1652,6 +1694,11 @@ export default function KBPage() {
   const draftCount = drafts.length > 0 ? liveDraftCount : cachedCount;
   const pendingCount = drafts.filter((d) => d.status === 'draft').length;
   const showFirstTimeBanner = initialLoadDone && pendingCount > 0 && runbookCount === 0 && !bannerDismissed;
+  // Titles from the loaded drafts, which list activated ones too (#262); a draft not loaded is named by its id.
+  const batchOutcome = batchSummary
+    ? describeBatch(batchSummary, (ref) =>
+        drafts.find((d) => d.conversion_id === ref.conversion_id && d.draft_id === ref.draft_id)?.title || ref.draft_id)
+    : null;
 
   return (
     <div className="min-h-screen bg-fm-canvas">
@@ -1676,7 +1723,8 @@ export default function KBPage() {
         {/* First-time ingestion banner */}
         {showFirstTimeBanner && (
           <div className="mb-6 p-4 bg-fm-accent/5 border border-fm-accent/20 rounded-fm-card">
-            {!batchProgress?.running && !batchProgress?.result && (
+            {/* Whenever no batch runs, so the drafts a batch left as drafts can be activated again from here. */}
+            {!batchProgress && (
               <>
                 <p className="text-sm text-fm-text-primary font-medium mb-2">
                   {pendingCount} runbook{pendingCount !== 1 ? 's' : ''} ready to ingest
@@ -1687,7 +1735,8 @@ export default function KBPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleIngestAll}
-                    className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors"
+                    disabled={batchActionInProgress}
+                    className="px-4 py-2 text-sm font-medium text-white bg-fm-accent rounded-fm-btn hover:brightness-110 transition-colors disabled:opacity-50"
                   >
                     Activate All
                   </button>
@@ -1701,7 +1750,7 @@ export default function KBPage() {
               </>
             )}
 
-            {batchProgress?.running && (
+            {batchProgress && (
               <div>
                 <p className="text-sm text-fm-text-primary font-medium mb-2">
                   Ingesting runbooks...
@@ -1718,14 +1767,15 @@ export default function KBPage() {
               </div>
             )}
 
-            {batchProgress?.result && (
-              <p className="text-sm text-fm-success font-medium">
-                Done. {batchProgress.result.verified} activated
-                {batchProgress.result.failed > 0 && `, ${batchProgress.result.failed} failed`}
-                {batchProgress.result.skipped > 0 && `, ${batchProgress.result.skipped} skipped`}.
-              </p>
-            )}
           </div>
+        )}
+
+        {/* The batch summary: page level and outside the overlay guard, so it is seen from the
+            Drafts tab's Activate, after Activate All's tab switch, and with the editor open. */}
+        {batchOutcome && (
+          <OutcomeNotice tone={batchOutcome.tone} onDismiss={() => setBatchSummary(null)}>
+            {batchOutcome.lines.map((line, i) => <p key={i}>{line}</p>)}
+          </OutcomeNotice>
         )}
 
         {/* Overlay panel (creation/editing) — mounted only when active so the
