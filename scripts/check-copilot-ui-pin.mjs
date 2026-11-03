@@ -301,7 +301,10 @@ try {
   // push — and the hop reporter reads the vendored copy of the same file.
   const notes = await fetchJsonAtRef(API_REPO, 'main', 'docs/reference/api/contract-notes.json');
   const served = notes?.contractVersion;
-  if (served && served !== ourContract.contractVersion) {
+  // Notes that parse but name no version must say so: going quiet here is the
+  // silence the regex this replaced fell into once core's version moved.
+  if (typeof served !== 'string') throw new Error('contract-notes.json names no contractVersion');
+  if (served !== ourContract.contractVersion) {
     console.warn(
       `\nNOTE: the API contract pin is ${ourContract.contractVersion}; ` +
         `${API_REPO}@main serves ${served}.\n` +

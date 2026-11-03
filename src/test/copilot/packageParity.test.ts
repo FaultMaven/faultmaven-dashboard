@@ -11,6 +11,11 @@ import { describe, it, expect } from 'vitest';
  *  - the generated clients themselves, byte for byte. Two clients typed against
  *    two contracts in one bundle mostly COMPILES — structural typing sees to
  *    that — and shows up at runtime as a field that is silently absent.
+ *  - the vendored contract data (`contract-notes.json`, and the
+ *    `contract-vocabularies.json` both sides render meanings from), byte for
+ *    byte. The dock's Closure row renders the package's copy and the Issue tab
+ *    renders this app's, so two copies that disagreed would put two meanings
+ *    for one closure reason on one page, while the pin files still matched.
  *  - the assets. The shared UI references its logo as `/icon/*.svg`,
  *    root-absolute, which is the one form that resolves identically in an
  *    extension page and on a web page. A missing one is a broken `<img>`, with
@@ -25,6 +30,19 @@ const packageApiTypes = (
   await import('@faultmaven/copilot-ui/types/api.generated.ts?raw')
 ).default as unknown as string;
 
+// The vendored contract data, `?raw` for the same reason: the bytes are the
+// claim, not the parsed value.
+const VENDORED = {
+  'contract-vocabularies.json': [
+    (await import('../../types/contract-vocabularies.json?raw')).default as unknown as string,
+    (await import('@faultmaven/copilot-ui/types/contract-vocabularies.json?raw')).default as unknown as string,
+  ],
+  'contract-notes.json': [
+    (await import('../../types/contract-notes.json?raw')).default as unknown as string,
+    (await import('@faultmaven/copilot-ui/types/contract-notes.json?raw')).default as unknown as string,
+  ],
+} as const;
+
 describe('generated API clients', () => {
   it('is not empty on either side', () => {
     // Fail closed. Two empty strings compare equal, and a resolution that
@@ -38,6 +56,18 @@ describe('generated API clients', () => {
     // generator, so any difference means the two pins have drifted apart — and
     // this bundle would hold two clients describing two different servers.
     expect(packageApiTypes).toBe(ourApiTypes);
+  });
+});
+
+describe.each(Object.entries(VENDORED))('vendored %s', (_name, [ours, theirs]) => {
+  it('is not empty on either side', () => {
+    // Fail closed, as above: two empty strings compare equal.
+    expect(ours.length).toBeGreaterThan(1_000);
+    expect(theirs.length).toBeGreaterThan(1_000);
+  });
+
+  it('is byte-identical between this app and the Copilot UI package', () => {
+    expect(theirs).toBe(ours);
   });
 });
 

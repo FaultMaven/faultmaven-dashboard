@@ -29,7 +29,8 @@ pnpm typecheck               # tsc --noEmit against tsconfig.json — excludes t
 pnpm typecheck:tests         # tsconfig.test.json — type-checks the tests too (CI runs it)
 pnpm test                    # Vitest (watch); `pnpm test:coverage` is what CI runs
 pnpm build                   # tsc && vite build → dist/
-pnpm generate:api-types      # regenerate src/types/api.generated.ts from the pinned contract
+pnpm generate:api-types      # regenerate src/types/api.generated.ts, contract-notes.json and
+                             #   contract-vocabularies.json from the pinned contract
 pnpm check:copilot-pin       # the @faultmaven/copilot-ui pin (CI job copilot-ui-pin)
 pnpm check:sso-slugs         # handled SSO error slugs vs the backend (CI job sso-slug-drift)
 pnpm check:web-boundary      # after a build: no Copilot sign-in reached the bundle
