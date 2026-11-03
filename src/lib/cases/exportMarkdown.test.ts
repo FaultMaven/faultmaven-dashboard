@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildCaseMarkdown } from './exportMarkdown';
+import vocabularies from '../../types/contract-vocabularies.json';
 import type {
   CaseDetail,
   CaseMessage,
@@ -71,10 +72,14 @@ describe('buildCaseMarkdown', () => {
     expect(md).toContain('ERROR: connection pool exhausted');
     expect(md).toContain('_Source: db.log · turn 2_');
     expect(md).toContain('## Resolution');
-    // The exported document carries the MEANING, not the enum key.
+    // The exported document carries the MEANING, not the enum key: the one the
+    // contract publishes, verbatim (FaultMaven/faultmaven#2411).
+    const meaning = vocabularies.ClosureReason.find(
+      ({ value }) => value === 'closed_insufficient_evidence',
+    )?.meaning;
+    expect(meaning).toBeTruthy();
     expect(md).toContain('### Closure Reason');
-    expect(md).toContain('**Insufficient evidence**');
-    expect(md).toContain('without establishing the problem or its cause');
+    expect(md).toContain(`**Insufficient evidence** — ${meaning}`);
     expect(md).not.toContain('closed_insufficient_evidence');
     expect(md).toContain('## Transcript');
     expect(md).toContain('#### You · Turn 1');

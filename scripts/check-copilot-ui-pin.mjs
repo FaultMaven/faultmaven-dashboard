@@ -296,15 +296,11 @@ const API_REPO = ourContract.repository ?? 'FaultMaven/faultmaven';
 const SLACK_REPO = 'FaultMaven/faultmaven-slack-agent';
 
 try {
-  // `contract_version.py` (~20 KB), not `openapi.json` (~500 KB): the same
-  // fact, 25x cheaper, on a gate that runs on every push — and it makes this
-  // script and the hop reporter agree on their source of truth.
-  const response = await fetch(
-    `https://raw.githubusercontent.com/${API_REPO}/main/faultmaven/api/contract_version.py`,
-    { headers: githubHeaders() },
-  );
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  const served = /API_CONTRACT_VERSION\s*=\s*"([^"]+)"/.exec(await response.text())?.[1];
+  // `contract-notes.json` (~160 KB), not `openapi.json` (~530 KB): the same
+  // fact as published data, a third of the bytes, on a gate that runs on every
+  // push — and the hop reporter reads the vendored copy of the same file.
+  const notes = await fetchJsonAtRef(API_REPO, 'main', 'docs/reference/api/contract-notes.json');
+  const served = notes?.contractVersion;
   if (served && served !== ourContract.contractVersion) {
     console.warn(
       `\nNOTE: the API contract pin is ${ourContract.contractVersion}; ` +

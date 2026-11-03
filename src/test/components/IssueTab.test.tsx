@@ -7,7 +7,14 @@ vi.mock('../../lib/api', () => ({ getCaseUI: vi.fn(() => new Promise(() => {})) 
 
 import { getCaseUI } from '../../lib/api';
 import { IssueTab } from '../../components/IssueTab';
-import type { CaseDetail } from '../../types/cases';
+import vocabularies from '../../types/contract-vocabularies.json';
+import type { CaseDetail, ClosureReason } from '../../types/cases';
+
+function meaningOf(reason: ClosureReason): string {
+  const entry = vocabularies.ClosureReason.find(({ value }) => value === reason);
+  if (!entry) throw new Error(`the vendored contract publishes no meaning for ${reason}`);
+  return entry.meaning;
+}
 
 function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
   return {
@@ -75,8 +82,45 @@ describe('IssueTab status colour', () => {
 
   it('reads the solution label from solution_verified', () => {
     render(<IssueTab caseDetail={makeCaseDetail({ milestones_completed: ['solution_verified'] })} />);
-    expect(screen.getByText('Verified')).toBeInTheDocument();
+    expect(screen.getByText('Verified')).toHaveClass('text-fm-text-primary');
     expect(screen.queryByText('Not verified')).not.toBeInTheDocument();
+  });
+
+  it('reads "Confirmed to work" on a resolution_declined case, beside its published meaning', () => {
+    // FaultMaven/faultmaven#2392: core writes `solution_verified` only on a
+    // resolve, so a fix confirmed and then closed rather than resolved read
+    // "Not verified" under a closure row saying the fix was confirmed.
+    render(
+      <IssueTab
+        caseDetail={makeCaseDetail({
+          state: 'closed',
+          resolved_at: null,
+          closed_at: '2024-01-01T02:00:00Z',
+          closure_reason: 'resolution_declined',
+          milestones_completed: ['symptom_verified', 'solution_proposed'],
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Confirmed to work')).toHaveClass('text-fm-text-primary');
+    expect(screen.queryByText('Not verified')).not.toBeInTheDocument();
+    expect(screen.getByText('Fix confirmed')).toBeInTheDocument();
+    expect(screen.getByText(meaningOf('resolution_declined'))).toBeInTheDocument();
+  });
+
+  it('reads "Not verified" on a case closed for any other reason', () => {
+    render(
+      <IssueTab
+        caseDetail={makeCaseDetail({
+          state: 'closed',
+          resolved_at: null,
+          closed_at: '2024-01-01T02:00:00Z',
+          closure_reason: 'mitigation_sufficient',
+        })}
+      />,
+    );
+    expect(screen.getByText('Not verified')).toHaveClass('text-fm-text-tertiary');
+    expect(screen.queryByText('Confirmed to work')).not.toBeInTheDocument();
   });
 
   it('reads "Not verified" when the solution milestone is absent', () => {
@@ -115,6 +159,7 @@ describe('IssueTab status colour', () => {
 
     expect(screen.getByText('Closure Reason')).toBeInTheDocument();
     expect(screen.getByText('Root cause unreachable')).toBeInTheDocument();
+    expect(screen.getByText(meaningOf('closed_rca_infeasible'))).toBeInTheDocument();
     expect(screen.queryByText('closed_rca_infeasible')).not.toBeInTheDocument();
     expect(screen.queryByText('Resolution Notes')).not.toBeInTheDocument();
   });

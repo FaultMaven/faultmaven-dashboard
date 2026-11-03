@@ -116,7 +116,8 @@ src/
 │   │                        #   canViewAllCases, canManageLlmConfig
 │   ├── storage.ts           # window.browser.storage polyfill + the `faultmaven_`-prefixed localStorage codec
 │   └── ui/ identity.ts community.ts markdownUtils.ts mermaidSvgCache.ts
-├── types/                   # api.generated.ts (generated), contractGuards.ts, per-area narrowings
+├── types/                   # api.generated.ts, contract-notes.json, contract-vocabularies.json (all generated),
+│                            #   contractGuards.ts, per-area narrowings
 ├── utils/debounce.ts
 └── test/                    # Vitest suite (setup.ts, support/, one directory per source area)
 ```
@@ -177,7 +178,8 @@ src/
 ## API contract
 
 - `src/types/api.generated.ts` is generated from the core repo's committed
-  `openapi.json`; never hand-edit it. `api-contract.pin.json` names the core
+  `openapi.json`, with its `contract-notes.json` (changelog and value meanings)
+  vendored beside it; never hand-edit them. `api-contract.pin.json` names the core
   commit and `contractVersion` this client is written against; adopting a
   contract change means moving `ref` and regenerating, in a PR of its own.
   Never generate from a live server.

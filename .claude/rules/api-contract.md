@@ -9,6 +9,7 @@ paths:
   - "src/test/types/**"
   - "src/test/support/contractNarrowings.ts"
   - "src/test/scripts/contractHopReport.test.ts"
+  - "src/test/scripts/generateApiTypes.test.ts"
 ---
 
 # The API contract: generated types, the pin, and the narrowing guards
@@ -48,19 +49,38 @@ $env:FM_OPENAPI_SPEC = "..\faultmaven\docs\reference\api\openapi.json"; pnpm gen
 
 Prefer `--spec` — it avoids the question entirely.
 
+### The contract notes
+
+The API also publishes `docs/reference/api/contract-notes.json`: its changelog
+entries (version, level, title, body) and the meaning of each value of its
+published vocabularies. The generator reads it **beside the spec** (the pinned
+ref's, or the sibling of a `--spec` / `FM_OPENAPI_SPEC` path; a spec with none
+beside it, or a URL spec with a query or fragment, fails the run before anything
+is written) and writes it twice:
+
+- `src/types/contract-notes.json`, verbatim. It is dev-only:
+  `scripts/report-contract-hop.mjs` reads it to list what a pin bump crossed.
+- `src/types/contract-vocabularies.json`, its `vocabularies`. It is the only one
+  runtime code imports, so no changelog text reaches the bundle. The Issue tab's
+  Closure Reason row and the Markdown export render each `ClosureReason` meaning
+  from it verbatim (`closureReasonDisplay`); the labels stay client copy.
+
 ⚠️ Do **not** generate from a live server (`http://localhost:8090/openapi.json`).
 Generating against whatever build happens to be running is how this repo and the
 other frontend ended up with different names for the same schema (fm#880).
 
 A spec change in faultmaven does **not** turn this repository red: the job
 regenerates from the pinned commit, so merging there reaches nothing here.
-`api-types-drift` goes red when the generated file stops matching the contract
-this repo pins — `ref` moved without a regeneration, or the generated file was
-edited by hand. It also fails when the pin's `contractVersion` disagrees with the
-version the pinned ref serves. Adopt a new contract in a PR of its own, pin and
-regenerated types together, rather than folding it into unrelated work; the job
-prints every contract entry the bump crossed (`scripts/report-contract-hop.mjs`,
-advisory) into the job summary for the reviewer.
+`api-types-drift` goes red when a generated file (`api.generated.ts` or either
+notes file) stops matching the contract this repo pins — `ref` moved without a
+regeneration, or a generated file was edited by hand. It also fails when the
+pin's `contractVersion` disagrees with the version the pinned ref serves, in
+`openapi.json` or in `contract-notes.json`. Adopt a new contract in a PR of its
+own, pin and regenerated types together, rather than folding it into unrelated
+work. Once the files match, the job prints every contract entry the bump crossed
+into the job summary for the reviewer: `scripts/report-contract-hop.mjs`
+(advisory) reads the vendored `src/types/contract-notes.json`, with no network
+call, and is byte-identical to the copilot repository's copy.
 
 The `copilot-ui-pin` job carries the CONSISTENCY leg: the copilot repository's
 `api-contract.pin.json` at the pinned package SHA must equal this repository's.
