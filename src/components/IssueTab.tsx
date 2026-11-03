@@ -97,7 +97,15 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
     : null;
   const milestones = caseDetail.milestones_completed || [];
   const hasRootCause = milestones.includes('root_cause_identified');
-  const hasSolution = milestones.includes('solution_verified');
+  // Core writes `solution_verified` only on the RESOLVED transition. A case
+  // closed as `resolution_declined` had its fix confirmed as well, and was
+  // closed rather than resolved: its row agrees with the closure row below and
+  // with core's closure report (FaultMaven/faultmaven#2392).
+  const solution = milestones.includes('solution_verified')
+    ? 'Verified'
+    : caseDetail.closure_reason === 'resolution_declined'
+      ? 'Confirmed to work'
+      : null;
 
   // Only a genuinely resolved case earns success-green. `closed` is terminal
   // but not necessarily resolved (e.g. abandoned/duplicate), and the active
@@ -197,8 +205,8 @@ export function IssueTab({ caseDetail }: IssueTabProps) {
           </div>
           <div className="flex gap-2">
             <span className="text-fm-text-tertiary shrink-0 w-28">Solution:</span>
-            <span className={hasSolution ? 'text-fm-text-primary' : 'text-fm-text-tertiary'}>
-              {hasSolution ? 'Verified' : 'Not verified'}
+            <span className={solution ? 'text-fm-text-primary' : 'text-fm-text-tertiary'}>
+              {solution ?? 'Not verified'}
             </span>
           </div>
           <div className="flex gap-2">

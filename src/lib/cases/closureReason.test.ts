@@ -8,23 +8,33 @@
 
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
+import vocabularies from '../../types/contract-vocabularies.json';
 import {
   CLOSURE_REASON_DISPLAY,
   closureReasonDisplay,
 } from './closureReason';
 
+// No published meaning covers a reason this build does not know, so the
+// fallback is client copy.
+const FALLBACK = {
+  label: 'Closed',
+  description: 'The case was closed without a recorded resolution.',
+};
+
 describe('closureReasonDisplay', () => {
-  it('labels a declined resolution as a confirmed fix, not the bare fallback', () => {
-    // Contract 14.8.0: before this entry the Issue tab read "Closed — closed
-    // without a recorded resolution" for a case whose fix was confirmed.
-    const fallback = closureReasonDisplay('closed_after_investigation');
-    const info = closureReasonDisplay('resolution_declined');
-    expect(info).not.toEqual(fallback);
-    expect(info).toEqual({
-      label: 'Fix confirmed',
-      description:
-        'The fix was confirmed to work; the case was closed rather than marked resolved.',
-    });
+  it('labels exactly the ClosureReason values the vendored contract publishes', () => {
+    const published = vocabularies.ClosureReason.map(({ value }) => value);
+    expect(Object.keys(CLOSURE_REASON_DISPLAY).sort()).toEqual(published.sort());
+  });
+
+  it('pairs every published reason with its label and its published meaning, verbatim', () => {
+    // FaultMaven/faultmaven#2411, Q2: the meaning is the contract's, not ours.
+    for (const { value, meaning } of vocabularies.ClosureReason) {
+      expect(closureReasonDisplay(value)).toEqual({
+        label: CLOSURE_REASON_DISPLAY[value as keyof typeof CLOSURE_REASON_DISPLAY].label,
+        description: meaning,
+      });
+    }
   });
 
   it('never leaks the raw key to a user', () => {
@@ -32,36 +42,24 @@ describe('closureReasonDisplay', () => {
       expect(info.label.length).toBeGreaterThan(0);
       expect(info.label).not.toContain(key);
       expect(info.label).not.toContain('_');
-      expect(info.description.length).toBeGreaterThan(0);
     }
   });
 
-  it('degrades an unknown reason instead of showing the token', () => {
+  it('degrades an unknown or retired reason instead of showing the token', () => {
     // A case can still carry a value retired from the vocabulary, and the
     // backend can add a reason before this build ships.
-    const info = closureReasonDisplay('closed_after_investigation');
-    expect(info.label).not.toContain('closed_after_investigation');
-    expect(info.label.length).toBeGreaterThan(0);
-    expect(info.description.length).toBeGreaterThan(0);
+    expect(closureReasonDisplay('closed_after_investigation')).toEqual(FALLBACK);
   });
 
   it('handles null, undefined and the empty string rather than throwing', () => {
-    expect(closureReasonDisplay(null).label.length).toBeGreaterThan(0);
-    expect(closureReasonDisplay(undefined).label.length).toBeGreaterThan(0);
-    expect(closureReasonDisplay('')).toEqual(closureReasonDisplay(null));
+    expect(closureReasonDisplay(null)).toEqual(FALLBACK);
+    expect(closureReasonDisplay(undefined)).toEqual(FALLBACK);
+    expect(closureReasonDisplay('')).toEqual(FALLBACK);
   });
 
   it('degrades a prototype key, not resolving it to a function', () => {
     // `constructor` used to index through to Object, which has no label.
-    expect(closureReasonDisplay('constructor')).toEqual(
-      closureReasonDisplay('closed_after_investigation'),
-    );
-  });
-
-  it('returns the real entry for every known reason', () => {
-    for (const [key, info] of Object.entries(CLOSURE_REASON_DISPLAY)) {
-      expect(closureReasonDisplay(key)).toBe(info);
-    }
+    expect(closureReasonDisplay('constructor')).toEqual(FALLBACK);
   });
 
   it('is the only closure-reason resolution path in the UI', () => {

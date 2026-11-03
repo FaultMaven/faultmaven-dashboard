@@ -29,7 +29,8 @@ pnpm typecheck               # tsc --noEmit against tsconfig.json — excludes t
 pnpm typecheck:tests         # tsconfig.test.json — type-checks the tests too (CI runs it)
 pnpm test                    # Vitest (watch); `pnpm test:coverage` is what CI runs
 pnpm build                   # tsc && vite build → dist/
-pnpm generate:api-types      # regenerate src/types/api.generated.ts from the pinned contract
+pnpm generate:api-types      # regenerate src/types/api.generated.ts, contract-notes.json and
+                             #   contract-vocabularies.json from the pinned contract
 pnpm check:copilot-pin       # the @faultmaven/copilot-ui pin (CI job copilot-ui-pin)
 pnpm check:sso-slugs         # handled SSO error slugs vs the backend (CI job sso-slug-drift)
 pnpm check:web-boundary      # after a build: no Copilot sign-in reached the bundle
@@ -116,7 +117,8 @@ src/
 │   │                        #   canViewAllCases, canManageLlmConfig
 │   ├── storage.ts           # window.browser.storage polyfill + the `faultmaven_`-prefixed localStorage codec
 │   └── ui/ identity.ts community.ts markdownUtils.ts mermaidSvgCache.ts
-├── types/                   # api.generated.ts (generated), contractGuards.ts, per-area narrowings
+├── types/                   # api.generated.ts, contract-notes.json, contract-vocabularies.json (all generated),
+│                            #   contractGuards.ts, per-area narrowings
 ├── utils/debounce.ts
 └── test/                    # Vitest suite (setup.ts, support/, one directory per source area)
 ```
@@ -177,7 +179,8 @@ src/
 ## API contract
 
 - `src/types/api.generated.ts` is generated from the core repo's committed
-  `openapi.json`; never hand-edit it. `api-contract.pin.json` names the core
+  `openapi.json`, with its `contract-notes.json` (changelog and value meanings)
+  vendored beside it; never hand-edit them. `api-contract.pin.json` names the core
   commit and `contractVersion` this client is written against; adopting a
   contract change means moving `ref` and regenerating, in a PR of its own.
   Never generate from a live server.
