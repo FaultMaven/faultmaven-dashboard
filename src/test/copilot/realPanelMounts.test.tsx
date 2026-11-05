@@ -523,3 +523,57 @@ describe('the session mint, through this host’s real mount (faultmaven#1460)',
 // through `CopilotPanelMount` so the cleanup effect under test is actually in
 // the tree. A version of it here rendered `CopilotPanel` directly and therefore
 // passed against the very ordering it was written to catch.
+
+describe('a dock turn refused while a delete of its case runs (faultmaven-dashboard#276)', () => {
+  /**
+   * Contract 14.14.0: while a delete of the case runs, `POST /cases/{id}/turns`
+   * answers 409 `CASE_DELETE_IN_PROGRESS`, with no `Retry-After`, and nothing
+   * of the turn ran. The Dashboard learns the code only through the copilot-ui
+   * it bundles (faultmaven-copilot#383), so it is asserted against the REAL
+   * package, mounted as the dock mounts it: the refused turn's bubble says why
+   * (the copy ruled on faultmaven-copilot#383), and the host is told the case
+   * changed, which is what re-reads it (`CaseDetailPage.handleCaseChanged`).
+   * Against a package that predates the code, neither happens.
+   */
+  const CASE_ID = 'case-1';
+  const isTurn = (r: SentRequest) => r.method === 'POST' && r.path === `/api/v1/cases/${CASE_ID}/turns`;
+  const deleteInProgress = () =>
+    new Response(JSON.stringify({ detail: 'A delete of this case is in progress.' }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json', 'x-error-code': 'CASE_DELETE_IN_PROGRESS' },
+    });
+
+  beforeEach(() => {
+    auth.getAccessTokenFor.mockReset().mockResolvedValue({ kind: 'token', token: 'tok-live' });
+    auth.peekAccessToken.mockReset().mockResolvedValue(null);
+    auth.isSigningOut.mockReset().mockReturnValue(false);
+    auth.onAuthCleared.mockReset().mockReturnValue(() => {});
+    localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}hasCompletedFirstRun`, 'true');
+  });
+
+  it('shows why the message was not added, and tells the host the case changed', async () => {
+    const sent: SentRequest[] = [];
+    vi.stubGlobal('fetch', stubBackend(sent, (r) => (isTurn(r) ? deleteInProgress() : undefined)));
+    // A fresh copy of the package: its store is module state, and the tests above leave theirs behind.
+    vi.resetModules();
+    await import('@faultmaven/copilot-ui');
+    const { CasePanelMount } = await import('../../components/CasePanelMount');
+    const onCaseChanged = vi.fn();
+    const { container } = render(
+      <MemoryRouter>
+        <CasePanelMount caseId={CASE_ID} readOnly={false} visible onCaseChanged={onCaseChanged} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
+
+    await userEvent.type(container.querySelector('textarea') as HTMLTextAreaElement, 'why is checkout slow{Enter}');
+
+    await waitFor(() => expect(onCaseChanged).toHaveBeenCalledWith(CASE_ID));
+    expect(sent.filter(isTurn), 'a refused turn is not resent').toHaveLength(1);
+    // The bubble, not the toast (`role="status"`), which carries the same sentence as its message.
+    const bubbles = screen
+      .getAllByText("This case is being deleted, so your message wasn't added.")
+      .filter((el) => !el.closest('[role="status"]'));
+    expect(bubbles).toHaveLength(1);
+  });
+});
