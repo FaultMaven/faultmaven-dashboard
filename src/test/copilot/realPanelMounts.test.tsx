@@ -16,6 +16,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { PANEL_STORAGE_NAMESPACE, createWebHostCapabilities } from '../../copilot/webHost';
 import { resetPageSingletonsForTests } from '../../copilot/pageSingletons';
 import type { WebSession } from '../../copilot/webSession';
+import type { components } from '../../types/api.generated';
 
 // For the mint tests below, which mount through `CopilotPanelMount`: the host
 // session it builds is real, and only what that session reads is stubbed, the
@@ -537,6 +538,54 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
    */
   const CASE_ID = 'case-1';
   const isTurn = (r: SentRequest) => r.method === 'POST' && r.path === `/api/v1/cases/${CASE_ID}/turns`;
+  const AT = '2026-11-05T08:00:00Z';
+  /** The server's row: an investigating case the signed-in user (`u1`) created and drives. */
+  const CASE_ROW: components['schemas']['CaseDetail'] = {
+    case_id: CASE_ID,
+    title: 'Checkout latency after the cache deploy',
+    description: 'p99 checkout latency tripled after the 08:00 deploy',
+    state: 'investigating',
+    created_at: AT,
+    updated_at: AT,
+    last_activity_at: AT,
+    resolved_at: null,
+    closed_at: null,
+    closure_reason: null,
+    user_id: 'u1',
+    driver_id: 'u1',
+    enterprise_id: 'ent-1',
+    organization_id: null,
+    current_turn: 1,
+    source: 'dashboard',
+    is_terminal: false,
+    turns_without_progress: 0,
+    current_stage: 'diagnosis',
+    milestones_completed: [],
+    pending_milestones: [],
+    evidence_count: 0,
+    hypothesis_count: 0,
+    solution_count: 0,
+    escalated: false,
+  };
+  /** The same case as the panel's header reads it (`GET /cases/{id}/ui`). */
+  const CASE_UI: components['schemas']['CaseUIResponse_Investigating'] = {
+    case_id: CASE_ID,
+    title: CASE_ROW.title,
+    state: 'investigating',
+    agent_status: 'idle',
+    created_at: AT,
+    updated_at: AT,
+    current_turn: 1,
+    uploaded_files_count: 0,
+    progress: { active_hypotheses: 0, current_stage: 'diagnosis', total_evidence: 0, turns_without_progress: 0 },
+  };
+  const answerCase = (r: SentRequest) => {
+    if (isTurn(r)) return deleteInProgress();
+    if (r.method !== 'GET') return undefined;
+    if (r.path === `/api/v1/cases/${CASE_ID}`) return json(CASE_ROW);
+    if (r.path === `/api/v1/cases/${CASE_ID}/ui`) return json(CASE_UI);
+    return undefined;
+  };
   const deleteInProgress = () =>
     new Response(JSON.stringify({ detail: 'A delete of this case is in progress.' }), {
       status: 409,
@@ -544,8 +593,11 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
     });
 
   beforeEach(() => {
+    builtSessions.length = 0;
     auth.getAccessTokenFor.mockReset().mockResolvedValue({ kind: 'token', token: 'tok-live' });
     auth.peekAccessToken.mockReset().mockResolvedValue(null);
+    auth.refreshTokens.mockReset().mockResolvedValue(null);
+    auth.holdsSessionFor.mockReset().mockResolvedValue(false);
     auth.isSigningOut.mockReset().mockReturnValue(false);
     auth.onAuthCleared.mockReset().mockReturnValue(() => {});
     localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}hasCompletedFirstRun`, 'true');
@@ -553,7 +605,8 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
 
   it('shows why the message was not added, and tells the host the case changed', async () => {
     const sent: SentRequest[] = [];
-    vi.stubGlobal('fetch', stubBackend(sent, (r) => (isTurn(r) ? deleteInProgress() : undefined)));
+    vi.stubGlobal('fetch', stubBackend(sent, answerCase));
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // A fresh copy of the package: its store is module state, and the tests above leave theirs behind.
     vi.resetModules();
     await import('@faultmaven/copilot-ui');
@@ -575,5 +628,9 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
       .getAllByText("This case is being deleted, so your message wasn't added.")
       .filter((el) => !el.closest('[role="status"]'));
     expect(bubbles).toHaveLength(1);
+    // The refusal met a panel holding the server's row: every case read took it.
+    expect(sent.filter((r) => r.method === 'GET' && r.path === `/api/v1/cases/${CASE_ID}`).length).toBeGreaterThan(0);
+    const warned = warnings.mock.calls.map((args) => args.map(String).join(' ')).join('\n');
+    expect(warned).not.toMatch(/Active-case refresh failed/);
   });
 });
