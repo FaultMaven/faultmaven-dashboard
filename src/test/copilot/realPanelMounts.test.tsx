@@ -579,10 +579,22 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
     uploaded_files_count: 0,
     progress: { active_hypotheses: 0, current_stage: 'diagnosis', total_evidence: 0, turns_without_progress: 0 },
   };
+  /** Set once the panel has read the body of a case row it was served. */
+  let caseRowBodyRead = false;
+  const caseRow = () => {
+    const response = json(CASE_ROW);
+    const readBody = response.json.bind(response);
+    response.json = async () => {
+      const body: unknown = await readBody();
+      caseRowBodyRead = true;
+      return body;
+    };
+    return response;
+  };
   const answerCase = (r: SentRequest) => {
     if (isTurn(r)) return deleteInProgress();
     if (r.method !== 'GET') return undefined;
-    if (r.path === `/api/v1/cases/${CASE_ID}`) return json(CASE_ROW);
+    if (r.path === `/api/v1/cases/${CASE_ID}`) return caseRow();
     if (r.path === `/api/v1/cases/${CASE_ID}/ui`) return json(CASE_UI);
     return undefined;
   };
@@ -593,6 +605,7 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
     });
 
   beforeEach(() => {
+    caseRowBodyRead = false;
     builtSessions.length = 0;
     auth.getAccessTokenFor.mockReset().mockResolvedValue({ kind: 'token', token: 'tok-live' });
     auth.peekAccessToken.mockReset().mockResolvedValue(null);
@@ -618,7 +631,10 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
       </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
-    // Before the turn is sent: the panel has asked for the case row, and no read of it has failed.
+    // Before the turn is sent: the case row has been read, and no read of it failed. The composer
+    // does not wait for that read, so wait for its body, then one tick for the panel to handle it.
+    await waitFor(() => expect(caseRowBodyRead).toBe(true));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(sent.filter((r) => r.method === 'GET' && r.path === `/api/v1/cases/${CASE_ID}`).length).toBeGreaterThan(0);
     const warned = warnings.mock.calls.map((args) => args.map(String).join(' ')).join('\n');
     expect(warned).not.toMatch(/Active-case refresh failed/);
