@@ -618,6 +618,10 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
       </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
+    // Before the turn is sent: the panel has asked for the case row, and no read of it has failed.
+    expect(sent.filter((r) => r.method === 'GET' && r.path === `/api/v1/cases/${CASE_ID}`).length).toBeGreaterThan(0);
+    const warned = warnings.mock.calls.map((args) => args.map(String).join(' ')).join('\n');
+    expect(warned).not.toMatch(/Active-case refresh failed/);
 
     await userEvent.type(container.querySelector('textarea') as HTMLTextAreaElement, 'why is checkout slow{Enter}');
 
@@ -628,9 +632,5 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
       .getAllByText("This case is being deleted, so your message wasn't added.")
       .filter((el) => !el.closest('[role="status"]'));
     expect(bubbles).toHaveLength(1);
-    // The refusal met a panel holding the server's row: every case read took it.
-    expect(sent.filter((r) => r.method === 'GET' && r.path === `/api/v1/cases/${CASE_ID}`).length).toBeGreaterThan(0);
-    const warned = warnings.mock.calls.map((args) => args.map(String).join(' ')).join('\n');
-    expect(warned).not.toMatch(/Active-case refresh failed/);
   });
 });
