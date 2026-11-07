@@ -37,6 +37,14 @@ describe('closureReasonDisplay', () => {
     }
   });
 
+  it('labels mitigation_sufficient "Mitigation applied"', () => {
+    // FaultMaven/faultmaven#2100, owner ruling 2026-11-06: the reason covers a
+    // mitigation observed relieving the symptom as well as one the user
+    // declared stable, and only the declaration says "stabilized". The label
+    // read "Stabilized by mitigation".
+    expect(closureReasonDisplay('mitigation_sufficient').label).toBe('Mitigation applied');
+  });
+
   it('never leaks the raw key to a user', () => {
     for (const [key, info] of Object.entries(CLOSURE_REASON_DISPLAY)) {
       expect(info.label.length).toBeGreaterThan(0);

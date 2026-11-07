@@ -119,6 +119,7 @@ describe('IssueTab status colour', () => {
         })}
       />,
     );
+    expect(screen.getByText('Mitigation applied')).toBeInTheDocument();
     expect(screen.getByText('Not verified')).toHaveClass('text-fm-text-tertiary');
     expect(screen.queryByText('Confirmed to work')).not.toBeInTheDocument();
   });
