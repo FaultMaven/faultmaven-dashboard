@@ -40,7 +40,7 @@ export const CLOSURE_REASON_DISPLAY: Record<ClosureReason, Pick<ClosureReasonDis
   inquiry_only: { label: 'Inquiry only' },
   solution_deferred: { label: 'Fix deferred' },
   closed_rca_infeasible: { label: 'Root cause unreachable' },
-  mitigation_sufficient: { label: 'Stabilized by mitigation' },
+  mitigation_sufficient: { label: 'Mitigation applied' },
   closed_restatement_held: { label: 'Cause not stated distinctly' },
   closed_false_alarm: { label: 'False alarm' },
   // Contract 14.8.0 (FaultMaven/faultmaven#2360).
