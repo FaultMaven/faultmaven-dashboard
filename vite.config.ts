@@ -14,9 +14,13 @@ export default defineConfig({
   },
   server: {
     port: 3333,
-    // Loopback only: `fs.allow` is the repo root, so the LAN would reach `.env`
-    // past `fs.deny` alone (faultmaven#2612). `pnpm dev --host` opts in.
+    // Loopback only (faultmaven#2612); `pnpm dev --host` opts in to the LAN.
     host: '127.0.0.1',
+    // What the app serves, so the opt-in exposes the app and not the checkout
+    // (faultmaven#2648): this replaces Vite's default, the repo root, and every
+    // other file answers 403. `node_modules` also covers the dependency cache
+    // (`.vite`) and the installed `@faultmaven/copilot-ui` (under `.pnpm`).
+    fs: { allow: ['src', 'index.html', 'node_modules'].map((p) => path.resolve(__dirname, p)) },
   },
   build: {
     outDir: 'dist',
