@@ -656,9 +656,12 @@ describe('the dock’s Case Closed card for a case closed mitigation_sufficient 
    * The card reads the closure's short label from the copilot-ui the Dashboard bundles, and
    * before faultmaven-copilot#390 that read "Stabilized", beside "Mitigation applied" in the
    * Issue tab on the same page (faultmaven#2100). Asserted against the REAL package, mounted as
-   * the dock mounts it. This pins copilot copy inside the Dashboard, so it retires with S5 of
-   * FaultMaven/faultmaven#2615, which replaces both label tables with server fields: it is never
-   * a reason to keep the client table.
+   * the dock mounts it, on the panel a closed case renders: header, card and transcript.
+   *
+   * A deliberate exception to this file's rule that its real-package tests do not check copy:
+   * the label is the owner's ruling on faultmaven#2100. It pins copilot copy inside the
+   * Dashboard, so it retires with S5 of FaultMaven/faultmaven#2615, which replaces both label
+   * tables with server fields: it is never a reason to keep the client table.
    */
   const CASE_ID = 'case-1';
   const AT = '2026-11-08T08:00:00Z';
@@ -677,6 +680,7 @@ describe('the dock’s Case Closed card for a case closed mitigation_sufficient 
     user_id: 'u1',
     driver_id: 'u1',
     enterprise_id: 'ent-1',
+    organization_id: null,
     current_turn: 4,
     source: 'dashboard',
     is_terminal: true,
@@ -689,7 +693,11 @@ describe('the dock’s Case Closed card for a case closed mitigation_sufficient 
     solution_count: 0,
     escalated: false,
   };
-  /** The terminal `/ui` read: a closed case is served in the resolved shape, `state: 'closed'`. */
+  /**
+   * The terminal `/ui` read as core's `case_ui_adapter.py` serves a CLOSED case: the resolved
+   * shape with `state: 'closed'`, its defaults where the case recorded no cause or solution, and
+   * no duration (it is measured to `resolved_at`, which a closed case lacks).
+   */
   const CASE_UI: components['schemas']['CaseUIResponse_Resolved'] = {
     case_id: CASE_ID,
     title: CASE_ROW.title,
@@ -698,16 +706,40 @@ describe('the dock’s Case Closed card for a case closed mitigation_sufficient 
     updated_at: CLOSED_AT,
     resolved_at: CLOSED_AT,
     current_turn: 4,
+    investigation_turn: 4,
     uploaded_files_count: 0,
+    problem_statement: CASE_ROW.description,
     root_cause: { description: 'Root cause identified', root_cause_id: 'unknown', category: 'other', cause_assurance: 'no_root', cause_overclaim: false },
-    solution_applied: { description: 'Rolled back the cache deploy', applied_at: CLOSED_AT, applied_by: 'u1' },
-    verification_status: { verified: true, verification_method: 'Post-resolution monitoring', details: 'Latency back to baseline' },
-    resolution_summary: { total_duration_minutes: 90, milestones_completed: 2, hypotheses_tested: 1, evidence_collected: 1 },
+    solution_applied: { description: 'Solution applied and verified', applied_at: CLOSED_AT, applied_by: 'u1' },
+    verification_status: { verified: true, verification_method: 'Post-resolution monitoring', details: 'Solution applied and verified effective' },
+    resolution_summary: { total_duration_minutes: 0, milestones_completed: 2, hypotheses_tested: 1, evidence_collected: 1, key_insights: [] },
+    reports_available: [{ report_type: 'closure_summary', status: 'auto_generated', reason: 'Auto-generated on closure' }],
+    valid_next_states: [],
+    disposition_eligibility: { resolved: 'not_eligible', closed: 'not_eligible' },
+  };
+  /** The case's four turns, as `GET /cases/{id}/messages` serves them. */
+  const EXCHANGES = [
+    ['p99 checkout latency tripled after the 08:00 deploy', 'Which change shipped in that deploy?'],
+    ['The cache TTL change', 'Roll the TTL back as a mitigation, then watch p99.'],
+    ['Rolled back, and p99 is back to baseline', 'The mitigation holds. Shall we keep looking for the cause?'],
+    ['No, the mitigation is enough', 'Closing the case with the mitigation in place.'],
+  ];
+  const MESSAGES = EXCHANGES.flatMap(([asked, answered], i): components['schemas']['Message'][] => [
+    { message_id: `m-${2 * i + 1}`, role: 'user', content: asked, created_at: AT, turn_number: i + 1 },
+    { message_id: `m-${2 * i + 2}`, role: 'assistant', content: answered, created_at: AT, turn_number: i + 1 },
+  ]);
+  const MESSAGE_PAGE: components['schemas']['CaseMessagesResponse'] = {
+    messages: MESSAGES,
+    total_count: MESSAGES.length,
+    retrieved_count: MESSAGES.length,
+    has_more: false,
+    next_offset: null,
   };
   const answerCase = (r: SentRequest) => {
     if (r.method !== 'GET') return undefined;
     if (r.path === `/api/v1/cases/${CASE_ID}`) return json(CASE_ROW);
     if (r.path === `/api/v1/cases/${CASE_ID}/ui`) return json(CASE_UI);
+    if (r.path === `/api/v1/cases/${CASE_ID}/messages`) return json(MESSAGE_PAGE);
     return undefined;
   };
 
@@ -734,8 +766,12 @@ describe('the dock’s Case Closed card for a case closed mitigation_sufficient 
       </MemoryRouter>,
     );
 
-    // The card renders only once the case row has put the closed state on the panel's active case.
+    // The card renders once the case row has put the closed state on the panel's active case.
     expect(await screen.findByText(/^Case Closed/)).toHaveTextContent(/^Case Closed · Mitigated$/);
+    // The header renders once `/ui` is read, with the long label; the transcript, once `/messages` is.
+    expect(await screen.findByText(/Closed - Mitigation applied/)).toBeInTheDocument();
+    expect(await screen.findByText(EXCHANGES[3][1])).toBeInTheDocument();
+    // Only now is the whole panel on screen for the negative check to scan.
     expect(document.body.textContent).not.toMatch(/Stabilized/);
   });
 });
