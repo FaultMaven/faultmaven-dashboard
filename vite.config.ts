@@ -1,16 +1,47 @@
 /// <reference types="vitest" />
-import { defineConfig, normalizePath } from 'vite';
+import { defineConfig, normalizePath, type Plugin, type PluginOption } from 'vite';
 import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 import path from 'node:path';
 
-/** An absolute path as a glob that matches it literally, as `fs.deny` reads it. */
-const literalGlob = (p: string) => normalizePath(p).replace(/[*?[\]{}()!+@]/g, '\\$&');
+/** An absolute path as a glob that matches it literally: every character outside `[\w/.:-]` escaped. */
+export const literalGlob = (p: string) => normalizePath(p).replace(/[^\w/.:-]/g, '\\$&');
 const srcGlob = literalGlob(path.resolve(__dirname, 'src'));
 
+/** What Vitest collects, read by `test.include` and by the deny below, so the two are one list. */
+const testInclude = [...configDefaults.include];
+/**
+ * The tests, anchored to this checkout's src/: the test tree (its files import
+ * scripts/) and every file Vitest collects.
+ */
+const testDeny = [`${srcGlob}/test/**`, ...testInclude.map((pattern) => `${srcGlob}/${pattern}`)];
+
+/** The plugins the Vitest CLI and `createVitest` add to the root server and to each project's. */
+const vitestPlugins = new Set(['vitest', 'vitest:project']);
+
+/**
+ * Lifts the test deny on Vitest's own servers, which load the suite through
+ * this config. Vitest is recognised by its plugin in the config's plugin list,
+ * which the CLI and the programmatic API (`createVitest`) both add and no
+ * environment variable can; without it the deny holds.
+ */
+const allowTestsUnderVitest = (): Plugin => ({
+  name: 'faultmaven:allow-tests-under-vitest',
+  config(config) {
+    const isVitest = (option: PluginOption): boolean =>
+      Array.isArray(option)
+        ? option.some(isVitest)
+        : !!option && 'name' in option && vitestPlugins.has(option.name);
+    const fsConfig = config.server?.fs;
+    if (isVitest(config.plugins) && fsConfig?.deny) {
+      fsConfig.deny = fsConfig.deny.filter((pattern) => !testDeny.includes(pattern));
+    }
+  },
+});
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), allowTestsUnderVitest()],
   resolve: {
     alias: {
       '~': path.resolve(__dirname, 'src'),
@@ -24,9 +55,8 @@ export default defineConfig({
     // What the app serves, so the opt-in exposes the app and not the checkout
     // (faultmaven#2648): this replaces Vite's default, the repo root. Vite also
     // serves any file an allowed module imports, so `deny` withholds the tests
-    // (src/test/, whose files import scripts/, and src/**/*.test.*), anchored to
-    // this checkout, except under Vitest (it alone sets VITEST), which loads the
-    // suite through this server. `public/` is served by `publicDir`.
+    // (`testDeny`), except on Vitest's own servers (`allowTestsUnderVitest`).
+    // `public/` is served by `publicDir`.
     fs: {
       allow: [
         ...['src', 'index.html', 'node_modules'].map((p) => path.resolve(__dirname, p)),
@@ -41,7 +71,7 @@ export default defineConfig({
         '*.{crt,pem}',
         '**/.git/**',
         '**/node_modules/.cache/**',
-        ...(process.env.VITEST ? [] : [`${srcGlob}/test/**`, `${srcGlob}/**/*.test.{ts,tsx}`]),
+        ...testDeny,
       ],
     },
   },
@@ -53,6 +83,7 @@ export default defineConfig({
     globals: true,
     environment: 'happy-dom',
     setupFiles: './src/test/setup.ts',
+    include: testInclude,
     // A git worktree checked out under the repo (`git worktree add
     // .worktrees/<name>`) is a second, usually stale copy of this whole suite.
     // Vitest globs the filesystem and does not read .gitignore, so without this

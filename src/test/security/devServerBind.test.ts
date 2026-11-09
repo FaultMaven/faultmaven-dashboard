@@ -7,18 +7,22 @@
  * resolved host is the same. Preview serves `dist/` only; the dev server serves
  * from the checkout, so what its opt-in exposes is pinned too (faultmaven#2648):
  * the app's files and the files they import answer, and every other file in the
- * checkout, the tests and the tool caches answer 403. Only Vitest's own server,
- * which loads the suite through this config, leaves the tests open.
+ * checkout, the tests and the tool caches answer 403. Only Vitest's own servers,
+ * which load the suite through this config, leave the tests open: recognised by
+ * Vitest's plugin, so this file's own servers, started inside a Vitest run, are
+ * refused like `pnpm dev`.
  */
 import { describe, it, expect } from 'vitest';
 import { realpathSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { get as httpGet } from 'node:http';
 import { createServer as createNetServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createServer, isFileLoadingAllowed, resolveConfig, type ViteDevServer } from 'vite';
+import { createVitest } from 'vitest/node';
+import { literalGlob } from '../../../vite.config';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const configFile = path.join(repoRoot, 'vite.config.ts');
@@ -47,17 +51,6 @@ function get(port: number, urlPath: string): Promise<{ status: number; body: str
   });
 }
 
-/** Runs `load` as `pnpm dev` loads the config: outside Vitest, which sets VITEST. */
-async function outsideVitest<T>(load: () => Promise<T>): Promise<T> {
-  const vitest = process.env.VITEST;
-  delete process.env.VITEST;
-  try {
-    return await load();
-  } finally {
-    if (vitest !== undefined) process.env.VITEST = vitest;
-  }
-}
-
 /** Starts the dev server from the real config on a free loopback port. */
 async function withDevServer(run: (server: ViteDevServer, port: number) => Promise<void>, mode?: string) {
   // A scratch cache and no dependency scan: the run leaves nothing in
@@ -66,17 +59,15 @@ async function withDevServer(run: (server: ViteDevServer, port: number) => Promi
   let server: ViteDevServer | undefined;
   try {
     const port = await freePort();
-    server = await outsideVitest(() =>
-      createServer({
-        configFile,
-        mode,
-        cacheDir,
-        optimizeDeps: { noDiscovery: true, include: [] },
-        // No warm-up: a module request must not start a graph walk that races close().
-        server: { port, preTransformRequests: false },
-        logLevel: 'silent',
-      }),
-    );
+    server = await createServer({
+      configFile,
+      mode,
+      cacheDir,
+      optimizeDeps: { noDiscovery: true, include: [] },
+      // No warm-up: a module request must not start a graph walk that races close().
+      server: { port, preTransformRequests: false },
+      logLevel: 'silent',
+    });
     await server.listen();
     await run(server, (server.httpServer?.address() as AddressInfo).port);
   } finally {
@@ -170,19 +161,84 @@ describe('pnpm dev and pnpm preview', () => {
       expect(refused).toEqual([]);
     }, 'test'));
 
-  it('resolve fs as Vite reads it: its default deny kept, node_modules by real path', async () => {
+  it('resolve fs as Vite reads it: its default deny kept, the tests refused', async () => {
     const resolve = (file: string | false) =>
       resolveConfig({ configFile: file, root: repoRoot, logLevel: 'silent' }, 'serve');
     // An explicit deny replaces Vite's default, so a default a later Vite adds must be copied in.
     const viteDefault = (await resolve(false)).server.fs.deny;
-    const asDev = await outsideVitest(() => resolve(configFile));
+    // This process is a Vitest run, so whatever its environment says, only the plugin opens the deny.
+    const asDev = await resolve(configFile);
     expect(asDev.server.fs.deny).toEqual(expect.arrayContaining(viteDefault));
-    // A worktree's node_modules may be a symlink, and Vite compares paths unresolved.
-    expect(asDev.server.fs.allow).toContain(realpathSync(path.join(repoRoot, 'node_modules')));
-    const underVitest = await resolve(configFile);
     for (const file of ['src/test/setup.ts', 'src/lib/cases/closureReason.test.ts']) {
       expect(isFileLoadingAllowed(asDev, path.join(repoRoot, file)), file).toBe(false);
-      expect(isFileLoadingAllowed(underVitest, path.join(repoRoot, file)), file).toBe(true);
+    }
+  });
+
+  it("leave the tests open on Vitest's programmatic API, which sets no VITEST", async () => {
+    // `createVitest` is what IDE runners call; the CLI run this file is part of is the other path.
+    const vitest = await createVitest('test', { root: repoRoot, watch: false, run: true }, { logLevel: 'silent' });
+    try {
+      const configs = new Set([vitest.vite.config, ...vitest.projects.map((project) => project.vite.config)]);
+      for (const config of configs) {
+        for (const file of ['src/test/setup.ts', 'src/lib/cases/closureReason.test.ts']) {
+          expect(isFileLoadingAllowed(config, path.join(repoRoot, file)), file).toBe(true);
+        }
+      }
+    } finally {
+      await vitest.close();
+    }
+  });
+
+  it('escape every glob metacharacter of a checkout path, as Vite matches the deny', async () => {
+    // Glob metacharacters and other punctuation a checkout path may hold, `\` too on POSIX;
+    // not `:`, since Vite refuses any path that holds one.
+    const special = [..."|*?[]{}()!+@#$^,~'& %=;é", ...(process.platform === 'win32' ? [] : ['\\'])];
+    const unanchored: string[] = [];
+    for (const char of special) {
+      const checkout = `/srv/co${char}x`;
+      const config = await resolveConfig(
+        {
+          configFile: false,
+          root: repoRoot,
+          logLevel: 'silent',
+          server: { fs: { allow: [checkout], deny: [`${literalGlob(checkout)}/src/test/**`] } },
+        },
+        'serve',
+      );
+      const allowed = (file: string) => isFileLoadingAllowed(config, `${checkout}/${file}`);
+      if (!allowed('src/main.tsx')) unanchored.push(`${char} refuses the app`);
+      if (allowed('src/test/setup.ts')) unanchored.push(`${char} serves the tests`);
+    }
+    expect(unanchored).toEqual([]);
+  });
+
+  it('withhold every file Vitest collects from any checkout, and allow node_modules by its real path', async () => {
+    // A checkout whose path holds every character above that `pnpm dev` can load its config
+    // under (not `\` or `*`: the config bundling refuses them), and whose node_modules is a
+    // symlink to a directory outside it, as in a worktree.
+    const scratch = await mkdtemp(path.join(tmpdir(), 'dev-fs-'));
+    const checkout = path.join(scratch, "co |?[]{}()!+@#$^,~'& %=;é");
+    try {
+      await mkdir(path.join(checkout, 'src'), { recursive: true });
+      await writeFile(path.join(checkout, 'package.json'), '{"type": "module"}');
+      await copyFile(configFile, path.join(checkout, 'vite.config.ts'));
+      const modules = realpathSync(path.join(repoRoot, 'node_modules'));
+      await symlink(modules, path.join(checkout, 'node_modules'), 'junction');
+      const config = await resolveConfig(
+        { configFile: path.join(checkout, 'vite.config.ts'), root: checkout, logLevel: 'silent' },
+        'serve',
+      );
+      const allowed = (file: string) => isFileLoadingAllowed(config, file.split(path.sep).join('/'));
+      expect(allowed(path.join(checkout, 'src/main.tsx'))).toBe(true);
+      expect(allowed(path.join(checkout, 'node_modules/react/index.js'))).toBe(true);
+      expect(allowed(path.join(modules, 'react/index.js'))).toBe(true);
+      const tests = [
+        'test/setup.ts',
+        ...['test.ts', 'spec.tsx', 'test.mjs', 'spec.cjs', 'test.jsx', 'spec.mts'].map((ext) => `lib/a.${ext}`),
+      ];
+      expect(tests.filter((file) => allowed(path.join(checkout, 'src', file)))).toEqual([]);
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
     }
   });
 
