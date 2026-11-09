@@ -650,3 +650,92 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
     expect(bubbles).toHaveLength(1);
   });
 });
+
+describe('the dock’s Case Closed card for a case closed mitigation_sufficient (faultmaven#2638)', () => {
+  /**
+   * The card reads the closure's short label from the copilot-ui the Dashboard bundles, and
+   * before faultmaven-copilot#390 that read "Stabilized", beside "Mitigation applied" in the
+   * Issue tab on the same page (faultmaven#2100). Asserted against the REAL package, mounted as
+   * the dock mounts it. This pins copilot copy inside the Dashboard, so it retires with S5 of
+   * FaultMaven/faultmaven#2615, which replaces both label tables with server fields: it is never
+   * a reason to keep the client table.
+   */
+  const CASE_ID = 'case-1';
+  const AT = '2026-11-08T08:00:00Z';
+  const CLOSED_AT = '2026-11-08T09:30:00Z';
+  const CASE_ROW: components['schemas']['CaseDetail'] = {
+    case_id: CASE_ID,
+    title: 'Checkout latency after the cache deploy',
+    description: 'p99 checkout latency tripled after the 08:00 deploy',
+    state: 'closed',
+    created_at: AT,
+    updated_at: CLOSED_AT,
+    last_activity_at: CLOSED_AT,
+    resolved_at: null,
+    closed_at: CLOSED_AT,
+    closure_reason: 'mitigation_sufficient',
+    user_id: 'u1',
+    driver_id: 'u1',
+    enterprise_id: 'ent-1',
+    current_turn: 4,
+    source: 'dashboard',
+    is_terminal: true,
+    turns_without_progress: 0,
+    current_stage: 'mitigation',
+    milestones_completed: ['mitigation_accepted', 'mitigation_verified'],
+    pending_milestones: [],
+    evidence_count: 1,
+    hypothesis_count: 1,
+    solution_count: 0,
+    escalated: false,
+  };
+  /** The terminal `/ui` read: a closed case is served in the resolved shape, `state: 'closed'`. */
+  const CASE_UI: components['schemas']['CaseUIResponse_Resolved'] = {
+    case_id: CASE_ID,
+    title: CASE_ROW.title,
+    state: 'closed',
+    created_at: AT,
+    updated_at: CLOSED_AT,
+    resolved_at: CLOSED_AT,
+    current_turn: 4,
+    uploaded_files_count: 0,
+    root_cause: { description: 'Root cause identified', root_cause_id: 'unknown', category: 'other', cause_assurance: 'no_root', cause_overclaim: false },
+    solution_applied: { description: 'Rolled back the cache deploy', applied_at: CLOSED_AT, applied_by: 'u1' },
+    verification_status: { verified: true, verification_method: 'Post-resolution monitoring', details: 'Latency back to baseline' },
+    resolution_summary: { total_duration_minutes: 90, milestones_completed: 2, hypotheses_tested: 1, evidence_collected: 1 },
+  };
+  const answerCase = (r: SentRequest) => {
+    if (r.method !== 'GET') return undefined;
+    if (r.path === `/api/v1/cases/${CASE_ID}`) return json(CASE_ROW);
+    if (r.path === `/api/v1/cases/${CASE_ID}/ui`) return json(CASE_UI);
+    return undefined;
+  };
+
+  beforeEach(() => {
+    builtSessions.length = 0;
+    auth.getAccessTokenFor.mockReset().mockResolvedValue({ kind: 'token', token: 'tok-live' });
+    auth.peekAccessToken.mockReset().mockResolvedValue(null);
+    auth.refreshTokens.mockReset().mockResolvedValue(null);
+    auth.holdsSessionFor.mockReset().mockResolvedValue(false);
+    auth.isSigningOut.mockReset().mockReturnValue(false);
+    auth.onAuthCleared.mockReset().mockReturnValue(() => {});
+    localStorage.setItem(`${PANEL_STORAGE_NAMESPACE}hasCompletedFirstRun`, 'true');
+  });
+
+  it('reads "Case Closed · Mitigated", and nothing on the panel says "Stabilized"', async () => {
+    vi.stubGlobal('fetch', stubBackend([], answerCase));
+    // A fresh copy of the package: its store is module state, and the tests above leave theirs behind.
+    vi.resetModules();
+    await import('@faultmaven/copilot-ui');
+    const { CasePanelMount } = await import('../../components/CasePanelMount');
+    render(
+      <MemoryRouter>
+        <CasePanelMount caseId={CASE_ID} readOnly={false} visible onCaseChanged={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    // The card renders only once the case row has put the closed state on the panel's active case.
+    expect(await screen.findByText(/^Case Closed/)).toHaveTextContent(/^Case Closed · Mitigated$/);
+    expect(document.body.textContent).not.toMatch(/Stabilized/);
+  });
+});
