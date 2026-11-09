@@ -14,7 +14,9 @@ export default defineConfig({
   },
   server: {
     port: 3333,
-    host: true,
+    // Loopback only: `fs.allow` is the repo root, so the LAN would reach `.env`
+    // past `fs.deny` alone (faultmaven#2612). `pnpm dev --host` opts in.
+    host: '127.0.0.1',
   },
   build: {
     outDir: 'dist',

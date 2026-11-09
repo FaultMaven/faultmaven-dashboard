@@ -90,6 +90,8 @@ pnpm dev
 
 Access at `http://localhost:3333` (Vite's `server.port` in `vite.config.ts`; Vite picks the next free port if 3333 is already taken, for example by the Docker dashboard).
 
+The dev server listens on loopback only. Vite's banner prints `http://127.0.0.1:3333`, the same server, but keep opening `localhost`: it is the origin the API's default CORS list names, and each origin keeps its own sign-in. `pnpm dev --host` makes it reachable from another device on your network by IP address only (`http://<ip>:3333`), and exposes the workspace to that network ([FaultMaven/faultmaven#2648](https://github.com/FaultMaven/faultmaven/issues/2648)).
+
 > **Note**: You need the FaultMaven API running at `http://localhost:8090`. See [Backend Local Setup](https://github.com/FaultMaven/faultmaven/blob/main/docs/getting-started/local-setup.md).
 
 **Configuration (optional):** The dev server auto-detects the API on the same host at port `8090`, so no config is needed for the common case. To override, copy `.env.example` to `.env.local` and set:
