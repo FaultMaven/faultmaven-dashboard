@@ -1,11 +1,15 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vite';
+import { defineConfig, normalizePath } from 'vite';
 import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export default defineConfig(({ mode }) => ({
+/** An absolute path as a glob that matches it literally, as `fs.deny` reads it. */
+const literalGlob = (p: string) => normalizePath(p).replace(/[*?[\]{}()!+@]/g, '\\$&');
+const srcGlob = literalGlob(path.resolve(__dirname, 'src'));
+
+export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
@@ -19,24 +23,25 @@ export default defineConfig(({ mode }) => ({
     host: '127.0.0.1',
     // What the app serves, so the opt-in exposes the app and not the checkout
     // (faultmaven#2648): this replaces Vite's default, the repo root. Vite also
-    // serves any file an allowed module imports, so `deny` withholds src/test/,
-    // whose files import scripts/, except under Vitest (mode `test`), which loads
-    // the suite through this server. `public/` is served by `publicDir`.
+    // serves any file an allowed module imports, so `deny` withholds the tests
+    // (src/test/, whose files import scripts/, and src/**/*.test.*), anchored to
+    // this checkout, except under Vitest (it alone sets VITEST), which loads the
+    // suite through this server. `public/` is served by `publicDir`.
     fs: {
       allow: [
         ...['src', 'index.html', 'node_modules'].map((p) => path.resolve(__dirname, p)),
-        // A worktree's node_modules may be a symlink; Vite compares real paths too.
+        // A worktree's node_modules may be a symlink, and modules resolve to its real path.
         fs.realpathSync(path.resolve(__dirname, 'node_modules')),
       ],
-      // Vite's default list, which an explicit `deny` replaces, plus the test
-      // tree and the tool caches under node_modules. `.vite/deps` stays served.
+      // Vite's default list, which an explicit `deny` replaces, plus the tool
+      // caches under node_modules and the tests. `.vite/deps` stays served.
       deny: [
         '.env',
         '.env.*',
         '*.{crt,pem}',
         '**/.git/**',
         '**/node_modules/.cache/**',
-        ...(mode === 'test' ? [] : ['**/src/test/**']),
+        ...(process.env.VITEST ? [] : [`${srcGlob}/test/**`, `${srcGlob}/**/*.test.{ts,tsx}`]),
       ],
     },
   },
@@ -76,4 +81,4 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-}));
+});
