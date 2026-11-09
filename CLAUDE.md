@@ -21,10 +21,10 @@ Node and pnpm are declared once, in `package.json`: `engines.node` and `packageM
 
 ```bash
 pnpm install
-pnpm dev                     # Vite dev server on http://localhost:3333, loopback only (vite.config.ts `server`;
+pnpm dev                     # Vite dev server on http://localhost:3333, IPv4 loopback only (vite.config.ts `server`;
                              #   Vite takes the next free port when 3333 is held, e.g. by the Docker dashboard).
-                             #   Its banner prints 127.0.0.1, the same server: open localhost, the origin the
-                             #   core's default CORS list names (each origin keeps its own sign-in)
+                             #   Its banner prints 127.0.0.1, the same server; keep opening localhost, since each
+                             #   origin holds its own sign-in. http://[::1]:3333 no longer answers
 pnpm dev --host              # reachable on the LAN by IP address only (http://<ip>:3333), exposing the
                              #   workspace to that network (faultmaven#2648)
 pnpm lint                    # ESLint over src/ — ignores src/test/**
