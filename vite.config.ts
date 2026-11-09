@@ -2,9 +2,10 @@
 import { defineConfig } from 'vite';
 import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
 import path from 'node:path';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: {
@@ -17,10 +18,27 @@ export default defineConfig({
     // Loopback only (faultmaven#2612); `pnpm dev --host` opts in to the LAN.
     host: '127.0.0.1',
     // What the app serves, so the opt-in exposes the app and not the checkout
-    // (faultmaven#2648): this replaces Vite's default, the repo root, and every
-    // other file answers 403. `node_modules` also covers the dependency cache
-    // (`.vite`) and the installed `@faultmaven/copilot-ui` (under `.pnpm`).
-    fs: { allow: ['src', 'index.html', 'node_modules'].map((p) => path.resolve(__dirname, p)) },
+    // (faultmaven#2648): this replaces Vite's default, the repo root. Vite also
+    // serves any file an allowed module imports, so `deny` withholds src/test/,
+    // whose files import scripts/, except under Vitest (mode `test`), which loads
+    // the suite through this server. `public/` is served by `publicDir`.
+    fs: {
+      allow: [
+        ...['src', 'index.html', 'node_modules'].map((p) => path.resolve(__dirname, p)),
+        // A worktree's node_modules may be a symlink; Vite compares real paths too.
+        fs.realpathSync(path.resolve(__dirname, 'node_modules')),
+      ],
+      // Vite's default list, which an explicit `deny` replaces, plus the test
+      // tree and the tool caches under node_modules. `.vite/deps` stays served.
+      deny: [
+        '.env',
+        '.env.*',
+        '*.{crt,pem}',
+        '**/.git/**',
+        '**/node_modules/.cache/**',
+        ...(mode === 'test' ? [] : ['**/src/test/**']),
+      ],
+    },
   },
   build: {
     outDir: 'dist',
@@ -58,4 +76,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

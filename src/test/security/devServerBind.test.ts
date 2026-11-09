@@ -6,17 +6,17 @@
  * the dev server the config starts binds the literal `127.0.0.1`, and preview's
  * resolved host is the same. Preview serves `dist/` only; the dev server serves
  * from the checkout, so what its opt-in exposes is pinned too (faultmaven#2648):
- * `server.fs.allow` is `src/`, `index.html` and `node_modules`, and every other
- * file in the checkout answers 403.
+ * the app's files and the files they import answer, and every other file in the
+ * checkout, the test tree and the tool caches answer 403.
  */
 import { describe, it, expect } from 'vitest';
-import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { get as httpGet } from 'node:http';
 import { createServer as createNetServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { createServer, resolveConfig, type ViteDevServer } from 'vite';
+import { createServer, isFileLoadingAllowed, resolveConfig, type ViteDevServer } from 'vite';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const configFile = path.join(repoRoot, 'vite.config.ts');
@@ -86,13 +86,12 @@ describe('pnpm dev and pnpm preview', () => {
 
   it('serve the app, its dependencies and the public assets from the dev server', () =>
     withDevServer(async (_, port) => {
-      const copilotUi = await realpath(path.join(repoRoot, 'node_modules/@faultmaven/copilot-ui'));
       const missing: string[] = [];
       for (const [url, sentinel] of [
         ['/index.html', 'data-faultmaven-dashboard-panel'],
         ['/src/main.tsx', 'createRoot'],
         [`/@fs${repoRoot}/node_modules/react/index.js`, 'react.production'],
-        [`/@fs${copilotUi}/index.ts`, 'setHostStore'],
+        [`/@fs${repoRoot}/node_modules/@faultmaven/copilot-ui/index.ts`, 'setHostStore'],
         ['/icon/design-dark.svg', '<svg'],
       ]) {
         const res = await get(port, url);
@@ -103,9 +102,21 @@ describe('pnpm dev and pnpm preview', () => {
     }));
 
   it('refuse every other file in the checkout from the dev server (faultmaven#2648)', () =>
-    withDevServer(async (_, port) => {
+    withDevServer(async (server, port) => {
       const status: Record<string, number> = {};
       const leaked: string[] = [];
+      const probe = async (url: string, sentinel: string) => {
+        const res = await get(port, url);
+        status[url] = res.status;
+        if (res.body.includes(sentinel)) leaked.push(url);
+      };
+      // Vite serves a file an allowed module imports, so the test module that
+      // imports scripts/ goes first: neither it nor its import may answer.
+      await probe('/src/test/scripts/contractHopReport.test.ts', 'describeHop');
+      const hop = 'scripts/report-contract-hop.mjs';
+      for (const url of [`/${hop}`, `/${hop}?raw`, `/@fs${repoRoot}/${hop}`]) {
+        await probe(url, 'WHAT A CONTRACT PIN BUMP CROSSED');
+      }
       for (const [file, sentinel] of [
         ['.claude/rules/cases.md', 'CaseListPage'],
         ['package.json', '"faultmaven-dashboard"'],
@@ -113,13 +124,16 @@ describe('pnpm dev and pnpm preview', () => {
         ['.env.example', 'Environment Configuration'],
       ]) {
         for (const url of [`/${file}`, `/${file}?raw`, `/@fs${repoRoot}/${file}`, `/src/%2e%2e/${file}?raw`]) {
-          const res = await get(port, url);
-          status[url] = res.status;
-          if (res.body.includes(sentinel)) leaked.push(url);
+          await probe(url, sentinel);
         }
       }
       expect(status).toEqual(Object.fromEntries(Object.keys(status).map((url) => [url, 403])));
       expect(leaked).toEqual([]);
+      // A tool cache is denied whether or not a file exists there to request (an
+      // absent one gets the SPA page); the dependency cache beside it is served.
+      const modules = path.join(repoRoot, 'node_modules');
+      expect(isFileLoadingAllowed(server.config, `${modules}/.cache/jiti/probe.mjs`)).toBe(false);
+      expect(isFileLoadingAllowed(server.config, `${modules}/.vite/deps/probe.js`)).toBe(true);
     }));
 
   it('resolve preview to 127.0.0.1, not every interface', async () => {

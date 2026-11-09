@@ -25,9 +25,9 @@ pnpm dev                     # Vite dev server on http://localhost:3333, IPv4 lo
                              #   Vite takes the next free port when 3333 is held, e.g. by the Docker dashboard).
                              #   Its banner prints 127.0.0.1, the same server; keep opening localhost, since each
                              #   origin holds its own sign-in. http://[::1]:3333 no longer answers
-pnpm dev --host              # reachable on the LAN by IP address only (http://<ip>:3333); serves only src/,
-                             #   index.html, public/ and node_modules, and refuses the rest of the checkout
-                             #   with a 403 (vite.config.ts `server.fs.allow`, faultmaven#2648)
+pnpm dev --host              # reachable on the LAN by IP address only (http://<ip>:3333); serves the app's
+                             #   files (src/ outside src/test/, index.html, node_modules) and the files they
+                             #   import, plus public/ at the web root (vite.config.ts `server.fs`, faultmaven#2648)
 pnpm lint                    # ESLint over src/ — ignores src/test/**
 pnpm lint:tests              # ESLint over the test files
 pnpm typecheck               # tsc --noEmit against tsconfig.json — excludes tests
