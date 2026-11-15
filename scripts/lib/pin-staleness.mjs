@@ -1,11 +1,19 @@
 /**
- * What "the Copilot UI pin is behind" means, in one place.
+ * Where the Copilot UI lives, and which of its files the Dashboard bundles.
  *
- * Two readers ask it. The PR gate (`check-copilot-ui-pin.mjs`) prints it as an
- * advisory NOTE and never fails on it, and the daily report
- * (`report-pin-staleness.mjs`) turns it into one tracking issue. If each kept
- * its own definition, the issue could say "behind" while the gate said
- * nothing, or the reverse.
+ * Two readers ask whether the pin is behind, and they answer different
+ * questions on purpose:
+ *
+ *   - the PR gate (`check-copilot-ui-pin.mjs`) prints an advisory NOTE from the
+ *     compare file list, and compares the contract pin with what core serves;
+ *   - the daily report (`report-pin-staleness.mjs`) decides whether to keep an
+ *     issue open, so it also reads the package's own commit history (the
+ *     compare file list is capped at 300 files repository-wide) and measures
+ *     the contract against copilot's pin, the one target the pin-parity check
+ *     lets this repository adopt.
+ *
+ * What they share is this module: the repository, the branch, and the one
+ * rule for which changed files are the package's.
  */
 
 export const COPILOT_REPO = 'FaultMaven/faultmaven-copilot';

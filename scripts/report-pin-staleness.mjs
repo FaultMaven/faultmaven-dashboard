@@ -2,33 +2,46 @@
 /**
  * THE PINS ARE BEHIND — said where someone will see it.
  *
- * The Dashboard pins `@faultmaven/copilot-ui` to a copilot commit and the API
- * contract to a core commit. Neither moves on its own: adopting is a pin-bump
- * pull request, and refusing to adopt is a decision. The PR gate
- * (`check-copilot-ui-pin.mjs`) deliberately never FAILS on staleness, because
- * copilot's and core's `main` move on their own and a red check on every open
- * pull request is not how to ask for a decision. But its advisory went to one
- * place, a NOTE line in the log of a green job, and the pins sat a week and
- * thirteen contract versions behind (a MAJOR among them) with nobody asked.
+ * The Dashboard bundles `@faultmaven/copilot-ui`, pinned to a copilot commit,
+ * and pins the API contract its own client is typed against. Neither moves on
+ * its own: adopting is a pin-bump pull request, and refusing to adopt is a
+ * decision. The PR gate (`check-copilot-ui-pin.mjs`) deliberately never FAILS
+ * on staleness, because copilot's and core's `main` move on their own and a
+ * red check on every open pull request is not how to ask for a decision. But
+ * its advisory went to one place, a NOTE line in the log of a green job, and
+ * the pins sat a week and a dozen contract versions behind (a MAJOR among
+ * them) with nobody asked.
  *
  * So this runs daily on `main` and keeps ONE open issue, labelled
  * `pin-staleness`, in step with the pins:
  *
  *   - behind, no open issue   → opens one;
  *   - behind, an open issue   → rewrites its title and body to today's state;
- *   - current, an open issue  → comments that the pins caught up and closes it;
+ *   - current, an open issue  → closes it and says so;
  *   - current, no open issue  → nothing.
  *
- * It opens an issue, not a pull request. A copilot-ui bump that crosses a
- * contract change must also move `api-contract.pin.json` to copilot's contract
- * at the new commit (pin parity), regenerate the types and adapt the code that
- * reads them. A bot pull request would arrive red more often than not; the
- * issue says what adopting involves and leaves the decision where it belongs.
+ * BEHIND WHAT: copilot's `main`, for both pins. The Dashboard cannot adopt a
+ * contract copilot-ui has not: the required pin-parity check holds this
+ * repository's contract pin equal to copilot's at the pinned commit. So the
+ * adoptable target is copilot `main`'s package AND its contract pin, moved in
+ * one pull request. Core serving a newer contract than copilot has adopted is
+ * copilot's step first; the issue mentions it and does not count it, or it
+ * would ask for a bump the gate refuses and never close.
+ *
+ * A REFUSAL HOLDS. Closing the issue as "not planned" records a decision not
+ * to adopt now. While the state is the one refused (the same title), the run
+ * opens nothing; once copilot moves, the title changes and a new issue asks
+ * about the new state.
+ *
+ * It opens an issue, not a pull request: adopting regenerates the API types
+ * and adapts the code that reads them, so a bot pull request would arrive red
+ * more often than not.
  *
  * A read that fails exits 1 BEFORE the issue is touched: a run that could not
- * see the pins must neither open an issue nor close one. With `--dry-run`
- * (the pull_request trigger) it prints the planned action and the body and
- * writes nothing.
+ * see the pins must neither open an issue nor close one. Reads retry a
+ * transient failure (429, 5xx, a dropped connection); writes do not, so a
+ * retried POST can never open two issues. With `--dry-run` it prints the
+ * planned action and the body and writes nothing.
  *
  *     GITHUB_TOKEN=… node scripts/report-pin-staleness.mjs [--dry-run]
  */
@@ -42,10 +55,20 @@ const DEFAULT_REPO = 'FaultMaven/faultmaven-dashboard';
 const PACKAGE_NAME = '@faultmaven/copilot-ui';
 /** Commit subjects listed in the body; the compare link has the rest. */
 const COMMITS_LISTED = 10;
+/**
+ * Contract entries listed in the body. Each is one line of up to ~900
+ * characters, and GitHub refuses an issue body over 65,536: an uncapped list
+ * would fail every run once the pins fell far enough behind, which is exactly
+ * when the issue matters most.
+ */
+const CONTRACT_ENTRIES_LISTED = 20;
 /** GitHub's compare API returns at most this many files, across the whole repository. */
 const COMPARE_FILE_CAP = 300;
+/** ...and at most this many commits. */
+const COMPARE_COMMIT_CAP = 250;
 /** One page of the package's commit history; a full page reads as "N+". */
 const PACKAGE_COMMITS_PAGE = 100;
+const READ_ATTEMPTS = 3;
 
 /** `3.7.0` → `[3, 7, 0]`, or null: ordering is numeric, never lexical. */
 function parseVersion(version) {
@@ -56,10 +79,22 @@ function parseVersion(version) {
 const compareVersions = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 
 /**
+ * Whether `target` is a NEWER contract than `pinned`. A pin ahead of its
+ * target (an early adoption, a revert) is not behind. Versions that do not
+ * parse count as behind when they differ, so the issue asks a human to look.
+ */
+export function contractIsBehind(pinned, target) {
+  const lo = parseVersion(pinned);
+  const hi = parseVersion(target);
+  if (!lo || !hi) return pinned !== target;
+  return compareVersions(hi, lo) > 0;
+}
+
+/**
  * The contract entries above `from` and at or below `to`, newest first, as
- * `{ version, level, title }`. Titles only: the bodies of a dozen entries
- * would outgrow an issue, and the adopting pull request prints them in full
- * (`report-contract-hop.mjs`). Null when either version does not parse.
+ * `{ version, level, title }`. Titles only: the adopting pull request prints
+ * every body in full (`report-contract-hop.mjs`). Null when either version
+ * does not parse.
  */
 export function contractEntriesBetween(entries, from, to) {
   const lo = parseVersion(from);
@@ -70,6 +105,16 @@ export function contractEntriesBetween(entries, from, to) {
     .filter(({ version }) => version && compareVersions(version, lo) > 0 && compareVersions(version, hi) <= 0)
     .sort((a, b) => compareVersions(b.version, a.version))
     .map(({ entry }) => ({ version: entry.version, level: entry.level, title: entry.title }));
+}
+
+/** "and 7 older entries, 1 of them MAJOR": what the capped listing leaves out. */
+function olderEntries(rest) {
+  const majors = rest.filter((entry) => entry.level === 'MAJOR').length;
+  return (
+    `and ${rest.length} older entr${rest.length === 1 ? 'y' : 'ies'}` +
+    (majors > 0 ? `, ${majors} of them MAJOR` : '') +
+    ' (the adopting pull request lists them all)'
+  );
 }
 
 const short = (sha) => String(sha).slice(0, 12);
@@ -85,84 +130,102 @@ const oneLine = (text) => String(text ?? '').split('\n')[0].replace(/\s+/g, ' ')
 const literal = (text) => `\`\` ${oneLine(text).replace(/``+/g, '`')} \`\``;
 
 /**
- * Whether core serves a NEWER contract than the pin. A pin ahead of core (an
- * early adoption, a revert on core) is not behind. Versions that do not parse
- * count as behind when they differ, so the issue asks a human to look.
+ * The commits of copilot `main` since the pin that touch the package, newest
+ * first, from the package's commit history (`history`, the commits API with
+ * `path` and an inclusive `since` at the pin's date).
+ *
+ * `since` is a timestamp, so it also returns commits that share the pin's
+ * second (a rebase-merged batch commits together) and, for a pin that is not
+ * an ancestor of main, the merge base. When the comparison lists every commit
+ * ahead, only those count; when it is capped, the pin and the merge base are
+ * dropped and the rest are taken as they come. Nothing counts when main is
+ * not ahead of the pin.
  */
-function contractIsBehind(pinned, served) {
-  const lo = parseVersion(pinned);
-  const hi = parseVersion(served);
-  if (!lo || !hi) return pinned !== served;
-  return compareVersions(hi, lo) > 0;
+export function packageCommitsSincePin({ history, comparison, pinnedSha }) {
+  const aheadBy = comparison?.ahead_by ?? 0;
+  if (aheadBy <= 0) return [];
+  const listed = comparison?.commits ?? [];
+  const complete = listed.length >= aheadBy && listed.length < COMPARE_COMMIT_CAP;
+  if (complete) {
+    const ahead = new Set(listed.map((commit) => commit.sha));
+    return history.filter((commit) => ahead.has(commit.sha));
+  }
+  const excluded = new Set([pinnedSha, comparison?.merge_base_commit?.sha]);
+  return history.filter((commit) => !excluded.has(commit.sha));
 }
 
 /**
- * Whether the pins are behind, and the issue that says so.
+ * Whether the pins are behind copilot `main`, and the issue that says so.
  *
- * @param pinnedSha            the copilot commit `package.json` pins
- * @param comparison           GitHub `compare/<pinnedSha>...main` on the copilot repository
- * @param packageCommits       copilot `main`'s commits touching the package since the pin, newest first
- * @param ourContract          this repository's `api-contract.pin.json`
- * @param servedContract       the contract version core's `main` serves
- * @param copilotMainContract  copilot's `api-contract.pin.json` at its `main`
- * @param notes                core's `contract-notes.json` at `main` (null if unread)
+ * @param pinnedSha        the copilot commit `package.json` pins
+ * @param comparison       GitHub `compare/<pinnedSha>...main` on the copilot repository
+ * @param packageCommits   `packageCommitsSincePin`, newest first
+ * @param ourContract      this repository's `api-contract.pin.json`
+ * @param copilotContract  copilot's `api-contract.pin.json` at its `main`: the contract target
+ * @param servedContract   the contract version core's `main` serves (context only)
+ * @param notes            core's `contract-notes.json` at `main` (null if unread)
  */
 export function describeStaleness({
   pinnedSha,
   comparison,
   packageCommits = [],
   ourContract,
+  copilotContract,
   servedContract,
-  copilotMainContract,
   notes,
 }) {
+  const aheadBy = comparison?.ahead_by ?? 0;
   const changed = packageChanges(comparison);
   // The compare API lists at most 300 files for the whole repository, so a
   // big change elsewhere can push every package file off the list. The
-  // package's own commit history is the second signal; and a truncated list
-  // with commits ahead is read as behind, never as current — reading it as
-  // current would close the issue on a pin that is behind.
-  const truncated = (comparison?.files ?? []).length >= COMPARE_FILE_CAP && (comparison?.ahead_by ?? 0) > 0;
-  const packageBehind = changed.length > 0 || packageCommits.length > 0 || truncated;
-  const contractBehind = contractIsBehind(ourContract.contractVersion, servedContract);
+  // package's own history is the second signal, and a truncated list with
+  // commits ahead is read as behind, never as current: reading it as current
+  // would close the issue on a pin that is behind.
+  const truncated = (comparison?.files ?? []).length >= COMPARE_FILE_CAP;
+  const packageBehind = aheadBy > 0 && (changed.length > 0 || packageCommits.length > 0 || truncated);
+  const target = copilotContract?.contractVersion;
+  const contractBehind = contractIsBehind(ourContract.contractVersion, target);
   if (!packageBehind && !contractBehind) return { stale: false, title: '', body: '' };
 
-  const aheadBy = comparison?.ahead_by ?? (comparison?.commits ?? []).length;
   const fileCount = truncated ? `at least ${changed.length}` : String(changed.length);
-  const packageCommitCount =
+  const commitCount =
     packageCommits.length >= PACKAGE_COMMITS_PAGE ? `${PACKAGE_COMMITS_PAGE}+` : String(packageCommits.length);
-  const crossed = contractBehind ? contractEntriesBetween(notes?.entries, ourContract.contractVersion, servedContract) : [];
+  const crossed = contractBehind ? contractEntriesBetween(notes?.entries, ourContract.contractVersion, target) : [];
   const majors = (crossed ?? []).filter((entry) => entry.level === 'MAJOR');
 
+  // Counted in package commits and contract versions: the extension's own
+  // commits are not in this bundle, and counting them would rewrite the issue
+  // on every copilot merge.
   const titleParts = [];
-  // Counted in commits that touch the package: the extension's own commits are
-  // not in this bundle, and counting them would rewrite the title daily.
   if (packageBehind) {
     titleParts.push(
       packageCommits.length > 0
-        ? `copilot-ui ${packageCommitCount} package commit${packageCommitCount === '1' ? '' : 's'} behind`
-        : 'copilot-ui behind',
+        ? `copilot-ui ${commitCount} package commit${commitCount === '1' ? '' : 's'}`
+        : 'copilot-ui',
     );
   }
   if (contractBehind) {
-    titleParts.push(
-      `contract ${ourContract.contractVersion} → ${servedContract}` + (majors.length > 0 ? ' (includes MAJOR)' : ''),
-    );
+    titleParts.push(`contract ${ourContract.contractVersion} → ${target}` + (majors.length > 0 ? ' (includes MAJOR)' : ''));
   }
-  const title = `Pins behind: ${titleParts.join('; ')}`;
+  const title = `Pins behind copilot main: ${titleParts.join('; ')}`;
 
   const sections = [
-    'The Dashboard pins have fallen behind. Nothing reaches this repository until a pin-bump pull request ' +
-      'moves them; this issue asks for that decision. It is kept current by the daily Pin Staleness workflow ' +
-      '(`scripts/report-pin-staleness.mjs`) and closed by it once the pins catch up.',
+    "The Dashboard's pins have fallen behind copilot's `main`. Nothing reaches this repository until a pin-bump " +
+      'pull request moves them; this issue asks for that decision. The daily Pin Staleness workflow ' +
+      '(`scripts/report-pin-staleness.mjs`) keeps it current and closes it once the pins catch up. ' +
+      'Closing it as **not planned** records a decision not to adopt now; it stays closed until copilot moves again.',
   ];
 
   if (packageBehind) {
     const commits = packageCommits.slice(0, COMMITS_LISTED);
+    const what =
+      packageCommits.length > 0
+        ? `${commitCount} commit(s) on \`${COPILOT_BRANCH}\` since then touch \`${PACKAGE_SUBTREE}\`, ` +
+          `where ${fileCount} file(s) changed`
+        : `${fileCount} file(s) under \`${PACKAGE_SUBTREE}\` changed on \`${COPILOT_BRANCH}\` since then`;
     sections.push(
       `### \`${PACKAGE_NAME}\`\n\n` +
-        `Pinned at \`${short(pinnedSha)}\`. \`${COPILOT_REPO}@${COPILOT_BRANCH}\` is ${aheadBy} commit(s) ahead; ` +
-        `${packageCommitCount} of them touch \`${PACKAGE_SUBTREE}\`, where ${fileCount} file(s) changed ` +
+        `Pinned at \`${short(pinnedSha)}\`. ${what} ` +
         `([compare](https://github.com/${COPILOT_REPO}/compare/${pinnedSha}...${COPILOT_BRANCH})).\n\n` +
         (commits.length > 0
           ? `Latest commits touching the package:\n\n` +
@@ -180,42 +243,58 @@ export function describeStaleness({
     } else if (crossed.length === 0) {
       listing = 'No contract entries matched, though the notes were read. Check by hand.';
     } else {
-      listing = crossed.map((entry) => `- **${entry.version}** ${entry.level}: ${literal(entry.title)}`).join('\n');
+      const shown = crossed.slice(0, CONTRACT_ENTRIES_LISTED);
+      listing =
+        shown.map((entry) => `- **${entry.version}** ${entry.level}: ${literal(entry.title)}`).join('\n') +
+        (crossed.length > shown.length ? `\n- … ${olderEntries(crossed.slice(shown.length))}` : '');
     }
     sections.push(
       `### API contract\n\n` +
-        `Pinned at **${ourContract.contractVersion}**; core's \`main\` serves **${servedContract}**.` +
+        `Pinned at **${ourContract.contractVersion}**; copilot's \`${COPILOT_BRANCH}\` pins **${target}**.` +
         (majors.length > 0 ? ` ⚠️ ${majors.length} MAJOR change(s) in between.` : '') +
         `\n\n${listing}\n`,
     );
   }
 
-  const copilotContract = copilotMainContract?.contractVersion;
+  // Context, not a count: the Dashboard cannot pass copilot (pin parity).
+  if (typeof servedContract === 'string' && target && contractIsBehind(target, servedContract)) {
+    sections.push(
+      `Core's \`main\` serves **${servedContract}**, which copilot has not adopted yet. The Dashboard reaches it ` +
+        "only after copilot does: the pin-parity check holds this repository's contract pin to copilot's.",
+    );
+  }
+
   sections.push(
     '### Adopting\n\n' +
-      (packageBehind && copilotContract && copilotContract !== ourContract.contractVersion
-        ? `Moving \`${PACKAGE_NAME}\` to copilot's \`main\` also moves the contract pin to **${copilotContract}** ` +
-          '(the required pin-parity check), so the bump regenerates the API types and adapts the code that reads them.\n\n'
-        : '') +
-      '- copilot-ui: move the SHA in `package.json`, then `pnpm install`.\n' +
-      '- contract: move `ref` and `contractVersion` in `api-contract.pin.json` together, then regenerate the types.\n' +
-      '- The adopting pull request prints every contract it crosses in full (`report-contract-hop.mjs`).\n',
+      'One pull request moves both pins, because the pin-parity check requires them to agree:\n\n' +
+      `- \`${PACKAGE_NAME}\`: move the SHA in \`package.json\` to copilot's \`${COPILOT_BRANCH}\`, then \`pnpm install\`.\n` +
+      "- contract: set `ref` and `contractVersion` in `api-contract.pin.json` to copilot's at that commit, then " +
+      'regenerate the types and adapt the code that reads them.\n' +
+      '- The pull request prints every contract it crosses in full (`report-contract-hop.mjs`).\n',
   );
 
   return { stale: true, title, body: sections.map((section) => section.trimEnd()).join('\n\n') + '\n' };
 }
 
 /**
- * What to do with the open `pin-staleness` issues, given today's report.
- * Acts on the oldest open one; any others are duplicates and close against it.
+ * What to do with the `pin-staleness` issues, given today's report.
+ *
+ * Acts on the oldest open one; any others are duplicates and close against
+ * it. `lastClosed` is the most recently closed one: closed as not planned
+ * with today's title, it is a refusal of this exact state, and nothing opens.
  */
-export function planIssueAction(openIssues, report) {
+export function planIssueAction(openIssues, report, lastClosed = null) {
   const open = [...openIssues].sort((a, b) => a.number - b.number);
   const [keep, ...duplicates] = open;
   if (!report.stale) {
     return open.length > 0 ? { kind: 'close', numbers: open.map((issue) => issue.number) } : { kind: 'none' };
   }
-  if (!keep) return { kind: 'create', duplicates: [] };
+  if (!keep) {
+    if (lastClosed?.state_reason === 'not_planned' && lastClosed.title === report.title) {
+      return { kind: 'none', held: lastClosed.number };
+    }
+    return { kind: 'create', duplicates: [] };
+  }
   const unchanged = keep.title === report.title && (keep.body ?? '') === report.body;
   return {
     kind: unchanged ? 'none' : 'update',
@@ -234,31 +313,55 @@ function githubHeaders(token) {
   return headers;
 }
 
+const transient = (status) => status === 429 || status >= 500;
+
 /**
  * One run, with its I/O injected so the whole flow is testable: `fetchImpl` is
- * `fetch`, `readFile` reads a repository file, `log` prints.
+ * `fetch`, `readFile` reads a repository file, `log` prints, `sleep` waits
+ * between read retries.
  */
-export async function run({ fetchImpl = fetch, readFile, env = process.env, dryRun = false, log = console.log }) {
+export async function run({
+  fetchImpl = fetch,
+  readFile,
+  env = process.env,
+  dryRun = false,
+  log = console.log,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
   const token = env.GITHUB_TOKEN || env.GH_TOKEN;
   const repo = env.GITHUB_REPOSITORY || DEFAULT_REPO;
   const headers = githubHeaders(token);
 
   async function request(method, url, { body, accept } = {}) {
-    const response = await fetchImpl(`https://api.github.com${url}`, {
-      method,
-      headers: {
-        ...headers,
-        ...(accept ? { Accept: accept } : {}),
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) {
+    // Reads retry a transient failure; writes never do, so a retried POST
+    // cannot open a second issue.
+    const attempts = method === 'GET' ? READ_ATTEMPTS : 1;
+    let lastError;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      let response;
+      try {
+        response = await fetchImpl(`https://api.github.com${url}`, {
+          method,
+          headers: {
+            ...headers,
+            ...(accept ? { Accept: accept } : {}),
+            ...(body ? { 'Content-Type': 'application/json' } : {}),
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+      } catch (error) {
+        lastError = error;
+        if (attempt < attempts) await sleep(500 * attempt);
+        continue;
+      }
+      if (response.ok) return response;
       const error = new Error(`${method} ${url}: ${response.status} ${response.statusText}`);
       error.status = response.status;
-      throw error;
+      if (!transient(response.status) || attempt === attempts) throw error;
+      lastError = error;
+      await sleep(500 * attempt);
     }
-    return response;
+    throw lastError;
   }
   const api = async (method, url, body) => {
     const response = await request(method, url, { body });
@@ -281,44 +384,51 @@ export async function run({ fetchImpl = fetch, readFile, env = process.env, dryR
   const ourContract = JSON.parse(readFile('api-contract.pin.json'));
   const apiRepo = ourContract.repository ?? 'FaultMaven/faultmaven';
 
-  const [comparison, notes, copilotMainContract, openIssues] = await Promise.all([
+  const [comparison, notes, copilotContract, openIssues, closedIssues] = await Promise.all([
     api('GET', `/repos/${COPILOT_REPO}/compare/${pinnedSha}...${COPILOT_BRANCH}`),
     rawJson(apiRepo, 'main', 'docs/reference/api/contract-notes.json'),
+    // Required, not context: copilot's contract pin is the target the
+    // Dashboard's contract pin must reach.
     rawJson(COPILOT_REPO, COPILOT_BRANCH, 'api-contract.pin.json'),
     api('GET', `/repos/${repo}/issues?labels=${ISSUE_LABEL}&state=open&per_page=100`),
+    api('GET', `/repos/${repo}/issues?labels=${ISSUE_LABEL}&state=closed&sort=updated&direction=desc&per_page=10`),
   ]);
   const servedContract = notes?.contractVersion;
   if (typeof servedContract !== 'string') throw new Error("core's contract-notes.json names no contractVersion");
+  if (typeof copilotContract?.contractVersion !== 'string') {
+    throw new Error("copilot's api-contract.pin.json names no contractVersion");
+  }
 
-  // The package's own history since the pin, newest first: exact where the
-  // compare API's file list is capped, and scoped to what this bundle holds.
-  // The pin is an ancestor of main (the PR gate asserts it), so the merge base
-  // IS the pin, and its committer date bounds the search; the pin itself is
-  // dropped because `since` is inclusive.
-  const pinDate = comparison?.merge_base_commit?.commit?.committer?.date;
-  if (!pinDate) throw new Error('the comparison names no merge-base date for the pin');
-  const packageCommits = (
-    await api(
+  let packageCommits = [];
+  if ((comparison?.ahead_by ?? 0) > 0) {
+    const pinDate = comparison?.merge_base_commit?.commit?.committer?.date;
+    if (!pinDate) throw new Error('the comparison names no merge-base date for the pin');
+    const history = await api(
       'GET',
       `/repos/${COPILOT_REPO}/commits?sha=${COPILOT_BRANCH}&path=${encodeURIComponent(PACKAGE_SUBTREE)}` +
         `&since=${encodeURIComponent(pinDate)}&per_page=${PACKAGE_COMMITS_PAGE}`,
-    )
-  ).filter((commit) => commit.sha !== pinnedSha);
+    );
+    packageCommits = packageCommitsSincePin({ history, comparison, pinnedSha });
+  }
 
   const report = describeStaleness({
     pinnedSha,
     comparison,
     packageCommits,
     ourContract,
+    copilotContract,
     servedContract,
-    copilotMainContract,
     notes,
   });
-  const issues = openIssues.filter((issue) => !issue.pull_request);
-  const plan = planIssueAction(issues, report);
+  const notPr = (issue) => !issue.pull_request;
+  const plan = planIssueAction(openIssues.filter(notPr), report, closedIssues.filter(notPr)[0] ?? null);
 
-  log(report.stale ? report.title : 'Pins are current.');
-  log(`Planned action: ${plan.kind}${plan.number ? ` #${plan.number}` : ''}${plan.numbers ? ` #${plan.numbers.join(', #')}` : ''}`);
+  log(report.stale ? report.title : 'Pins are current with copilot main.');
+  log(
+    `Planned action: ${plan.kind}${plan.number ? ` #${plan.number}` : ''}` +
+      `${plan.numbers ? ` #${plan.numbers.join(', #')}` : ''}` +
+      `${plan.held ? ` (held: #${plan.held} was closed as not planned for this state)` : ''}`,
+  );
   if (dryRun) {
     if (report.stale) log(`\n${report.body}`);
     return plan;
@@ -349,8 +459,8 @@ export async function run({ fetchImpl = fetch, readFile, env = process.env, dryR
       await write(`comment on #${number}`, () =>
         api('POST', `/repos/${repo}/issues/${number}/comments`, {
           body:
-            `The pins are current: \`${PACKAGE_NAME}\` at \`${short(pinnedSha)}\` and contract ` +
-            `${ourContract.contractVersion}. Closed by the Pin Staleness workflow.`,
+            `The pins are current with copilot \`${COPILOT_BRANCH}\`: \`${PACKAGE_NAME}\` at \`${short(pinnedSha)}\` ` +
+            `and contract ${ourContract.contractVersion}. Closed by the Pin Staleness workflow.`,
         }),
       );
     }
@@ -364,7 +474,7 @@ export async function run({ fetchImpl = fetch, readFile, env = process.env, dryR
         await api('POST', `/repos/${repo}/labels`, {
           name: ISSUE_LABEL,
           color: 'fbca04',
-          description: 'A Dashboard pin (copilot-ui or API contract) is behind its source',
+          description: "A Dashboard pin (copilot-ui or API contract) is behind copilot's main",
         });
       } catch (error) {
         if (error.status !== 422) throw error; // 422: the label exists already.
