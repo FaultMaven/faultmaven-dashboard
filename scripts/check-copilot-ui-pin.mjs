@@ -60,11 +60,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { isExactVersion } from './lib/exact-version.mjs';
+import { COPILOT_BRANCH, COPILOT_REPO, PACKAGE_SUBTREE, packageChanges } from './lib/pin-staleness.mjs';
 
 const PACKAGE_NAME = '@faultmaven/copilot-ui';
-const COPILOT_REPO = 'FaultMaven/faultmaven-copilot';
-const COPILOT_BRANCH = 'main';
-const PACKAGE_SUBTREE = 'packages/copilot-ui/';
 
 const failures = [];
 function fail(message) {
@@ -195,12 +193,12 @@ if (comparison.status === 'behind' || comparison.status === 'diverged') {
   );
 }
 
-// Narrowed to the package path: nothing else in that repository is this
-// repository's business, and the whole-diff view was both noisier and subject
-// to GitHub's 300-file truncation.
-const changedInPackage = (comparison.files ?? []).filter((file) =>
-  (file.filename ?? '').startsWith(PACKAGE_SUBTREE),
-);
+// Narrowed to the package path (`packageChanges`, shared with the daily
+// staleness report): nothing else in that repository is this repository's
+// business. Narrowing does not undo GitHub's 300-file cap on the comparison,
+// so this NOTE can miss package changes behind a large unrelated diff; the
+// daily report also reads the package's own commit history for that reason.
+const changedInPackage = packageChanges(comparison);
 
 if (changedInPackage.length > 0) {
   const commits = (comparison.commits ?? []).slice(-5).reverse();
@@ -211,7 +209,8 @@ if (changedInPackage.length > 0) {
         .map((c) => `      ${c.sha.slice(0, 12)} ${c.commit.message.split('\n')[0]}`)
         .join('\n') +
       `\n      Adopt by moving the SHA in package.json and re-running \`pnpm install\`.` +
-      `\n      Advisory: staleness is a decision to take, not a reason to fail this PR.\n`,
+      `\n      Advisory: staleness is a decision to take, not a reason to fail this PR.` +
+      `\n      The daily Pin Staleness workflow tracks it in one issue (label \`pin-staleness\`).\n`,
   );
 }
 
