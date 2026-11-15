@@ -195,8 +195,9 @@ if (comparison.status === 'behind' || comparison.status === 'diverged') {
 
 // Narrowed to the package path (`packageChanges`, shared with the daily
 // staleness report): nothing else in that repository is this repository's
-// business, and the whole-diff view was both noisier and subject to GitHub's
-// 300-file truncation.
+// business. Narrowing does not undo GitHub's 300-file cap on the comparison,
+// so this NOTE can miss package changes behind a large unrelated diff; the
+// daily report also reads the package's own commit history for that reason.
 const changedInPackage = packageChanges(comparison);
 
 if (changedInPackage.length > 0) {

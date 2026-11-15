@@ -42,8 +42,10 @@ const DEFAULT_REPO = 'FaultMaven/faultmaven-dashboard';
 const PACKAGE_NAME = '@faultmaven/copilot-ui';
 /** Commit subjects listed in the body; the compare link has the rest. */
 const COMMITS_LISTED = 10;
-/** GitHub's compare API returns at most this many files. */
+/** GitHub's compare API returns at most this many files, across the whole repository. */
 const COMPARE_FILE_CAP = 300;
+/** One page of the package's commit history; a full page reads as "N+". */
+const PACKAGE_COMMITS_PAGE = 100;
 
 /** `3.7.0` → `[3, 7, 0]`, or null: ordering is numeric, never lexical. */
 function parseVersion(version) {
@@ -74,28 +76,74 @@ const short = (sha) => String(sha).slice(0, 12);
 const oneLine = (text) => String(text ?? '').split('\n')[0].replace(/\s+/g, ' ').trim();
 
 /**
+ * Text from another repository, shown literally. Copilot's commit subjects end
+ * in `(#412)` and core's contract titles cite `#2806`; written plainly into a
+ * Dashboard issue, GitHub links those to THIS repository's #412 (an unrelated
+ * item, which then shows "mentioned this") and notifies any `@name`. A code
+ * span renders neither. Double backticks, because the text has single ones.
+ */
+const literal = (text) => `\`\` ${oneLine(text).replace(/``+/g, '`')} \`\``;
+
+/**
+ * Whether core serves a NEWER contract than the pin. A pin ahead of core (an
+ * early adoption, a revert on core) is not behind. Versions that do not parse
+ * count as behind when they differ, so the issue asks a human to look.
+ */
+function contractIsBehind(pinned, served) {
+  const lo = parseVersion(pinned);
+  const hi = parseVersion(served);
+  if (!lo || !hi) return pinned !== served;
+  return compareVersions(hi, lo) > 0;
+}
+
+/**
  * Whether the pins are behind, and the issue that says so.
  *
  * @param pinnedSha            the copilot commit `package.json` pins
  * @param comparison           GitHub `compare/<pinnedSha>...main` on the copilot repository
+ * @param packageCommits       copilot `main`'s commits touching the package since the pin, newest first
  * @param ourContract          this repository's `api-contract.pin.json`
  * @param servedContract       the contract version core's `main` serves
  * @param copilotMainContract  copilot's `api-contract.pin.json` at its `main`
  * @param notes                core's `contract-notes.json` at `main` (null if unread)
  */
-export function describeStaleness({ pinnedSha, comparison, ourContract, servedContract, copilotMainContract, notes }) {
+export function describeStaleness({
+  pinnedSha,
+  comparison,
+  packageCommits = [],
+  ourContract,
+  servedContract,
+  copilotMainContract,
+  notes,
+}) {
   const changed = packageChanges(comparison);
-  const packageBehind = changed.length > 0;
-  const contractBehind = servedContract !== ourContract.contractVersion;
+  // The compare API lists at most 300 files for the whole repository, so a
+  // big change elsewhere can push every package file off the list. The
+  // package's own commit history is the second signal; and a truncated list
+  // with commits ahead is read as behind, never as current — reading it as
+  // current would close the issue on a pin that is behind.
+  const truncated = (comparison?.files ?? []).length >= COMPARE_FILE_CAP && (comparison?.ahead_by ?? 0) > 0;
+  const packageBehind = changed.length > 0 || packageCommits.length > 0 || truncated;
+  const contractBehind = contractIsBehind(ourContract.contractVersion, servedContract);
   if (!packageBehind && !contractBehind) return { stale: false, title: '', body: '' };
 
-  const commitCount = comparison?.ahead_by ?? (comparison?.commits ?? []).length;
-  const fileCount = changed.length >= COMPARE_FILE_CAP ? `${COMPARE_FILE_CAP}+` : String(changed.length);
+  const aheadBy = comparison?.ahead_by ?? (comparison?.commits ?? []).length;
+  const fileCount = truncated ? `at least ${changed.length}` : String(changed.length);
+  const packageCommitCount =
+    packageCommits.length >= PACKAGE_COMMITS_PAGE ? `${PACKAGE_COMMITS_PAGE}+` : String(packageCommits.length);
   const crossed = contractBehind ? contractEntriesBetween(notes?.entries, ourContract.contractVersion, servedContract) : [];
   const majors = (crossed ?? []).filter((entry) => entry.level === 'MAJOR');
 
   const titleParts = [];
-  if (packageBehind) titleParts.push(`copilot-ui ${commitCount} commit${commitCount === 1 ? '' : 's'} behind`);
+  // Counted in commits that touch the package: the extension's own commits are
+  // not in this bundle, and counting them would rewrite the title daily.
+  if (packageBehind) {
+    titleParts.push(
+      packageCommits.length > 0
+        ? `copilot-ui ${packageCommitCount} package commit${packageCommitCount === '1' ? '' : 's'} behind`
+        : 'copilot-ui behind',
+    );
+  }
   if (contractBehind) {
     titleParts.push(
       `contract ${ourContract.contractVersion} → ${servedContract}` + (majors.length > 0 ? ' (includes MAJOR)' : ''),
@@ -110,14 +158,15 @@ export function describeStaleness({ pinnedSha, comparison, ourContract, servedCo
   ];
 
   if (packageBehind) {
-    const commits = (comparison?.commits ?? []).slice(-COMMITS_LISTED).reverse();
+    const commits = packageCommits.slice(0, COMMITS_LISTED);
     sections.push(
       `### \`${PACKAGE_NAME}\`\n\n` +
-        `Pinned at \`${short(pinnedSha)}\`. \`${COPILOT_REPO}@${COPILOT_BRANCH}\` is ${commitCount} commit(s) ahead, ` +
-        `and ${fileCount} file(s) under \`${PACKAGE_SUBTREE}\` changed ` +
+        `Pinned at \`${short(pinnedSha)}\`. \`${COPILOT_REPO}@${COPILOT_BRANCH}\` is ${aheadBy} commit(s) ahead; ` +
+        `${packageCommitCount} of them touch \`${PACKAGE_SUBTREE}\`, where ${fileCount} file(s) changed ` +
         `([compare](https://github.com/${COPILOT_REPO}/compare/${pinnedSha}...${COPILOT_BRANCH})).\n\n` +
         (commits.length > 0
-          ? `Latest commits:\n\n${commits.map((c) => `- \`${short(c.sha)}\` ${oneLine(c.commit?.message)}`).join('\n')}\n`
+          ? `Latest commits touching the package:\n\n` +
+            `${commits.map((c) => `- \`${short(c.sha)}\` ${literal(c.commit?.message)}`).join('\n')}\n`
           : ''),
     );
   }
@@ -131,7 +180,7 @@ export function describeStaleness({ pinnedSha, comparison, ourContract, servedCo
     } else if (crossed.length === 0) {
       listing = 'No contract entries matched, though the notes were read. Check by hand.';
     } else {
-      listing = crossed.map((entry) => `- **${entry.version}** ${entry.level}: ${oneLine(entry.title)}`).join('\n');
+      listing = crossed.map((entry) => `- **${entry.version}** ${entry.level}: ${literal(entry.title)}`).join('\n');
     }
     sections.push(
       `### API contract\n\n` +
@@ -194,10 +243,14 @@ export async function run({ fetchImpl = fetch, readFile, env = process.env, dryR
   const repo = env.GITHUB_REPOSITORY || DEFAULT_REPO;
   const headers = githubHeaders(token);
 
-  async function api(method, url, body) {
-    const response = await fetchImpl(url.startsWith('http') ? url : `https://api.github.com${url}`, {
+  async function request(method, url, { body, accept } = {}) {
+    const response = await fetchImpl(`https://api.github.com${url}`, {
       method,
-      headers: body ? { ...headers, 'Content-Type': 'application/json' } : headers,
+      headers: {
+        ...headers,
+        ...(accept ? { Accept: accept } : {}),
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!response.ok) {
@@ -205,12 +258,20 @@ export async function run({ fetchImpl = fetch, readFile, env = process.env, dryR
       error.status = response.status;
       throw error;
     }
-    return response.status === 204 ? null : response.json();
+    return response;
   }
-  const raw = (repoName, ref, file) =>
-    api('GET', `/repos/${repoName}/contents/${file}?ref=${encodeURIComponent(ref)}`).then((meta) =>
-      JSON.parse(Buffer.from(meta.content, 'base64').toString('utf8')),
-    );
+  const api = async (method, url, body) => {
+    const response = await request(method, url, { body });
+    return response.status === 204 ? null : response.json();
+  };
+  // The raw media type, not the base64 `content` field: the contents API leaves
+  // `content` empty for a file over 1 MB, and contract-notes.json only grows.
+  const rawJson = async (repoName, ref, file) => {
+    const response = await request('GET', `/repos/${repoName}/contents/${file}?ref=${encodeURIComponent(ref)}`, {
+      accept: 'application/vnd.github.raw',
+    });
+    return JSON.parse(await response.text());
+  };
 
   // Every read first. Any failure throws here, before an issue is touched.
   const pkg = JSON.parse(readFile('package.json'));
@@ -222,14 +283,37 @@ export async function run({ fetchImpl = fetch, readFile, env = process.env, dryR
 
   const [comparison, notes, copilotMainContract, openIssues] = await Promise.all([
     api('GET', `/repos/${COPILOT_REPO}/compare/${pinnedSha}...${COPILOT_BRANCH}`),
-    raw(apiRepo, 'main', 'docs/reference/api/contract-notes.json'),
-    raw(COPILOT_REPO, COPILOT_BRANCH, 'api-contract.pin.json'),
+    rawJson(apiRepo, 'main', 'docs/reference/api/contract-notes.json'),
+    rawJson(COPILOT_REPO, COPILOT_BRANCH, 'api-contract.pin.json'),
     api('GET', `/repos/${repo}/issues?labels=${ISSUE_LABEL}&state=open&per_page=100`),
   ]);
   const servedContract = notes?.contractVersion;
   if (typeof servedContract !== 'string') throw new Error("core's contract-notes.json names no contractVersion");
 
-  const report = describeStaleness({ pinnedSha, comparison, ourContract, servedContract, copilotMainContract, notes });
+  // The package's own history since the pin, newest first: exact where the
+  // compare API's file list is capped, and scoped to what this bundle holds.
+  // The pin is an ancestor of main (the PR gate asserts it), so the merge base
+  // IS the pin, and its committer date bounds the search; the pin itself is
+  // dropped because `since` is inclusive.
+  const pinDate = comparison?.merge_base_commit?.commit?.committer?.date;
+  if (!pinDate) throw new Error('the comparison names no merge-base date for the pin');
+  const packageCommits = (
+    await api(
+      'GET',
+      `/repos/${COPILOT_REPO}/commits?sha=${COPILOT_BRANCH}&path=${encodeURIComponent(PACKAGE_SUBTREE)}` +
+        `&since=${encodeURIComponent(pinDate)}&per_page=${PACKAGE_COMMITS_PAGE}`,
+    )
+  ).filter((commit) => commit.sha !== pinnedSha);
+
+  const report = describeStaleness({
+    pinnedSha,
+    comparison,
+    packageCommits,
+    ourContract,
+    servedContract,
+    copilotMainContract,
+    notes,
+  });
   const issues = openIssues.filter((issue) => !issue.pull_request);
   const plan = planIssueAction(issues, report);
 
@@ -240,39 +324,71 @@ export async function run({ fetchImpl = fetch, readFile, env = process.env, dryR
     return plan;
   }
 
+  // Writes from here. A failure names what was done before it, so the log
+  // never says "nothing was written" after something was.
+  const done = [];
+  const write = async (what, call) => {
+    try {
+      const result = await call();
+      done.push(what);
+      return result;
+    } catch (error) {
+      error.phase = 'write';
+      error.message = `${what} failed (${error.message}); done before it: ${done.length > 0 ? done.join(', ') : 'nothing'}`;
+      throw error;
+    }
+  };
+
   if (plan.kind === 'close') {
     for (const number of plan.numbers) {
-      await api('POST', `/repos/${repo}/issues/${number}/comments`, {
-        body:
-          `The pins are current: \`${PACKAGE_NAME}\` at \`${short(pinnedSha)}\` and contract ` +
-          `${ourContract.contractVersion}. Closed by the Pin Staleness workflow.`,
-      });
-      await api('PATCH', `/repos/${repo}/issues/${number}`, { state: 'closed', state_reason: 'completed' });
+      // Close, then comment: a comment that fails leaves a closed issue the next
+      // run does not touch, where the reverse order would repeat the comment.
+      await write(`close #${number}`, () =>
+        api('PATCH', `/repos/${repo}/issues/${number}`, { state: 'closed', state_reason: 'completed' }),
+      );
+      await write(`comment on #${number}`, () =>
+        api('POST', `/repos/${repo}/issues/${number}/comments`, {
+          body:
+            `The pins are current: \`${PACKAGE_NAME}\` at \`${short(pinnedSha)}\` and contract ` +
+            `${ourContract.contractVersion}. Closed by the Pin Staleness workflow.`,
+        }),
+      );
     }
     return plan;
   }
 
   let number = plan.number;
   if (plan.kind === 'create') {
-    try {
-      await api('POST', `/repos/${repo}/labels`, {
-        name: ISSUE_LABEL,
-        color: 'fbca04',
-        description: 'A Dashboard pin (copilot-ui or API contract) is behind its source',
-      });
-    } catch (error) {
-      if (error.status !== 422) throw error; // 422: the label exists already.
-    }
-    number = (await api('POST', `/repos/${repo}/issues`, { title: report.title, body: report.body, labels: [ISSUE_LABEL] }))
-      .number;
+    await write('create the label', async () => {
+      try {
+        await api('POST', `/repos/${repo}/labels`, {
+          name: ISSUE_LABEL,
+          color: 'fbca04',
+          description: 'A Dashboard pin (copilot-ui or API contract) is behind its source',
+        });
+      } catch (error) {
+        if (error.status !== 422) throw error; // 422: the label exists already.
+      }
+    });
+    number = (
+      await write('open the issue', () =>
+        api('POST', `/repos/${repo}/issues`, { title: report.title, body: report.body, labels: [ISSUE_LABEL] }),
+      )
+    ).number;
     log(`Opened #${number}.`);
   } else if (plan.kind === 'update') {
-    await api('PATCH', `/repos/${repo}/issues/${number}`, { title: report.title, body: report.body });
+    await write(`update #${number}`, () =>
+      api('PATCH', `/repos/${repo}/issues/${number}`, { title: report.title, body: report.body }),
+    );
     log(`Updated #${number}.`);
   }
   for (const duplicate of plan.duplicates ?? []) {
-    await api('POST', `/repos/${repo}/issues/${duplicate}/comments`, { body: `Duplicate of #${number}.` });
-    await api('PATCH', `/repos/${repo}/issues/${duplicate}`, { state: 'closed', state_reason: 'not_planned' });
+    await write(`close duplicate #${duplicate}`, () =>
+      api('PATCH', `/repos/${repo}/issues/${duplicate}`, { state: 'closed', state_reason: 'not_planned' }),
+    );
+    await write(`comment on duplicate #${duplicate}`, () =>
+      api('POST', `/repos/${repo}/issues/${duplicate}/comments`, { body: `Duplicate of #${number}.` }),
+    );
   }
   return plan;
 }
@@ -286,7 +402,11 @@ if (invokedDirectly) {
     readFile: (file) => readFileSync(path.join(root, file), 'utf8'),
     dryRun: process.argv.includes('--dry-run'),
   }).catch((error) => {
-    console.error(`FAIL: ${error.message}\n    The pins could not be read, so no issue was opened, updated or closed.`);
+    console.error(
+      error.phase === 'write'
+        ? `FAIL: ${error.message}`
+        : `FAIL: ${error.message}\n    The pins could not be read, so no issue was opened, updated or closed.`,
+    );
     process.exit(1);
   });
 }
