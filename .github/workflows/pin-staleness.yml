@@ -1,0 +1,56 @@
+name: Pin Staleness
+
+# =============================================================================
+# ONE ISSUE WHILE THE PINS ARE BEHIND
+# =============================================================================
+# The copilot-ui pin (package.json) and the API contract pin
+# (api-contract.pin.json) move only by a pin-bump pull request. The PR gate
+# (ci.yml `copilot-ui-pin`) never fails on staleness by design, so its advisory
+# was a NOTE in a green job's log that nobody read. This keeps one open issue,
+# labelled `pin-staleness`, in step with the pins: opened when they fall
+# behind, rewritten daily while they stay behind, closed when they catch up.
+# See scripts/report-pin-staleness.mjs.
+#
+# A run that cannot read the pins fails and leaves the issue as it was. On a
+# pull request that edits this workflow or the script it runs with --dry-run:
+# it prints the planned action and writes nothing.
+#
+# GitHub disables a public repository's schedules after 60 days without
+# activity; re-enable it from the Actions tab.
+# =============================================================================
+
+on:
+  schedule:
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/pin-staleness.yml'
+      - 'scripts/report-pin-staleness.mjs'
+      - 'scripts/lib/pin-staleness.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    name: Pin Staleness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm and Node
+        uses: FaultMaven/ci-actions/setup-js@6d03d98637a9a4ae9d0d57580408c3299f5d5c0f # v1.3.1
+        with:
+          install: 'false'
+
+      - name: Report the pins in the tracking issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
+        run: node scripts/report-pin-staleness.mjs $DRY_RUN
