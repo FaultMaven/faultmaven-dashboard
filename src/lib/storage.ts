@@ -52,6 +52,13 @@ export interface StoredRead {
    */
   present: boolean;
   value: unknown;
+  /**
+   * Reading THREW (the `localStorage` getter or `getItem`), so nothing is known
+   * about the key; `error` is what was thrown. Not set where `localStorage`
+   * does not exist at all: there, an absent key is a real absence.
+   */
+  failed: boolean;
+  error?: unknown;
 }
 
 /**
@@ -73,14 +80,8 @@ export interface StoredRead {
 export function createPrefixedLocalStore(prefix: string) {
   const physicalKey = (key: string) => `${prefix}${key}`;
 
-  /** Local storage this browser actually offers, or null (private mode, blocked). */
-  const store = (): Storage | null => {
-    try {
-      return typeof localStorage === 'undefined' ? null : localStorage;
-    } catch {
-      return null;
-    }
-  };
+  /** Local storage, or null where none exists; a throwing getter reaches each caller's try. */
+  const store = (): Storage | null => (typeof localStorage === 'undefined' ? null : localStorage);
 
   /**
    * Decode one raw stored string.
@@ -91,12 +92,12 @@ export function createPrefixedLocalStore(prefix: string) {
    */
   const decode = (raw: string | null): StoredRead =>
     raw === null
-      ? { present: false, value: undefined }
+      ? { present: false, value: undefined, failed: false }
       : (() => {
           try {
-            return { present: true, value: JSON.parse(raw) as unknown };
+            return { present: true, value: JSON.parse(raw) as unknown, failed: false };
           } catch {
-            return { present: true, value: raw };
+            return { present: true, value: raw, failed: false };
           }
         })();
 
@@ -105,8 +106,8 @@ export function createPrefixedLocalStore(prefix: string) {
     decode,
 
     read(key: string): StoredRead {
-      // The CALL is guarded, not only the property access. `store()` catches a
-      // `localStorage` that throws on access (a blocked origin), but `getItem`
+      // The CALL is guarded, not only the property access: a `localStorage`
+      // that throws on access (a blocked origin) is caught here, and `getItem`
       // itself can throw too — Safari in private mode, a hardened profile, an
       // extension that has replaced it — and `write` and `remove` below have
       // always been wrapped while this was not. A read that throws propagates
@@ -114,11 +115,15 @@ export function createPrefixedLocalStore(prefix: string) {
       // an exception: `prefersExtensionForChat()` is called by
       // `resolvePostSignInLanding` OUTSIDE its own try, so a throw there
       // rejected the sign-in landing instead of falling back to `/cases`.
+      // So it still never throws: the throw is reported as `failed`, which
+      // those callers ignore and the session adapter below does not.
       try {
         const s = store();
-        return s ? decode(s.getItem(physicalKey(key))) : { present: false, value: undefined };
-      } catch {
-        return { present: false, value: undefined };
+        return s
+          ? decode(s.getItem(physicalKey(key)))
+          : { present: false, value: undefined, failed: false };
+      } catch (error: unknown) {
+        return { present: false, value: undefined, failed: true, error };
       }
     },
 
@@ -147,10 +152,18 @@ export function createPrefixedLocalStore(prefix: string) {
 export const authLocalStore = createPrefixedLocalStore(STORAGE_KEY_PREFIX);
 
 class LocalStorageAdapter {
+  /**
+   * Rejects when a key could not be read. Resolving `{}` instead would report
+   * the session absent, and AuthManager would sign the user out on a storage
+   * hiccup (faultmaven#2346).
+   */
   async get(keys: string[]): Promise<StorageData> {
     const result: StorageData = {};
     for (const key of keys) {
-      const { present, value } = authLocalStore.read(key);
+      const { present, value, failed, error } = authLocalStore.read(key);
+      if (failed) {
+        throw Object.assign(new Error(`localStorage read failed for "${key}"`), { cause: error });
+      }
       if (present) result[key] = value as StorageData[string];
     }
     return result;
