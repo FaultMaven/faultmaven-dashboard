@@ -152,6 +152,20 @@ describe('a renewal whose storage read fails', () => {
   });
 });
 
+describe('a legacy row whose later reads fail', () => {
+  it('still clears and ends the IdP session, from the row that decided the clear', async () => {
+    const { manager, cleared } = await signedIn({ ...EXPIRED, refresh_token: undefined });
+    failReads((n) => n > 2);
+
+    expect(await manager.refreshTokens()).toBeNull();
+
+    expect(data.has(ROW)).toBe(false);
+    expect(cleared).toHaveBeenCalledTimes(1);
+    expect(assignSpy).toHaveBeenCalledWith('https://idp.example.com/logout');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe('getAccessTokenFor on a failed read', () => {
   it('is no token, not another account', async () => {
     const { manager } = await signedIn(TEST_AUTH_STATE);
