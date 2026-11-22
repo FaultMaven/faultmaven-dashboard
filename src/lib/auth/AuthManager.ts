@@ -510,11 +510,14 @@ export class AuthManager {
    *
    * Navigation is last and unconditional-on-success: local state is cleared
    * first, so a refused or missing URL still leaves the user signed out here.
+   *
+   * The URL comes from `held`, the row that decided the clear, when the caller
+   * has one: a re-read here can fail and leave the IdP session alive.
    */
-  private async clearAuthStateAndEndIdpSession(): Promise<void> {
-    let idpLogoutUrl: string | null = null;
+  private async clearAuthStateAndEndIdpSession(held?: AuthState): Promise<void> {
+    let idpLogoutUrl: string | null = held?.idp_logout_url ?? null;
     try {
-      idpLogoutUrl = await this.readState().then((s) => s?.idp_logout_url ?? null);
+      if (!held) idpLogoutUrl = await this.readState().then((s) => s?.idp_logout_url ?? null);
     } catch {
       // Reading is best-effort; the clear below is not.
     }
@@ -607,7 +610,7 @@ export class AuthManager {
     }
 
     // No refresh token (legacy session): nothing we can do — log out.
-    await this.clearAuthStateAndEndIdpSession();
+    await this.clearAuthStateAndEndIdpSession(authState);
     return null;
   }
 
@@ -717,7 +720,7 @@ export class AuthManager {
           return null;
         }
       }
-      await this.clearAuthStateAndEndIdpSession();
+      await this.clearAuthStateAndEndIdpSession(authState ?? undefined);
       return null;
     }
 
@@ -859,7 +862,7 @@ export class AuthManager {
       return current.access_token || null;
     }
 
-    await this.clearAuthStateAndEndIdpSession();
+    await this.clearAuthStateAndEndIdpSession(sentWith);
     return null;
   }
 
@@ -872,28 +875,30 @@ export class AuthManager {
    * with no value. That is what a cross-tab account switch used to do: this
    * tab's watch saw B, ended this tab, and took B's session with it (#212).
    * The listeners are told either way, because THIS tab's session is over.
-   * A row that could not be read has no known owner, so it is left in place.
+   * Only a READABLE row of another account is kept: a row that could not be
+   * read is removed, since keeping it would strand this tab's live session.
    */
   async clearAuthState(): Promise<void> {
     const browser = getBrowserStorage();
-    if (browser?.storage) {
-      const { readable, state } = await this.readStoredRow();
-      if (readable && !this.belongsToAnotherUser(state)) {
-        await browser.storage.local.remove(['authState']);
-      }
+    if (browser?.storage && !this.belongsToAnotherUser(await this.readStoredState())) {
+      await browser.storage.local.remove(['authState']);
     }
     // Also drop the bridge copy so a dashboard logout / definitive refresh
     // rejection can't leave a revoked token for the bridge to re-forward (#109).
-    // The same rule: a copy that is another account's is theirs.
+    // The same rule: a copy that is another account's is theirs, and a copy
+    // that cannot be read is removed.
     try {
-      if (
-        typeof localStorage !== 'undefined' &&
+      if (typeof localStorage !== 'undefined') {
         // The bridge copy is JSON of the same shape the adapter stores, so the
         // cross-tab decoder reads it — one reader, and a malformed copy reads
         // as no one's and is removed rather than kept.
-        !this.belongsToAnotherUser(decodeCrossTabAuthState(localStorage.getItem('fm_auth_state')))
-      ) {
-        localStorage.removeItem('fm_auth_state');
+        let copy: AuthState | null = null;
+        try {
+          copy = decodeCrossTabAuthState(localStorage.getItem('fm_auth_state'));
+        } catch {
+          // Unreadable: removed, as the session row is.
+        }
+        if (!this.belongsToAnotherUser(copy)) localStorage.removeItem('fm_auth_state');
       }
     } catch {
       // localStorage unavailable/blocked — non-fatal.
@@ -926,7 +931,9 @@ export class AuthManager {
    * `userId`'s: unknown is never the same user.
    */
   async getAccessTokenFor(userId: string): Promise<CredentialFor> {
-    const own = await this.readState();
+    const { readable, state: own } = await this.readOwnRow();
+    // A failed read is not another account (faultmaven#2346).
+    if (!readable) return { kind: 'none' };
     if (own && own.user?.user_id === userId) {
       const token = await this.usableTokenOf(own);
       return token ? { kind: 'token', token } : { kind: 'none' };
@@ -967,7 +974,7 @@ export class AuthManager {
       return this.refreshTokens();
     }
 
-    await this.clearAuthStateAndEndIdpSession();
+    await this.clearAuthStateAndEndIdpSession(authState);
     return null;
   }
 }

@@ -54,18 +54,38 @@ describe('a read that fails (faultmaven#2346)', () => {
   it('read reports it as failed, and never throws', () => {
     vi.stubGlobal('localStorage', throwingStorage);
     try {
-      expect(authLocalStore.read('authState')).toEqual({ present: false, value: undefined, failed: true });
+      expect(authLocalStore.read('authState')).toMatchObject({ present: false, failed: true });
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it('get rejects rather than reporting the key absent', async () => {
+  it('get rejects rather than reporting the key absent, carrying the original error', async () => {
     vi.stubGlobal('localStorage', throwingStorage);
     try {
-      await expect(storage.local.get(['authState'])).rejects.toThrow(/read failed/);
+      const rejection = await storage.local.get(['authState']).catch((e: unknown) => e);
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toMatch(/read failed/);
+      expect((rejection as Error & { cause?: unknown }).cause).toBeInstanceOf(DOMException);
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  it('a localStorage getter that throws is a failed read, not an absent key', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+    try {
+      expect(authLocalStore.read('authState')).toMatchObject({ present: false, failed: true });
+      await expect(storage.local.get(['authState'])).rejects.toThrow(/read failed/);
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'localStorage', original);
+      else Reflect.deleteProperty(globalThis, 'localStorage');
     }
   });
 
