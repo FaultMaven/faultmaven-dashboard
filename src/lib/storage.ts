@@ -52,6 +52,15 @@ export interface StoredRead {
    */
   present: boolean;
   value: unknown;
+  /**
+   * The store was there and reading it THREW: nothing is known about the key.
+   *
+   * Not set for a browser that offers no `localStorage` at all (private mode,
+   * a blocked origin): such a browser never stored anything, so its absent key
+   * is a real absence. A caller that turns "nothing stored" into a decision —
+   * the session adapter below — must not take a failed read for one.
+   */
+  failed: boolean;
 }
 
 /**
@@ -91,12 +100,12 @@ export function createPrefixedLocalStore(prefix: string) {
    */
   const decode = (raw: string | null): StoredRead =>
     raw === null
-      ? { present: false, value: undefined }
+      ? { present: false, value: undefined, failed: false }
       : (() => {
           try {
-            return { present: true, value: JSON.parse(raw) as unknown };
+            return { present: true, value: JSON.parse(raw) as unknown, failed: false };
           } catch {
-            return { present: true, value: raw };
+            return { present: true, value: raw, failed: false };
           }
         })();
 
@@ -114,11 +123,15 @@ export function createPrefixedLocalStore(prefix: string) {
       // an exception: `prefersExtensionForChat()` is called by
       // `resolvePostSignInLanding` OUTSIDE its own try, so a throw there
       // rejected the sign-in landing instead of falling back to `/cases`.
+      // So it still never throws: the throw is reported as `failed`, which
+      // those callers ignore and the session adapter below does not.
       try {
         const s = store();
-        return s ? decode(s.getItem(physicalKey(key))) : { present: false, value: undefined };
+        return s
+          ? decode(s.getItem(physicalKey(key)))
+          : { present: false, value: undefined, failed: false };
       } catch {
-        return { present: false, value: undefined };
+        return { present: false, value: undefined, failed: true };
       }
     },
 
@@ -147,10 +160,16 @@ export function createPrefixedLocalStore(prefix: string) {
 export const authLocalStore = createPrefixedLocalStore(STORAGE_KEY_PREFIX);
 
 class LocalStorageAdapter {
+  /**
+   * Rejects when a key could not be read. Resolving `{}` instead would report
+   * the session absent, and AuthManager would sign the user out on a storage
+   * hiccup (faultmaven#2346).
+   */
   async get(keys: string[]): Promise<StorageData> {
     const result: StorageData = {};
     for (const key of keys) {
-      const { present, value } = authLocalStore.read(key);
+      const { present, value, failed } = authLocalStore.read(key);
+      if (failed) throw new Error(`localStorage read failed for "${key}"`);
       if (present) result[key] = value as StorageData[string];
     }
     return result;

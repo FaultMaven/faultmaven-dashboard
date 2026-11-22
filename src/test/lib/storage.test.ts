@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { storage } from '../../lib/storage';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { authLocalStore, storage } from '../../lib/storage';
 
 describe('LocalStorageAdapter round-trip', () => {
   beforeEach(() => localStorage.clear());
@@ -35,5 +35,53 @@ describe('LocalStorageAdapter round-trip', () => {
   it('omits keys that are absent', async () => {
     const out = await storage.local.get(['missing']);
     expect(out).toEqual({});
+  });
+});
+
+describe('a read that fails (faultmaven#2346)', () => {
+  // The WHOLE object is stubbed: happy-dom ignores writes to `localStorage.getItem`.
+  const throwingStorage = {
+    getItem() {
+      throw new DOMException('The operation is insecure.', 'SecurityError');
+    },
+    setItem() {},
+    removeItem() {},
+    clear() {},
+    key: () => null,
+    length: 0,
+  };
+
+  it('read reports it as failed, and never throws', () => {
+    vi.stubGlobal('localStorage', throwingStorage);
+    try {
+      expect(authLocalStore.read('authState')).toEqual({ present: false, value: undefined, failed: true });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('get rejects rather than reporting the key absent', async () => {
+    vi.stubGlobal('localStorage', throwingStorage);
+    try {
+      await expect(storage.local.get(['authState'])).rejects.toThrow(/read failed/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('an absent key is not a failed read', async () => {
+    localStorage.clear();
+    expect(authLocalStore.read('missing')).toEqual({ present: false, value: undefined, failed: false });
+    await expect(storage.local.get(['missing'])).resolves.toEqual({});
+  });
+
+  it('a browser with no localStorage reads as absent, not failed', async () => {
+    vi.stubGlobal('localStorage', undefined);
+    try {
+      expect(authLocalStore.read('authState')).toEqual({ present: false, value: undefined, failed: false });
+      await expect(storage.local.get(['authState'])).resolves.toEqual({});
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

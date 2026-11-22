@@ -696,20 +696,26 @@ export class AuthManager {
   }
 
   private async doRefresh(): Promise<string | null> {
-    const authState = await this.readState();
+    const { readable, state: authState } = await this.readOwnRow();
+    if (!readable) {
+      // Storage could not be read, which decides nothing about the session:
+      // renew nothing, clear nothing, and report the attempt failed, as a
+      // network failure is. The session stays for the next attempt (faultmaven#2346).
+      return null;
+    }
     if (!authState?.refresh_token) {
       // Not a dead session: another tab signed a different account in, and its
       // event has not reached this tab yet. End this tab the way that event
       // will — as a sign-out decided elsewhere, which records no return path —
       // rather than as a session that died, which would record this account's
       // URL for whoever signs in next, and leave the event nothing to act on.
-      if (
-        !authState &&
-        this.identity.kind === 'signedIn' &&
-        this.belongsToAnotherUser(await this.readStoredState())
-      ) {
-        this.signOutFromAnotherTab();
-        return null;
+      if (!authState && this.identity.kind === 'signedIn') {
+        const stored = await this.readStoredRow();
+        if (!stored.readable) return null;
+        if (this.belongsToAnotherUser(stored.state)) {
+          this.signOutFromAnotherTab();
+          return null;
+        }
       }
       await this.clearAuthStateAndEndIdpSession();
       return null;
@@ -866,11 +872,15 @@ export class AuthManager {
    * with no value. That is what a cross-tab account switch used to do: this
    * tab's watch saw B, ended this tab, and took B's session with it (#212).
    * The listeners are told either way, because THIS tab's session is over.
+   * A row that could not be read has no known owner, so it is left in place.
    */
   async clearAuthState(): Promise<void> {
     const browser = getBrowserStorage();
-    if (browser?.storage && !this.belongsToAnotherUser(await this.readStoredState())) {
-      await browser.storage.local.remove(['authState']);
+    if (browser?.storage) {
+      const { readable, state } = await this.readStoredRow();
+      if (readable && !this.belongsToAnotherUser(state)) {
+        await browser.storage.local.remove(['authState']);
+      }
     }
     // Also drop the bridge copy so a dashboard logout / definitive refresh
     // rejection can't leave a revoked token for the bridge to re-forward (#109).
