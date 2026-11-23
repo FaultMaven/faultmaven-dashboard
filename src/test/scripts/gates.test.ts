@@ -7,7 +7,7 @@ import { join } from 'node:path';
 /**
  * The gates' OWN failure states.
  *
- * Both build-output gates answer a question about `dist/`, and both can reach
+ * Each build-output gate answers a question about `dist/`, and each can reach
  * "nothing to report" two ways that look like success from the outside: the
  * directory is missing because nobody built, or it is there and empty because
  * the build produced nothing. A gate that exits 0 in either case is a green
@@ -44,7 +44,11 @@ function withTempDir(fn: (dir: string) => void) {
   }
 }
 
-const GATES = ['check-web-bundle-boundary.mjs', 'check-shared-ui-styles.mjs'] as const;
+const GATES = [
+  'check-web-bundle-boundary.mjs',
+  'check-shared-ui-styles.mjs',
+  'check-error-identity.mjs',
+] as const;
 
 /**
  * Tailwind preflight, as the built stylesheet carries it.
@@ -101,6 +105,82 @@ describe('check-web-bundle-boundary.mjs', () => {
       expect(code).toBe(1);
       expect(output).toMatch(/Sign in with Organization/);
     });
+  });
+});
+
+describe('check-error-identity.mjs', () => {
+  // Every class the gate probes, shaped as the minified bundle carries them
+  // (faultmaven#2341): `this.name` set in the constructor, or a `name` field.
+  const PROBED = [
+    'AuthenticationError',
+    'SessionExpiredError',
+    'NetworkError',
+    'TimeoutError',
+    'ValidationError',
+    'RateLimitError',
+    'DuplicateUploadNotice',
+    'TurnReplayUnavailableError',
+  ];
+  const named = (name: string, i: number) =>
+    i % 2
+      ? `class c${i} extends ae{name="${name}";userTitle="T";constructor(e){super(e)}}`
+      : `class c${i} extends ae{constructor(){super(...arguments),this.name="${name}",this.userTitle="T"}}`;
+  const bundleWith = (replace: Record<string, string> = {}) =>
+    PROBED.map((name, i) => replace[name] ?? named(name, i)).join('');
+
+  function gateOn(js: string) {
+    let result = { code: -1, output: '' };
+    withTempDir((dir) => {
+      mkdirSync(join(dir, 'dist', 'assets'), { recursive: true });
+      writeFileSync(join(dir, 'dist', 'assets', 'panel.js'), js);
+      result = runGate('check-error-identity.mjs', dir);
+    });
+    return result;
+  }
+
+  it('passes when each probed class names itself by literal', () => {
+    expect(gateOn(bundleWith())).toMatchObject({ code: 0 });
+  });
+
+  it('FAILS when a class names itself by its (minified) class name, as before copilot#414', () => {
+    const { code, output } = gateOn(
+      bundleWith({
+        NetworkError: 'class xv extends ae{constructor(){super(...arguments),this.name=this.constructor.name,this.userTitle="T"}}',
+      }),
+    );
+    expect(code).toBe(1);
+    expect(output).toMatch(/no copilot-ui error class in dist\/ names itself "NetworkError"/);
+  });
+
+  it('FAILS when the class overwrites the literal', () => {
+    const { code, output } = gateOn(
+      bundleWith({
+        TimeoutError:
+          'class yr extends ae{constructor(){super(),this.name="TimeoutError",this.userTitle="T",this.name=this.constructor.name}}',
+      }),
+    );
+    expect(code).toBe(1);
+    expect(output).toMatch(/"TimeoutError" also sets name to .*this\.constructor\.name/);
+  });
+
+  it('counts no quote that is not the instance name of a copilot-ui error', () => {
+    const impostors = {
+      // A comparison, not an assignment.
+      RateLimitError: 'class q1 extends ae{f(e){return e.name==="RateLimitError"}userTitle="T"}',
+      // A STATIC field names the constructor, not its instances.
+      ValidationError: 'class q2 extends ae{static name="ValidationError";userTitle="T"}',
+      // `this` in a nested non-arrow function is not the instance.
+      SessionExpiredError:
+        'class q3 extends ae{constructor(){super(),this.userTitle="T",function f(){this.name="SessionExpiredError"}}}',
+      // This app's own error of the same name: no `userTitle`.
+      AuthenticationError: 'class q4 extends Error{constructor(){super(),this.name="AuthenticationError"}}',
+    };
+    const { code, output } = gateOn(bundleWith(impostors));
+    expect(code).toBe(1);
+    for (const name of Object.keys(impostors)) {
+      expect(output).toMatch(new RegExp(`names itself "${name}": nothing was probed`));
+    }
+    expect(output).not.toMatch(/"NetworkError"/);
   });
 });
 

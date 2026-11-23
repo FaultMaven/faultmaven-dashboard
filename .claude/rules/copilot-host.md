@@ -53,8 +53,8 @@ change reaches both or reaches neither.
 - **Import the package ENTRY only.** Deep subpaths resolve and are still off
   limits: they exist for the extension, which lives in the same repository as
   the package and can be updated in the same commit.
-- **`/contract`, `/turn-label` and `/mermaid-config` are the code exceptions,
-  each through ONE door per subject.** They carry the cross-repo names both
+- **`/contract`, `/turn-label`, `/mermaid-config` and `/deleting` are the code
+  exceptions, each through ONE door per subject.** They carry the cross-repo names both
   repositories must agree on, and they are cheap (constants and two DOM
   readers, no panel). `advertisement.ts` owns the panel attribute and window
   messages; `copilotCapability.ts` owns the capability attribute, its tokens
@@ -62,7 +62,8 @@ change reaches both or reaches neither.
   surface prints, versus the message clock it addresses a turn with;
   `components/MermaidDiagram.tsx` the MERMAID SITE CONFIG — mermaid's config
   is one global the embedded panel initializes too, so both pass the one
-  object (fm#2119). Nothing else may reach any of these subpaths, and no door
+  object (fm#2119); `lib/cases/deleting.ts` the DELETING notice and re-read
+  schedule, which the case page and the panel share (fm#2341). Nothing else may reach any of these subpaths, and no door
   may pull another's names — routing capabilities through `advertisement.ts`
   would make the capability GATE depend on the module it gates. The file list, the per-file name sets and the
   per-subpath door list are all asserted.
@@ -76,8 +77,10 @@ change reaches both or reaches neither.
   about 515 bytes (196 when it was introduced), `turn-label.ts` 95 plus 547 for
   the two state modules it re-exports, and `mermaid-config.ts` about 504 — it
   took the chunk from 825,630 to 826,167 bytes (+537). The boundary test walks
-  one hop — a door may re-export the package's zero-dependency state modules
-  and nothing else.
+  one hop — each door, matched by its package-root path, may re-export only
+  its own zero-dependency leaves (`turn-label.ts`: `lib/state/turn-label` and
+  `lib/state/message-kind`; `deleting.ts`: `lib/cases/deleting`), and a leaf
+  reaches nothing.
 - **The one runtime import OF THE ENTRY is dynamic**, in
   `CopilotPanelMount.tsx`. That is what keeps the shared UI out of the entry
   chunk so nothing of it is fetched before sign-in. The exempt subpaths above

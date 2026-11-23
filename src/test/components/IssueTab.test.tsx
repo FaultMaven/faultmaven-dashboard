@@ -19,6 +19,7 @@ function meaningOf(reason: ClosureReason): string {
 function makeCaseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
   return {
     case_id: 'case-1',
+    deleting: false,
     title: 'DB Outage',
     description: 'Primary DB unresponsive',
     state: 'resolved',

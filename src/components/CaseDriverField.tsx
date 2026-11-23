@@ -34,6 +34,13 @@ interface CaseDriverFieldProps {
    * the page can refuse a notice about a case it no longer shows.
    */
   onCaseStale: (caseId: string) => void;
+  /**
+   * The page withholds the hand-off (the case is being deleted, faultmaven#2341):
+   * the driver's name still shows and an open list closes. As whenever the
+   * hand-off becomes allowed again, the candidates read before are dropped, so
+   * the control returns only after a fresh read.
+   */
+  handOffWithheld?: boolean;
 }
 
 interface Notice {
@@ -45,14 +52,15 @@ interface Notice {
  * The case's DRIVER (ADR-020), and — for the two people allowed — the hand-off.
  *
  * Always renders the driver's name. The "Change driver" control is offered
- * only when BOTH hold:
+ * only when ALL hold:
  *
  * - the viewer is the case's creator or its effective driver (D4; a terminal
- *   case is not excluded — it still has driver-only writes), and
+ *   case is not excluded — it still has driver-only writes),
  * - `GET /cases/{id}/driver-candidates` names someone other than the current
  *   driver. In standalone, and for a case shared with nobody, the creator is
  *   the only candidate and drives, so there is nobody to offer and the control
- *   stays hidden.
+ *   stays hidden, and
+ * - the page does not withhold it (`handOffWithheld`: the case is being deleted).
  *
  * A DISCLOSURE OF BUTTONS, NOT A `<select>`. A native select fires `change`
  * on every arrow key while closed in some browsers, and here a change is a
@@ -73,8 +81,9 @@ export function CaseDriverField({
   viewerId,
   onReassigned,
   onCaseStale,
+  handOffWithheld = false,
 }: CaseDriverFieldProps) {
-  const allowed = mayReassignDriver(parties, viewerId);
+  const allowed = !handOffWithheld && mayReassignDriver(parties, viewerId);
   const [candidates, setCandidates] = useState<CaseDriverCandidate[] | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -84,7 +93,7 @@ export function CaseDriverField({
 
   const listId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const controlRef = useRef<HTMLDivElement>(null);
+  const controlRef = useRef<HTMLDivElement | null>(null);
   const nameRef = useRef<HTMLSpanElement>(null);
   // Monotonic: a candidates read that a newer one superseded must not land.
   const readIdRef = useRef(0);
@@ -106,8 +115,9 @@ export function CaseDriverField({
   useEffect(() => {
     const readId = ++readIdRef.current;
     // Not allowed: nothing is read, and `offered` below ignores whatever an
-    // earlier read left. (The page keys this field by case, so a list read for
-    // one case is never shown on another.)
+    // earlier read left (kept for the current-driver line's label, and dropped
+    // when the hand-off is allowed again). (The page keys this field by case, so
+    // a list read for one case is never shown on another.)
     if (!allowed) return;
     getDriverCandidates(caseId)
       .then((list) => {
@@ -132,6 +142,15 @@ export function CaseDriverField({
 
   // A list left open must not outlive the control it belongs to.
   if (!offered && open) setOpen(false);
+  // On the edge back to allowed (a delete that cleared, or the case handed away
+  // and back) the list read before is dropped, so nothing is offered until the
+  // read above lands again. While not allowed it is kept: the current-driver
+  // line reads its labels, as the notice did (#219).
+  const [prevAllowed, setPrevAllowed] = useState(allowed);
+  if (allowed !== prevAllowed) {
+    setPrevAllowed(allowed);
+    if (allowed) setCandidates(null);
+  }
 
   // One label per candidate, identical names told apart; the list and the
   // confirmation notice read the same map.
@@ -208,6 +227,18 @@ export function CaseDriverField({
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
+  // The control can unmount under the user (the hand-off withheld, or nobody
+  // left to hand to). Focus inside it then moves to the driver's name, as after
+  // a hand-off, not to <body>. A ref cleanup runs before the node is removed.
+  const attachControl = useCallback((el: HTMLDivElement | null) => {
+    controlRef.current = el;
+    if (!el) return;
+    return () => {
+      controlRef.current = null;
+      if (el.contains(document.activeElement)) nameRef.current?.focus();
+    };
+  }, []);
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape' && open) {
       e.stopPropagation();
@@ -239,7 +270,7 @@ export function CaseDriverField({
       </span>
 
       {offered && (
-        <div ref={controlRef} className="relative" onKeyDown={onKeyDown} onBlur={onBlur}>
+        <div ref={attachControl} className="relative" onKeyDown={onKeyDown} onBlur={onBlur}>
           <button
             ref={toggleRef}
             type="button"

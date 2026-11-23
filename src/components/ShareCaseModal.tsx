@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Ref } from 'react';
 import { shareCaseWithTeam, unshareCaseFromTeam, type Team } from '../lib/api';
 
 interface ShareCaseModalProps {
@@ -12,6 +12,8 @@ interface ShareCaseModalProps {
   /** Called after any successful share/unshare so the parent can refetch the
    *  case and re-sync the badge. */
   onChanged: () => void;
+  /** The dialog element, while it is open (the page moves focus out of it when it is withheld). */
+  dialogRef?: Ref<HTMLDivElement>;
 }
 
 /**
@@ -28,6 +30,7 @@ export function ShareCaseModal({
   teams,
   onClose,
   onChanged,
+  dialogRef,
 }: ShareCaseModalProps) {
   const [shared, setShared] = useState<Set<string>>(new Set(sharedTeamIds));
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -72,6 +75,7 @@ export function ShareCaseModal({
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
       role="dialog"
       aria-modal="true"

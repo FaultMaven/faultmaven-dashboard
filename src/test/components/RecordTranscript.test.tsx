@@ -41,6 +41,7 @@ import { getCaseMessages } from '../../lib/api';
 
 const CASE: CaseDetail = {
   case_id: 'case-1',
+  deleting: false,
   title: 'Replica stopped accepting writes',
   description: 'Writes fail, reads succeed',
   state: 'investigating',

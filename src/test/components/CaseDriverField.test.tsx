@@ -231,3 +231,91 @@ describe('the current-driver line reads the label the list and notice use (#219)
     ).toBeInTheDocument();
   });
 });
+
+describe('the page can withhold the hand-off (a case being deleted, faultmaven#2341)', () => {
+  it('an open list closes and the control goes; the driver is still named', async () => {
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE]);
+    const { rerender } = render(field());
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    expect(screen.getByRole('list', { name: /hand this case to/i })).toBeVisible();
+
+    rerender(field({ handOffWithheld: true }));
+
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: /hand this case to/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
+  });
+
+  it('withheld from the start, it reads no candidates', () => {
+    render(field({ handOffWithheld: true }));
+    expect(getDriverCandidates).not.toHaveBeenCalled();
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
+  });
+});
+
+describe('when the hand-off returns after being withheld', () => {
+  it('offers it only after a fresh read of the candidates', async () => {
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE]);
+    const { rerender } = render(field());
+    await screen.findByRole('button', { name: /change driver/i });
+
+    rerender(field({ handOffWithheld: true }));
+    const fresh = deferred<CaseDriverCandidate[]>();
+    vi.mocked(getDriverCandidates).mockReturnValue(fresh.promise);
+    rerender(field());
+
+    expect(getDriverCandidates).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    await act(async () => {
+      fresh.resolve([ADA, GRACE]);
+      await fresh.promise;
+    });
+    expect(screen.getByRole('button', { name: /change driver/i })).toBeInTheDocument();
+  });
+});
+
+describe('when the hand-off returns after the viewer handed the case away and back', () => {
+  it('offers it only after a fresh read of the candidates', async () => {
+    // Grace drives a case Ada created: she may hand off, then may not, then may.
+    const asGrace = (driver: string) =>
+      field({ viewerId: 'u-grace', parties: { ...PARTIES, driver_id: driver } });
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE]);
+    const { rerender } = render(asGrace('u-grace'));
+    await screen.findByRole('button', { name: /change driver/i });
+
+    rerender(asGrace('u-ada'));
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    const fresh = deferred<CaseDriverCandidate[]>();
+    vi.mocked(getDriverCandidates).mockReturnValue(fresh.promise);
+    rerender(asGrace('u-grace'));
+
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    await act(async () => {
+      fresh.resolve([ADA, GRACE]);
+      await fresh.promise;
+    });
+    expect(screen.getByRole('button', { name: /change driver/i })).toBeInTheDocument();
+  });
+});
+
+describe('after a non-creator driver hands the case away (#219)', () => {
+  it('the current-driver line keeps the label the notice used', async () => {
+    const M1 = { user_id: '3f9a12bc-0000-4000-8000-000000000001', display_name: 'Member 3f9a' };
+    const M2 = { user_id: '3f9aeeee-0000-4000-8000-000000000002', display_name: 'Member 3f9a' };
+    const onReassigned = vi.fn();
+    // Grace drives Ada's case, so handing it on leaves her no hand-off.
+    const asGrace = (driver: string) =>
+      field({ viewerId: 'u-grace', parties: { ...PARTIES, driver_id: driver }, onReassigned });
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE, M1, M2]);
+    vi.mocked(reassignCaseDriver).mockResolvedValue({ case_id: 'case-1', driver_id: M2.user_id } as never);
+    const { rerender } = render(asGrace('u-grace'));
+
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Member 3f9a \(3f9aeeee\)/ }));
+    await waitFor(() => expect(onReassigned).toHaveBeenCalled());
+    rerender(asGrace(M2.user_id)); // the page applies the answer
+
+    expect(screen.getByTestId('case-driver-status')).toHaveTextContent('Member 3f9a (3f9aeeee) now drives this case.');
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Member 3f9a (3f9aeeee)');
+  });
+});

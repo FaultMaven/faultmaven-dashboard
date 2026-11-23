@@ -67,6 +67,7 @@ const SECRET_TITLE = 'payments API 5xx spike';
 
 const caseDetail: CaseDetail = {
   case_id: CASE_ID,
+  deleting: false,
   title: SECRET_TITLE,
   description: 'content an operator must not see without a grant',
   state: 'investigating' as const,

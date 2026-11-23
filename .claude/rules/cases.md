@@ -225,9 +225,9 @@ an unknown id:
 | Question | Predicate | What it gates |
 |---|---|---|
 | Is there a composer here? | `isCaseDriver` | the conversation surface (`isDriver` into `resolveCaseConversationLayout`), `CaseTabs readOnly`, `ConversationDock readOnly` |
-| Is there a Share button? | `isCaseCreator` | `canShare` (governance: share, unshare, delete — this page has no delete) |
+| Is there a Share button? | `isCaseCreator`, and the case not `deleting` | `canShare` (governance: share, unshare, delete — this page has no delete) |
 | Does the runbook banner link to the KB? | `isCaseCreator` | `CaseTabs viewerIsCreator` → `ReportTab` (the case's draft is the creator's, ADR-020 D6) |
-| Is there a "Change driver" control? | `mayReassignDriver` + a candidate other than the current driver | `CaseDriverField` |
+| Is there a "Change driver" control? | `mayReassignDriver` + a candidate other than the current driver, and the case not `deleting` | `CaseDriverField` (`handOffWithheld`) |
 
 - A creator who handed the case on reads it like any teammate until they take
   it back.
@@ -254,7 +254,8 @@ an unknown id:
   closes and returns focus to the toggle; a `pointerdown` outside (mouse,
   touch, pen — not `mousedown`, which misses an iOS tap, and not `blur`, which
   fires with nowhere to go when Safari does not focus a clicked button) closes
-  it; after a hand-off focus lands on the driver's name. One PUT at a time:
+  it; after a hand-off, or when the control unmounts under focus, focus lands
+  on the driver's name. One PUT at a time:
   the candidates are disabled while one is in flight. A candidates read that a
   newer one superseded is dropped. The status line is always rendered and outside the control,
   because the control disappears when a non-creator hands the case away.
