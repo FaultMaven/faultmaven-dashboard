@@ -31,6 +31,7 @@ vi.mock('../../lib/knowledge/conversion', async (importOriginal) => ({
   listAllDrafts: vi.fn().mockResolvedValue([]),
   convertDocument: vi.fn(),
   getConversion: vi.fn(),
+  createRunbookManually: vi.fn(),
 }));
 vi.mock('../../hooks/useNavigationItems', () => ({ useNavigationItems: () => [] }));
 vi.mock('../../hooks/useAvailableScopes', () => ({
@@ -47,6 +48,7 @@ const uploadDocument = vi.mocked(api.uploadDocument);
 const convertDocument = vi.mocked(conversion.convertDocument);
 const getConversion = vi.mocked(conversion.getConversion);
 const listAllDrafts = vi.mocked(conversion.listAllDrafts);
+const createRunbookManually = vi.mocked(conversion.createRunbookManually);
 const { ConversionAPIError, translateConversionError } = conversion;
 
 const KEY_REUSE_MESSAGE = "The file's contents differ from what was submitted under this name. Submit it again.";
@@ -58,7 +60,7 @@ const convertKeys = () => convertDocument.mock.calls.map((call) => call[2]);
 async function click(el: HTMLElement) {
   await act(async () => { fireEvent.click(el); });
 }
-async function open(item: 'Add Runbook' | 'Convert to Runbook') {
+async function open(item: 'Add Runbook' | 'Convert to Runbook' | 'Write Runbook') {
   await click(screen.getByRole('button', { name: /New/i }));
   await click(screen.getByText(item));
 }
@@ -75,9 +77,8 @@ async function closeOverlay() {
   await click(screen.getAllByRole('button', { name: 'Cancel' }).find((b) => !dialog?.contains(b)) as HTMLElement);
 }
 /**
- * Send the same file again from a closed overlay. A settling send may already
- * have closed the overlay a later send was in (FaultMaven/faultmaven#2456), so
- * close it here when it is still open: these tests do not depend on that bug.
+ * Send the same file again from a closed overlay. One whose own send succeeded
+ * has closed itself, so close it here only when it is still open.
  */
 async function resubmitFromClosedOverlay(title?: string) {
   if (screen.queryAllByRole('heading', { name: 'Add Runbook' }).length > 0) await closeOverlay();
@@ -296,6 +297,142 @@ describe('KBPage upload — one Idempotency-Key per submission', () => {
     await submitUpload();
     const [first, second] = uploadKeys();
     expect(second).not.toBe(first);
+  });
+});
+
+describe('KBPage overlay — an action that lands changes only its own overlay (FaultMaven/faultmaven#2456)', () => {
+  it('an upload that lands after its overlay was cancelled leaves the Convert overlay opened since', async () => {
+    const a = deferred();
+    uploadDocument.mockReturnValueOnce(a.promise);
+    await open('Add Runbook');
+    await pickFile();
+    await submitUpload();
+    await closeOverlay();
+    await open('Convert to Runbook');
+
+    await act(async () => { a.resolve(created('a')); });
+
+    expect(screen.getByRole('heading', { name: 'Convert Document to Runbook(s)' })).toBeInTheDocument();
+  });
+
+  /** A conversion sent, then cancelled while it runs. Its answer is the test's to give. */
+  async function cancelAConversion() {
+    let settle!: { resolve: (answer: Awaited<ReturnType<typeof conversion.convertDocument>>) => void; reject: (error: unknown) => void };
+    convertDocument.mockReturnValueOnce(new Promise((resolve, reject) => { settle = { resolve, reject }; }));
+    await open('Convert to Runbook');
+    await pickFile();
+    await submitConvert();
+    await closeOverlay();
+    return settle;
+  }
+
+  it('a cancelled conversion that lands leaves the upload overlay opened since, upload and all', async () => {
+    const conversionAnswer = await cancelAConversion();
+    const a = deferred();
+    uploadDocument.mockReturnValueOnce(a.promise);
+    await open('Add Runbook');
+    await pickFile();
+    await submitUpload();
+
+    await act(async () => { conversionAnswer.resolve({ conversion: makeConversion(), replayed: false }); });
+
+    // The overlay's heading and its upload dialog's.
+    expect(screen.getAllByRole('heading', { name: 'Add Runbook' })).toHaveLength(2);
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Uploading...' })).toBeDisabled();
+    expect(screen.queryByRole('heading', { name: /Conversion Complete/ })).not.toBeInTheDocument();
+    // The upload's own success still closes its own overlay.
+    await act(async () => { a.resolve(created('a')); });
+    expect(screen.queryAllByRole('heading', { name: 'Add Runbook' })).toHaveLength(0);
+  });
+
+  it('a cancelled conversion that lands opens nothing', async () => {
+    const conversionAnswer = await cancelAConversion();
+
+    await act(async () => { conversionAnswer.resolve({ conversion: makeConversion(), replayed: false }); });
+
+    expect(screen.queryByRole('heading', { name: /Conversion Complete/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /New/i })).toBeInTheDocument();
+  });
+
+  /** Write Runbook, every field the form requires filled so the submit reaches the page; its answer is the test's to give. */
+  async function writeARunbook(beforeSubmit?: () => void) {
+    let written!: (answer: Awaited<ReturnType<typeof conversion.createRunbookManually>>) => void;
+    createRunbookManually.mockReturnValueOnce(new Promise((resolve) => { written = resolve; }));
+    await open('Write Runbook');
+    const set = (el: Element, value: string) => fireEvent.change(el, { target: { value } });
+    await act(async () => {
+      set(screen.getByPlaceholderText(/PostgreSQL Connection Pool Exhaustion/), 'A sufficiently long runbook title');
+      set(screen.getByPlaceholderText(/postgresql, nginx, kubernetes/), 'postgresql');
+      set(document.getElementById('runbook-domain') as Element, 'database');
+      set(document.getElementById('runbook-severity') as Element, 'high');
+      set(document.getElementById('runbook-scope') as Element, 'personal');
+      fireEvent.click(screen.getByRole('button', { name: 'latency' }));
+      for (const ta of document.querySelectorAll('textarea')) {
+        set(ta, ta.placeholder.includes('### Cause A') ? '### Cause A: Pool exhaustion\n**Statement:** x' : 'details here');
+      }
+    });
+    beforeSubmit?.();
+    await click(screen.getByRole('button', { name: 'Create Draft Runbook' }));
+    return (draft = makeDraft()) => act(async () => { written({ conversion_id: 'conv-1', draft }); });
+  }
+
+  it('a cancelled Write Runbook that lands leaves the upload overlay opened since', async () => {
+    const land = await writeARunbook();
+    expect(createRunbookManually).toHaveBeenCalledTimes(1);
+    await closeOverlay();
+    await open('Add Runbook');
+
+    await land();
+
+    expect(screen.getByRole('heading', { name: 'Add Runbook' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Conversion Complete/ })).not.toBeInTheDocument();
+  });
+
+  it("a cancelled conversion's failure is not shown on the Convert overlay opened since", async () => {
+    const conversionAnswer = await cancelAConversion();
+    await open('Convert to Runbook');
+    await pickFile();
+    // Nothing this panel sent is running.
+    expect(screen.getByRole('button', { name: 'Convert' })).toBeEnabled();
+
+    await act(async () => { conversionAnswer.reject(new NetworkError('Could not reach the FaultMaven API')); });
+
+    expect(screen.getByRole('heading', { name: 'Convert Document to Runbook(s)' })).toBeInTheDocument();
+    expect(screen.queryByText('Conversion failed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Could not reach the FaultMaven API')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Convert' })).toBeEnabled();
+    expect(screen.queryByText('Converting...')).not.toBeInTheDocument();
+  });
+
+  it("a cancelled conversion that lands leaves the second conversion's spinner, and the second's results show", async () => {
+    const first = await cancelAConversion();
+    let second!: (answer: Awaited<ReturnType<typeof conversion.convertDocument>>) => void;
+    convertDocument.mockReturnValueOnce(new Promise((resolve) => { second = resolve; }));
+    await open('Convert to Runbook');
+    await pickFile();
+    await submitConvert();
+
+    await act(async () => { first.resolve({ conversion: makeConversion(), replayed: false }); });
+    expect(screen.getByRole('button', { name: 'Converting...' })).toBeDisabled();
+
+    await act(async () => { second({ conversion: makeConversion([makeDraft({ title: 'Second conversion' })]), replayed: false }); });
+    expect(screen.getByRole('heading', { name: /Conversion Complete/ })).toBeInTheDocument();
+    expect(screen.getByText('Second conversion')).toBeInTheDocument();
+  });
+
+  it("a cancelled Write Runbook leaves no spinner on the next, and its landing leaves the next's spinner", async () => {
+    const first = await writeARunbook();
+    await closeOverlay();
+    // The reopened form runs nothing until its own submit.
+    const second = await writeARunbook(() => expect(screen.getByRole('button', { name: 'Create Draft Runbook' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Creating...' })).toBeDisabled();
+
+    await first(makeDraft({ title: 'First runbook' }));
+    expect(screen.getByRole('button', { name: 'Creating...' })).toBeDisabled();
+
+    await second(makeDraft({ title: 'Second runbook' }));
+    expect(screen.getByText('Second runbook')).toBeInTheDocument();
+    expect(screen.queryByText('First runbook')).not.toBeInTheDocument();
   });
 });
 

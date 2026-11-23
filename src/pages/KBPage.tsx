@@ -960,8 +960,8 @@ function OverlayPanel(props: OverlayPanelProps) {
     setUploading(true);
     setUploadError(null);
     try {
+      // On success the page closes the overlay, if it is still this one.
       await props.onUploadFile({ file: selectedFile, ...uploadForm, scope: effectiveUploadScope });
-      props.onClose();
     } catch (error: unknown) {
       setUploadError(describeUploadError(error));
     } finally {
@@ -1185,9 +1185,17 @@ export default function KBPage() {
     [setSearchParams],
   );
 
+  // The tab last requested, or the URL's when it changed since: a request can land before the
+  // URL change an earlier one made has rendered.
+  const tabNow = useRef(activeTab);
   const setActiveTab = useCallback(
     (tab: KBTab) => {
+      // A request for the tab already open changes nothing: not the hand-off, and not the URL,
+      // whose `case` a change would drop and so consume the hand-off (faultmaven#2466).
+      if (tab === tabNow.current) return;
+      // A change of tab retires the hand-off.
       if (tab !== 'drafts') selectionOnViewChange.current = null;
+      tabNow.current = tab;
       replaceSearch((next) => {
         if (tab === 'drafts') {
           next.set('tab', 'drafts');
@@ -1211,6 +1219,12 @@ export default function KBPage() {
 
   // Overlay state (creation/editing flows)
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
+  // Bumped by these opens only: the New menu's entries, Write a runbook and Open draft; and by
+  // every close. An overlay action that awaits captures it, and changes the
+  // overlay, its loading state included, only if it is unchanged when the await lands: one
+  // opened or closed since is not the action's (faultmaven#2456). Moves within one conversion
+  // (Edit, Back to Results) do not bump it; what they open is guarded by `editorIsOnIt` instead.
+  const overlayEpoch = useRef(0);
   const [conversion, setConversion] = useState<ConversionResponse | null>(null);
   const [editingDraft, setEditingDraft] = useState<ConversionDraft | null>(null);
   const [editorSync, setEditorSync] = useState(0);
@@ -1240,6 +1254,8 @@ export default function KBPage() {
     return stored !== null ? parseInt(stored, 10) : 0;
   });
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  // The list the last applied load gave, for a batch's end: its closure holds the render it started in (faultmaven#2466).
+  const draftsRef = useRef<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   // Why the last drafts load failed, or null once one succeeds.
   const [draftsError, setDraftsError] = useState<string | null>(null);
@@ -1258,6 +1274,7 @@ export default function KBPage() {
   const viewNow = useRef({ activeTab, caseFilter });
   useEffect(() => {
     viewNow.current = { activeTab, caseFilter };
+    tabNow.current = activeTab;
     const handed = selectionOnViewChange.current;
     selectionOnViewChange.current = null;
     // Applied on the Drafts tab only, under a case filter that hides none of it.
@@ -1300,6 +1317,7 @@ export default function KBPage() {
     try {
       const result = await listAllDrafts();
       if (reqId !== draftsReqRef.current) return null;
+      draftsRef.current = result;
       setDrafts(result);
       setDraftsError(null);
       const count = result.filter((d) => d.status === 'draft').length;
@@ -1341,7 +1359,21 @@ export default function KBPage() {
     await clearAuthState();
   };
 
+  // A new overlay shows no request of an earlier one as running.
+  const resetOverlayLoading = () => {
+    setConverting(false);
+    setManualLoading(false);
+  };
+
+  const openOverlay = (mode: OverlayMode) => {
+    overlayEpoch.current += 1;
+    resetOverlayLoading();
+    setOverlayMode(mode);
+  };
+
   const closeOverlay = () => {
+    overlayEpoch.current += 1;
+    resetOverlayLoading();
     setOverlayMode(null);
     setConvertError(null);
     setManualError(null);
@@ -1351,8 +1383,10 @@ export default function KBPage() {
     const { file, title, document_type, tags, description, scope } = params;
     const fields = { title, document_type, tags, description, scope };
     const send = kbSubmissionKeys('upload', submissionUser).begin(file, fields);
+    const epoch = overlayEpoch.current;
     try {
       await uploadDocument({ file, ...fields }, send.key);
+      if (epoch === overlayEpoch.current) closeOverlay();
     } catch (err: unknown) {
       if (err instanceof APIError && err.errorCode === IDEMPOTENCY_KEY_REUSE) send.refusedAsReused();
       throw err;
@@ -1363,6 +1397,8 @@ export default function KBPage() {
     setConverting(true);
     setConvertError(null);
     const send = kbSubmissionKeys('convert', submissionUser).begin(file, { scope });
+    const epoch = overlayEpoch.current;
+    const overlayIsOurs = () => epoch === overlayEpoch.current;
     try {
       const { conversion: answered, replayed } = await convertDocument(file, scope, send.key);
       // A replay is the first job's stored body. Show the job as it is now, as
@@ -1375,8 +1411,10 @@ export default function KBPage() {
           // The stored body still names the job's drafts.
         }
       }
-      setConversion(shown);
-      setOverlayMode('results');
+      if (overlayIsOurs()) {
+        setConversion(shown);
+        setOverlayMode('results');
+      }
       loadDrafts();
     } catch (err: unknown) {
       if (err instanceof ConversionAPIError) {
@@ -1384,20 +1422,27 @@ export default function KBPage() {
         // The conversion committed but its stored answer cannot be replayed:
         // its drafts exist. Keep the key, so a resubmit cannot convert twice.
         if (err.errorCode === IDEMPOTENCY_REPLAY_UNAVAILABLE) loadDrafts();
-        setConvertError(err.errorInfo);
-      } else {
+        if (overlayIsOurs()) setConvertError(err.errorInfo);
+      } else if (overlayIsOurs()) {
         setConvertError({ title: 'Conversion failed', message: err instanceof Error ? err.message : 'Unknown error', action: 'Try again.' });
       }
     } finally {
-      setConverting(false);
+      if (overlayIsOurs()) setConverting(false);
     }
   };
 
   const handleManualCreate = async (data: RunbookCreateInput) => {
     setManualLoading(true);
     setManualError(null);
+    const epoch = overlayEpoch.current;
+    const overlayIsOurs = () => epoch === overlayEpoch.current;
     try {
       const result = await createRunbookManually(data);
+      // The draft is saved either way; only the overlay it was written in shows it.
+      if (!overlayIsOurs()) {
+        loadDrafts();
+        return;
+      }
 
       /**
        * A DRAFT THAT FAILED VALIDATION GOES STRAIGHT TO ITS EDITOR.
@@ -1451,22 +1496,25 @@ export default function KBPage() {
       setOverlayMode('results');
       loadDrafts();
     } catch (err: unknown) {
-      setManualError(err instanceof Error ? err.message : 'Failed to create runbook');
+      if (overlayIsOurs()) setManualError(err instanceof Error ? err.message : 'Failed to create runbook');
     } finally {
-      setManualLoading(false);
+      if (overlayIsOurs()) setManualLoading(false);
     }
   };
 
   const handleOpenDraft = async (conversionId: string) => {
     setActionError(null);
+    // Opening a draft is an overlay the user opens, from the moment of the click.
+    const epoch = ++overlayEpoch.current;
     try {
       const result = await getConversion(conversionId);
+      if (epoch !== overlayEpoch.current) return;
       if (result) {
         setConversion(result);
         setOverlayMode('results');
       }
     } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Failed to open draft');
+      if (epoch === overlayEpoch.current) setActionError(err instanceof Error ? err.message : 'Failed to open draft');
     }
   };
 
@@ -1500,17 +1548,20 @@ export default function KBPage() {
    * `gone`: the server no longer serves the draft (a discarded draft is not
    * listed) or the conversion (404), so there is nothing to edit; the editor is
    * closed. `unavailable`: the refetch itself failed, and the page still holds
-   * the old copy.
+   * the old copy. `superseded`: an overlay was opened or closed while the
+   * refetch was out, so the overlay is not this call's to change (faultmaven#2456).
    */
   const adoptServerConversion = async (
     conversionId: string,
     draftId: string,
-  ): Promise<'adopted' | 'gone' | 'unavailable'> => {
+  ): Promise<'adopted' | 'gone' | 'unavailable' | 'superseded'> => {
     const editorIsOnIt = () => openDraftRef.current?.draftId === draftId;
+    const epoch = overlayEpoch.current;
     let fresh: ConversionResponse;
     try {
       fresh = await getConversion(conversionId);
     } catch (err: unknown) {
+      if (epoch !== overlayEpoch.current) return 'superseded';
       if (err instanceof APIError && err.statusCode === 404) {
         if (editorIsOnIt()) {
           setEditingDraft(null);
@@ -1520,11 +1571,13 @@ export default function KBPage() {
       }
       return 'unavailable';
     }
+    if (epoch !== overlayEpoch.current) return 'superseded';
     setConversion(fresh);
     const serverDraft = fresh.drafts.find((d) => d.draft_id === draftId);
     if (serverDraft) {
       setEditingDraft((open) => (open && open.draft_id === draftId ? serverDraft : open));
-      setEditorSync((n) => n + 1);
+      // Remount only an editor on this draft: one opened on another since holds unsaved text.
+      if (editorIsOnIt()) setEditorSync((n) => n + 1);
       return 'adopted';
     }
     if (editorIsOnIt()) {
@@ -1681,10 +1734,10 @@ export default function KBPage() {
 
     // The deferred drafts stay selected, so Activate runs them again in one click: only those the
     // reloaded list holds as drafts and the current case filter shows. When the reload failed, the
-    // list the batch started from says which case each is in; only deferred drafts are kept either way.
+    // page's latest list says which; only deferred drafts are kept either way.
     const now = viewNow.current;
     const kept = refs.filter((ref) => {
-      const d = (listed ?? drafts).find((x) => sameDraft(x, ref));
+      const d = (listed ?? draftsRef.current).find((x) => sameDraft(x, ref));
       return tally.results.some((r) => r.status === 'deferred' && sameDraft(r, ref))
         && d?.status === 'draft' && (!now.caseFilter || d.case_id === now.caseFilter);
     });
@@ -1764,9 +1817,9 @@ export default function KBPage() {
           </div>
           {!overlayMode && (
             <NewDropdown
-              onUpload={() => setOverlayMode('upload')}
-              onConvert={() => setOverlayMode('convert')}
-              onManual={() => setOverlayMode('manual')}
+              onUpload={() => openOverlay('upload')}
+              onConvert={() => openOverlay('convert')}
+              onManual={() => openOverlay('manual')}
             />
           )}
         </div>
@@ -1842,7 +1895,7 @@ export default function KBPage() {
           converting={converting}
           onWriteRunbook={() => {
             setConvertError(null);
-            setOverlayMode('manual');
+            openOverlay('manual');
           }}
           onConvert={handleConvert}
           manualLoading={manualLoading}
