@@ -77,9 +77,10 @@ change reaches both or reaches neither.
   about 515 bytes (196 when it was introduced), `turn-label.ts` 95 plus 547 for
   the two state modules it re-exports, and `mermaid-config.ts` about 504 — it
   took the chunk from 825,630 to 826,167 bytes (+537). The boundary test walks
-  one hop — a door may re-export the package's zero-dependency leaf modules
-  (`lib/state/turn-label`, `lib/state/message-kind`, `lib/cases/deleting`) and
-  nothing else.
+  one hop — each door, matched by its package-root path, may re-export only
+  its own zero-dependency leaves (`turn-label.ts`: `lib/state/turn-label` and
+  `lib/state/message-kind`; `deleting.ts`: `lib/cases/deleting`), and a leaf
+  reaches nothing.
 - **The one runtime import OF THE ENTRY is dynamic**, in
   `CopilotPanelMount.tsx`. That is what keeps the shared UI out of the entry
   chunk so nothing of it is fetched before sign-in. The exempt subpaths above

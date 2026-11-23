@@ -7,7 +7,7 @@ import { join } from 'node:path';
 /**
  * The gates' OWN failure states.
  *
- * Both build-output gates answer a question about `dist/`, and both can reach
+ * Each build-output gate answers a question about `dist/`, and each can reach
  * "nothing to report" two ways that look like success from the outside: the
  * directory is missing because nobody built, or it is there and empty because
  * the build produced nothing. A gate that exits 0 in either case is a green
@@ -109,10 +109,24 @@ describe('check-web-bundle-boundary.mjs', () => {
 });
 
 describe('check-error-identity.mjs', () => {
-  // Shaped as the minified bundle carries them (faultmaven#2341).
-  const NAMED =
-    'class yr extends ae{constructor(){super(...arguments),this.name="TurnReplayUnavailableError"}}' +
-    'class kc extends ae{name="DuplicateUploadNotice";constructor(e){super(e)}}';
+  // Every class the gate probes, shaped as the minified bundle carries them
+  // (faultmaven#2341): `this.name` set in the constructor, or a `name` field.
+  const PROBED = [
+    'AuthenticationError',
+    'SessionExpiredError',
+    'NetworkError',
+    'TimeoutError',
+    'ValidationError',
+    'RateLimitError',
+    'DuplicateUploadNotice',
+    'TurnReplayUnavailableError',
+  ];
+  const named = (name: string, i: number) =>
+    i % 2
+      ? `class c${i} extends ae{name="${name}";userTitle="T";constructor(e){super(e)}}`
+      : `class c${i} extends ae{constructor(){super(...arguments),this.name="${name}",this.userTitle="T"}}`;
+  const bundleWith = (replace: Record<string, string> = {}) =>
+    PROBED.map((name, i) => replace[name] ?? named(name, i)).join('');
 
   function gateOn(js: string) {
     let result = { code: -1, output: '' };
@@ -125,26 +139,48 @@ describe('check-error-identity.mjs', () => {
   }
 
   it('passes when each probed class names itself by literal', () => {
-    expect(gateOn(NAMED)).toMatchObject({ code: 0 });
+    expect(gateOn(bundleWith())).toMatchObject({ code: 0 });
   });
 
   it('FAILS when a class names itself by its (minified) class name, as before copilot#414', () => {
     const { code, output } = gateOn(
-      'class yr extends ae{constructor(){super(...arguments),this.name=this.constructor.name}}' +
-        'class kc extends ae{name="DuplicateUploadNotice"}',
+      bundleWith({
+        NetworkError: 'class xv extends ae{constructor(){super(...arguments),this.name=this.constructor.name,this.userTitle="T"}}',
+      }),
     );
     expect(code).toBe(1);
-    expect(output).toMatch(/no class in dist\/ names itself "TurnReplayUnavailableError"/);
+    expect(output).toMatch(/no copilot-ui error class in dist\/ names itself "NetworkError"/);
   });
 
-  it('FAILS when the class overwrites the literal, and a quote elsewhere is not a name', () => {
+  it('FAILS when the class overwrites the literal', () => {
     const { code, output } = gateOn(
-      'class yr extends ae{constructor(){super(),this.name="TurnReplayUnavailableError",this.name=this.constructor.name}}' +
-        'class Q extends ae{f(e){return e.name==="DuplicateUploadNotice"}}',
+      bundleWith({
+        TimeoutError:
+          'class yr extends ae{constructor(){super(),this.name="TimeoutError",this.userTitle="T",this.name=this.constructor.name}}',
+      }),
     );
     expect(code).toBe(1);
-    expect(output).toMatch(/"TurnReplayUnavailableError" also sets name to .*this\.constructor\.name/);
-    expect(output).toMatch(/no class in dist\/ names itself "DuplicateUploadNotice"/);
+    expect(output).toMatch(/"TimeoutError" also sets name to .*this\.constructor\.name/);
+  });
+
+  it('counts no quote that is not the instance name of a copilot-ui error', () => {
+    const impostors = {
+      // A comparison, not an assignment.
+      RateLimitError: 'class q1 extends ae{f(e){return e.name==="RateLimitError"}userTitle="T"}',
+      // A STATIC field names the constructor, not its instances.
+      ValidationError: 'class q2 extends ae{static name="ValidationError";userTitle="T"}',
+      // `this` in a nested non-arrow function is not the instance.
+      SessionExpiredError:
+        'class q3 extends ae{constructor(){super(),this.userTitle="T",function f(){this.name="SessionExpiredError"}}}',
+      // This app's own error of the same name: no `userTitle`.
+      AuthenticationError: 'class q4 extends Error{constructor(){super(),this.name="AuthenticationError"}}',
+    };
+    const { code, output } = gateOn(bundleWith(impostors));
+    expect(code).toBe(1);
+    for (const name of Object.keys(impostors)) {
+      expect(output).toMatch(new RegExp(`names itself "${name}": nothing was probed`));
+    }
+    expect(output).not.toMatch(/"NetworkError"/);
   });
 });
 

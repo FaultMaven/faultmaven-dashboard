@@ -158,6 +158,19 @@ export default function CaseDetailPage() {
   // Closed, not just hidden: it must not reopen by itself when `deleting` clears.
   if (deleting && showShareModal) setShowShareModal(false);
 
+  // What `deleting` withholds (Share, its modal) can unmount under the user's
+  // focus; it then moves to the notice, not to <body>. A ref cleanup runs before
+  // the node is removed, and reads the render being committed.
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+  const withholdingRef = useRef(deleting);
+  withholdingRef.current = deleting;
+  const refocusOnWithhold = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    return () => {
+      if (withholdingRef.current && el.contains(document.activeElement)) noticeRef.current?.focus();
+    };
+  }, []);
+
   // A delete of the shown case is running (contract 14.15.0, faultmaven#2341):
   // re-read it QUIETLY on copilot's schedule until it is gone (404/403, the
   // error view), `deleting` clears, or the schedule ends (the page stays
@@ -389,15 +402,23 @@ export default function CaseDetailPage() {
                 )}
                 <TeamShareBadge teamIds={caseDetail.shared_team_ids} teamsById={teamsById} />
               </div>
-              {deleting && (
-                <p role="status" className="mt-2 text-sm text-fm-text-secondary">
-                  {CASE_DELETING_NOTICE}
-                </p>
-              )}
+              {/* The live region is always rendered, its sentence only while
+                  deleting: one inserted with text already in it is the case
+                  assistive technology announces least reliably. */}
+              <p
+                ref={noticeRef}
+                role="status"
+                tabIndex={-1}
+                data-testid="case-deleting-notice"
+                className={deleting ? 'mt-2 text-sm text-fm-text-secondary outline-none' : 'outline-none'}
+              >
+                {deleting ? CASE_DELETING_NOTICE : ''}
+              </p>
             </div>
             <div className="flex-shrink-0 flex items-center gap-2">
               {canShare && (
                 <button
+                  ref={refocusOnWithhold}
                   onClick={() => setShowShareModal(true)}
                   className="px-3 py-1.5 text-xs text-fm-text-secondary border border-fm-border rounded-fm-btn hover:text-fm-accent hover:border-fm-accent/40 hover:bg-fm-accent/10 transition-colors"
                 >
@@ -494,6 +515,7 @@ export default function CaseDetailPage() {
         teams={teams}
         onClose={() => setShowShareModal(false)}
         onChanged={() => void loadCase()}
+        dialogRef={refocusOnWithhold}
       />
     </div>
   );

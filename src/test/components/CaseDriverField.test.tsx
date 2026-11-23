@@ -252,3 +252,24 @@ describe('the page can withhold the hand-off (a case being deleted, faultmaven#2
     expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
   });
 });
+
+describe('when the hand-off returns after being withheld', () => {
+  it('offers it only after a fresh read of the candidates', async () => {
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE]);
+    const { rerender } = render(field());
+    await screen.findByRole('button', { name: /change driver/i });
+
+    rerender(field({ handOffWithheld: true }));
+    const fresh = deferred<CaseDriverCandidate[]>();
+    vi.mocked(getDriverCandidates).mockReturnValue(fresh.promise);
+    rerender(field());
+
+    expect(getDriverCandidates).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    await act(async () => {
+      fresh.resolve([ADA, GRACE]);
+      await fresh.promise;
+    });
+    expect(screen.getByRole('button', { name: /change driver/i })).toBeInTheDocument();
+  });
+});

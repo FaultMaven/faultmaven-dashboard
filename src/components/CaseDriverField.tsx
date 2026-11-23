@@ -36,7 +36,8 @@ interface CaseDriverFieldProps {
   onCaseStale: (caseId: string) => void;
   /**
    * The page withholds the hand-off (the case is being deleted, faultmaven#2341):
-   * the driver's name still shows, and an open list closes.
+   * the driver's name still shows, an open list closes, and the candidates in
+   * hand are dropped, so the control returns only after a fresh read.
    */
   handOffWithheld?: boolean;
 }
@@ -50,14 +51,15 @@ interface Notice {
  * The case's DRIVER (ADR-020), and — for the two people allowed — the hand-off.
  *
  * Always renders the driver's name. The "Change driver" control is offered
- * only when BOTH hold:
+ * only when ALL hold:
  *
  * - the viewer is the case's creator or its effective driver (D4; a terminal
- *   case is not excluded — it still has driver-only writes), and
+ *   case is not excluded — it still has driver-only writes),
  * - `GET /cases/{id}/driver-candidates` names someone other than the current
  *   driver. In standalone, and for a case shared with nobody, the creator is
  *   the only candidate and drives, so there is nobody to offer and the control
- *   stays hidden.
+ *   stays hidden, and
+ * - the page does not withhold it (`handOffWithheld`: the case is being deleted).
  *
  * A DISCLOSURE OF BUTTONS, NOT A `<select>`. A native select fires `change`
  * on every arrow key while closed in some browsers, and here a change is a
@@ -90,7 +92,7 @@ export function CaseDriverField({
 
   const listId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const controlRef = useRef<HTMLDivElement>(null);
+  const controlRef = useRef<HTMLDivElement | null>(null);
   const nameRef = useRef<HTMLSpanElement>(null);
   // Monotonic: a candidates read that a newer one superseded must not land.
   const readIdRef = useRef(0);
@@ -138,6 +140,9 @@ export function CaseDriverField({
 
   // A list left open must not outlive the control it belongs to.
   if (!offered && open) setOpen(false);
+  // Withheld: a list read before the case started being deleted is not offered
+  // when the hand-off returns (the read above runs again then).
+  if (handOffWithheld && candidates !== null) setCandidates(null);
 
   // One label per candidate, identical names told apart; the list and the
   // confirmation notice read the same map.
@@ -214,6 +219,18 @@ export function CaseDriverField({
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
+  // The control can unmount under the user (the hand-off withheld, or nobody
+  // left to hand to). Focus inside it then moves to the driver's name, as after
+  // a hand-off, not to <body>. A ref cleanup runs before the node is removed.
+  const attachControl = useCallback((el: HTMLDivElement | null) => {
+    controlRef.current = el;
+    if (!el) return;
+    return () => {
+      controlRef.current = null;
+      if (el.contains(document.activeElement)) nameRef.current?.focus();
+    };
+  }, []);
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape' && open) {
       e.stopPropagation();
@@ -245,7 +262,7 @@ export function CaseDriverField({
       </span>
 
       {offered && (
-        <div ref={controlRef} className="relative" onKeyDown={onKeyDown} onBlur={onBlur}>
+        <div ref={attachControl} className="relative" onKeyDown={onKeyDown} onBlur={onBlur}>
           <button
             ref={toggleRef}
             type="button"

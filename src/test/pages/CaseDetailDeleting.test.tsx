@@ -299,13 +299,26 @@ describe('while GET /cases/{id} reads deleting: true', () => {
     expect(reads()).toBe(3 + 6);
   });
 
-  it('the panel is given nothing about deleting', async () => {
-    vi.mocked(getCaseDetail).mockResolvedValue(DELETING as never);
-    await renderPage();
-    expect(fixtures.panelProps.length).toBeGreaterThan(0);
-    for (const props of fixtures.panelProps) {
-      expect(JSON.stringify(props)).not.toMatch(/deleting/i);
-    }
+  it('the panel is given nothing about deleting: its props match a live case\'s', async () => {
+    // Keys and primitive values compared, and a function by its key, nested
+    // objects included: a derived prop (`readOnly`) shows as a changed value.
+    const shape = (value: unknown): unknown =>
+      typeof value === 'function'
+        ? '<function>'
+        : value && typeof value === 'object'
+          ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shape(v)]))
+          : value;
+    const lastPanelProps = async (row: unknown) => {
+      fixtures.panelProps = [];
+      vi.mocked(getCaseDetail).mockResolvedValue(row as never);
+      const { unmount } = await renderPage();
+      const last = fixtures.panelProps.at(-1);
+      unmount();
+      return shape(last);
+    };
+    const live = await lastPanelProps(CASE);
+    expect(live).toBeTruthy();
+    expect(await lastPanelProps(DELETING)).toEqual(live);
   });
 });
 
@@ -339,6 +352,61 @@ describe('deleting arriving on a read while the page is in use', () => {
     await advance(0);
     expect(screen.queryByRole('list', { name: /hand this case to/i })).not.toBeInTheDocument();
     expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
+  });
+
+  it('renders the notice node empty before deleting, and sets only its text', async () => {
+    vi.mocked(getCaseDetail).mockResolvedValue(CASE as never);
+    await renderPage();
+    const notice = screen.getByTestId('case-deleting-notice');
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice).toHaveTextContent('');
+
+    vi.mocked(getCaseDetail).mockResolvedValue(DELETING as never);
+    act(() => fixtures.onCaseChanged!('case-1'));
+    await advance(0);
+    expect(screen.getByTestId('case-deleting-notice')).toBe(notice);
+    expect(notice).toHaveTextContent(NOTICE);
+  });
+});
+
+describe('focus on a withheld control moves, never to <body>', () => {
+  /** Load a live case, focus what `place` returns, then have a read see deleting. */
+  async function withFocusOn(place: () => HTMLElement) {
+    vi.mocked(getCaseDetail).mockResolvedValue(CASE as never);
+    await renderPage();
+    const target = place();
+    act(() => target.focus());
+    expect(document.activeElement).toBe(target);
+    vi.mocked(getCaseDetail).mockResolvedValue(DELETING as never);
+    act(() => fixtures.onCaseChanged!('case-1'));
+    await advance(0);
+    expect(target).not.toBeInTheDocument();
+  }
+
+  it('from the Change-driver toggle to the driver\'s name', async () => {
+    await withFocusOn(() => screen.getByRole('button', { name: /change driver/i }));
+    expect(document.activeElement).toBe(screen.getByTestId('case-driver-name'));
+  });
+
+  it('from a candidate in the open list to the driver\'s name', async () => {
+    await withFocusOn(() => {
+      fireEvent.click(screen.getByRole('button', { name: /change driver/i }));
+      return screen.getByRole('button', { name: /Grace Hopper/ });
+    });
+    expect(document.activeElement).toBe(screen.getByTestId('case-driver-name'));
+  });
+
+  it('from the Share button to the notice', async () => {
+    await withFocusOn(() => screen.getByRole('button', { name: 'Share' }));
+    expect(document.activeElement).toBe(screen.getByTestId('case-deleting-notice'));
+  });
+
+  it('from inside the Share modal to the notice', async () => {
+    await withFocusOn(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+      return screen.getByRole('button', { name: 'Done' });
+    });
+    expect(document.activeElement).toBe(screen.getByTestId('case-deleting-notice'));
   });
 });
 

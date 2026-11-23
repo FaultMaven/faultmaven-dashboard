@@ -213,9 +213,10 @@ export async function searchCases(
 
 /**
  * Share a case with a Team (ADR-013 §D4). Creator-only (ADR-020 D2) and the Team must be one
- * the caller belongs to; the backend enforces both (403 otherwise). Idempotent —
- * re-sharing an already-shared case is a no-op. Cloud-only: standalone has no
- * teams, so the backend returns a clear "not available".
+ * the caller belongs to; the backend enforces both (403). A case that is gone, or that the
+ * caller cannot read, is 404 (contract 15.0.0). Idempotent — re-sharing an already-shared
+ * case is a no-op. Cloud-only: standalone has no teams, so the backend returns a clear
+ * "not available".
  */
 export async function shareCaseWithTeam(caseId: string, teamId: string): Promise<void> {
   const response = await makeAuthenticatedRequest(`${CASES_BASE}/${caseId}/team-shares`, {
@@ -227,9 +228,9 @@ export async function shareCaseWithTeam(caseId: string, teamId: string): Promise
 }
 
 /**
- * Remove a case's share to a Team (ADR-013 §D4). Creator-only (ADR-020 D2). No body is
- * returned (204). A 404 labelled `x-error-code: CASE_NOT_FOUND` is the case's own (gone,
- * or no longer readable); an unlabelled 404 means it was not shared with that Team.
+ * Remove a case's share to a Team (ADR-013 §D4). Creator-only (ADR-020 D2; 403 otherwise).
+ * No body is returned (204). A 404 is a case that is gone or that the caller cannot read
+ * (contract 15.0.0), or a case not shared with that Team.
  */
 export async function unshareCaseFromTeam(caseId: string, teamId: string): Promise<void> {
   const response = await makeAuthenticatedRequest(

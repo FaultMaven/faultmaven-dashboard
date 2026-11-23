@@ -375,15 +375,24 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
     // every assertion below vacuous.
     expect(files.length).toBe(7);
 
+    // Each DOOR, by its package-root path, and the import-free leaves (asserted
+    // here) it may re-export. A LEAF, or a door reaching another's leaf, fails:
+    // `lib/cases/deleting.ts` ends in `/deleting.ts` but is not the door.
+    const LEAVES_OF: Record<(typeof EXEMPT_MODULES)[number], string[]> = {
+      contract: [],
+      'turn-label': ['./lib/state/turn-label', './lib/state/message-kind'],
+      'mermaid-config': [],
+      deleting: ['./lib/cases/deleting'],
+    };
+    const doorAt = (file: string) =>
+      EXEMPT_MODULES.find((m) => file === `/node_modules/@faultmaven/copilot-ui/${m}.ts`);
+    expect(files.filter(([file]) => doorAt(file))).toHaveLength(EXEMPT_MODULES.length);
+
     for (const [file, source] of files) {
-      const isDoor = EXEMPT_MODULES.some((m) => file.endsWith(`/${m}.ts`));
+      const door = doorAt(file);
+      const allowed = door ? LEAVES_OF[door] : [];
       for (const s of runtimeSpecifiers(source, file)) {
-        // A DOOR may re-export the import-free leaf modules asserted here and
-        // nothing else. A LEAF must reach nothing at all.
-        expect(
-          isDoor && /^\.\/lib\/(state\/(turn-label|message-kind)|cases\/deleting)$/.test(s),
-          `${file} reaches ${s}`,
-        ).toBe(true);
+        expect(allowed, `${file} reaches ${s}`).toContain(s);
       }
     }
   });
