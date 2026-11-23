@@ -9,8 +9,8 @@
  * bundle can show the literal survived.
  *
  * For each probed class, some copilot-ui error class in `dist/` (one whose own
- * instance members set `userTitle`, as every `UserFacingError` does and none of
- * this app's errors do) must set its own `name` to that literal, and set it to
+ * instance members set `userTitle`, as each probed copilot-ui class does and
+ * none of this app's errors do) must set its own `name` to that literal, and set it to
  * nothing else. A class missing from the bundle fails: that is the probe gone
  * blind, or a copilot-ui from before #414.
  *

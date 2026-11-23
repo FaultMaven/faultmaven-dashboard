@@ -273,3 +273,27 @@ describe('when the hand-off returns after being withheld', () => {
     expect(screen.getByRole('button', { name: /change driver/i })).toBeInTheDocument();
   });
 });
+
+describe('when the hand-off returns after the viewer handed the case away and back', () => {
+  it('offers it only after a fresh read of the candidates', async () => {
+    // Grace drives a case Ada created: she may hand off, then may not, then may.
+    const asGrace = (driver: string) =>
+      field({ viewerId: 'u-grace', parties: { ...PARTIES, driver_id: driver } });
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE]);
+    const { rerender } = render(asGrace('u-grace'));
+    await screen.findByRole('button', { name: /change driver/i });
+
+    rerender(asGrace('u-ada'));
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    const fresh = deferred<CaseDriverCandidate[]>();
+    vi.mocked(getDriverCandidates).mockReturnValue(fresh.promise);
+    rerender(asGrace('u-grace'));
+
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    await act(async () => {
+      fresh.resolve([ADA, GRACE]);
+      await fresh.promise;
+    });
+    expect(screen.getByRole('button', { name: /change driver/i })).toBeInTheDocument();
+  });
+});

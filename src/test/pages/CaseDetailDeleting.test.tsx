@@ -313,12 +313,19 @@ describe('while GET /cases/{id} reads deleting: true', () => {
       vi.mocked(getCaseDetail).mockResolvedValue(row as never);
       const { unmount } = await renderPage();
       const last = fixtures.panelProps.at(-1);
+      const docked = screen.queryByTestId('conversation-dock') !== null;
       unmount();
-      return shape(last);
+      return { props: shape(last), docked };
     };
-    const live = await lastPanelProps(CASE);
-    expect(live).toBeTruthy();
-    expect(await lastPanelProps(DELETING)).toEqual(live);
+    // Both mounts: the dock at desktop width, the Transcript tab's (CaseTabs)
+    // at narrow width, where there is no dock.
+    for (const width of ['wide', 'narrow'] as const) {
+      setViewport(width);
+      const live = await lastPanelProps(CASE);
+      expect(live.props, width).toBeTruthy();
+      expect(live.docked, width).toBe(width === 'wide');
+      expect(await lastPanelProps(DELETING), width).toEqual(live);
+    }
   });
 });
 
@@ -399,6 +406,17 @@ describe('focus on a withheld control moves, never to <body>', () => {
   it('from the Share button to the notice', async () => {
     await withFocusOn(() => screen.getByRole('button', { name: 'Share' }));
     expect(document.activeElement).toBe(screen.getByTestId('case-deleting-notice'));
+  });
+
+  it('closing the Share modal with Done while NOT deleting leaves the notice unfocused', async () => {
+    vi.mocked(getCaseDetail).mockResolvedValue(CASE as never);
+    await renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+    const done = screen.getByRole('button', { name: 'Done' });
+    act(() => done.focus());
+    fireEvent.click(done);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.activeElement).not.toBe(screen.getByTestId('case-deleting-notice'));
   });
 
   it('from inside the Share modal to the notice', async () => {
