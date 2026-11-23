@@ -37,8 +37,8 @@ interface CaseDriverFieldProps {
   /**
    * The page withholds the hand-off (the case is being deleted, faultmaven#2341):
    * the driver's name still shows and an open list closes. As whenever the
-   * hand-off is not allowed, the candidates in hand are dropped, so the control
-   * returns only after a fresh read.
+   * hand-off becomes allowed again, the candidates read before are dropped, so
+   * the control returns only after a fresh read.
    */
   handOffWithheld?: boolean;
 }
@@ -114,9 +114,10 @@ export function CaseDriverField({
 
   useEffect(() => {
     const readId = ++readIdRef.current;
-    // Not allowed: nothing is read, and whatever an earlier read left is dropped
-    // below. (The page keys this field by case, so a list read for one case is
-    // never shown on another.)
+    // Not allowed: nothing is read, and `offered` below ignores whatever an
+    // earlier read left (kept for the current-driver line's label, and dropped
+    // when the hand-off is allowed again). (The page keys this field by case, so
+    // a list read for one case is never shown on another.)
     if (!allowed) return;
     getDriverCandidates(caseId)
       .then((list) => {
@@ -141,11 +142,15 @@ export function CaseDriverField({
 
   // A list left open must not outlive the control it belongs to.
   if (!offered && open) setOpen(false);
-  // Not allowed (withheld, or the viewer no longer creates or drives the case):
-  // a list read before is not offered when the hand-off returns, whether after a
-  // delete that cleared or after the case was handed away and back (the read
-  // above runs again then).
-  if (!allowed && candidates !== null) setCandidates(null);
+  // On the edge back to allowed (a delete that cleared, or the case handed away
+  // and back) the list read before is dropped, so nothing is offered until the
+  // read above lands again. While not allowed it is kept: the current-driver
+  // line reads its labels, as the notice did (#219).
+  const [prevAllowed, setPrevAllowed] = useState(allowed);
+  if (allowed !== prevAllowed) {
+    setPrevAllowed(allowed);
+    if (allowed) setCandidates(null);
+  }
 
   // One label per candidate, identical names told apart; the list and the
   // confirmation notice read the same map.

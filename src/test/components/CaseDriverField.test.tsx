@@ -297,3 +297,25 @@ describe('when the hand-off returns after the viewer handed the case away and ba
     expect(screen.getByRole('button', { name: /change driver/i })).toBeInTheDocument();
   });
 });
+
+describe('after a non-creator driver hands the case away (#219)', () => {
+  it('the current-driver line keeps the label the notice used', async () => {
+    const M1 = { user_id: '3f9a12bc-0000-4000-8000-000000000001', display_name: 'Member 3f9a' };
+    const M2 = { user_id: '3f9aeeee-0000-4000-8000-000000000002', display_name: 'Member 3f9a' };
+    const onReassigned = vi.fn();
+    // Grace drives Ada's case, so handing it on leaves her no hand-off.
+    const asGrace = (driver: string) =>
+      field({ viewerId: 'u-grace', parties: { ...PARTIES, driver_id: driver }, onReassigned });
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE, M1, M2]);
+    vi.mocked(reassignCaseDriver).mockResolvedValue({ case_id: 'case-1', driver_id: M2.user_id } as never);
+    const { rerender } = render(asGrace('u-grace'));
+
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Member 3f9a \(3f9aeeee\)/ }));
+    await waitFor(() => expect(onReassigned).toHaveBeenCalled());
+    rerender(asGrace(M2.user_id)); // the page applies the answer
+
+    expect(screen.getByTestId('case-driver-status')).toHaveTextContent('Member 3f9a (3f9aeeee) now drives this case.');
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Member 3f9a (3f9aeeee)');
+  });
+});
