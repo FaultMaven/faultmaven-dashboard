@@ -112,15 +112,16 @@ describe('KBPage Drafts tab — a batch\'s hand-off holds its case filter', () =
   }
   const deferred = list.map((d) => ({ conversion_id: d.conversion_id, draft_id: d.draft_id, status: 'deferred', error: 'Verify it again.', knowledge_item_id: null }));
 
+  const checkedRows = () =>
+    (within(screen.getByRole('region', { name: 'Drafts' })).getAllByRole('checkbox') as HTMLInputElement[]).map((box) => box.checked);
+
   /**
-   * No page control opens the Drafts tab under another case filter than the one
-   * a hand-off was kept for (leaving Drafts drops `?case=`, and opening it keeps
-   * the URL's), so the test moves the URL itself, as a deep link would.
+   * A Drafts-tab batch that ends on the Runbooks tab under `?case=case-A`, so it
+   * keeps case-A's deferred drafts for the Drafts tab. No page control leaves
+   * Drafts keeping `?case=` (leaving Drafts drops it), so the test moves the URL
+   * itself, as a deep link would.
    */
-  it.each([
-    ['case-B', [false, false], null],
-    ['case-A', [true, true], '2 selected'],
-  ])('kept under case-A, the Drafts tab opened under %s selects %j', async (caseId, checked, count) => {
+  async function handOffUnderCaseA() {
     listAllDrafts.mockResolvedValue(list);
     await act(async () => {
       render(<MemoryRouter initialEntries={['/kb?tab=drafts']}><RouterProbe /><KBPage /></MemoryRouter>);
@@ -132,12 +133,29 @@ describe('KBPage Drafts tab — a batch\'s hand-off holds its case filter', () =
     // The batch ends on the Runbooks tab under case-A, so it keeps case-A's deferred drafts for the Drafts tab.
     await act(async () => { router.go?.('/kb?case=case-A'); });
     await act(async () => { settle({ total: 4, verified: 0, failed: 0, skipped: 0, deferred: 4, results: deferred }); });
+  }
+
+  // A pin of the clause that the hand-off applies only under its own case filter (faultmaven#2466 item 3).
+  it.each([
+    ['case-B', [false, false], null],
+    ['case-A', [true, true], '2 selected'],
+  ])('kept under case-A, the Drafts tab opened under %s selects %j', async (caseId, checked, count) => {
+    await handOffUnderCaseA();
 
     await act(async () => { router.go?.(`/kb?tab=drafts&case=${caseId}`); });
 
-    const rows = within(screen.getByRole('region', { name: 'Drafts' })).getAllByRole('checkbox') as HTMLInputElement[];
-    expect(rows.map((box) => box.checked)).toEqual(checked);
+    expect(checkedRows()).toEqual(checked);
     if (count) expect(screen.getByText(count)).toBeInTheDocument();
     else expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+  });
+
+  it('a click on Runbooks while Runbooks is open keeps the URL and the hand-off for the Drafts tab', async () => {
+    await handOffUnderCaseA();
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Runbooks/ })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Drafts/ })); });
+
+    expect(screen.getByText('Filtered by case')).toBeInTheDocument();
+    expect(checkedRows()).toEqual([true, true]);
   });
 });

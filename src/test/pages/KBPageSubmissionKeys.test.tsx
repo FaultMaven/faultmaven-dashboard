@@ -354,11 +354,11 @@ describe('KBPage overlay — an action that lands changes only its own overlay (
     expect(screen.getByRole('button', { name: /New/i })).toBeInTheDocument();
   });
 
-  it('a cancelled Write Runbook that lands leaves the upload overlay opened since', async () => {
+  /** Write Runbook, every field the form requires filled so the submit reaches the page; its answer is the test's to give. */
+  async function writeARunbook(beforeSubmit?: () => void) {
     let written!: (answer: Awaited<ReturnType<typeof conversion.createRunbookManually>>) => void;
     createRunbookManually.mockReturnValueOnce(new Promise((resolve) => { written = resolve; }));
     await open('Write Runbook');
-    // Every field the form requires, so the submit reaches the page.
     const set = (el: Element, value: string) => fireEvent.change(el, { target: { value } });
     await act(async () => {
       set(screen.getByPlaceholderText(/PostgreSQL Connection Pool Exhaustion/), 'A sufficiently long runbook title');
@@ -371,12 +371,18 @@ describe('KBPage overlay — an action that lands changes only its own overlay (
         set(ta, ta.placeholder.includes('### Cause A') ? '### Cause A: Pool exhaustion\n**Statement:** x' : 'details here');
       }
     });
+    beforeSubmit?.();
     await click(screen.getByRole('button', { name: 'Create Draft Runbook' }));
+    return (draft = makeDraft()) => act(async () => { written({ conversion_id: 'conv-1', draft }); });
+  }
+
+  it('a cancelled Write Runbook that lands leaves the upload overlay opened since', async () => {
+    const land = await writeARunbook();
     expect(createRunbookManually).toHaveBeenCalledTimes(1);
     await closeOverlay();
     await open('Add Runbook');
 
-    await act(async () => { written({ conversion_id: 'conv-1', draft: makeDraft() }); });
+    await land();
 
     expect(screen.getByRole('heading', { name: 'Add Runbook' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /Conversion Complete/ })).not.toBeInTheDocument();
@@ -386,12 +392,47 @@ describe('KBPage overlay — an action that lands changes only its own overlay (
     const conversionAnswer = await cancelAConversion();
     await open('Convert to Runbook');
     await pickFile();
+    // Nothing this panel sent is running.
+    expect(screen.getByRole('button', { name: 'Convert' })).toBeEnabled();
 
     await act(async () => { conversionAnswer.reject(new NetworkError('Could not reach the FaultMaven API')); });
 
     expect(screen.getByRole('heading', { name: 'Convert Document to Runbook(s)' })).toBeInTheDocument();
     expect(screen.queryByText('Conversion failed')).not.toBeInTheDocument();
     expect(screen.queryByText('Could not reach the FaultMaven API')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Convert' })).toBeEnabled();
+    expect(screen.queryByText('Converting...')).not.toBeInTheDocument();
+  });
+
+  it("a cancelled conversion that lands leaves the second conversion's spinner, and the second's results show", async () => {
+    const first = await cancelAConversion();
+    let second!: (answer: Awaited<ReturnType<typeof conversion.convertDocument>>) => void;
+    convertDocument.mockReturnValueOnce(new Promise((resolve) => { second = resolve; }));
+    await open('Convert to Runbook');
+    await pickFile();
+    await submitConvert();
+
+    await act(async () => { first.resolve({ conversion: makeConversion(), replayed: false }); });
+    expect(screen.getByRole('button', { name: 'Converting...' })).toBeDisabled();
+
+    await act(async () => { second({ conversion: makeConversion([makeDraft({ title: 'Second conversion' })]), replayed: false }); });
+    expect(screen.getByRole('heading', { name: /Conversion Complete/ })).toBeInTheDocument();
+    expect(screen.getByText('Second conversion')).toBeInTheDocument();
+  });
+
+  it("a cancelled Write Runbook leaves no spinner on the next, and its landing leaves the next's spinner", async () => {
+    const first = await writeARunbook();
+    await closeOverlay();
+    // The reopened form runs nothing until its own submit.
+    const second = await writeARunbook(() => expect(screen.getByRole('button', { name: 'Create Draft Runbook' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Creating...' })).toBeDisabled();
+
+    await first(makeDraft({ title: 'First runbook' }));
+    expect(screen.getByRole('button', { name: 'Creating...' })).toBeDisabled();
+
+    await second(makeDraft({ title: 'Second runbook' }));
+    expect(screen.getByText('Second runbook')).toBeInTheDocument();
+    expect(screen.queryByText('First runbook')).not.toBeInTheDocument();
   });
 });
 

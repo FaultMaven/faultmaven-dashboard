@@ -1190,8 +1190,11 @@ export default function KBPage() {
   const tabNow = useRef(activeTab);
   const setActiveTab = useCallback(
     (tab: KBTab) => {
-      // A change of tab retires the hand-off; a click on the tab already open changes nothing (faultmaven#2466).
-      if (tab !== 'drafts' && tab !== tabNow.current) selectionOnViewChange.current = null;
+      // A request for the tab already open changes nothing: not the hand-off, and not the URL,
+      // whose `case` a change would drop and so consume the hand-off (faultmaven#2466).
+      if (tab === tabNow.current) return;
+      // A change of tab retires the hand-off.
+      if (tab !== 'drafts') selectionOnViewChange.current = null;
       tabNow.current = tab;
       replaceSearch((next) => {
         if (tab === 'drafts') {
@@ -1217,8 +1220,8 @@ export default function KBPage() {
   // Overlay state (creation/editing flows)
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
   // Bumped by every overlay the user opens and by every close. An overlay action that awaits
-  // captures it, and changes the overlay only if it is unchanged when the await lands: one
-  // opened or closed since is not the action's (faultmaven#2456).
+  // captures it, and changes the overlay, its loading state included, only if it is unchanged
+  // when the await lands: one opened or closed since is not the action's (faultmaven#2456).
   const overlayEpoch = useRef(0);
   const [conversion, setConversion] = useState<ConversionResponse | null>(null);
   const [editingDraft, setEditingDraft] = useState<ConversionDraft | null>(null);
@@ -1354,13 +1357,21 @@ export default function KBPage() {
     await clearAuthState();
   };
 
+  // A new overlay shows no request of an earlier one as running.
+  const resetOverlayLoading = () => {
+    setConverting(false);
+    setManualLoading(false);
+  };
+
   const openOverlay = (mode: OverlayMode) => {
     overlayEpoch.current += 1;
+    resetOverlayLoading();
     setOverlayMode(mode);
   };
 
   const closeOverlay = () => {
     overlayEpoch.current += 1;
+    resetOverlayLoading();
     setOverlayMode(null);
     setConvertError(null);
     setManualError(null);
@@ -1414,7 +1425,7 @@ export default function KBPage() {
         setConvertError({ title: 'Conversion failed', message: err instanceof Error ? err.message : 'Unknown error', action: 'Try again.' });
       }
     } finally {
-      setConverting(false);
+      if (overlayIsOurs()) setConverting(false);
     }
   };
 
@@ -1485,7 +1496,7 @@ export default function KBPage() {
     } catch (err: unknown) {
       if (overlayIsOurs()) setManualError(err instanceof Error ? err.message : 'Failed to create runbook');
     } finally {
-      setManualLoading(false);
+      if (overlayIsOurs()) setManualLoading(false);
     }
   };
 
@@ -1535,17 +1546,20 @@ export default function KBPage() {
    * `gone`: the server no longer serves the draft (a discarded draft is not
    * listed) or the conversion (404), so there is nothing to edit; the editor is
    * closed. `unavailable`: the refetch itself failed, and the page still holds
-   * the old copy.
+   * the old copy. `superseded`: an overlay was opened or closed while the
+   * refetch was out, so the overlay is not this call's to change (faultmaven#2456).
    */
   const adoptServerConversion = async (
     conversionId: string,
     draftId: string,
-  ): Promise<'adopted' | 'gone' | 'unavailable'> => {
+  ): Promise<'adopted' | 'gone' | 'unavailable' | 'superseded'> => {
     const editorIsOnIt = () => openDraftRef.current?.draftId === draftId;
+    const epoch = overlayEpoch.current;
     let fresh: ConversionResponse;
     try {
       fresh = await getConversion(conversionId);
     } catch (err: unknown) {
+      if (epoch !== overlayEpoch.current) return 'superseded';
       if (err instanceof APIError && err.statusCode === 404) {
         if (editorIsOnIt()) {
           setEditingDraft(null);
@@ -1555,6 +1569,7 @@ export default function KBPage() {
       }
       return 'unavailable';
     }
+    if (epoch !== overlayEpoch.current) return 'superseded';
     setConversion(fresh);
     const serverDraft = fresh.drafts.find((d) => d.draft_id === draftId);
     if (serverDraft) {

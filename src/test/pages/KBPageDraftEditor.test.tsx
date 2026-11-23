@@ -490,6 +490,55 @@ describe('KBPage draft editor — it shows the draft the server holds', () => {
       expect(screen.queryByRole('textbox', { name: 'Runbook content' })).not.toBeInTheDocument();
     });
 
+    it("a batch's resync that lands after the user moved to another draft's results leaves those results (faultmaven#2456)", async () => {
+      listAllDrafts.mockResolvedValue([
+        makeDraftSummary(),
+        makeDraftSummary({ conversion_id: 'conv-2', draft_id: 'draft-2', title: 'Second runbook' }),
+      ]);
+      await act(async () => {
+        render(<MemoryRouter initialEntries={['/kb?tab=drafts']}><KBPage /></MemoryRouter>);
+      });
+      await screen.findByRole('button', { name: /Second runbook/ });
+      // Activate the first draft, and open it in the editor while the batch runs.
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('checkbox')[1]);
+      });
+      const batch = deferred<ReturnType<typeof batchOf>>();
+      verifyBatch.mockReturnValue(batch.promise);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+      });
+      await openDraftInEditor();
+      // The batch ends and reloads the open draft; that read is held.
+      const resync = deferred<ReturnType<typeof verifiedConversion>>();
+      getConversion
+        .mockReturnValueOnce(resync.promise)
+        .mockResolvedValueOnce(makeConversion([makeDraft({ draft_id: 'draft-2', title: 'Second runbook' })], { conversion_id: 'conv-2' }));
+      await act(async () => {
+        batch.resolve(batchOf('verified'));
+      });
+      expect(getConversion).toHaveBeenCalledTimes(2);
+
+      // Back to Results, Back, then the second draft's results.
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Back to Results' }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Second runbook/ }));
+      });
+      expect(screen.getByText('Second runbook')).toBeInTheDocument();
+
+      await act(async () => {
+        resync.resolve(verifiedConversion());
+      });
+
+      expect(screen.getByText('Second runbook')).toBeInTheDocument();
+      expect(screen.queryByText('Redis out of memory')).not.toBeInTheDocument();
+    });
+
     it('does not reload an editor open on a draft the batch did not include', async () => {
       listAllDrafts.mockResolvedValue([
         makeDraftSummary(),
