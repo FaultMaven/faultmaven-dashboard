@@ -6,7 +6,7 @@ import * as api from '../../lib/api';
 import * as conversion from '../../lib/knowledge/conversion';
 import type { BatchVerifyItemResult, BatchVerifyResponse, DraftSummary } from '../../lib/knowledge/conversion';
 import { APIError } from '../../lib/knowledge/errors';
-import { makeConversion, makeDraftSummary } from '../support/kbDrafts';
+import { makeConversion, makeDraft, makeDraftSummary } from '../support/kbDrafts';
 
 /**
  * verify-batch reports each draft as `verified`, `failed`, `skipped`,
@@ -266,6 +266,48 @@ describe('KBPage — a batch activation shows every status verify-batch reports'
     await click(screen.getByRole('button', { name: /^Drafts/ }));
 
     expect(checkedRows()).toEqual([true, true]);
+  });
+
+  it('a Drafts-tab batch\'s deferred drafts survive a click on Runbooks while Runbooks is open (faultmaven#2466)', async () => {
+    await renderKB('/kb?tab=drafts', 2, 1);
+    const batch = pending<BatchVerifyResponse>();
+    verifyBatch.mockReturnValueOnce(batch.promise);
+    await activateSelected();
+    await click(screen.getByRole('button', { name: /^Runbooks/ }));
+    await act(async () => batch.settle(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)])));
+
+    // The tab already open: no change of tab, so the hand-off stands.
+    await click(screen.getByRole('button', { name: /^Runbooks/ }));
+    await click(screen.getByRole('button', { name: /^Drafts/ }));
+
+    expect(checkedRows()).toEqual([true, true]);
+  });
+
+  it('a failed reload restores no deferred draft the page\'s latest list shows activated (faultmaven#2466)', async () => {
+    await renderKB('/kb?tab=drafts', 2, 0);
+    const opened = (status: 'draft' | 'verified') => makeConversion([makeDraft({ draft_id: 'draft-0', title: TITLES[0], status })], { conversion_id: 'conv-0' });
+    getConversion.mockResolvedValueOnce(opened('draft')).mockResolvedValue(opened('verified'));
+    verifyDraft.mockResolvedValue({
+      draft_id: 'draft-0', runbook_id: 'redis-oom', status: 'verified', knowledge_item_id: 'ki-0',
+      ingested: true, ingested_at: null, collection: 'knowledge', chunks_created: 1,
+    });
+    const batch = pending<BatchVerifyResponse>();
+    verifyBatch.mockReturnValueOnce(batch.promise);
+    await click(screen.getByRole('button', { name: 'Activate All' }));
+    // While the batch runs, the first draft is activated from its results, and the list reloads with it activated.
+    listAllDrafts
+      .mockResolvedValueOnce(drafts(2).map((d, i) => (i === 0 ? { ...d, status: 'verified' } : d)))
+      .mockRejectedValueOnce(new APIError('Service unavailable', 503));
+    await click(screen.getByRole('button', { name: new RegExp(TITLES[0]) }));
+    await click(await screen.findByRole('button', { name: 'Activate' }));
+    await click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm' }));
+
+    // Both come back deferred, and the batch's own reload fails.
+    await act(async () => batch.settle(answer([item(0, 'deferred', DEFERRED), item(1, 'deferred', DEFERRED)])));
+    await click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(checkedRows()).toEqual([true]);
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
   });
 
   it('keeps the deferred drafts selected when the batch\'s reload fails, and after a Try again', async () => {

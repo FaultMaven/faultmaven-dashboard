@@ -142,6 +142,28 @@ async function save() {
   });
 }
 
+describe('KBPage — an Open draft that lands changes only its own overlay (faultmaven#2456)', () => {
+  it('leaves the upload overlay opened while its fetch was out', async () => {
+    await renderDraftsTab();
+    let fetched!: (answer: Awaited<ReturnType<typeof conversion.getConversion>>) => void;
+    getConversion.mockReturnValueOnce(new Promise((resolve) => { fetched = resolve; }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Redis out of memory/ }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /New/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Add Runbook'));
+    });
+
+    await act(async () => fetched(draftConversion()));
+
+    expect(screen.getByRole('heading', { name: 'Add Runbook' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Conversion Complete/ })).not.toBeInTheDocument();
+  });
+});
+
 describe('KBPage draft editor — it shows the draft the server holds', () => {
   beforeEach(() => {
     vi.clearAllMocks();
