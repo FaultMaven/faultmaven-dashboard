@@ -1279,11 +1279,12 @@ export default function KBPage() {
     setScanResult(null);
     try {
       const result = await scanForRunbooks();
-      loadDrafts();
       setScanResult(describeScan(result));
     } catch (err: unknown) {
       setScanResult({ tone: 'error', text: sentenceFrom(err) || 'Scan failed.' });
     } finally {
+      // Either way: a scan can import some files and then fail (faultmaven#2393).
+      loadDrafts();
       setScanning(false);
     }
   };
