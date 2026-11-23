@@ -44,7 +44,11 @@ function withTempDir(fn: (dir: string) => void) {
   }
 }
 
-const GATES = ['check-web-bundle-boundary.mjs', 'check-shared-ui-styles.mjs'] as const;
+const GATES = [
+  'check-web-bundle-boundary.mjs',
+  'check-shared-ui-styles.mjs',
+  'check-error-identity.mjs',
+] as const;
 
 /**
  * Tailwind preflight, as the built stylesheet carries it.
@@ -101,6 +105,46 @@ describe('check-web-bundle-boundary.mjs', () => {
       expect(code).toBe(1);
       expect(output).toMatch(/Sign in with Organization/);
     });
+  });
+});
+
+describe('check-error-identity.mjs', () => {
+  // Shaped as the minified bundle carries them (faultmaven#2341).
+  const NAMED =
+    'class yr extends ae{constructor(){super(...arguments),this.name="TurnReplayUnavailableError"}}' +
+    'class kc extends ae{name="DuplicateUploadNotice";constructor(e){super(e)}}';
+
+  function gateOn(js: string) {
+    let result = { code: -1, output: '' };
+    withTempDir((dir) => {
+      mkdirSync(join(dir, 'dist', 'assets'), { recursive: true });
+      writeFileSync(join(dir, 'dist', 'assets', 'panel.js'), js);
+      result = runGate('check-error-identity.mjs', dir);
+    });
+    return result;
+  }
+
+  it('passes when each probed class names itself by literal', () => {
+    expect(gateOn(NAMED)).toMatchObject({ code: 0 });
+  });
+
+  it('FAILS when a class names itself by its (minified) class name, as before copilot#414', () => {
+    const { code, output } = gateOn(
+      'class yr extends ae{constructor(){super(...arguments),this.name=this.constructor.name}}' +
+        'class kc extends ae{name="DuplicateUploadNotice"}',
+    );
+    expect(code).toBe(1);
+    expect(output).toMatch(/no class in dist\/ names itself "TurnReplayUnavailableError"/);
+  });
+
+  it('FAILS when the class overwrites the literal, and a quote elsewhere is not a name', () => {
+    const { code, output } = gateOn(
+      'class yr extends ae{constructor(){super(),this.name="TurnReplayUnavailableError",this.name=this.constructor.name}}' +
+        'class Q extends ae{f(e){return e.name==="DuplicateUploadNotice"}}',
+    );
+    expect(code).toBe(1);
+    expect(output).toMatch(/"TurnReplayUnavailableError" also sets name to .*this\.constructor\.name/);
+    expect(output).toMatch(/no class in dist\/ names itself "DuplicateUploadNotice"/);
   });
 });
 

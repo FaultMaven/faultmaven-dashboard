@@ -4,6 +4,7 @@ import { PageHeader } from '../components/PageHeader';
 import { CaseStateBadge } from '../components/CaseStateBadge';
 import { CaseStageCell } from '../components/CaseStageCell';
 import { caseTurnCount } from '../lib/cases/turnLabel';
+import { CASE_DELETING_NOTICE, nextDeletingReread } from '../lib/cases/deleting';
 import { CaseTabs } from '../components/CaseTabs';
 import { ConversationDock } from '../components/ConversationDock';
 import { TeamShareBadge } from '../components/TeamShareBadge';
@@ -95,6 +96,10 @@ export default function CaseDetailPage() {
   const routeCaseIdRef = useRef(caseId);
   routeCaseIdRef.current = caseId;
 
+  // When the read whose answer the page shows was SENT: the deleting re-reads'
+  // cap counts from the request that first saw `deleting`, request time included.
+  const shownReadSentAtRef = useRef(0);
+
   const loadCase = useCallback(
     async (opts: { withSpinner?: boolean } = {}) => {
       if (!caseId) return;
@@ -106,9 +111,11 @@ export default function CaseDetailPage() {
         // error view even after a successful fetch.
         setError(null);
       }
+      const sentAt = Date.now();
       try {
         const detail = await getCaseDetail(caseId);
         if (reqId !== reqIdRef.current) return; // superseded by a newer load
+        shownReadSentAtRef.current = sentAt;
         setCaseDetail(detail);
       } catch (err) {
         if (reqId !== reqIdRef.current) return;
@@ -147,6 +154,40 @@ export default function CaseDetailPage() {
   // is not ours to refresh. "Ours" is the case the panel was mounted with
   // (`caseDetail.case_id`, what both mounts receive), not the route param.
   const shownCaseId = caseDetail?.case_id;
+  const deleting = caseDetail?.deleting === true;
+  // Closed, not just hidden: it must not reopen by itself when `deleting` clears.
+  if (deleting && showShareModal) setShowShareModal(false);
+
+  // A delete of the shown case is running (contract 14.15.0, faultmaven#2341):
+  // re-read it QUIETLY on copilot's schedule until it is gone (404/403, the
+  // error view), `deleting` clears, or the schedule ends (the page stays
+  // read-only until the next read). Keyed on the SHOWN case and armed only once
+  // it is the route's and no spinner load runs: `loadCase` keeps the previous
+  // case on screen while the next one loads, and a quiet read superseding that
+  // load would leave the page on the spinner. A superseded re-read still
+  // schedules the next; a newer read that clears `deleting` disarms this.
+  const deletingCaseId = deleting && !loading && shownCaseId === caseId ? shownCaseId : null;
+  useEffect(() => {
+    if (!deletingCaseId) return;
+    const firstSeenSentAt = shownReadSentAtRef.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+    const schedule = (previousDelay: number | null) => {
+      const delay = nextDeletingReread(previousDelay, Date.now() - firstSeenSentAt);
+      if (delay === null) return;
+      timer = setTimeout(() => {
+        void loadCase().then(() => {
+          if (!stopped) schedule(delay);
+        });
+      }, delay);
+    };
+    schedule(null);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [deletingCaseId, loadCase]);
+
   const handleCaseChanged = useCallback(
     (changedId: string) => {
       if (changedId === shownCaseId) void loadCase();
@@ -243,7 +284,7 @@ export default function CaseDetailPage() {
   // conversion as the case's `user_id`), so the Report tab links only the
   // creator to it (#262).
   const viewerIsCreator = isCaseCreator(caseDetail, viewerId);
-  const canShare = teamSharingEnabled && viewerIsCreator;
+  const canShare = teamSharingEnabled && viewerIsCreator && !deleting;
 
   /**
    * Whether the person looking at this case DRIVES it (ADR-020).
@@ -348,6 +389,11 @@ export default function CaseDetailPage() {
                 )}
                 <TeamShareBadge teamIds={caseDetail.shared_team_ids} teamsById={teamsById} />
               </div>
+              {deleting && (
+                <p role="status" className="mt-2 text-sm text-fm-text-secondary">
+                  {CASE_DELETING_NOTICE}
+                </p>
+              )}
             </div>
             <div className="flex-shrink-0 flex items-center gap-2">
               {canShare && (
@@ -400,6 +446,7 @@ export default function CaseDetailPage() {
               viewerId={viewerId}
               onReassigned={handleDriverReassigned}
               onCaseStale={handleDriverStale}
+              handOffWithheld={deleting}
             />
             <span>&middot;</span>
             <span>{turns} turn{turns !== 1 ? 's' : ''}</span>
@@ -441,7 +488,7 @@ export default function CaseDetailPage() {
       </main>
 
       <ShareCaseModal
-        isOpen={showShareModal}
+        isOpen={showShareModal && !deleting}
         caseId={caseDetail.case_id}
         sharedTeamIds={caseDetail.shared_team_ids ?? []}
         teams={teams}

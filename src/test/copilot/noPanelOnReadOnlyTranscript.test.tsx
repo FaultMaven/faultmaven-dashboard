@@ -123,6 +123,7 @@ import type { CaseConversationLayout } from '../../lib/cases/conversationSurface
 
 const CASE: CaseDetail = {
   case_id: 'case-9',
+  deleting: false,
   title: 'Replica stopped accepting writes',
   description: 'Writes fail, reads succeed',
   state: 'investigating',

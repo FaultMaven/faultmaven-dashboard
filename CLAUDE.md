@@ -260,9 +260,10 @@ Detail: `.claude/rules/cases.md`.
 
 - Import `@faultmaven/copilot-ui` by its ENTRY only, and the entry only
   dynamically, in `src/copilot/CopilotPanelMount.tsx`. The `/contract`,
-  `/turn-label` and `/mermaid-config` subpaths are the exceptions, each through
-  one door (`advertisement.ts`, `copilotCapability.ts`, `lib/cases/turnLabel.ts`,
-  `components/MermaidDiagram.tsx`);
+  `/turn-label`, `/mermaid-config` and `/deleting` subpaths are the exceptions,
+  each through one door (`advertisement.ts`, `copilotCapability.ts`,
+  `lib/cases/turnLabel.ts`, `components/MermaidDiagram.tsx`,
+  `lib/cases/deleting.ts`);
   `src/test/copilot/packageImportBoundary.test.ts` enforces it.
 - The chat-surface preference (`src/lib/copilot/chatSurfacePreference.ts`)
   defaults OFF and is never set by detection. It governs the interactive

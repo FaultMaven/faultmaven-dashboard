@@ -542,6 +542,7 @@ describe('a dock turn refused while a delete of its case runs (faultmaven-dashbo
   /** The server's row: an investigating case the signed-in user (`u1`) created and drives. */
   const CASE_ROW: components['schemas']['CaseDetail'] = {
     case_id: CASE_ID,
+    deleting: false,
     title: 'Checkout latency after the cache deploy',
     description: 'p99 checkout latency tripled after the 08:00 deploy',
     state: 'investigating',
@@ -668,6 +669,7 @@ describe('the dock’s Case Closed card for a case closed mitigation_sufficient 
   const CLOSED_AT = '2026-11-08T09:30:00Z';
   const CASE_ROW: components['schemas']['CaseDetail'] = {
     case_id: CASE_ID,
+    deleting: false,
     title: 'Checkout latency after the cache deploy',
     description: 'p99 checkout latency tripled after the 08:00 deploy',
     state: 'closed',

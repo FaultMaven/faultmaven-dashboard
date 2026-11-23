@@ -65,6 +65,7 @@ const REV_3 = '2026-10-01T10:02:00.000001Z';
 function caseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
   return {
     case_id: 'case-1',
+    deleting: false,
     title: 'Replica stopped accepting writes',
     description: 'Writes fail, reads succeed',
     state: 'investigating',

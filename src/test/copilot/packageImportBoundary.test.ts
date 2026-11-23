@@ -67,6 +67,10 @@ const nonTsSources = import.meta.glob<string>(
  *    imports only mermaid's config TYPE, which is erased. mermaid's site config
  *    is one global and the last initializer wins whole, so this app's diagrams
  *    and the embedded panel's must initialize from one object (faultmaven#2119);
+ *  - the DELETING notice and re-read schedule, for the same reason again:
+ *    `deleting.ts` re-exports `lib/cases/deleting.ts`, which imports nothing. The
+ *    case page and the panel show the same case being deleted, so they say one
+ *    sentence on one schedule (faultmaven#2341);
  *  - the CONTRACT, because importing those three values from the ENTRY pulls
  *    the whole package into the eager graph. Measured: it moved the host store,
  *    transport and persistence internals into this app's entry chunk (+200 kB
@@ -74,7 +78,7 @@ const nonTsSources = import.meta.glob<string>(
  *    imports nothing, and the same measurement puts it at +196 bytes.
  */
 /** The `.ts` exceptions, which must be proven import-free to keep their exemption. */
-const EXEMPT_MODULES = ['contract', 'turn-label', 'mermaid-config'] as const;
+const EXEMPT_MODULES = ['contract', 'turn-label', 'mermaid-config', 'deleting'] as const;
 
 const DEEP_PATH_EXCEPTIONS = [
   `${PACKAGE}/styles/globals.css`,
@@ -87,6 +91,7 @@ const EXEMPT_DOORS: Record<string, string[]> = {
   contract: ['../../copilot/advertisement.ts', '../../copilot/copilotCapability.ts'],
   'turn-label': ['../../lib/cases/turnLabel.ts'],
   'mermaid-config': ['../../components/MermaidDiagram.tsx'],
+  deleting: ['../../lib/cases/deleting.ts'],
 };
 
 interface ModuleReference {
@@ -335,6 +340,7 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
         '/node_modules/@faultmaven/copilot-ui/contract.ts',
         '/node_modules/@faultmaven/copilot-ui/turn-label.ts',
         '/node_modules/@faultmaven/copilot-ui/mermaid-config.ts',
+        '/node_modules/@faultmaven/copilot-ui/deleting.ts',
       ],
       { query: '?raw', import: 'default', eager: true },
     );
@@ -358,6 +364,8 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
         '/node_modules/@faultmaven/copilot-ui/mermaid-config.ts',
         '/node_modules/@faultmaven/copilot-ui/lib/state/turn-label.ts',
         '/node_modules/@faultmaven/copilot-ui/lib/state/message-kind.ts',
+        '/node_modules/@faultmaven/copilot-ui/deleting.ts',
+        '/node_modules/@faultmaven/copilot-ui/lib/cases/deleting.ts',
       ],
       { query: '?raw', import: 'default', eager: true },
     );
@@ -365,15 +373,15 @@ describe('how the Dashboard reaches @faultmaven/copilot-ui', () => {
 
     // Fail closed: a renamed or moved module must break this rather than make
     // every assertion below vacuous.
-    expect(files.length).toBe(5);
+    expect(files.length).toBe(7);
 
     for (const [file, source] of files) {
       const isDoor = EXEMPT_MODULES.some((m) => file.endsWith(`/${m}.ts`));
       for (const s of runtimeSpecifiers(source, file)) {
-        // A DOOR may re-export the import-free state modules asserted here and
+        // A DOOR may re-export the import-free leaf modules asserted here and
         // nothing else. A LEAF must reach nothing at all.
         expect(
-          isDoor && /^\.\/lib\/state\/(turn-label|message-kind)$/.test(s),
+          isDoor && /^\.\/lib\/(state\/(turn-label|message-kind)|cases\/deleting)$/.test(s),
           `${file} reaches ${s}`,
         ).toBe(true);
       }

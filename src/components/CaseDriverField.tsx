@@ -34,6 +34,11 @@ interface CaseDriverFieldProps {
    * the page can refuse a notice about a case it no longer shows.
    */
   onCaseStale: (caseId: string) => void;
+  /**
+   * The page withholds the hand-off (the case is being deleted, faultmaven#2341):
+   * the driver's name still shows, and an open list closes.
+   */
+  handOffWithheld?: boolean;
 }
 
 interface Notice {
@@ -73,8 +78,9 @@ export function CaseDriverField({
   viewerId,
   onReassigned,
   onCaseStale,
+  handOffWithheld = false,
 }: CaseDriverFieldProps) {
-  const allowed = mayReassignDriver(parties, viewerId);
+  const allowed = !handOffWithheld && mayReassignDriver(parties, viewerId);
   const [candidates, setCandidates] = useState<CaseDriverCandidate[] | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);

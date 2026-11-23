@@ -231,3 +231,24 @@ describe('the current-driver line reads the label the list and notice use (#219)
     ).toBeInTheDocument();
   });
 });
+
+describe('the page can withhold the hand-off (a case being deleted, faultmaven#2341)', () => {
+  it('an open list closes and the control goes; the driver is still named', async () => {
+    vi.mocked(getDriverCandidates).mockResolvedValue([ADA, GRACE]);
+    const { rerender } = render(field());
+    fireEvent.click(await screen.findByRole('button', { name: /change driver/i }));
+    expect(screen.getByRole('list', { name: /hand this case to/i })).toBeVisible();
+
+    rerender(field({ handOffWithheld: true }));
+
+    expect(screen.queryByRole('button', { name: /change driver/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: /hand this case to/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
+  });
+
+  it('withheld from the start, it reads no candidates', () => {
+    render(field({ handOffWithheld: true }));
+    expect(getDriverCandidates).not.toHaveBeenCalled();
+    expect(screen.getByTestId('case-driver-name')).toHaveTextContent('Ada Lovelace');
+  });
+});

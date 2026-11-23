@@ -116,6 +116,7 @@ import { PANEL_STORAGE_NAMESPACE } from '../../copilot/webHost';
 
 const CASE: CaseDetail = {
   case_id: 'case-1',
+  deleting: false,
   title: 'DB Outage',
   description: 'Primary DB unresponsive',
   state: 'investigating',

@@ -79,6 +79,11 @@ jobs:
       - name: Assert no Copilot sign-in reached the bundle
         run: node scripts/check-web-bundle-boundary.mjs
 
+      # The shared UI's errors are told apart by `name`, and this build
+      # minifies class names; only the bundle shows the literal survived.
+      - name: Assert the shared UI's errors keep their names in the bundle
+        run: node scripts/check-error-identity.mjs
+
       # A missing Tailwind token throws nothing: the class is never emitted and
       # the shared panel renders unstyled. `content` is the one key Tailwind
       # does not merge across presets, so this is one line of config away.

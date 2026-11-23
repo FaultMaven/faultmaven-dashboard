@@ -228,7 +228,8 @@ export async function shareCaseWithTeam(caseId: string, teamId: string): Promise
 
 /**
  * Remove a case's share to a Team (ADR-013 §D4). Creator-only (ADR-020 D2). No body is
- * returned (204); a 404 means the case was not shared with that Team.
+ * returned (204). A 404 labelled `x-error-code: CASE_NOT_FOUND` is the case's own (gone,
+ * or no longer readable); an unlabelled 404 means it was not shared with that Team.
  */
 export async function unshareCaseFromTeam(caseId: string, teamId: string): Promise<void> {
   const response = await makeAuthenticatedRequest(
