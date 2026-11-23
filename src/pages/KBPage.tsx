@@ -1219,8 +1219,8 @@ export default function KBPage() {
 
   // Overlay state (creation/editing flows)
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
-  // Bumped by the opens from outside an overlay (the New menu's entries, Write a runbook, Open
-  // draft) and by every close. An overlay action that awaits captures it, and changes the
+  // Bumped by these opens only: the New menu's entries, Write a runbook and Open draft; and by
+  // every close. An overlay action that awaits captures it, and changes the
   // overlay, its loading state included, only if it is unchanged when the await lands: one
   // opened or closed since is not the action's (faultmaven#2456). Moves within one conversion
   // (Edit, Back to Results) do not bump it; what they open is guarded by `editorIsOnIt` instead.
