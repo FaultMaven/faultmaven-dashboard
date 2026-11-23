@@ -221,17 +221,25 @@ describe('KBPage Drafts tab — the scan banner shows what the server said', () 
 
   it('refreshes the list after a scan that failed part-way, and still shows the failure (faultmaven#2393)', async () => {
     // A 503 after some files were imported: the drafts it wrote are on the server.
-    scanForRunbooks.mockRejectedValue(new APIError('Service temporarily unavailable', 503));
+    let rejectScan!: (err: unknown) => void;
+    scanForRunbooks.mockReturnValue(new Promise((_, reject) => (rejectScan = reject)));
     await renderDraftsTab('standalone');
     expect(screen.queryByText('Redis out of memory')).not.toBeInTheDocument();
     listAllDrafts.mockClear();
     listAllDrafts.mockResolvedValue([makeDraftSummary()]);
 
     await clickScan();
+    // The reload follows the scan: nothing is reloaded while it is out.
+    expect(listAllDrafts).not.toHaveBeenCalled();
+    await act(async () => {
+      rejectScan(new APIError('Service temporarily unavailable', 503));
+    });
 
     expect(screen.getByRole('alert')).toHaveTextContent('Service temporarily unavailable');
     expect(listAllDrafts).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Redis out of memory')).toBeInTheDocument();
+    // The reload landing does not clear the scan's failure.
+    expect(screen.getByRole('alert')).toHaveTextContent('Service temporarily unavailable');
   });
 
   it('says so when the directory held nothing new', async () => {
