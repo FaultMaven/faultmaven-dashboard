@@ -1219,9 +1219,11 @@ export default function KBPage() {
 
   // Overlay state (creation/editing flows)
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
-  // Bumped by every overlay the user opens and by every close. An overlay action that awaits
-  // captures it, and changes the overlay, its loading state included, only if it is unchanged
-  // when the await lands: one opened or closed since is not the action's (faultmaven#2456).
+  // Bumped by the opens from outside an overlay (the New menu's entries, Write a runbook, Open
+  // draft) and by every close. An overlay action that awaits captures it, and changes the
+  // overlay, its loading state included, only if it is unchanged when the await lands: one
+  // opened or closed since is not the action's (faultmaven#2456). Moves within one conversion
+  // (Edit, Back to Results) do not bump it; what they open is guarded by `editorIsOnIt` instead.
   const overlayEpoch = useRef(0);
   const [conversion, setConversion] = useState<ConversionResponse | null>(null);
   const [editingDraft, setEditingDraft] = useState<ConversionDraft | null>(null);
@@ -1574,7 +1576,8 @@ export default function KBPage() {
     const serverDraft = fresh.drafts.find((d) => d.draft_id === draftId);
     if (serverDraft) {
       setEditingDraft((open) => (open && open.draft_id === draftId ? serverDraft : open));
-      setEditorSync((n) => n + 1);
+      // Remount only an editor on this draft: one opened on another since holds unsaved text.
+      if (editorIsOnIt()) setEditorSync((n) => n + 1);
       return 'adopted';
     }
     if (editorIsOnIt()) {

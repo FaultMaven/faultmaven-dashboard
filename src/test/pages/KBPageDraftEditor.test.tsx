@@ -539,6 +539,86 @@ describe('KBPage draft editor — it shows the draft the server holds', () => {
       expect(screen.queryByText('Redis out of memory')).not.toBeInTheDocument();
     });
 
+    it("a batch's resync of one draft leaves the unsaved text of an editor opened since on another draft of its conversion (faultmaven#2456)", async () => {
+      const D2_TEXT = RUNBOOK_TEXT.replace('Redis', 'Valkey');
+      const both = (first = makeDraft()) =>
+        makeConversion([first, makeDraft({ draft_id: 'draft-2', title: 'Second in same conversion', content: D2_TEXT })]);
+      listAllDrafts.mockResolvedValue([makeDraftSummary(), makeDraftSummary({ draft_id: 'draft-2', title: 'Second in same conversion' })]);
+      await act(async () => {
+        render(<MemoryRouter initialEntries={['/kb?tab=drafts']}><KBPage /></MemoryRouter>);
+      });
+      await screen.findByRole('button', { name: /Second in same conversion/ });
+      // Activate the first draft, and open it in the editor while the batch runs.
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('checkbox')[1]);
+      });
+      const batch = deferred<ReturnType<typeof batchOf>>();
+      verifyBatch.mockReturnValue(batch.promise);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+      });
+      getConversion.mockResolvedValueOnce(both());
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Redis out of memory/ }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+      });
+      // The batch ends and reloads the first draft; that read is held.
+      const resync = deferred<ReturnType<typeof both>>();
+      getConversion.mockReturnValueOnce(resync.promise);
+      await act(async () => {
+        batch.resolve(batchOf('verified'));
+      });
+      // Back to Results, then the second draft's editor, and type.
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Back to Results' }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+      });
+      expect(textarea()).toHaveValue(D2_TEXT);
+      await type(MY_EDIT_TEXT);
+
+      await act(async () => {
+        resync.resolve(both(makeDraft({ status: 'verified', content: VERIFIED_TEXT })));
+      });
+
+      expect(textarea()).toHaveValue(MY_EDIT_TEXT);
+    });
+
+    it("a batch's resync that fails with a 404 after the same draft's editor was closed and reopened leaves that editor (faultmaven#2456)", async () => {
+      await renderDraftsTab();
+      const batch = deferred<ReturnType<typeof batchOf>>();
+      verifyBatch.mockReturnValue(batch.promise);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+      });
+      await openDraftInEditor();
+      // The batch ends and reloads the open draft; that read is held, and fails.
+      let fail!: (error: unknown) => void;
+      getConversion.mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+      await act(async () => {
+        batch.resolve(batchOf('verified'));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Back to Results' }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      });
+      await openDraftInEditor();
+
+      await act(async () => {
+        fail(new APIError('Conversion not found', 404));
+      });
+
+      expect(textarea()).toHaveValue(RUNBOOK_TEXT);
+    });
+
     it('does not reload an editor open on a draft the batch did not include', async () => {
       listAllDrafts.mockResolvedValue([
         makeDraftSummary(),
