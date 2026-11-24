@@ -178,6 +178,15 @@ export interface ConversionErrorInfo {
   action: string;
 }
 
+/** `CONVERSION_BUSY`'s action, with core's `Retry-After` wait when it sent one. */
+function conversionBusyAction(retryAfterSeconds?: number): string {
+  const when =
+    retryAfterSeconds === undefined
+      ? 'in a moment'
+      : `in about ${retryAfterSeconds} second${retryAfterSeconds === 1 ? '' : 's'}`;
+  return `Try the same document again ${when}.`;
+}
+
 const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
   FILE_TOO_LARGE: {
     title: 'File too large',
@@ -205,14 +214,19 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
     action: 'Re-save the file as UTF-8 and try again.',
   },
   NO_TEXT_LAYER: {
-    title: 'No text in this PDF',
-    message: 'This PDF has no text layer. It looks like a scanned image.',
-    action: 'Export it with its text (most PDF tools can run OCR on it), or upload a text version.',
+    title: 'No text to read',
+    message: 'This file has no text layer. It may be a scanned image or empty.',
+    action: 'Export it with its text (most tools can run OCR on it), or upload a text version.',
   },
   DOCUMENT_TOO_LONG: {
     title: 'Document too long',
     message: 'The document exceeds the 30,000-token processing limit.',
     action: 'Split the document into smaller, focused chapters and convert each one separately.',
+  },
+  DOCUMENT_TOO_COMPLEX: {
+    title: 'Document too complex',
+    message: "This document's structure is too complex to read within the conversion limits.",
+    action: 'Export it to text, or split it into smaller files, and try again.',
   },
   DOCUMENT_TOO_SHORT: {
     title: 'Not enough content',
@@ -253,6 +267,11 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
     // lives at KBPage's NewDropdown; this does not restate it.
     action:
       'FaultMaven cannot import a finished runbook yet (faultmaven#1377), so bring it in through the runbook template — each section can be pasted across unchanged.',
+  },
+  CONVERSION_BUSY: {
+    title: 'Conversion is busy',
+    message: 'All conversion workers are in use right now.',
+    action: conversionBusyAction(),
   },
   LLM_UNAVAILABLE: {
     title: 'AI provider not available',
@@ -313,6 +332,7 @@ export function translateConversionError(
   ) {
     const info = { ...ERROR_TRANSLATIONS[errorBody.error_code], code: errorBody.error_code };
     if (info.code === KB_REQUEST_IN_PROGRESS) info.message = stillProcessingMessage('conversion', retryAfter);
+    if (info.code === 'CONVERSION_BUSY') info.action = conversionBusyAction(retryAfter);
     return info;
   }
   return {

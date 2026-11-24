@@ -16,9 +16,11 @@ vi.mock('./../../lib/knowledge/client', () => ({
   buildQueryParams: vi.fn(),
 }));
 
-import { translateConversionError } from '../../lib/knowledge/conversion';
+import { makeAuthenticatedRequest } from '../../lib/knowledge/client';
+import { ConversionAPIError, convertDocument, translateConversionError } from '../../lib/knowledge/conversion';
 
 const FALLBACK = 'Conversion failed for an unknown reason.';
+const KEY = '0123456789abcdef0123456789abcdef';
 
 describe('translateConversionError', () => {
   it('translates a known error code', () => {
@@ -97,15 +99,69 @@ describe('ALREADY_A_RUNBOOK copy', () => {
   });
 });
 
-describe('NO_TEXT_LAYER copy', () => {
-  it('tells the reader the PDF is a scanned image, not that it is corrupt', () => {
-    // A PDF with no text layer was refused as FILE_CORRUPT, whose copy told the
-    // reader to re-export a file that was not broken (FaultMaven/faultmaven#2593).
-    expect(translateConversionError({ error_code: 'NO_TEXT_LAYER' }, FALLBACK)).toEqual({
+describe('convertDocument refusals', () => {
+  const file = () => new File(['%PDF-1.4'], 'scan.pdf', { type: 'application/pdf' });
+  const refused = async (body: object, status: number, headers: Record<string, string> = {}) => {
+    vi.mocked(makeAuthenticatedRequest).mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json', ...headers },
+      }),
+    );
+    return (await convertDocument(file(), 'personal', KEY).catch((e: unknown) => e)) as ConversionAPIError;
+  };
+
+  it('translates a 422 NO_TEXT_LAYER, not the corrupt-file copy', async () => {
+    // A scanned PDF was refused as FILE_CORRUPT, whose copy told the reader to
+    // re-export a file that was not broken (FaultMaven/faultmaven#2593).
+    const err = await refused(
+      {
+        detail: 'Failed to parse tmpab12cd34.pdf: No extractable text in PDF. The file may be scanned/image-only.',
+        error_code: 'NO_TEXT_LAYER',
+      },
+      422,
+    );
+
+    expect(err).toBeInstanceOf(ConversionAPIError);
+    expect(err.statusCode).toBe(422);
+    expect(err.errorCode).toBe('NO_TEXT_LAYER');
+    expect(err.errorInfo).toEqual({
       code: 'NO_TEXT_LAYER',
-      title: 'No text in this PDF',
-      message: 'This PDF has no text layer. It looks like a scanned image.',
-      action: 'Export it with its text (most PDF tools can run OCR on it), or upload a text version.',
+      title: 'No text to read',
+      message: 'This file has no text layer. It may be a scanned image or empty.',
+      action: 'Export it with its text (most tools can run OCR on it), or upload a text version.',
+    });
+  });
+
+  it('translates a 503 CONVERSION_BUSY with its Retry-After wait', async () => {
+    const err = await refused(
+      { detail: 'No extraction worker was free.', error_code: 'CONVERSION_BUSY' },
+      503,
+      { 'Retry-After': '30' },
+    );
+
+    expect(err.statusCode).toBe(503);
+    expect(err.retryAfter).toBe(30);
+    expect(err.errorInfo).toEqual({
+      code: 'CONVERSION_BUSY',
+      title: 'Conversion is busy',
+      message: 'All conversion workers are in use right now.',
+      action: 'Try the same document again in about 30 seconds.',
+    });
+  });
+
+  it('keeps the ruled CONVERSION_BUSY action without a Retry-After', () => {
+    expect(translateConversionError({ error_code: 'CONVERSION_BUSY' }, FALLBACK).action).toBe(
+      'Try the same document again in a moment.',
+    );
+  });
+
+  it('translates DOCUMENT_TOO_COMPLEX', () => {
+    expect(translateConversionError({ error_code: 'DOCUMENT_TOO_COMPLEX' }, FALLBACK)).toEqual({
+      code: 'DOCUMENT_TOO_COMPLEX',
+      title: 'Document too complex',
+      message: "This document's structure is too complex to read within the conversion limits.",
+      action: 'Export it to text, or split it into smaller files, and try again.',
     });
   });
 });
