@@ -204,6 +204,11 @@ const ERROR_TRANSLATIONS: Record<string, ConversionErrorInfo> = {
     message: 'The file encoding is not supported.',
     action: 'Re-save the file as UTF-8 and try again.',
   },
+  NO_TEXT_LAYER: {
+    title: 'No text in this PDF',
+    message: 'This PDF has no text layer. It looks like a scanned image.',
+    action: 'Export it with its text (most PDF tools can run OCR on it), or upload a text version.',
+  },
   DOCUMENT_TOO_LONG: {
     title: 'Document too long',
     message: 'The document exceeds the 30,000-token processing limit.',

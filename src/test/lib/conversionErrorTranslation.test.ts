@@ -96,3 +96,16 @@ describe('ALREADY_A_RUNBOOK copy', () => {
     expect(info().message).toMatch(/the new one/);
   });
 });
+
+describe('NO_TEXT_LAYER copy', () => {
+  it('tells the reader the PDF is a scanned image, not that it is corrupt', () => {
+    // A PDF with no text layer was refused as FILE_CORRUPT, whose copy told the
+    // reader to re-export a file that was not broken (FaultMaven/faultmaven#2593).
+    expect(translateConversionError({ error_code: 'NO_TEXT_LAYER' }, FALLBACK)).toEqual({
+      code: 'NO_TEXT_LAYER',
+      title: 'No text in this PDF',
+      message: 'This PDF has no text layer. It looks like a scanned image.',
+      action: 'Export it with its text (most PDF tools can run OCR on it), or upload a text version.',
+    });
+  });
+});
