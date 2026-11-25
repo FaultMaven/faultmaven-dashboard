@@ -100,8 +100,13 @@ export function createWebSession(
      * `user`'s session (faultmaven#1460):
      *   - held, or storage unreadable: the package's
      *     `CredentialUnavailableError`. A refresh that failed transiently (5xx,
-     *     offline) keeps the session, so nothing is sent and the panel shows its
-     *     connection error. Sent with no bearer, the request's 401 read as
+     *     offline) keeps the session, so nothing is sent. The package tags this
+     *     throw `'before_send'` (copilot-ui #416, faultmaven#2348): a keyed turn
+     *     not yet accepted, and the poll of one that was, wait it out within the
+     *     turn's deadline, asking this host once per wait, and show the
+     *     connection error only if the gap outlasts it. Every other action
+     *     shows the connection error once its attempts are spent. Sent with no
+     *     bearer, the request's 401 read as
      *     "Sign in first" inside a signed-in Dashboard. `isSigningOut()` is not
      *     asked: during this tab's own sign-out the session is still held, and
      *     nothing goes out without a bearer then either;
@@ -158,9 +163,13 @@ export function createWebSession(
      *   - `'ended'`: a sign-out is under way, or AuthManager no longer holds
      *     this panel user's session (cleared, or another account's).
      *   - `'unavailable'`: a 5xx or offline renewal kept the session, or
-     *     storage could not be read. The panel shows its connection error and
-     *     stays signed in; answering `'ended'` there showed a sign-out inside
-     *     a signed-in Dashboard.
+     *     storage could not be read. The panel stays signed in; answering
+     *     `'ended'` there showed a sign-out inside a signed-in Dashboard. The
+     *     package tags this answer `'unavailable_after_401'` (copilot-ui #416,
+     *     faultmaven#2348): the poll of an accepted keyed turn waits it out
+     *     within the turn's deadline, asking this host once per wait, and shows
+     *     the connection error only if the gap outlasts it. Every other action
+     *     shows the connection error once its attempts are spent.
      *
      * `rejectedBearer` is the token the refused request CARRIED, which the
      * transport passes (copilot#348). Storage may hold a newer one by the time
