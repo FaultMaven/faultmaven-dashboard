@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { collectBuildOutputOrExit, fail, finish } from './gate-support.mjs';
 
-/** Every class copilot-ui compares by `name` (at copilot-ui 7d22249e), and where. */
+/** Every class copilot-ui compares by `name` (at copilot-ui 3b62f77e), and where. */
 const COMPARED = {
   AuthenticationError: 'lib/errors/classifier.ts, lib/utils/api-error-handler.ts, lib/api/services/case-service.ts',
   SessionExpiredError: 'lib/api/client.ts, lib/api/services/case-service.ts',
