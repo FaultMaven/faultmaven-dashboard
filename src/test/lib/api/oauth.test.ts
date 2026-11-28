@@ -13,8 +13,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../../config', () => ({ default: { apiUrl: 'http://api.test' } }));
+const loadSession = vi.fn();
 vi.mock('../../../lib/auth', () => ({
-  authManager: { getAuthState: async () => ({ access_token: 'tok' }) },
+  authManager: { loadSession: () => loadSession() },
 }));
 
 import { getOAuthConsent, submitOAuthApproval } from '../../../lib/api/oauth';
@@ -46,7 +47,10 @@ const APPROVAL = {
 } as const;
 
 describe('OAuth client error reporting', () => {
-  beforeEach(() => vi.unstubAllGlobals());
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: { access_token: 'tok' } });
+  });
 
   it('does not echo the server detail, which carries the caller’s own input', async () => {
     // The security property, not merely a wording check: rendering this would put
@@ -120,5 +124,45 @@ describe('OAuth client error reporting', () => {
     respondWith(200, consent);
 
     await expect(getOAuthConsent(new URLSearchParams())).resolves.toEqual(consent);
+  });
+});
+
+// faultmaven#2999: a session kept while its renewal fails is not signed out.
+// Sent without the bearer, either request earns a 401 that reads "Sign in again".
+describe('OAuth client session handling', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('sends nothing while the session cannot be renewed, and says the user is still signed in', async () => {
+    loadSession.mockResolvedValue({ kind: 'renewalFailed' });
+    respondWith(200, {});
+    const message =
+      'Could not reach FaultMaven to confirm your session. You are still signed in. Reload this page to try again.';
+
+    await expect(getOAuthConsent(new URLSearchParams())).rejects.toThrow(message);
+    await expect(submitOAuthApproval(APPROVAL)).rejects.toThrow(message);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends a signed-out request without a bearer, on the session cookie alone', async () => {
+    loadSession.mockResolvedValue({ kind: 'signedOut' });
+    respondWith(200, {});
+
+    await getOAuthConsent(new URLSearchParams());
+    await submitOAuthApproval(APPROVAL);
+
+    for (const [, init] of vi.mocked(fetch).mock.calls) {
+      expect(new Headers((init as RequestInit).headers).has('Authorization')).toBe(false);
+    }
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('attaches the bearer for a signed-in session', async () => {
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: { access_token: 'tok' } });
+    respondWith(200, {});
+
+    await getOAuthConsent(new URLSearchParams());
+
+    const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok');
   });
 });

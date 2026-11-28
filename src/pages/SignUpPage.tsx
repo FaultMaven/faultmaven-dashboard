@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
+import { SessionRenewalFailed } from '../components/EligibilityUndetermined';
 
 /**
  * Hands a first-time visitor straight to the hosted login's SIGN-UP screen.
@@ -25,6 +26,7 @@ import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
 export default function SignUpPage() {
   const { deployment, configStatus, loginUrl, isAuthenticated, supportsScreenHint, selfServiceSignupEnabled } =
     useAuth();
+  const { loading, sessionRenewalFailed } = useAuth();
 
   // Every state this page can be in resolves to exactly one of three
   // outcomes, decided once here so the effect and the render cannot disagree.
@@ -40,18 +42,19 @@ export default function SignUpPage() {
     ready &&
     deployment === 'cloud' &&
     !!loginUrl &&
+    !sessionRenewalFailed && // a kept session is an account (faultmaven#2999)
     !isAuthenticated &&
     supportsScreenHint &&
     selfServiceSignupEnabled;
 
   useEffect(() => {
-    if (!canHandOff || !loginUrl) return;
+    if (loading || !canHandOff || !loginUrl) return;
     // `replace`, not `assign`: this page is a waypoint, not a destination. With
     // `assign` it stays in history, so Back from the IdP remounts it, re-fires
     // this effect and throws the visitor straight back — Back becomes a loop
     // for exactly the people this route exists to serve.
     window.location.replace(buildHostedLoginUrl(loginUrl, { screenHint: 'sign-up' }));
-  }, [canHandOff, loginUrl]);
+  }, [loading, canHandOff, loginUrl]);
 
   // Already signed in. The marketing CTA is in the site header on every page,
   // so a returning customer clicks it too — and sending them to a *sign-up*
@@ -59,6 +62,7 @@ export default function SignUpPage() {
   // website#42 describes, and the old CTA (the app root) got it right by
   // landing them on their cases.
   if (isAuthenticated) return <Navigate to="/cases" replace />;
+  if (sessionRenewalFailed) return <SessionRenewalFailed />;
 
   // Anything settled that is not cloud-with-an-IdP goes to /login, which owns
   // the standalone form, the no-IdP error and the unreachable-config retry

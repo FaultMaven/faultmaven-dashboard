@@ -16,7 +16,7 @@ vi.mock('../../lib/api', () => ({
   uploadDocument: vi.fn(), uploadAdminDocument: vi.fn(),
   listDocuments: vi.fn(), listAdminDocuments: vi.fn(),
   deleteDocument: vi.fn(), deleteAdminDocument: vi.fn(),
-  authManager: { getAuthState: vi.fn().mockResolvedValue(null), saveAuthState: vi.fn(),
+  authManager: { loadSession: vi.fn().mockResolvedValue({ kind: 'signedOut' }), saveAuthState: vi.fn(),
     clearAuthState: vi.fn(), getAccessToken: vi.fn().mockResolvedValue(null) },
   config: { apiUrl: 'http://localhost:8090' },
 }));

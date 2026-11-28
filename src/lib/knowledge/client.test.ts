@@ -15,7 +15,7 @@ vi.mock('../../config', () => ({
 vi.mock('../auth', () => ({
   authManager: {
     getAccessToken: vi.fn(),
-    getAuthState: vi.fn(),
+    loadSession: vi.fn(),
     refreshTokens: vi.fn(),
   },
   AuthenticationError: class AuthenticationError extends Error {
@@ -32,7 +32,7 @@ import { authManager } from '../auth';
 
 // Get mocked functions
 const mockGetAccessToken = authManager.getAccessToken as ReturnType<typeof vi.fn>;
-const mockGetAuthState = authManager.getAuthState as ReturnType<typeof vi.fn>;
+const mockLoadSession = authManager.loadSession as ReturnType<typeof vi.fn>;
 const mockRefreshTokens = authManager.refreshTokens as ReturnType<typeof vi.fn>;
 
 describe('makeAuthenticatedRequest', () => {
@@ -73,14 +73,14 @@ describe('makeAuthenticatedRequest', () => {
   });
 
   it('does not read auth state (no duplicate storage round-trip)', async () => {
-    // The former second getAuthState() read existed only to build the removed
+    // The former second auth-state read (now `loadSession`) existed only to build the removed
     // identity headers; the request now proceeds on the token alone.
     mockGetAccessToken.mockResolvedValueOnce('token');
     fetchSpy.mockResolvedValueOnce({ ok: true });
 
     await makeAuthenticatedRequest('/api/test');
 
-    expect(mockGetAuthState).not.toHaveBeenCalled();
+    expect(mockLoadSession).not.toHaveBeenCalled();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -107,7 +107,7 @@ describe('makeAuthenticatedRequest', () => {
     };
 
     mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    mockLoadSession.mockResolvedValueOnce({ kind: 'signedIn', state: mockAuthState });
     fetchSpy.mockResolvedValueOnce({ ok: true });
 
     await makeAuthenticatedRequest('https://external-api.com/data');
@@ -134,7 +134,7 @@ describe('makeAuthenticatedRequest', () => {
     };
 
     mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    mockLoadSession.mockResolvedValueOnce({ kind: 'signedIn', state: mockAuthState });
     fetchSpy.mockResolvedValueOnce({ ok: true });
 
     const requestOptions: RequestInit = {
@@ -165,7 +165,7 @@ describe('makeAuthenticatedRequest', () => {
     };
 
     mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    mockLoadSession.mockResolvedValueOnce({ kind: 'signedIn', state: mockAuthState });
     fetchSpy.mockResolvedValueOnce({ ok: true });
 
     await makeAuthenticatedRequest('/api/test', {
@@ -201,7 +201,7 @@ describe('makeAuthenticatedRequest', () => {
     const mockResponse = { ok: true, status: 200 };
 
     mockGetAccessToken.mockResolvedValueOnce('token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    mockLoadSession.mockResolvedValueOnce({ kind: 'signedIn', state: mockAuthState });
     fetchSpy.mockResolvedValueOnce(mockResponse);
 
     const result = await makeAuthenticatedRequest('/api/test');
@@ -225,7 +225,7 @@ describe('makeAuthenticatedRequest', () => {
     };
 
     mockGetAccessToken.mockResolvedValueOnce('stale-token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    mockLoadSession.mockResolvedValueOnce({ kind: 'signedIn', state: mockAuthState });
     const unauthorized = { ok: false, status: 401 };
     const retried = { ok: true, status: 200 };
     fetchSpy.mockResolvedValueOnce(unauthorized).mockResolvedValueOnce(retried);
@@ -262,7 +262,7 @@ describe('makeAuthenticatedRequest', () => {
     };
 
     mockGetAccessToken.mockResolvedValueOnce('stale-token');
-    mockGetAuthState.mockResolvedValueOnce(mockAuthState);
+    mockLoadSession.mockResolvedValueOnce({ kind: 'signedIn', state: mockAuthState });
     const unauthorized = { ok: false, status: 401 };
     fetchSpy.mockResolvedValueOnce(unauthorized);
     mockRefreshTokens.mockResolvedValueOnce(null);

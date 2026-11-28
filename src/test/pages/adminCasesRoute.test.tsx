@@ -27,7 +27,7 @@ import {
   stubAuthConfig,
 } from '../support/authFixtures';
 
-const getAuthState = vi.fn();
+const loadSession = vi.fn();
 const getAdminCases = vi.fn();
 
 vi.mock('../../lib/api', async () => ({
@@ -44,7 +44,7 @@ vi.mock('../../lib/api', async () => ({
   listDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
   getAdminCases: (...args: unknown[]) => getAdminCases(...args),
   authManager: (await import('../support/authFixtures')).makeAuthManagerMock({
-    getAuthState: (...args: unknown[]) => getAuthState(...args),
+    loadSession: (...args: unknown[]) => loadSession(...args),
   }),
   config: { apiUrl: 'http://localhost:8090' },
   SIGNOUT_NOTICE_KEY: 'fm_signout_notice',
@@ -52,7 +52,7 @@ vi.mock('../../lib/api', async () => ({
 }));
 
 vi.mock('../../lib/auth/AuthManager', () => ({
-  authManager: makeAuthManagerMock({ getAuthState: (...args: unknown[]) => getAuthState(...args) }),
+  authManager: makeAuthManagerMock({ loadSession: (...args: unknown[]) => loadSession(...args) }),
 }));
 
 vi.mock('../../lib/auth/functions', () => ({
@@ -128,7 +128,7 @@ async function renderAppAt(path: string) {
 
 describe('/admin/cases in standalone', () => {
   it('turns the operator away — single-user, so there is nothing to show', async () => {
-    getAuthState.mockResolvedValue(OPERATOR);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 
     await renderAppAt('/admin/cases');
 
@@ -137,7 +137,7 @@ describe('/admin/cases in standalone', () => {
   });
 
   it('turns an ordinary standalone account away too', async () => {
-    getAuthState.mockResolvedValue(ORDINARY);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: ORDINARY });
 
     await renderAppAt('/admin/cases');
 
@@ -174,7 +174,7 @@ describe('/admin/cases in cloud', () => {
   it('is where the view still lives', async () => {
     // The non-vacuity of the standalone cases above: the route is denied by
     // DEPLOYMENT, not broken outright.
-    getAuthState.mockResolvedValue(OPERATOR);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 
     await renderAppAt('/admin/cases');
 
@@ -206,7 +206,7 @@ describe('/admin/cases in cloud', () => {
       'fetch',
       vi.fn().mockImplementation(() => pending.then(() => ({ ok: true, json: async () => CLOUD_AUTH_CONFIG }))),
     );
-    getAuthState.mockResolvedValue(OPERATOR);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 
     await renderAppAt('/admin/cases');
 
@@ -240,7 +240,7 @@ describe('/admin/cases/:caseId — the page that writes the audit row', () => {
    * records for `ChatSurfaceRoute`.
    */
   it('turns a standalone operator away, so no audit row is written', async () => {
-    getAuthState.mockResolvedValue(OPERATOR);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 
     await renderAppAt('/admin/cases/case_abc123');
 
@@ -253,7 +253,7 @@ describe('/admin/cases/:caseId — the page that writes the audit row', () => {
   it('still opens for the cloud operator', async () => {
     // Non-vacuity: the route is denied by DEPLOYMENT, not broken outright.
     stubAuthConfig(CLOUD_AUTH_CONFIG);
-    getAuthState.mockResolvedValue(OPERATOR);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 
     await renderAppAt('/admin/cases/case_abc123');
 
@@ -272,7 +272,7 @@ describe('the nav item and the route agree, in one real render', () => {
    */
   it('cloud: the item is offered and the route it points at renders', async () => {
     stubAuthConfig(CLOUD_AUTH_CONFIG);
-    getAuthState.mockResolvedValue(OPERATOR);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 
     await renderAppAt('/admin/cases');
 
@@ -283,7 +283,7 @@ describe('the nav item and the route agree, in one real render', () => {
   });
 
   it('standalone: no item is offered, and the route it would point at refuses', async () => {
-    getAuthState.mockResolvedValue(OPERATOR);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 
     await renderAppAt('/cases');
 

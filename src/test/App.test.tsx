@@ -38,7 +38,7 @@ vi.mock('../lib/api', () => {
     listAdminDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
     deleteAdminDocument: vi.fn(),
     authManager: {
-      getAuthState: vi.fn().mockResolvedValue(null),
+      loadSession: vi.fn().mockResolvedValue({ kind: 'signedOut' }),
       saveAuthState: vi.fn(),
       clearAuthState: vi.fn(),
       getAccessToken: vi.fn().mockResolvedValue(null),

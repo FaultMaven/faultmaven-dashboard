@@ -103,6 +103,22 @@ describe('SignUpPage', () => {
     expect(screen.getByTestId('cases-page')).toBeInTheDocument();
   });
 
+  // faultmaven#2999: a session kept while its renewal fails is an account, so
+  // sign-up would invite a second one.
+  it('shows the renewal card to a session that could not be renewed, never sign-up', () => {
+    mockUseAuth.mockReturnValue({ ...CLOUD, sessionRenewalFailed: true, retrySessionLoad: vi.fn() });
+    renderSignUp();
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
+  });
+
+  it('hands nothing off before the stored session has been read', () => {
+    mockUseAuth.mockReturnValue({ ...CLOUD, loading: true });
+    renderSignUp();
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['the backend cannot forward the hint', { supportsScreenHint: false, selfServiceSignupEnabled: true }],
     ['self-service sign-up is off', { supportsScreenHint: true, selfServiceSignupEnabled: false }],

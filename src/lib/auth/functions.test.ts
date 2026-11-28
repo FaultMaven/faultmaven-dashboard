@@ -481,7 +481,7 @@ describe('logoutAuth — ending the identity provider session', () => {
   });
 
   it('reads the URL without triggering a refresh', async () => {
-    // getAuthState would silently refresh a near-expired session — and on one
+    // loadSession would silently refresh a near-expired session — and on one
     // with no refresh token it CLEARS the state, destroying the URL being read.
     mockPeekIdpLogoutUrl.mockResolvedValue('https://authkit.test/logout?session=abc');
 

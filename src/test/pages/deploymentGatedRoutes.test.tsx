@@ -28,7 +28,7 @@ import {
   stubAuthConfig,
 } from '../support/authFixtures';
 
-const getAuthState = vi.fn();
+const loadSession = vi.fn();
 
 vi.mock('../../lib/api', async () => ({
   devLogin: vi.fn(),
@@ -40,7 +40,7 @@ vi.mock('../../lib/api', async () => ({
   listDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
   getAdminCases: vi.fn(),
   authManager: (await import('../support/authFixtures')).makeAuthManagerMock({
-    getAuthState: (...args: unknown[]) => getAuthState(...args),
+    loadSession: (...args: unknown[]) => loadSession(...args),
   }),
   config: { apiUrl: 'http://localhost:8090' },
   SIGNOUT_NOTICE_KEY: 'fm_signout_notice',
@@ -48,7 +48,7 @@ vi.mock('../../lib/api', async () => ({
 }));
 
 vi.mock('../../lib/auth/AuthManager', () => ({
-  authManager: makeAuthManagerMock({ getAuthState: (...a: unknown[]) => getAuthState(...a) }),
+  authManager: makeAuthManagerMock({ loadSession: (...a: unknown[]) => loadSession(...a) }),
 }));
 
 vi.mock('../../lib/auth/functions', () => ({
@@ -100,7 +100,7 @@ function deferredConfig() {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  getAuthState.mockResolvedValue(OPERATOR);
+  loadSession.mockResolvedValue({ kind: 'signedIn', state: OPERATOR });
 });
 
 afterEach(() => {
@@ -196,7 +196,7 @@ describe('a signed-out visitor', () => {
   it.each(['/admin/users', '/admin/organization', '/teams', '/admin/cases'])(
     'reaches /login from %s without waiting on any fetch',
     async (path) => {
-      getAuthState.mockResolvedValue(null);
+      loadSession.mockResolvedValue({ kind: 'signedOut' });
       // Detection deliberately never settles: it must not matter.
       deferredConfig();
 

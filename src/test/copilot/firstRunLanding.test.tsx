@@ -41,7 +41,7 @@ vi.mock('@faultmaven/copilot-ui', () => {
 });
 
 const devLogin = vi.fn();
-const getAuthState = vi.fn();
+const loadSession = vi.fn();
 const listCases = vi.fn();
 
 vi.mock('../../lib/api', async () => ({
@@ -51,7 +51,7 @@ vi.mock('../../lib/api', async () => ({
   searchCases: vi.fn(),
   listDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
   ssoExchange: vi.fn(),
-  authManager: (await import('../support/authFixtures')).makeAuthManagerMock({ getAuthState: (...args: unknown[]) => getAuthState(...args) }),
+  authManager: (await import('../support/authFixtures')).makeAuthManagerMock({ loadSession: (...args: unknown[]) => loadSession(...args) }),
   config: { apiUrl: 'http://localhost:8090' },
   SIGNOUT_NOTICE_KEY: 'fm_signout_notice',
   AuthenticationError: class extends Error {},
@@ -141,7 +141,7 @@ beforeEach(() => {
       json: async () => ({ auth_mode: 'local', oauth: null }),
     }),
   );
-  getAuthState.mockResolvedValue(null);
+  loadSession.mockResolvedValue({ kind: 'signedOut' });
   devLogin.mockResolvedValue(SIGNED_IN);
   listCases.mockResolvedValue(NO_CASES);
 });
@@ -157,7 +157,7 @@ async function signIn() {
 
   // From here on the app reads a stored session, exactly as it would after the
   // login response was persisted.
-  getAuthState.mockResolvedValue(SIGNED_IN);
+  loadSession.mockResolvedValue({ kind: 'signedIn', state: SIGNED_IN });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /sign in|log ?in/i }));
   });

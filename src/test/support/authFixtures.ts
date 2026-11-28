@@ -61,7 +61,7 @@ export const TEST_PROFILE: AccountProfile = {
  */
 export function makeAuthManagerMock(overrides: Record<string, unknown> = {}) {
   return {
-    getAuthState: vi.fn().mockResolvedValue(null),
+    loadSession: vi.fn().mockResolvedValue({ kind: 'signedOut' }),
     saveAuthState: vi.fn().mockResolvedValue(undefined),
     clearAuthState: vi.fn().mockResolvedValue(undefined),
     getAccessToken: vi.fn().mockResolvedValue('tok-live'),

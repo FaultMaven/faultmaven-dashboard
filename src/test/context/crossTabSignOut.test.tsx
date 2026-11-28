@@ -32,7 +32,7 @@ vi.mock('@faultmaven/copilot-ui', () => ({
   CopilotPanel: () => <div data-testid="shared-copilot-ui">shared UI</div>,
 }));
 
-const getAuthState = vi.fn();
+const loadSession = vi.fn();
 const watchCrossTabAuthChanges = vi.fn().mockReturnValue(() => {});
 let fireAuthCleared: () => void = () => {};
 
@@ -49,7 +49,7 @@ vi.mock('../../lib/api', () => ({
   searchCases: vi.fn(),
   listDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
   authManager: {
-    getAuthState: (...args: unknown[]) => getAuthState(...args),
+    loadSession: (...args: unknown[]) => loadSession(...args),
     saveAuthState: vi.fn(),
     clearAuthState: vi.fn().mockResolvedValue(undefined),
     getAccessToken: vi.fn().mockResolvedValue('tok-live'),
@@ -111,7 +111,7 @@ beforeEach(() => {
   sessionStorage.clear();
   fireAuthCleared = () => {};
   watchCrossTabAuthChanges.mockReturnValue(() => {});
-  getAuthState.mockResolvedValue(SIGNED_IN);
+  loadSession.mockResolvedValue({ kind: 'signedIn', state: SIGNED_IN });
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue({

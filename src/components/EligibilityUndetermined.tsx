@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
 import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
+import { useAuth } from '../context/AuthContext';
+
+const ELIGIBILITY_UNKNOWN =
+  'This page is only available on some deployments, and we could not reach the API to find out whether it is available here. Nothing is wrong with your account.';
 
 interface EligibilityUndeterminedProps {
   /** Is the answer still on its way, as opposed to having failed at least once? */
   pending: boolean;
   /** Re-ask the question this route could not answer. */
   onRetry: () => Promise<void>;
+  /** The explanation; defaults to the route-availability text. */
+  message?: string;
+  /** Offer "Back to cases" (not where `/cases` sits behind the same failure). */
+  backLink?: boolean;
 }
 
 /**
@@ -38,7 +46,7 @@ interface EligibilityUndeterminedProps {
  * progress — it says plainly what is not known and offers one explicit attempt,
  * the way the login page's card does.
  */
-export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeterminedProps) {
+export function EligibilityUndetermined({ pending, onRetry, message = ELIGIBILITY_UNKNOWN, backLink = true }: EligibilityUndeterminedProps) {
   const [retrying, setRetrying] = useState(false);
   const [attempts, setAttempts] = useState(0);
   // ASYNC, so it is resolved in an effect and not called in the render body —
@@ -90,10 +98,7 @@ export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeter
         <h1 className="text-fm-heading font-bold text-fm-text-primary mb-2">
           Can&apos;t reach FaultMaven
         </h1>
-        <p className="text-fm-text-secondary text-sm mb-4">
-          This page is only available on some deployments, and we could not reach the API to find
-          out whether it is available here. Nothing is wrong with your account.
-        </p>
+        <p className="text-fm-text-secondary text-sm mb-4">{message}</p>
 
         {/* The same diagnosis the SIGNED-OUT visitor gets on this exact failure
             (`LoginPage`'s UnreachableCard). Withholding it here meant an operator
@@ -121,9 +126,11 @@ export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeter
           </button>
           {/* NOT a dead end. An operator who arrived by clicking a nav item has
               no header here to leave by, and "press Back" is not an affordance. */}
-          <a href="/cases" className="text-sm text-fm-accent hover:underline">
-            Back to cases
-          </a>
+          {backLink && (
+            <a href="/cases" className="text-sm text-fm-accent hover:underline">
+              Back to cases
+            </a>
+          )}
         </div>
 
         {/* Always rendered, filled only after an attempt: a live region inserted
@@ -136,5 +143,18 @@ export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeter
         </p>
       </div>
     </div>
+  );
+}
+
+/** What a guard renders while a KEPT session could not be renewed (faultmaven#2999): not signed out. */
+export function SessionRenewalFailed() {
+  const { retrySessionLoad } = useAuth();
+  return (
+    <EligibilityUndetermined
+      pending={false}
+      onRetry={retrySessionLoad}
+      message="We could not renew your session just now. You are still signed in, and nothing is wrong with your account. We will keep trying; you can also try again now."
+      backLink={false}
+    />
   );
 }
