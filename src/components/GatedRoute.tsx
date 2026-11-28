@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth, type DashboardRole, type Deployment } from '../context/AuthContext';
 import { useCapabilities } from '../hooks/useCapabilities';
-import { EligibilityUndetermined } from './EligibilityUndetermined';
+import { EligibilityUndetermined, SessionRenewalFailed } from './EligibilityUndetermined';
 
 /** Everything a route predicate may read, once it is known to BE known. */
 export interface GateFacts {
@@ -42,7 +42,8 @@ interface GatedRouteProps {
  *
  * The sequence, and why it is this one:
  *
- * 1. **`loading`** — the stored-auth read. Nothing is knowable before it.
+ * 1. **`loading`** — the stored-auth read. Nothing is knowable before it. A
+ *    session it KEPT but could not renew shows a retry card, not `/login`.
  * 2. **`!authState` → `/login`** — ABOVE every fetch, because authentication is
  *    knowable without the network. A signed-out visitor following a stale
  *    bookmark was otherwise held on a blank page for a request whose answer
@@ -61,7 +62,7 @@ interface GatedRouteProps {
  * item beside it still offered the link.
  */
 export function GatedRoute({ children, requires, allow }: GatedRouteProps) {
-  const { authState, loading, deployment, role, isAdmin, configStatus, retryConfigDetection } =
+  const { authState, loading, sessionRenewalFailed, deployment, role, isAdmin, configStatus, retryConfigDetection } =
     useAuth();
   const {
     managementConsole,
@@ -72,6 +73,8 @@ export function GatedRoute({ children, requires, allow }: GatedRouteProps) {
   } = useCapabilities();
 
   if (loading) return null;
+
+  if (sessionRenewalFailed) return <SessionRenewalFailed />;
 
   if (!authState) {
     return <Navigate to="/login" replace />;

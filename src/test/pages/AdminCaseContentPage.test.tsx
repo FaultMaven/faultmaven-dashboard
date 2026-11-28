@@ -22,7 +22,7 @@ import AdminCaseContentPage from '../../pages/AdminCaseContentPage';
 vi.mock('../../lib/api', () => ({
   logoutAuth: vi.fn().mockResolvedValue(undefined),
   authManager: {
-    getAuthState: vi.fn().mockResolvedValue(null),
+    loadSession: vi.fn().mockResolvedValue({ kind: 'signedOut' }),
     getAccessToken: vi.fn().mockResolvedValue(null),
   },
   config: { apiUrl: 'http://localhost:8090' },

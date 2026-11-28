@@ -303,7 +303,7 @@ export const SIGNOUT_NOTICE_KEY = 'fm_signout_notice';
  */
 export async function logoutAuth(): Promise<LogoutOutcome> {
   // Read before teardown — clearing the state destroys the URL along with it.
-  // peek, not getAuthState: the latter would silently refresh a near-expired
+  // peek, not loadSession: the latter would silently refresh a near-expired
   // session, and on one with no refresh token it clears the state outright —
   // destroying the URL this is here to read.
   let idpLogoutUrl: string | null = null;

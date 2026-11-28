@@ -2,6 +2,7 @@ import { ReactNode, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authManager } from '../lib/auth/AuthManager';
+import { SessionRenewalFailed } from './EligibilityUndetermined';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -24,14 +25,15 @@ interface ProtectedRouteProps {
  * 7. User sees OAuth consent page
  */
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, sessionRenewalFailed } = useAuth();
   const location = useLocation();
 
   // Save the intended destination (with query params) for post-login redirect.
   // Done in an effect rather than during render so it does not double-write
   // under StrictMode's double-invoked render.
   useEffect(() => {
-    if (loading || isAuthenticated) return;
+    // Nor while a kept session awaits renewal: nothing is leaving.
+    if (loading || isAuthenticated || sessionRenewalFailed) return;
     // NOT on a sign-out another tab initiated. This URL belongs to the account
     // that just went away, so recording it would deep-link whoever signs in
     // next straight into the previous person's case.
@@ -46,12 +48,14 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       // someone whose session merely expired — the exact outcome #133 is about.
       // Every sibling write in this flow is guarded the same way.
     }
-  }, [loading, isAuthenticated, location.pathname, location.search]);
+  }, [loading, isAuthenticated, sessionRenewalFailed, location.pathname, location.search]);
 
   // Auth state hydrates asynchronously (AuthContext). Render nothing until it
   // resolves so a valid session is not bounced to /login on a hard refresh —
   // matches AdminProtectedRoute / LLMConfigRoute / AllCasesRoute.
   if (loading) return null;
+
+  if (sessionRenewalFailed) return <SessionRenewalFailed />;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

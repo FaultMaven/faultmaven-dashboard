@@ -5,6 +5,7 @@ import {
   submitOAuthApproval,
   OAuthConsentData,
   OAuthApprovalResponse,
+  SESSION_UNCONFIRMED_MESSAGE,
 } from '../lib/api/oauth';
 import { useAuth } from '../context/AuthContext';
 import { authManager } from '../lib/auth';
@@ -247,10 +248,18 @@ export default function OAuthAuthorizePage() {
       // leaving open the whole time this screen is displayed. Signing in as
       // someone else in another tab mid-consent would otherwise mint a code for
       // them under a screen still naming the first account.
-      const current = await authManager.getAuthState();
+      const current = await authManager.loadSession();
 
-      // NO session is not a changed identity. An expired session, a refresh that
-      // failed, or a sign-out in another tab all land here with `current == null`,
+      // A session kept while its renewal fails is not signed out: say so, and
+      // leave it in place rather than sending the user to sign in (faultmaven#2999).
+      if (current.kind === 'renewalFailed') {
+        setError(SESSION_UNCONFIRMED_MESSAGE);
+        setSubmitting(false);
+        return;
+      }
+
+      // NO session is not a changed identity. An expired session whose refresh
+      // was rejected, or a sign-out in another tab, lands here as `signedOut`,
       // and folding them into the mismatch branch below told the user their
       // ACCOUNT had changed and to reload — on a screen whose only control is an
       // inert window.close(). Send them to sign in, and back here afterwards.
@@ -259,14 +268,14 @@ export default function OAuthAuthorizePage() {
       // tab's session is over, and AuthManager hands no tab another account's
       // session (#212). Its cross-tab watch is about to end this tab and route
       // it to sign-in anyway; this only gets there first.
-      if (!current?.user) {
+      if (current.kind !== 'signedIn' || !current.state.user) {
         goSignIn();
         return;
       }
 
       // The backstop: this tab's own session is not the account the consent
       // was loaded for. Never mint a code under a screen naming someone else.
-      if (current.user.user_id !== consent.user_id) {
+      if (current.state.user.user_id !== consent.user_id) {
         setError('Your signed-in account changed. Reload this page to continue.');
         setSubmitting(false);
         return;

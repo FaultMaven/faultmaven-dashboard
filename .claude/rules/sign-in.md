@@ -110,8 +110,14 @@ screen rather than a sign-in form for an account they do not have
 - An **already-signed-in** caller goes to `/cases` instead — the site's call to
   action is in its header on every page, so returning customers click it too,
   and a sign-up screen would invite them to make a second account.
-- Everything else (standalone, cloud advertising no IdP, unreachable config)
-  falls to `/login`, which owns the standalone form, the honest no-IdP error and
+- Nothing is decided while the stored session loads (`loading`): it can still
+  turn out signed in. A session KEPT while its renewal fails
+  (`sessionRenewalFailed`) is an account too, and gets the renewal card
+  (below), never sign-up or `/login`. Nothing is handed off during a sign-out
+  (`authManager.isSigningOut()`): the card's "Sign out" navigates to the IdP's
+  logout, and a sign-up `replace` would override it.
+- Everything else, once the session has loaded and config is no longer pending
+  (standalone, cloud advertising no IdP, unreachable config), falls to `/login`, which owns the standalone form, the honest no-IdP error and
   the retry card with its Local Network Access diagnosis; that is written as
   ONE condition rather than a branch per state, so a future `ConfigStatus`
   member cannot fall through to an indefinite spinner.
@@ -148,3 +154,15 @@ capability-gated, no role), `AllCasesRoute` (`canViewAllCases`,
 preference). The nav (`src/hooks/useNavigationItems.ts`, rendered by
 `PageHeader`) uses the same predicates, so a link and its route cannot
 disagree.
+
+**A kept session is not signed out (faultmaven#2999).** `AuthManager.loadSession`
+answers `signedIn`, `signedOut` (none stored, its credential rejected, or storage
+unreadable before this tab holds a session, as on a reload), or
+`renewalFailed`: the session is kept, but a transient refresh failure or storage
+unreadable while this tab holds a session left it unrenewed. On `renewalFailed`,
+`ProtectedRoute`, `GatedRoute` and `/signup` render the renewal card
+(`SessionRenewalFailed`) instead of `/login`, and record no return path. The card
+offers "Try again" and "Sign out" (`logoutAuth` then `clearAuthState`); the load is
+retried every `CONFIG_REPROBE_INTERVAL_MS` and at once on another tab's write of
+the same user's session. The consent page and `oauth.ts` say the session could
+not be confirmed instead of sending the user to sign in.

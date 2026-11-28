@@ -62,10 +62,10 @@ vi.mock('@faultmaven/copilot-ui', () => ({
 const h = vi.hoisted(() => {
   const authClearedListeners = new Set<() => void>();
   const isSigningOut = vi.fn();
-  const getAuthState = vi.fn();
+  const loadSession = vi.fn();
   const beginSignOut = vi.fn();
   const authManager = {
-    getAuthState: (...a: unknown[]) => getAuthState(...a),
+    loadSession: (...a: unknown[]) => loadSession(...a),
     saveAuthState: vi.fn(),
     clearAuthState: vi.fn().mockResolvedValue(undefined),
     getAccessToken: vi.fn().mockResolvedValue('tok-live'),
@@ -81,7 +81,7 @@ const h = vi.hoisted(() => {
       return () => authClearedListeners.delete(listener);
     },
   };
-  return { authClearedListeners, isSigningOut, getAuthState, beginSignOut, authManager };
+  return { authClearedListeners, isSigningOut, loadSession, beginSignOut, authManager };
 });
 
 /** Every subscriber, the way the real singleton does it. */
@@ -142,7 +142,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   h.authClearedListeners.clear();
-  h.getAuthState.mockResolvedValue(SIGNED_IN);
+  h.loadSession.mockResolvedValue({ kind: 'signedIn', state: SIGNED_IN });
   h.isSigningOut.mockReturnValue(false);
   h.beginSignOut.mockImplementation(() => {
     h.isSigningOut.mockReturnValue(true);

@@ -1,6 +1,6 @@
 // AuthManager tests
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { AuthState } from './types';
 
 // Mock config so AuthManager.refreshTokens hits a deterministic apiUrl.
@@ -146,38 +146,38 @@ describe('AuthManager', () => {
     });
   });
 
-  describe('getAuthState', () => {
+  describe('loadSession', () => {
     it('should return auth state when valid token exists', async () => {
       mockGet.mockResolvedValueOnce({ authState: mockAuthState });
 
-      const result = await authManager.getAuthState();
+      const result = await authManager.loadSession();
 
-      expect(result).toEqual(mockAuthState);
+      expect(result).toEqual({ kind: 'signedIn', state: mockAuthState });
       expect(mockGet).toHaveBeenCalledWith(['authState']);
     });
 
-    it('should return null when no auth state exists', async () => {
+    it('should report signed out when no auth state exists', async () => {
       mockGet.mockResolvedValueOnce({});
 
-      const result = await authManager.getAuthState();
+      const result = await authManager.loadSession();
 
-      expect(result).toBeNull();
+      expect(result).toEqual({ kind: 'signedOut' });
     });
 
-    it('should return null and clear state when token is expired', async () => {
+    it('should report signed out and clear state when token is expired', async () => {
       const expiredAuthState = {
         ...mockAuthState,
         expires_at: Date.now() - 1000, // 1 second ago
       };
       mockGet.mockResolvedValueOnce({ authState: expiredAuthState });
 
-      const result = await authManager.getAuthState();
+      const result = await authManager.loadSession();
 
-      expect(result).toBeNull();
+      expect(result).toEqual({ kind: 'signedOut' });
       expect(mockRemove).toHaveBeenCalledWith(['authState']);
     });
 
-    it('should return null when token expires exactly now', async () => {
+    it('should report signed out when token expires exactly now', async () => {
       const now = Date.now();
       const expiredAuthState = {
         ...mockAuthState,
@@ -185,25 +185,151 @@ describe('AuthManager', () => {
       };
       mockGet.mockResolvedValueOnce({ authState: expiredAuthState });
 
-      const result = await authManager.getAuthState();
+      const result = await authManager.loadSession();
 
-      expect(result).toBeNull();
+      expect(result).toEqual({ kind: 'signedOut' });
       expect(mockRemove).toHaveBeenCalledWith(['authState']);
     });
 
-    it('should handle storage read errors gracefully', async () => {
+    it('reads storage unreadable before this tab holds a session as signed out, clearing nothing', async () => {
+      // Nothing says there is a session to keep, so "You are still signed in"
+      // would be false; and an unreadable store settles nothing (faultmaven#2346).
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockGet.mockRejectedValueOnce(new Error('Storage error'));
 
-      const result = await authManager.getAuthState();
+      const result = await authManager.loadSession();
 
-      expect(result).toBeNull();
+      expect(result).toEqual({ kind: 'signedOut' });
+      expect(mockRemove).not.toHaveBeenCalled();
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         '[AuthManager] Failed to get auth state:',
         expect.any(Error)
       );
 
       consoleErrorSpy.mockRestore();
+    });
+
+    it('reads storage unreadable while this tab holds a session as a renewal failure', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await authManager.saveAuthState(mockAuthState);
+      mockGet.mockRejectedValueOnce(new Error('Storage error'));
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'renewalFailed' });
+      expect(mockRemove).not.toHaveBeenCalled();
+
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  // faultmaven#2999: one null used to mean both "no session" and "kept, but not
+  // renewed just now", and a page load read both as signed out.
+  describe('loadSession with an expired token', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+    const ok = (body: Record<string, unknown>) => ({ ok: true, json: async () => body });
+
+    beforeEach(() => {
+      fetchSpy = vi.fn();
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      mockGet.mockReset();
+      mockGet.mockResolvedValue({});
+      vi.restoreAllMocks();
+    });
+
+    const expired = (overrides: Partial<AuthState> = {}): AuthState => ({
+      ...mockAuthState,
+      refresh_token: 'refresh-abc',
+      expires_at: Date.now() - 1000,
+      ...overrides,
+    });
+
+    it.each([
+      ['a 503', () => fetchSpy.mockResolvedValue({ ok: false, status: 503 })],
+      ['a network error', () => fetchSpy.mockRejectedValue(new TypeError('network down'))],
+    ])('keeps the session on %s and reports renewalFailed', async (_label, failRefresh) => {
+      mockGet.mockResolvedValue({ authState: expired() });
+      failRefresh();
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'renewalFailed' });
+      expect(mockRemove).not.toHaveBeenCalled();
+      expect(mockSet).not.toHaveBeenCalled();
+    });
+
+    it('reports renewalFailed for a kept legacy row that names no user', async () => {
+      const legacy = expired({ user: { ...mockAuthState.user, user_id: undefined as unknown as string } });
+      mockGet.mockResolvedValue({ authState: legacy });
+      fetchSpy.mockResolvedValue({ ok: false, status: 503 });
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'renewalFailed' });
+    });
+
+    it('reports signedOut and clears the row when the refresh is rejected (401)', async () => {
+      mockGet.mockResolvedValue({ authState: expired() });
+      fetchSpy.mockResolvedValue({ ok: false, status: 401 });
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'signedOut' });
+      expect(mockRemove).toHaveBeenCalledWith(['authState']);
+    });
+
+    it('reports signedIn with the renewed state when the refresh succeeds', async () => {
+      let stored: AuthState = expired();
+      mockGet.mockImplementation(async () => ({ authState: stored }));
+      mockSet.mockImplementationOnce(async ({ authState }: { authState: AuthState }) => {
+        stored = authState;
+      });
+      fetchSpy.mockResolvedValue(ok({ access_token: 'new-access', refresh_token: 'r2', expires_in: 3600 }));
+
+      const result = await authManager.loadSession();
+
+      expect(result).toMatchObject({ kind: 'signedIn', state: { access_token: 'new-access' } });
+    });
+
+    it('reports signedIn with the winner’s state when another tab rotated mid-refresh', async () => {
+      const winner = { ...mockAuthState, access_token: 'winner-access', refresh_token: 'winner-refresh' };
+      let stored: AuthState = expired();
+      mockGet.mockImplementation(async () => ({ authState: stored }));
+      fetchSpy.mockImplementation(async () => {
+        stored = winner;
+        return { ok: false, status: 401 };
+      });
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'signedIn', state: winner });
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    it('reports signedIn with a fresh row another tab stored while this refresh failed', async () => {
+      const renewedElsewhere = { ...mockAuthState, access_token: 'other-tab', refresh_token: 'other-refresh' };
+      let stored: AuthState = expired();
+      mockGet.mockImplementation(async () => ({ authState: stored }));
+      fetchSpy.mockImplementation(async () => {
+        stored = renewedElsewhere;
+        return { ok: false, status: 503 };
+      });
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'signedIn', state: renewedElsewhere });
+    });
+
+    it('reports renewalFailed when storage cannot be read after a successful refresh', async () => {
+      mockGet.mockResolvedValue({ authState: expired() });
+      mockSet.mockImplementationOnce(async () => {
+        mockGet.mockRejectedValue(new Error('storage hiccup'));
+      });
+      fetchSpy.mockResolvedValue(ok({ access_token: 'new-access', expires_in: 3600 }));
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'renewalFailed' });
+    });
+
+    it('reports signedOut when the row is gone after a successful refresh', async () => {
+      mockGet.mockResolvedValue({ authState: expired() });
+      mockSet.mockImplementationOnce(async () => {
+        mockGet.mockResolvedValue({});
+      });
+      fetchSpy.mockResolvedValue(ok({ access_token: 'new-access', expires_in: 3600 }));
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'signedOut' });
     });
   });
 
@@ -500,10 +626,9 @@ describe('AuthManager', () => {
       };
       mockGet.mockResolvedValueOnce({ authState: adminAuthState });
 
-      const result = await authManager.getAuthState();
+      const result = await authManager.loadSession();
 
-      expect(result).toEqual(adminAuthState);
-      expect(result?.user.roles).toContain('admin');
+      expect(result).toEqual({ kind: 'signedIn', state: adminAuthState });
     });
 
     it('should handle auth state with empty roles array', async () => {
@@ -516,10 +641,9 @@ describe('AuthManager', () => {
       };
       mockGet.mockResolvedValueOnce({ authState: noRolesAuthState });
 
-      const result = await authManager.getAuthState();
+      const result = await authManager.loadSession();
 
-      expect(result).toEqual(noRolesAuthState);
-      expect(result?.user.roles).toEqual([]);
+      expect(result).toEqual({ kind: 'signedIn', state: noRolesAuthState });
     });
 
   });

@@ -1,11 +1,24 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { localNetworkAccessLikelyBlocked } from '../lib/auth/lnaDiagnosis';
+import { useAuth } from '../context/AuthContext';
+import { logoutAuth } from '../lib/api';
+
+const ELIGIBILITY_UNKNOWN =
+  'This page is only available on some deployments, and we could not reach the API to find out whether it is available here. Nothing is wrong with your account.';
 
 interface EligibilityUndeterminedProps {
   /** Is the answer still on its way, as opposed to having failed at least once? */
   pending: boolean;
   /** Re-ask the question this route could not answer. */
   onRetry: () => Promise<void>;
+  /** The explanation; defaults to the route-availability text. */
+  message?: string;
+  /** What a failed retry announces, before the attempt count. */
+  stillFailing?: string;
+  /** Show the API-reachability diagnosis (not where the API may not be the cause). */
+  diagnosis?: boolean;
+  /** The way off this card; defaults to "Back to cases". */
+  exit?: ReactNode;
 }
 
 /**
@@ -38,7 +51,14 @@ interface EligibilityUndeterminedProps {
  * progress — it says plainly what is not known and offers one explicit attempt,
  * the way the login page's card does.
  */
-export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeterminedProps) {
+export function EligibilityUndetermined({
+  pending,
+  onRetry,
+  message = ELIGIBILITY_UNKNOWN,
+  stillFailing = 'Still can’t reach the API',
+  diagnosis = true,
+  exit,
+}: EligibilityUndeterminedProps) {
   const [retrying, setRetrying] = useState(false);
   const [attempts, setAttempts] = useState(0);
   // ASYNC, so it is resolved in an effect and not called in the render body —
@@ -90,16 +110,14 @@ export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeter
         <h1 className="text-fm-heading font-bold text-fm-text-primary mb-2">
           Can&apos;t reach FaultMaven
         </h1>
-        <p className="text-fm-text-secondary text-sm mb-4">
-          This page is only available on some deployments, and we could not reach the API to find
-          out whether it is available here. Nothing is wrong with your account.
-        </p>
+        <p className="text-fm-text-secondary text-sm mb-4">{message}</p>
 
         {/* The same diagnosis the SIGNED-OUT visitor gets on this exact failure
             (`LoginPage`'s UnreachableCard). Withholding it here meant an operator
             whose session happened to be stored got strictly less help than one
-            whose was not. */}
-        {lnaLikely ? (
+            whose was not. The renewal card withholds it: unreadable storage
+            leaves a session unrenewed too, and is no API failure. */}
+        {!diagnosis ? null : lnaLikely ? (
           <p className="text-fm-text-secondary text-sm mb-4">
             This browser may be blocking access to a private-network address. Open the site settings
             for this page and set <strong>Local network access</strong> to Allow, then try again.
@@ -121,9 +139,11 @@ export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeter
           </button>
           {/* NOT a dead end. An operator who arrived by clicking a nav item has
               no header here to leave by, and "press Back" is not an affordance. */}
-          <a href="/cases" className="text-sm text-fm-accent hover:underline">
-            Back to cases
-          </a>
+          {exit ?? (
+            <a href="/cases" className="text-sm text-fm-accent hover:underline">
+              Back to cases
+            </a>
+          )}
         </div>
 
         {/* Always rendered, filled only after an attempt: a live region inserted
@@ -131,10 +151,33 @@ export function EligibilityUndetermined({ pending, onRetry }: EligibilityUndeter
             consistently. */}
         <p role="status" aria-live="polite" className="text-sm text-fm-text-tertiary mt-3">
           {attempts > 0 && !retrying
-            ? `Still can’t reach the API (${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}).`
+            ? `${stillFailing} (${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}).`
             : ''}
         </p>
       </div>
     </div>
+  );
+}
+
+/** A guard's card for a KEPT session not renewed (faultmaven#2999); storage can be the cause, not only the API. */
+export function SessionRenewalFailed() {
+  const { retrySessionLoad, clearAuthState } = useAuth();
+  const signOut = async () => {
+    await logoutAuth();
+    await clearAuthState();
+  };
+  return (
+    <EligibilityUndetermined
+      pending={false}
+      onRetry={retrySessionLoad}
+      message="We could not renew your session just now. You are still signed in, and nothing is wrong with your account. We will keep trying; you can also try again now."
+      stillFailing="Still could not renew your session"
+      diagnosis={false}
+      exit={
+        <button type="button" onClick={() => void signOut()} className="text-sm text-fm-accent hover:underline">
+          Sign out
+        </button>
+      }
+    />
   );
 }

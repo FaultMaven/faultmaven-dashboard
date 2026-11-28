@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
+import { authManager } from '../lib/auth/AuthManager';
+import { SessionRenewalFailed } from '../components/EligibilityUndetermined';
 
 /**
  * Hands a first-time visitor straight to the hosted login's SIGN-UP screen.
@@ -25,21 +27,28 @@ import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
 export default function SignUpPage() {
   const { deployment, configStatus, loginUrl, isAuthenticated, supportsScreenHint, selfServiceSignupEnabled } =
     useAuth();
+  const { loading, sessionRenewalFailed } = useAuth();
 
-  // Every state this page can be in resolves to exactly one of three
-  // outcomes, decided once here so the effect and the render cannot disagree.
+  // Every state this page can be in resolves to exactly one outcome (wait, hand
+  // off, /cases, the renewal card or /login), decided once here so the effect
+  // and the render cannot disagree.
   // They did: the effect originally ignored `configStatus` while the returns
   // below were driven by it, so an unreachable config with a stale loginUrl
   // rendered "go to /login" *and* fired the redirect.
   const ready = configStatus === 'ok';
+  // Nothing settles before the stored session is read (it may be kept, faultmaven#2999).
+  const settled = !loading && configStatus !== 'pending';
   // The same pair LoginPage gates its button on. Without them this page says
   // "Taking you to sign-up…" and delivers the sign-in screen — website#42's
   // original defect, now with the app having announced the opposite. Falling
   // to /login is one more hop and tells the truth.
   const canHandOff =
     ready &&
+    !loading &&
     deployment === 'cloud' &&
     !!loginUrl &&
+    !sessionRenewalFailed && // a kept session is an account (faultmaven#2999)
+    !authManager.isSigningOut() && // its IdP logout navigation must not be overridden
     !isAuthenticated &&
     supportsScreenHint &&
     selfServiceSignupEnabled;
@@ -59,6 +68,7 @@ export default function SignUpPage() {
   // website#42 describes, and the old CTA (the app root) got it right by
   // landing them on their cases.
   if (isAuthenticated) return <Navigate to="/cases" replace />;
+  if (sessionRenewalFailed) return <SessionRenewalFailed />;
 
   // Anything settled that is not cloud-with-an-IdP goes to /login, which owns
   // the standalone form, the no-IdP error and the unreachable-config retry
@@ -66,7 +76,7 @@ export default function SignUpPage() {
   // rather than three: enumerating the known states left a future
   // `ConfigStatus` member falling through to an indefinite spinner, where
   // this falls to the page that can explain itself.
-  if (ready && !canHandOff) return <Navigate to="/login" replace />;
+  if (settled && !canHandOff) return <Navigate to="/login" replace />;
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-fm-canvas">

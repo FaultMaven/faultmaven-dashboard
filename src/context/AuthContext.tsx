@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { authManager, AuthState } from '../lib/api';
 import config from '../config';
+import { subscribeCrossTabAuthState } from '../lib/auth/crossTab';
 import type { components } from '../types/api.generated';
 
 // Deployment type: derived from the backend auth mode
@@ -121,6 +122,15 @@ interface AuthContextValue {
    * refused at the callback. Offer a sign-up control only when BOTH hold.
    */
   selfServiceSignupEnabled: boolean;
+  /**
+   * The stored session is KEPT but could not be renewed (`loadSession`'s
+   * `renewalFailed`): `authState` is null, yet the guards show a retry card, not
+   * sign-in (faultmaven#2999). Retried every CONFIG_REPROBE_INTERVAL_MS meanwhile,
+   * and at once when another tab writes this tab's user's session.
+   */
+  sessionRenewalFailed: boolean;
+  /** One more session load. Never touches `loading`, so the card stays mounted. */
+  retrySessionLoad: () => Promise<void>;
   setAuthState: (state: AuthState | null) => Promise<void>;
   clearAuthState: () => Promise<void>;
 }
@@ -236,6 +246,7 @@ AuthContext.displayName = 'AuthContext';
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authState, setAuthStateInternal] = useState<AuthState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionRenewalFailed, setSessionRenewalFailed] = useState(false);
   const [deployment, setDeployment] = useState<Deployment | null>(null);
   const [configStatus, setConfigStatus] = useState<ConfigStatus>('pending');
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
@@ -306,7 +317,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [runConfigDetection]
   );
 
+  /**
+   * The same guard for session loads: a newer load, a sign-in, a sign-out and
+   * unmount each supersede one in flight, so a retry held up to the refresh's
+   * 15 s bound writes nothing over the session decided after it started.
+   */
+  const sessionGenRef = useRef(0);
+  const invalidateSessionLoad = useCallback(() => {
+    sessionGenRef.current++;
+  }, []);
+
+  const runSessionLoad = useCallback(async (): Promise<void> => {
+    const gen = ++sessionGenRef.current;
+    const session = await authManager.loadSession();
+    if (gen !== sessionGenRef.current) return;
+    setAuthStateInternal(session.kind === 'signedIn' ? session.state : null);
+    setSessionRenewalFailed(session.kind === 'renewalFailed');
+  }, []);
+
   useEffect(() => {
+    let live = true;
     const load = async () => {
       setLoading(true);
 
@@ -314,20 +344,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // both, and gate `loading` (which blanks every routed page) on the
       // auth load alone. Detection outcomes land via configStatus/deployment,
       // which LoginPage and the role gates already wait on.
-      const statePromise = authManager.getAuthState();
+      const sessionLoad = runSessionLoad();
       void runConfigDetection(true);
-      const state = await statePromise;
-      setAuthStateInternal(state);
+      await sessionLoad;
 
-      setLoading(false);
+      // Not after StrictMode's dev unmount: a superseded load would open the guards.
+      if (live) setLoading(false);
     };
     load();
-    // Invalidate any in-flight detection so orphaned ladders cannot setState
-    // after unmount (or across StrictMode's dev remount). The counter is a
-    // plain generation token, not a DOM ref — the stable callback keeps the
+    // Invalidate any in-flight detection and session load so orphaned work cannot setState
+    // after unmount (or across StrictMode's dev remount). The counters are
+    // plain generation tokens, not DOM refs — the stable callbacks keep the
     // ref access out of the cleanup closure the lint rule inspects.
-    return invalidateDetection;
-  }, [runConfigDetection, invalidateDetection]);
+    return () => {
+      live = false;
+      invalidateDetection();
+      invalidateSessionLoad();
+    };
+  }, [runConfigDetection, invalidateDetection, runSessionLoad, invalidateSessionLoad]);
+
+  // While the session cannot be renewed: another tab's write of this user's session
+  // arrives over its signal, not a timer. The interval is the network retry only.
+  useEffect(() => {
+    if (!sessionRenewalFailed) return;
+    const id = setInterval(() => void runSessionLoad(), CONFIG_REPROBE_INTERVAL_MS);
+    const unsubscribe = subscribeCrossTabAuthState(async (state) => {
+      if (state && (await authManager.holdsSessionFor(state.user.user_id))) void runSessionLoad();
+    });
+    return () => {
+      clearInterval(id);
+      unsubscribe();
+    };
+  }, [sessionRenewalFailed, runSessionLoad]);
 
   // Self-heal: while unreachable, probe quietly at a low frequency (see
   // CONFIG_REPROBE_INTERVAL_MS). A success flips configStatus to 'ok', which
@@ -347,7 +395,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // context drops its state so ProtectedRoute routes back to login.
   useEffect(() => {
     const unsubscribe = authManager.onAuthCleared(() => {
+      sessionGenRef.current++;
       setAuthStateInternal(null);
+      setSessionRenewalFailed(false);
     });
     return unsubscribe;
   }, []);
@@ -385,6 +435,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const setAuthState = useCallback(async (state: AuthState | null) => {
+    sessionGenRef.current++;
     if (state) {
       await authManager.saveAuthState(state);
       setAuthStateInternal(state);
@@ -392,11 +443,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await authManager.clearAuthState();
       setAuthStateInternal(null);
     }
+    setSessionRenewalFailed(false);
   }, []);
 
   const clearAuthState = useCallback(async () => {
+    sessionGenRef.current++;
     await authManager.clearAuthState();
     setAuthStateInternal(null);
+    setSessionRenewalFailed(false);
   }, []);
 
   return (
@@ -412,6 +466,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         deployment,
         configStatus,
         retryConfigDetection,
+        sessionRenewalFailed,
+        retrySessionLoad: runSessionLoad,
         role,
         loginUrl,
         supportsScreenHint,

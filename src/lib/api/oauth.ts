@@ -79,6 +79,24 @@ export type OAuthApprovalRequest = components['schemas']['AuthorizationApprovalR
  */
 export type OAuthApprovalResponse = Partial<components['schemas']['AuthorizationResponse']>;
 
+/** Shown when this tab's session is KEPT but could not be renewed (faultmaven#2999). */
+export const SESSION_UNCONFIRMED_MESSAGE =
+  'Could not reach FaultMaven to confirm your session. You are still signed in. Reload this page to try again.';
+
+/**
+ * Headers with this tab's bearer when it holds a session. A session whose renewal
+ * failed sends nothing: without the bearer, the 401 would read "Sign in again".
+ */
+async function consentHeaders(): Promise<Record<string, string>> {
+  const session = await authManager.loadSession();
+  if (session.kind === 'renewalFailed') throw new Error(SESSION_UNCONFIRMED_MESSAGE);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (session.kind === 'signedIn' && session.state.access_token) {
+    headers['Authorization'] = `Bearer ${session.state.access_token}`;
+  }
+  return headers;
+}
+
 /**
  * Get OAuth consent data from backend.
  * Called when user lands on /auth/authorize with query params.
@@ -90,16 +108,7 @@ export async function getOAuthConsent(
   searchParams: URLSearchParams
 ): Promise<OAuthConsentData | OAuthApprovalResponse> {
   const apiUrl = config.apiUrl;
-  const authState = await authManager.getAuthState();
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  // Add Authorization header if user is authenticated
-  if (authState?.access_token) {
-    headers['Authorization'] = `Bearer ${authState.access_token}`;
-  }
+  const headers = await consentHeaders();
 
   const response = await fetch(`${apiUrl}/api/v1/auth/oauth/authorize?${searchParams.toString()}`, {
     method: 'GET',
@@ -159,16 +168,7 @@ export async function submitOAuthApproval(
   approval: OAuthApprovalRequest
 ): Promise<OAuthApprovalResponse> {
   const apiUrl = config.apiUrl;
-  const authState = await authManager.getAuthState();
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  // Add Authorization header if user is authenticated
-  if (authState?.access_token) {
-    headers['Authorization'] = `Bearer ${authState.access_token}`;
-  }
+  const headers = await consentHeaders();
 
   const response = await fetch(`${apiUrl}/api/v1/auth/oauth/authorize`, {
     method: 'POST',

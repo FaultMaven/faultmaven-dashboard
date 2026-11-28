@@ -111,6 +111,9 @@ function signedInAs(state: AuthState): TabIdentity {
   return { kind: 'signedIn', userId: state.user?.user_id ?? null };
 }
 
+/** What `loadSession` found: see there. */
+export type SessionLoad = { kind: 'signedIn'; state: AuthState } | { kind: 'signedOut' | 'renewalFailed' };
+
 /** What `getAccessTokenFor` found for the user it was asked about. */
 export type CredentialFor =
   | { kind: 'token'; token: string }
@@ -479,7 +482,7 @@ export class AuthManager {
    * Read the stored IdP logout URL verbatim, WITHOUT triggering a refresh.
    *
    * Same reason peekAccessToken exists, plus one more: on a session with no
-   * refresh token getAuthState *clears* the state and returns null, which would
+   * refresh token loadSession *clears* the state (`signedOut`), which would
    * destroy the very URL logout is trying to read. Returns null when no session
    * is stored, or for a login that had no IdP session (dev/password).
    */
@@ -530,7 +533,7 @@ export class AuthManager {
   /**
    * THIS tab's stored session, without any expiry handling — or null when
    * storage holds none, or holds another user's.
-   * Internal: callers that need a *valid* token use getAuthState/getAccessToken.
+   * Internal: callers that need a *valid* token use loadSession/getAccessToken.
    *
    * Every credential this class hands out, renews, peeks at or ends is read
    * through here, so another account's row never reaches any of them: not the
@@ -582,36 +585,48 @@ export class AuthManager {
    * token is short-lived and CANNOT be extended by activity, so without this
    * refresh the user is force-logged-out at expiry.
    *
-   * Returning null does NOT imply the session was cleared: a refresh that
-   * failed transiently (network down, 5xx) reports failure while deliberately
-   * keeping the stored session, so a later attempt can succeed.
+   * `signedOut` means no session is stored or its credential was rejected (and
+   * cleared). `renewalFailed` means it is KEPT but could not be renewed just now
+   * — a transient refresh failure (network down, 5xx), or storage unreadable
+   * while this tab holds a session, which settles nothing (faultmaven#2346) — so
+   * a later attempt can succeed. Unreadable before this tab holds one (a reload)
+   * is `signedOut`: nothing says there is a session to keep.
    */
-  async getAuthState(): Promise<AuthState | null> {
-    const authState = await this.readState();
+  async loadSession(): Promise<SessionLoad> {
+    const unreadable = (): SessionLoad => ({
+      kind: this.identity.kind === 'signedIn' ? 'renewalFailed' : 'signedOut',
+    });
+    const { readable, state: authState } = await this.readOwnRow();
+    if (!readable) return unreadable();
     if (!authState) {
-      return null;
+      return { kind: 'signedOut' };
     }
 
     // Still comfortably valid → use as-is.
     if (Date.now() < authState.expires_at - EXPIRY_SKEW_MS) {
-      return authState;
+      return { kind: 'signedIn', state: authState };
     }
 
     // Expired or about to: try a silent refresh.
     if (authState.refresh_token) {
       const refreshed = await this.refreshTokens();
-      if (refreshed) {
-        return this.readState();
+      const after = await this.readOwnRow();
+      if (!after.readable) return unreadable();
+      if (!after.state) return { kind: 'signedOut' };
+      // Renewed here, or by another tab while this refresh failed.
+      if (refreshed || Date.now() < after.state.expires_at - EXPIRY_SKEW_MS) {
+        return { kind: 'signedIn', state: after.state };
       }
       // Refresh failed. State has been cleared only if the failure was a
       // rejection of the credential we hold; a transient failure leaves the
-      // session in place for the next attempt.
-      return null;
+      // session in place for the next attempt, and this tab still holds it.
+      const sameUser = (after.state.user?.user_id ?? null) === (authState.user?.user_id ?? null);
+      return { kind: sameUser ? 'renewalFailed' : 'signedOut' };
     }
 
     // No refresh token (legacy session): nothing we can do — log out.
     await this.clearAuthStateAndEndIdpSession(authState);
-    return null;
+    return { kind: 'signedOut' };
   }
 
   /**

@@ -4,9 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import OAuthAuthorizePage from '../../pages/OAuthAuthorizePage';
 import { getOAuthConsent } from '../../lib/api/oauth';
 
-const mockGetAuthState = vi.fn();
+const mockLoadSession = vi.fn();
 vi.mock('../../lib/auth', () => ({
-  authManager: { getAuthState: () => mockGetAuthState() },
+  authManager: { loadSession: () => mockLoadSession() },
 }));
 
 /**
@@ -39,7 +39,9 @@ const CONSENT_RESPONSE = {
 
 const mockSubmitOAuthApproval = vi.fn();
 
-vi.mock('../../lib/api/oauth', () => ({
+vi.mock('../../lib/api/oauth', async () => ({
+  SESSION_UNCONFIRMED_MESSAGE: (await vi.importActual<typeof import('../../lib/api/oauth')>('../../lib/api/oauth'))
+    .SESSION_UNCONFIRMED_MESSAGE,
   getOAuthConsent: vi.fn().mockImplementation(async () => CONSENT_RESPONSE),
   submitOAuthApproval: (...args: unknown[]) => mockSubmitOAuthApproval(...args),
 }));
@@ -98,8 +100,9 @@ describe('OAuthAuthorizePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSubmitOAuthApproval.mockResolvedValue({ code: 'auth-code', state: 'state-123' });
-    mockGetAuthState.mockResolvedValue({
-      user: { user_id: 'user-789', username: 'sterlan.yu' },
+    mockLoadSession.mockResolvedValue({
+      kind: 'signedIn',
+      state: { user: { user_id: 'user-789', username: 'sterlan.yu' } },
     });
   });
 
@@ -455,7 +458,7 @@ describe('OAuthAuthorizePage', () => {
     const approve = await screen.findByRole('button', { name: /authorize/i });
 
     // Another tab signs in as someone else while this screen is open.
-    mockGetAuthState.mockResolvedValue({ user: { user_id: 'someone-else' } });
+    mockLoadSession.mockResolvedValue({ kind: 'signedIn', state: { user: { user_id: 'someone-else' } } });
     fireEvent.click(approve);
 
     expect(await screen.findByText(/signed-in account changed/i)).toBeInTheDocument();
@@ -465,7 +468,7 @@ describe('OAuthAuthorizePage', () => {
   // F4 (review): a stored session with no user_id must not pass the pin.
   it('fails closed when the stored session carries no user_id', async () => {
     vi.mocked(getOAuthConsent).mockResolvedValueOnce({ ...CONSENT_RESPONSE } as never);
-    mockGetAuthState.mockResolvedValue({ user: {} });
+    mockLoadSession.mockResolvedValue({ kind: 'signedIn', state: { user: {} } });
 
     renderPage();
 
@@ -553,7 +556,7 @@ describe('OAuthAuthorizePage', () => {
   // mismatch branch told the user their account had changed and to reload — on a
   // screen whose only control is an inert window.close().
   it('sends an expired session back to sign-in, not to the identity-change error', async () => {
-    mockGetAuthState.mockResolvedValue(null);
+    mockLoadSession.mockResolvedValue({ kind: 'signedOut' });
 
     render(
       <MemoryRouter initialEntries={[`/auth/authorize${QUERY}`]}>
@@ -573,6 +576,30 @@ describe('OAuthAuthorizePage', () => {
     expect(sessionStorage.getItem('oauth_redirect_after_login')).toContain(
       'code_challenge=challenge-xyz'
     );
+  });
+
+  // faultmaven#2999: a session kept while its renewal fails is NOT signed out,
+  // so the click neither sends the user to sign in nor mints a code.
+  it('keeps a session whose renewal failed, and says so instead of sending the user to sign in', async () => {
+    render(
+      <MemoryRouter initialEntries={[`/auth/authorize${QUERY}`]}>
+        <Routes>
+          <Route path="/auth/authorize" element={<OAuthAuthorizePage />} />
+          <Route path="/login" element={<div>login page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const approve = await screen.findByRole('button', { name: /authorize/i });
+    mockLoadSession.mockResolvedValue({ kind: 'renewalFailed' });
+    fireEvent.click(approve);
+
+    expect(
+      await screen.findByText(
+        'Could not reach FaultMaven to confirm your session. You are still signed in. Reload this page to try again.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText('login page')).not.toBeInTheDocument();
+    expect(mockSubmitOAuthApproval).not.toHaveBeenCalled();
   });
 
   it('approves with the PKCE parameters from the URL, never undefined', async () => {

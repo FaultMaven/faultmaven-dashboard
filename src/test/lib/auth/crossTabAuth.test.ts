@@ -209,7 +209,7 @@ describe('an account switch in another tab, before this tab hears it (#212)', ()
     anotherTabSignsIn(OTHER_AUTH_STATE);
 
     expect(await manager.getAccessToken()).toBeNull();
-    expect(await manager.getAuthState()).toBeNull();
+    expect(await manager.loadSession()).toEqual({ kind: 'signedOut' });
   });
 
   it('does not adopt the other account, so the watch still ends this tab', async () => {
@@ -232,7 +232,7 @@ describe('an account switch in another tab, before this tab hears it (#212)', ()
     // user. The watch must still have someone to compare against.
     store.authState = TEST_AUTH_STATE;
     const manager = new AuthManager();
-    expect(await manager.getAuthState()).toEqual(TEST_AUTH_STATE);
+    expect(await manager.loadSession()).toEqual({ kind: 'signedIn', state: TEST_AUTH_STATE });
     const cleared = vi.fn();
     manager.onAuthCleared(cleared);
     manager.watchCrossTabAuthChanges();
@@ -330,7 +330,7 @@ describe('an account switch in another tab, before this tab hears it (#212)', ()
     const legacy = { ...TEST_AUTH_STATE, user: { ...TEST_AUTH_STATE.user, user_id: undefined } };
     store.authState = legacy;
     const manager = new AuthManager();
-    expect(await manager.getAuthState()).toEqual(legacy);
+    expect(await manager.loadSession()).toEqual({ kind: 'signedIn', state: legacy });
     const cleared = vi.fn();
     manager.onAuthCleared(cleared);
     manager.watchCrossTabAuthChanges();
@@ -363,8 +363,10 @@ describe('a first read that fails', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const manager = new AuthManager();
 
-    expect(await manager.getAuthState()).toBeNull();
-    expect(await manager.getAuthState()).toEqual(TEST_AUTH_STATE);
+    // Before this tab holds a session, a failed read is signed out — but it
+    // pins nothing, so the next read still restores the session.
+    expect(await manager.loadSession()).toEqual({ kind: 'signedOut' });
+    expect(await manager.loadSession()).toEqual({ kind: 'signedIn', state: TEST_AUTH_STATE });
   });
 });
 
@@ -460,7 +462,7 @@ describe('holdsSessionFor: what a refresh that renewed nothing left (faultmaven#
     // the session of a profile that carried no `user_id`.
     store.authState = { ...TEST_AUTH_STATE, user: { ...TEST_AUTH_STATE.user, user_id: undefined } };
     const manager = new AuthManager();
-    expect(await manager.getAuthState()).not.toBeNull();
+    expect(await manager.loadSession()).toMatchObject({ kind: 'signedIn' });
 
     expect(await manager.holdsSessionFor(undefined as unknown as string)).toBe(false);
   });

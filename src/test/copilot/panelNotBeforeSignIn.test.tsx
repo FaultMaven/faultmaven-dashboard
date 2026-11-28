@@ -49,7 +49,7 @@ vi.mock('@faultmaven/copilot-ui', () => {
   };
 });
 
-const getAuthState = vi.fn();
+const loadSession = vi.fn();
 
 vi.mock('../../lib/api', async () => ({
   devLogin: vi.fn(),
@@ -63,7 +63,7 @@ vi.mock('../../lib/api', async () => ({
   }),
   searchCases: vi.fn(),
   listDocuments: vi.fn().mockResolvedValue({ documents: [], total_count: 0, limit: 0, offset: 0 }),
-  authManager: (await import('../support/authFixtures')).makeAuthManagerMock({ getAuthState: (...args: unknown[]) => getAuthState(...args) }),
+  authManager: (await import('../support/authFixtures')).makeAuthManagerMock({ loadSession: (...args: unknown[]) => loadSession(...args) }),
   config: { apiUrl: 'http://localhost:8090' },
   SIGNOUT_NOTICE_KEY: 'fm_signout_notice',
   AuthenticationError: class extends Error {},
@@ -133,7 +133,7 @@ async function renderAppAt(path: string) {
 
 describe('the login route', () => {
   it('renders no panel and never reaches the panel module', async () => {
-    getAuthState.mockResolvedValue(null);
+    loadSession.mockResolvedValue({ kind: 'signedOut' });
 
     await renderAppAt('/login');
 
@@ -147,7 +147,7 @@ describe('the login route', () => {
   });
 
   it('keeps an unauthenticated visit to the panel route off the panel', async () => {
-    getAuthState.mockResolvedValue(null);
+    loadSession.mockResolvedValue({ kind: 'signedOut' });
 
     await renderAppAt('/investigate');
 
@@ -158,7 +158,7 @@ describe('the login route', () => {
 
 describe('the counter is not vacuous', () => {
   it('reaches the panel module once a session exists', async () => {
-    getAuthState.mockResolvedValue(SIGNED_IN);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: SIGNED_IN });
 
     await renderAppAt('/investigate');
 
@@ -186,7 +186,7 @@ describe('the /investigate route', () => {
    * exists, and every one of those arrives through App's router.
    */
   it('redirects away from the full-page composer once chat lives in the extension', async () => {
-    getAuthState.mockResolvedValue(SIGNED_IN);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: SIGNED_IN });
     setPrefersExtensionForChat(true);
 
     await renderAppAt('/investigate');
@@ -200,7 +200,7 @@ describe('the /investigate route', () => {
     // case" screen, which is a button away from where the route meant to put
     // the person — and the route is reached BY a redirect for someone with no
     // cases, so that button is the first thing a new user would see.
-    getAuthState.mockResolvedValue(SIGNED_IN);
+    loadSession.mockResolvedValue({ kind: 'signedIn', state: SIGNED_IN });
 
     await renderAppAt('/investigate');
 
