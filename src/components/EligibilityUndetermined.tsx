@@ -115,7 +115,8 @@ export function EligibilityUndetermined({
         {/* The same diagnosis the SIGNED-OUT visitor gets on this exact failure
             (`LoginPage`'s UnreachableCard). Withholding it here meant an operator
             whose session happened to be stored got strictly less help than one
-            whose was not. */}
+            whose was not. The renewal card withholds it: unreadable storage
+            leaves a session unrenewed too, and is no API failure. */}
         {!diagnosis ? null : lnaLikely ? (
           <p className="text-fm-text-secondary text-sm mb-4">
             This browser may be blocking access to a private-network address. Open the site settings

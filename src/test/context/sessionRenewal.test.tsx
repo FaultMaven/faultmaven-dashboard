@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-import { OTHER_AUTH_STATE, STANDALONE_AUTH_CONFIG, TEST_AUTH_STATE } from '../support/authFixtures';
+import { CLOUD_AUTH_CONFIG, OTHER_AUTH_STATE, STANDALONE_AUTH_CONFIG, TEST_AUTH_STATE } from '../support/authFixtures';
 
 /**
  * A reload while the access token is expired and `/auth/refresh` fails
@@ -27,6 +27,7 @@ const backend = {
   refreshCalls: 0,
   /** When set, `/auth/refresh` waits on it before answering. */
   refreshGate: null as Promise<void> | null,
+  authConfig: STANDALONE_AUTH_CONFIG as object,
 };
 
 const json = (body: unknown, status = 200) =>
@@ -36,6 +37,7 @@ beforeEach(() => {
   backend.refreshStatus = 503;
   backend.refreshCalls = 0;
   backend.refreshGate = null;
+  backend.authConfig = STANDALONE_AUTH_CONFIG;
   localStorage.clear();
   sessionStorage.clear();
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -49,7 +51,7 @@ beforeEach(() => {
         if (backend.refreshStatus !== 200) return new Response(null, { status: backend.refreshStatus });
         return json({ access_token: 'tok-renewed', refresh_token: 'refresh-2', expires_in: 3600 });
       }
-      if (url.pathname === '/api/v1/auth/config') return json(STANDALONE_AUTH_CONFIG);
+      if (url.pathname === '/api/v1/auth/config') return json(backend.authConfig);
       if (url.pathname.endsWith('/capabilities')) return json({ features: {} });
       return json({});
     }),
@@ -63,11 +65,11 @@ afterEach(() => {
 });
 
 /** A reloaded tab: `ada`'s session stored with an expired access token, then the app mounted at `path`. */
-async function reloadAt(path: string) {
+async function reloadAt(path: string, stored: Partial<typeof TEST_AUTH_STATE> = {}) {
   vi.resetModules();
   await import('../../lib/storage');
   await window.browser!.storage.local.set({
-    authState: { ...TEST_AUTH_STATE, expires_at: Date.now() - 60_000 },
+    authState: { ...TEST_AUTH_STATE, expires_at: Date.now() - 60_000, ...stored },
   });
   const { authManager } = await import('../../lib/auth/AuthManager');
   const { AuthProvider, useAuth, CONFIG_REPROBE_INTERVAL_MS } = await import('../../context/AuthContext');
@@ -167,6 +169,23 @@ describe('a reload while the session cannot be renewed (faultmaven#2999)', () =>
     release();
 
     await expectRenewalCard();
+  });
+
+  // Sign out clears the session and THEN navigates to the IdP's logout; a
+  // sign-up hand-off on the cleared state would override it, and the IdP
+  // session would survive.
+  it('at /signup lets Sign out reach the IdP logout, handing nothing off to sign-up', async () => {
+    backend.authConfig = CLOUD_AUTH_CONFIG;
+    const navigations: string[] = [];
+    vi.spyOn(window.location, 'assign').mockImplementation((url) => void navigations.push(`assign ${url}`));
+    vi.spyOn(window.location, 'replace').mockImplementation((url) => void navigations.push(`replace ${url}`));
+    await reloadAt('/signup', { idp_logout_url: 'https://idp.example/logout' });
+    await expectRenewalCard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    await waitFor(() => expect(navigations).toContain('assign https://idp.example/logout'));
+    expect(navigations.filter((n) => n.startsWith('replace'))).toEqual([]);
   });
 
   it('loads at once when another tab writes this user’s renewed session', async () => {

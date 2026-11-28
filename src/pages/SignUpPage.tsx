@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { buildHostedLoginUrl } from '../lib/auth/hostedLoginUrl';
+import { authManager } from '../lib/auth/AuthManager';
 import { SessionRenewalFailed } from '../components/EligibilityUndetermined';
 
 /**
@@ -47,6 +48,7 @@ export default function SignUpPage() {
     deployment === 'cloud' &&
     !!loginUrl &&
     !sessionRenewalFailed && // a kept session is an account (faultmaven#2999)
+    !authManager.isSigningOut() && // its IdP logout navigation must not be overridden
     !isAuthenticated &&
     supportsScreenHint &&
     selfServiceSignupEnabled;
