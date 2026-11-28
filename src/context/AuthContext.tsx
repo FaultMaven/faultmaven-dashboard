@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { authManager, AuthState } from '../lib/api';
 import config from '../config';
+import { subscribeCrossTabAuthState } from '../lib/auth/crossTab';
 import type { components } from '../types/api.generated';
 
 // Deployment type: derived from the backend auth mode
@@ -124,7 +125,8 @@ interface AuthContextValue {
   /**
    * The stored session is KEPT but could not be renewed (`loadSession`'s
    * `renewalFailed`): `authState` is null, yet the guards show a retry card, not
-   * sign-in (faultmaven#2999). Retried every CONFIG_REPROBE_INTERVAL_MS meanwhile.
+   * sign-in (faultmaven#2999). Retried every CONFIG_REPROBE_INTERVAL_MS meanwhile,
+   * and at once when another tab writes this tab's user's session.
    */
   sessionRenewalFailed: boolean;
   /** One more session load. Never touches `loading`, so the card stays mounted. */
@@ -361,11 +363,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [runConfigDetection, invalidateDetection, runSessionLoad, invalidateSessionLoad]);
 
-  // While the session cannot be renewed, retry it quietly at the same cadence.
+  // While the session cannot be renewed: another tab's write of this user's session
+  // arrives over its signal, not a timer. The interval is the network retry only.
   useEffect(() => {
     if (!sessionRenewalFailed) return;
     const id = setInterval(() => void runSessionLoad(), CONFIG_REPROBE_INTERVAL_MS);
-    return () => clearInterval(id);
+    const unsubscribe = subscribeCrossTabAuthState(async (state) => {
+      if (state && (await authManager.holdsSessionFor(state.user.user_id))) void runSessionLoad();
+    });
+    return () => {
+      clearInterval(id);
+      unsubscribe();
+    };
   }, [sessionRenewalFailed, runSessionLoad]);
 
   // Self-heal: while unreachable, probe quietly at a low frequency (see

@@ -177,4 +177,19 @@ describe('SignUpPage', () => {
     renderSignUp();
     expect(replaceSpy).not.toHaveBeenCalled();
   });
+
+  // It used to wait on 'ok' alone, so an unreachable config held the visitor on
+  // "Taking you to sign-up…" indefinitely instead of /login's retry card.
+  it('sends an unreachable config to /login once the stored session has loaded', () => {
+    mockUseAuth.mockReturnValue({ ...CLOUD, configStatus: 'unreachable', loading: false });
+    renderSignUp();
+    expect(screen.getByTestId('login-page')).toBeInTheDocument();
+  });
+
+  it('decides nothing while the stored session loads, even with config settled', () => {
+    mockUseAuth.mockReturnValue({ ...CLOUD, supportsScreenHint: false, loading: true });
+    renderSignUp();
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument();
+    expect(screen.getByText('Taking you to sign-up…')).toBeInTheDocument();
+  });
 });

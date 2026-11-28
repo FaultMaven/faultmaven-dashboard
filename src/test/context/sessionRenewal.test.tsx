@@ -73,6 +73,7 @@ async function reloadAt(path: string) {
   const { AuthProvider, useAuth, CONFIG_REPROBE_INTERVAL_MS } = await import('../../context/AuthContext');
   const { ProtectedRoute } = await import('../../components/ProtectedRoute');
   const { GatedRoute } = await import('../../components/GatedRoute');
+  const { default: SignUpPage } = await import('../../pages/SignUpPage');
 
   function Page() {
     return <div>page for {useAuth().authState?.user.username}</div>;
@@ -91,6 +92,7 @@ async function reloadAt(path: string) {
           <Route path="/login" element={<div>login page</div>} />
           <Route path="/cases" element={<ProtectedRoute><Page /></ProtectedRoute>} />
           <Route path="/gated" element={<GatedRoute allow={() => true}><Page /></GatedRoute>} />
+          <Route path="/signup" element={<SignUpPage />} />
         </Routes>
       </AuthProvider>
     </MemoryRouter>,
@@ -98,7 +100,7 @@ async function reloadAt(path: string) {
   return { authManager, CONFIG_REPROBE_INTERVAL_MS };
 }
 
-/** The renewal card, in full, and no way off it to `/login` or `/cases`. */
+/** The renewal card, in full, with no link to `/cases` and no redirect to `/login`. */
 async function expectRenewalCard() {
   expect(await screen.findByRole('heading', { name: "Can't reach FaultMaven" })).toBeInTheDocument();
   expect(screen.getByText(RENEWAL_COPY)).toBeInTheDocument();
@@ -115,8 +117,6 @@ describe('a reload while the session cannot be renewed (faultmaven#2999)', () =>
 
       await expectRenewalCard();
       expect(backend.refreshCalls).toBeGreaterThan(0);
-      // Nothing is leaving, so no return path is recorded.
-      expect(sessionStorage.getItem('oauth_redirect_after_login')).toBeNull();
 
       backend.refreshStatus = 200;
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -126,14 +126,63 @@ describe('a reload while the session cannot be renewed (faultmaven#2999)', () =>
     },
   );
 
-  it('keeps the card, and its attempt count, through a failed Try again', async () => {
+  // ProtectedRoute is the guard that records one; nothing is leaving here.
+  it('records no return path at /cases while the card stands', async () => {
     await reloadAt('/cases');
     await expectRenewalCard();
 
+    expect(sessionStorage.getItem('oauth_redirect_after_login')).toBeNull();
+  });
+
+  // Unreadable storage leaves a session unrenewed too, so the card blames no API.
+  it('keeps the card, and its attempt count, through a failed Try again, naming the session and not the API', async () => {
+    await reloadAt('/cases');
+    await expectRenewalCard();
+    expect(screen.queryByText(/Check that the API is running/)).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText('Still can’t reach the API (1 attempt).')).toBeInTheDocument();
+    expect(await screen.findByText('Still could not renew your session (1 attempt).')).toBeInTheDocument();
     await expectRenewalCard();
+  });
+
+  it('offers a deliberate sign-out that ends at sign-in and records no return path', async () => {
+    await reloadAt('/cases');
+    await expectRenewalCard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    expect(await screen.findByText('login page')).toBeInTheDocument();
+    expect(sessionStorage.getItem('oauth_redirect_after_login')).toBeNull();
+  });
+
+  it('at /signup shows the renewal card even when the config answers before the session load', async () => {
+    let release: () => void = () => {};
+    backend.refreshGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    await reloadAt('/signup');
+    // The standalone config lands while the refresh is still held.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    release();
+
+    await expectRenewalCard();
+  });
+
+  it('loads at once when another tab writes this user’s renewed session', async () => {
+    const { AUTH_STATE_STORAGE_KEY } = await import('../../lib/auth/crossTab');
+    await reloadAt('/cases');
+    await expectRenewalCard();
+
+    // Another tab renewed it: a fresh row for the same user, and its signal.
+    await window.browser!.storage.local.set({ authState: { ...TEST_AUTH_STATE, access_token: 'tok-other-tab' } });
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: AUTH_STATE_STORAGE_KEY, newValue: localStorage.getItem(AUTH_STATE_STORAGE_KEY) }),
+      );
+    });
+
+    expect(await screen.findByText('page for ada')).toBeInTheDocument();
   });
 
   it('retries quietly at the reprobe cadence, and stops once the session is renewed', async () => {

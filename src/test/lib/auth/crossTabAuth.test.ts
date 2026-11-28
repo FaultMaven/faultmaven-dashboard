@@ -363,7 +363,9 @@ describe('a first read that fails', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const manager = new AuthManager();
 
-    expect(await manager.loadSession()).toEqual({ kind: 'renewalFailed' });
+    // Before this tab holds a session, a failed read is signed out — but it
+    // pins nothing, so the next read still restores the session.
+    expect(await manager.loadSession()).toEqual({ kind: 'signedOut' });
     expect(await manager.loadSession()).toEqual({ kind: 'signedIn', state: TEST_AUTH_STATE });
   });
 });

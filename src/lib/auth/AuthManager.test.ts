@@ -191,19 +191,31 @@ describe('AuthManager', () => {
       expect(mockRemove).toHaveBeenCalledWith(['authState']);
     });
 
-    it('treats a storage read error as a renewal failure, never as signed out', async () => {
-      // An unreadable store settles nothing (faultmaven#2346).
+    it('reads storage unreadable before this tab holds a session as signed out, clearing nothing', async () => {
+      // Nothing says there is a session to keep, so "You are still signed in"
+      // would be false; and an unreadable store settles nothing (faultmaven#2346).
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockGet.mockRejectedValueOnce(new Error('Storage error'));
 
       const result = await authManager.loadSession();
 
-      expect(result).toEqual({ kind: 'renewalFailed' });
+      expect(result).toEqual({ kind: 'signedOut' });
       expect(mockRemove).not.toHaveBeenCalled();
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         '[AuthManager] Failed to get auth state:',
         expect.any(Error)
       );
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('reads storage unreadable while this tab holds a session as a renewal failure', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await authManager.saveAuthState(mockAuthState);
+      mockGet.mockRejectedValueOnce(new Error('Storage error'));
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'renewalFailed' });
+      expect(mockRemove).not.toHaveBeenCalled();
 
       consoleErrorSpy.mockRestore();
     });
@@ -286,6 +298,18 @@ describe('AuthManager', () => {
 
       expect(await authManager.loadSession()).toEqual({ kind: 'signedIn', state: winner });
       expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    it('reports signedIn with a fresh row another tab stored while this refresh failed', async () => {
+      const renewedElsewhere = { ...mockAuthState, access_token: 'other-tab', refresh_token: 'other-refresh' };
+      let stored: AuthState = expired();
+      mockGet.mockImplementation(async () => ({ authState: stored }));
+      fetchSpy.mockImplementation(async () => {
+        stored = renewedElsewhere;
+        return { ok: false, status: 503 };
+      });
+
+      expect(await authManager.loadSession()).toEqual({ kind: 'signedIn', state: renewedElsewhere });
     });
 
     it('reports renewalFailed when storage cannot be read after a successful refresh', async () => {

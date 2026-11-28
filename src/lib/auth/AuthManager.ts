@@ -482,7 +482,7 @@ export class AuthManager {
    * Read the stored IdP logout URL verbatim, WITHOUT triggering a refresh.
    *
    * Same reason peekAccessToken exists, plus one more: on a session with no
-   * refresh token loadSession *clears* the state and returns null, which would
+   * refresh token loadSession *clears* the state (`signedOut`), which would
    * destroy the very URL logout is trying to read. Returns null when no session
    * is stored, or for a login that had no IdP session (dev/password).
    */
@@ -587,12 +587,17 @@ export class AuthManager {
    *
    * `signedOut` means no session is stored or its credential was rejected (and
    * cleared). `renewalFailed` means it is KEPT but could not be renewed just now
-   * — a transient refresh failure (network down, 5xx), or unreadable storage,
-   * which settles nothing (faultmaven#2346) — so a later attempt can succeed.
+   * — a transient refresh failure (network down, 5xx), or storage unreadable
+   * while this tab holds a session, which settles nothing (faultmaven#2346) — so
+   * a later attempt can succeed. Unreadable before this tab holds one (a reload)
+   * is `signedOut`: nothing says there is a session to keep.
    */
   async loadSession(): Promise<SessionLoad> {
+    const unreadable = (): SessionLoad => ({
+      kind: this.identity.kind === 'signedIn' ? 'renewalFailed' : 'signedOut',
+    });
     const { readable, state: authState } = await this.readOwnRow();
-    if (!readable) return { kind: 'renewalFailed' };
+    if (!readable) return unreadable();
     if (!authState) {
       return { kind: 'signedOut' };
     }
@@ -606,9 +611,12 @@ export class AuthManager {
     if (authState.refresh_token) {
       const refreshed = await this.refreshTokens();
       const after = await this.readOwnRow();
-      if (!after.readable) return { kind: 'renewalFailed' };
+      if (!after.readable) return unreadable();
       if (!after.state) return { kind: 'signedOut' };
-      if (refreshed) return { kind: 'signedIn', state: after.state };
+      // Renewed here, or by another tab while this refresh failed.
+      if (refreshed || Date.now() < after.state.expires_at - EXPIRY_SKEW_MS) {
+        return { kind: 'signedIn', state: after.state };
+      }
       // Refresh failed. State has been cleared only if the failure was a
       // rejection of the credential we hold; a transient failure leaves the
       // session in place for the next attempt, and this tab still holds it.

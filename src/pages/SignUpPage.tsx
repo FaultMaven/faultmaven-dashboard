@@ -28,18 +28,22 @@ export default function SignUpPage() {
     useAuth();
   const { loading, sessionRenewalFailed } = useAuth();
 
-  // Every state this page can be in resolves to exactly one of three
-  // outcomes, decided once here so the effect and the render cannot disagree.
+  // Every state this page can be in resolves to exactly one outcome (wait, hand
+  // off, /cases, the renewal card or /login), decided once here so the effect
+  // and the render cannot disagree.
   // They did: the effect originally ignored `configStatus` while the returns
   // below were driven by it, so an unreachable config with a stale loginUrl
   // rendered "go to /login" *and* fired the redirect.
   const ready = configStatus === 'ok';
+  // Nothing settles before the stored session is read (it may be kept, faultmaven#2999).
+  const settled = !loading && configStatus !== 'pending';
   // The same pair LoginPage gates its button on. Without them this page says
   // "Taking you to sign-up…" and delivers the sign-in screen — website#42's
   // original defect, now with the app having announced the opposite. Falling
   // to /login is one more hop and tells the truth.
   const canHandOff =
     ready &&
+    !loading &&
     deployment === 'cloud' &&
     !!loginUrl &&
     !sessionRenewalFailed && // a kept session is an account (faultmaven#2999)
@@ -48,13 +52,13 @@ export default function SignUpPage() {
     selfServiceSignupEnabled;
 
   useEffect(() => {
-    if (loading || !canHandOff || !loginUrl) return;
+    if (!canHandOff || !loginUrl) return;
     // `replace`, not `assign`: this page is a waypoint, not a destination. With
     // `assign` it stays in history, so Back from the IdP remounts it, re-fires
     // this effect and throws the visitor straight back — Back becomes a loop
     // for exactly the people this route exists to serve.
     window.location.replace(buildHostedLoginUrl(loginUrl, { screenHint: 'sign-up' }));
-  }, [loading, canHandOff, loginUrl]);
+  }, [canHandOff, loginUrl]);
 
   // Already signed in. The marketing CTA is in the site header on every page,
   // so a returning customer clicks it too — and sending them to a *sign-up*
@@ -70,7 +74,7 @@ export default function SignUpPage() {
   // rather than three: enumerating the known states left a future
   // `ConfigStatus` member falling through to an indefinite spinner, where
   // this falls to the page that can explain itself.
-  if (ready && !canHandOff) return <Navigate to="/login" replace />;
+  if (settled && !canHandOff) return <Navigate to="/login" replace />;
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-fm-canvas">
